@@ -10,7 +10,6 @@ import {
   Table2,
   Download,
   Calendar,
-  Settings,
 } from 'lucide-react';
 
 const navigation = [
@@ -19,7 +18,6 @@ const navigation = [
   { name: 'Entries', href: '/entries', icon: Table2 },
   { name: 'Exports', href: '/exports', icon: Download },
   { name: 'Calendar', href: '/calendar', icon: Calendar },
-  { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
 export function Sidebar() {

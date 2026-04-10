@@ -37,19 +37,23 @@ export default function StaffPage() {
     try {
       const response = await fetch('/api/staff');
       const data = await response.json();
-      const staffList = Array.isArray(data) ? data : [];
+      // Ensure we always have an array
+      const staffList = Array.isArray(data) ? data : (data?.data ? data.data : []);
       setStaff(staffList);
     } catch (error) {
       console.error('Failed to fetch staff:', error);
+      setStaff([]);
     } finally {
       setLoading(false);
     }
   }
 
-  const filteredStaff = staff.filter((s) =>
-    s.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (s.department?.toLowerCase().includes(searchTerm.toLowerCase()) || false)
-  );
+  const filteredStaff = Array.isArray(staff) 
+    ? staff.filter((s) =>
+        s.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (s.department?.toLowerCase().includes(searchTerm.toLowerCase()) || false)
+      )
+    : [];
 
   return (
     <DashboardLayout title="Staff">
