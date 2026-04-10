@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     const end = searchParams.get('end');
 
     if (!start || !end) {
-      return NextResponse.json({ error: 'Start and end dates required' }, { status: 400 });
+      return NextResponse.json([]);
     }
 
     const holidays = await db.query.workCalendar.findMany({
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(holidays);
   } catch (error) {
     console.error('Failed to fetch holidays:', error);
-    return NextResponse.json({ error: 'Failed to fetch holidays' }, { status: 500 });
+    return NextResponse.json([]);
   }
 }
 

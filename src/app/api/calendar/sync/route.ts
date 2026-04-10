@@ -9,6 +9,7 @@ import { format } from 'date-fns';
 export async function POST() {
   try {
     const currentYear = new Date().getFullYear();
+    const today = format(new Date(), 'yyyy-MM-dd');
     
     // Fetch holidays from Google Calendar for current year
     const googleHolidays = await fetchGhanaHolidaysForYear(currentYear);
@@ -23,38 +24,45 @@ export async function POST() {
 
     let added = 0;
     let skipped = 0;
+    let updated = 0;
 
     for (const holiday of googleHolidays) {
+      // Skip holidays that have already passed - preserve historical data
+      if (holiday.date < today) {
+        skipped++;
+        continue;
+      }
+
       // Check if this date already exists
       const existing = await db.query.workCalendar.findFirst({
         where: (cal, { eq }) => eq(cal.date, holiday.date),
       });
 
       if (existing) {
-        // If user manually removed this holiday, don't re-add it
+        // User manually removed this holiday → skip it
         if (existing.isRemoved) {
           skipped++;
           continue;
         }
 
-        // If user manually changed it, preserve their changes
+        // User manually added this date (not from Google) → skip it
         if (existing.source === 'manual') {
           skipped++;
           continue;
         }
 
-        // Update existing Google-sourced holiday (name may have changed)
-        await db.update(workCalendar)
-          .set({
-            isHoliday: true,
-            holidayNote: holiday.name,
-            source: 'google',
-            isRemoved: false,
-            updatedAt: new Date(),
-          })
-          .where(eq(workCalendar.id, existing.id));
+        // Google-sourced holiday: update name if changed
+        if (existing.holidayNote !== holiday.name) {
+          await db.update(workCalendar)
+            .set({
+              holidayNote: holiday.name,
+              updatedAt: new Date(),
+            })
+            .where(eq(workCalendar.id, existing.id));
+          updated++;
+        }
         
-        skipped++; // Counted as updated, not added
+        skipped++;
       } else {
         // Add new holiday from Google
         await db.insert(workCalendar).values({
@@ -71,7 +79,7 @@ export async function POST() {
 
     return NextResponse.json({ 
       success: true, 
-      message: `Synced ${added} new holidays, ${skipped} updated/skipped.`,
+      message: `Added ${added}, updated ${updated}, skipped ${skipped}.`,
       synced: added,
       total: googleHolidays.length,
       syncedAt: new Date().toISOString(),

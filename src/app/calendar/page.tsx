@@ -59,8 +59,10 @@ export default function CalendarPage() {
       const response = await fetch(`/api/calendar?start=${startDate}&end=${endDate}`);
       const data = await response.json();
       
+      // Handle both array and object responses
+      const holidayList = Array.isArray(data) ? data : (data.holidays || []);
       const holidayMap: Record<string, Holiday> = {};
-      data.forEach((h: Holiday) => {
+      holidayList.forEach((h: Holiday) => {
         holidayMap[h.date] = h;
       });
       setHolidays(holidayMap);
@@ -100,24 +102,36 @@ export default function CalendarPage() {
     }
   }
 
-  async function toggleHoliday(date: Date, isHoliday: boolean) {
+  async function toggleHoliday(date: Date, isChecked: boolean) {
     const dateStr = format(date, 'yyyy-MM-dd');
     const existing = holidays[dateStr];
     
     if (existing) {
-      await fetch(`/api/calendar/holidays/${existing.id}`, {
+      // Update existing entry
+      const response = await fetch(`/api/calendar/holidays/${existing.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isHoliday, isRemoved: !isHoliday }),
+        body: JSON.stringify({ 
+          isHoliday: isChecked, 
+          isRemoved: !isChecked,
+          source: existing.source // Preserve source
+        }),
       });
-    } else {
-      await fetch('/api/calendar/holidays', {
+      if (response.ok) fetchHolidays();
+    } else if (isChecked) {
+      // Create new manual holiday entry
+      const response = await fetch('/api/calendar/holidays', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: dateStr, isHoliday, holidayNote: '', source: 'manual' }),
+        body: JSON.stringify({ 
+          date: dateStr, 
+          isHoliday: true, 
+          holidayNote: '', 
+          source: 'manual' 
+        }),
       });
+      if (response.ok) fetchHolidays();
     }
-    fetchHolidays();
   }
 
   const monthStart = startOfMonth(currentMonth);
