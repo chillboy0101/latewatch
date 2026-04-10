@@ -83,16 +83,18 @@ export default function EntriesPage() {
       // Fetch staff
       const staffResponse = await fetch('/api/staff');
       const staffData = await staffResponse.json();
-      setStaff(staffData);
+      const staffList = Array.isArray(staffData) ? staffData : [];
+      setStaff(staffList);
       
       // Initialize entries
       const today = format(selectedDate, 'yyyy-MM-dd');
       const entriesResponse = await fetch(`/api/entries?date=${today}`);
       const entriesData = await entriesResponse.json();
+      const entriesList = Array.isArray(entriesData) ? entriesData : [];
       
       // Merge staff with entries
-      const mergedEntries = staffData.map((s: StaffMember) => {
-        const existing = entriesData.find((e: any) => e.staffId === s.id);
+      const mergedEntries = staffList.map((s: StaffMember) => {
+        const existing = entriesList.find((e: any) => e.staffId === s.id);
         return {
           staffId: s.id,
           arrivalTime: existing?.arrivalTime || '',

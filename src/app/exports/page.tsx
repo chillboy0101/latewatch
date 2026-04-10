@@ -52,14 +52,18 @@ export default function ExportsPage() {
       let weekIdx = 0;
 
       for (const weekStart of weeks) {
-        const weekEnd = addDays(weekStart, 4); // Friday
-        if (weekStart > monthEnd) break;
+        // Get Monday of this week
+        const monday = startOfWeek(weekStart, { weekStartsOn: 1 });
+        // Get Friday of this week
+        const friday = addDays(monday, 4);
+        
+        if (monday > monthEnd) break;
 
         const days: DayData[] = [];
         let weekEntries = 0, weekLate = 0, weekSignOut = 0, weekAmount = 0;
 
         for (let i = 0; i < 5; i++) { // Mon-Fri
-          const day = addDays(weekStart, i);
+          const day = addDays(monday, i);
           if (day > monthEnd) break;
 
           const dateStr = format(day, 'yyyy-MM-dd');
@@ -95,9 +99,9 @@ export default function ExportsPage() {
         }
 
         summaries.push({
-          weekStart: format(weekStart, 'yyyy-MM-dd'),
-          weekEnd: format(weekEnd, 'yyyy-MM-dd'),
-          weekLabel: `Week ${weekIdx + 1} (${format(weekStart, 'MMM dd')} - ${format(weekEnd, 'MMM dd')})`,
+          weekStart: format(monday, 'yyyy-MM-dd'),
+          weekEnd: format(friday, 'yyyy-MM-dd'),
+          weekLabel: `Week ${weekIdx + 1} (${format(monday, 'MMM dd')} - ${format(friday, 'MMM dd')})`,
           days,
           totalEntries: weekEntries,
           totalLate: weekLate,

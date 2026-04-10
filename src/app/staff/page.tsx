@@ -37,7 +37,8 @@ export default function StaffPage() {
     try {
       const response = await fetch('/api/staff');
       const data = await response.json();
-      setStaff(data);
+      const staffList = Array.isArray(data) ? data : [];
+      setStaff(staffList);
     } catch (error) {
       console.error('Failed to fetch staff:', error);
     } finally {
