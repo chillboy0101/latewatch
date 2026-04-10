@@ -52,15 +52,20 @@ export default async function DashboardPage() {
     weekTotal = weekEntries.reduce((sum, e) => sum + parseFloat(e.computedAmount || '0'), 0);
     pendingCount = weekEntries.filter((e) => !e.date).length;
 
-    // Get holidays for this week
-    const holidays = await db.query.workCalendar.findMany({
-      where: (cal, { and, gte, lte, eq }) =>
-        and(
-          gte(cal.date, weekRange.start),
-          lte(cal.date, weekRange.end),
-          eq(cal.isHoliday, true)
-        ),
-    });
+    // Get holidays for this week (wrapped in try-catch to prevent failures)
+    let holidays: any[] = [];
+    try {
+      holidays = await db.query.workCalendar.findMany({
+        where: (cal, { and, gte, lte, eq }) =>
+          and(
+            gte(cal.date, weekRange.start),
+            lte(cal.date, weekRange.end),
+            eq(cal.isHoliday, true)
+          ),
+      });
+    } catch (error) {
+      console.warn('Failed to fetch holidays for dashboard:', error);
+    }
 
     const holidayDates = new Set(holidays.map((h) => h.date));
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
