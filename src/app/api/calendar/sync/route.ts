@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { workCalendar } from '@/db/schema';
 import { fetchGhanaHolidaysForYear } from '@/lib/google-calendar';
 import { eq } from 'drizzle-orm';
+import { format } from 'date-fns';
 
 export async function POST() {
   try {
@@ -84,27 +85,57 @@ export async function POST() {
   }
 }
 
-// GET endpoint for auto-sync on page load
+// GET endpoint for auto-sync on calendar page visit
 export async function GET() {
   try {
+    // Check last sync time
+    const lastSync = await db.query.workCalendar.findFirst({
+      where: (cal, { eq }) => eq(cal.source, 'google'),
+      orderBy: (cal, { desc }) => [desc(cal.updatedAt)],
+    });
+
+    const lastSyncedAt = lastSync?.updatedAt;
+    const now = new Date();
+    const hoursSinceLastSync = lastSyncedAt 
+      ? (now.getTime() - new Date(lastSyncedAt).getTime()) / (1000 * 60 * 60)
+      : 999;
+
+    // Only sync if >24 hours since last sync
+    if (hoursSinceLastSync < 24) {
+      return NextResponse.json({ 
+        synced: false, 
+        message: 'Already up to date',
+        lastSyncedAt: lastSyncedAt?.toISOString() || null,
+      });
+    }
+
     const currentYear = new Date().getFullYear();
+    const today = format(now, 'yyyy-MM-dd');
     const googleHolidays = await fetchGhanaHolidaysForYear(currentYear);
     
     if (googleHolidays.length === 0) {
       return NextResponse.json({ 
         synced: false, 
         message: 'No API key or failed to fetch',
-        lastSyncedAt: null,
+        lastSyncedAt: lastSyncedAt?.toISOString() || null,
       });
     }
 
     let added = 0;
+    let updated = 0;
+    
     for (const holiday of googleHolidays) {
+      // Skip holidays that have already passed - preserve historical data
+      if (holiday.date < today) {
+        continue;
+      }
+
       const existing = await db.query.workCalendar.findFirst({
         where: (cal, { eq }) => eq(cal.date, holiday.date),
       });
 
       if (!existing) {
+        // Add new future holiday
         await db.insert(workCalendar).values({
           date: holiday.date,
           isHoliday: true,
@@ -114,16 +145,18 @@ export async function GET() {
         });
         added++;
       } else if (existing.source === 'google' && !existing.isRemoved) {
-        // Update name if changed from Google
+        // Only update future holidays name if changed
         if (existing.holidayNote !== holiday.name) {
           await db.update(workCalendar)
             .set({ holidayNote: holiday.name, updatedAt: new Date() })
             .where(eq(workCalendar.id, existing.id));
+          updated++;
         }
       }
     }
 
-    const lastSync = await db.query.workCalendar.findFirst({
+    // Get fresh last sync time
+    const freshSync = await db.query.workCalendar.findFirst({
       where: (cal, { eq }) => eq(cal.source, 'google'),
       orderBy: (cal, { desc }) => [desc(cal.updatedAt)],
     });
@@ -131,7 +164,8 @@ export async function GET() {
     return NextResponse.json({ 
       synced: true, 
       added,
-      lastSyncedAt: lastSync?.updatedAt?.toISOString() || new Date().toISOString(),
+      updated,
+      lastSyncedAt: freshSync?.updatedAt?.toISOString() || new Date().toISOString(),
     });
   } catch (error) {
     console.error('Auto-sync failed:', error);

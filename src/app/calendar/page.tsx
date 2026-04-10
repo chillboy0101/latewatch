@@ -1,7 +1,7 @@
 // app/calendar/page.tsx
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -28,32 +28,26 @@ export default function CalendarPage() {
   });
   const [loading, setLoading] = useState(true);
 
-  const triggerAutoSync = useCallback(async () => {
+  // Fetch last sync status on page load (no auto-sync)
+  useEffect(() => {
+    fetchHolidays();
+    fetchLastSyncStatus();
+  }, []);
+
+  async function fetchLastSyncStatus() {
     try {
       const response = await fetch('/api/calendar/sync');
       const data = await response.json();
-      
-      if (data.synced) {
+      if (data.lastSyncedAt) {
         setSyncStatus({
           lastSyncedAt: data.lastSyncedAt,
-          message: `${data.added} new holidays synced`,
-        });
-        fetchHolidays();
-      } else if (data.lastSyncedAt) {
-        setSyncStatus({
-          lastSyncedAt: data.lastSyncedAt,
-          message: data.message || 'Already up to date',
+          message: data.message || 'Ready to sync',
         });
       }
     } catch (error) {
-      console.error('Auto-sync failed:', error);
+      console.error('Failed to fetch sync status:', error);
     }
-  }, []);
-
-  useEffect(() => {
-    fetchHolidays();
-    triggerAutoSync();
-  }, []);
+  }
 
   async function fetchHolidays() {
     try {
