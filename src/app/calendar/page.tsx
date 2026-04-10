@@ -85,7 +85,7 @@ export default function CalendarPage() {
       setHolidays(prev => ({
         ...prev,
         [dateStr]: {
-          id: 'temp',
+          id: 'temp-' + Date.now(),
           date: dateStr,
           isHoliday: true,
           isRemoved: false,
@@ -95,10 +95,10 @@ export default function CalendarPage() {
       }));
     }
     
-    // Persist to database in background
+    // Persist to database in background - DO NOT refetch to avoid losing state
     try {
       if (existing) {
-        await fetch(`/api/calendar/holidays/${existing.id}`, {
+        const response = await fetch(`/api/calendar/holidays/${existing.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -106,8 +106,16 @@ export default function CalendarPage() {
             isRemoved: !isChecked,
           }),
         });
+        if (response.ok) {
+          const updated = await response.json();
+          // Update state with actual response
+          setHolidays(prev => ({
+            ...prev,
+            [dateStr]: { ...prev[dateStr], ...updated },
+          }));
+        }
       } else if (isChecked) {
-        await fetch('/api/calendar/holidays', {
+        const response = await fetch('/api/calendar/holidays', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -117,9 +125,15 @@ export default function CalendarPage() {
             source: 'manual' 
           }),
         });
+        if (response.ok) {
+          const created = await response.json();
+          // Update state with actual response
+          setHolidays(prev => ({
+            ...prev,
+            [dateStr]: { ...prev[dateStr], ...created },
+          }));
+        }
       }
-      // Silent refresh from database
-      fetchHolidays(true);
     } catch (error) {
       console.error('Failed to update holiday:', error);
       // Revert on error

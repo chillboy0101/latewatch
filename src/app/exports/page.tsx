@@ -5,8 +5,8 @@ import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Download, Upload, Loader2 } from 'lucide-react';
-import { format, startOfWeek, addDays, startOfMonth, endOfMonth, eachWeekOfInterval, parseISO } from 'date-fns';
+import { Download, Upload, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { format, startOfWeek, addDays, startOfMonth, endOfMonth, eachWeekOfInterval, parseISO, subMonths, addMonths } from 'date-fns';
 
 interface DayData {
   day: string;
@@ -15,12 +15,12 @@ interface DayData {
   late: number;
   signOut: number;
   amount: number;
-  isHoliday: boolean;
 }
 
 interface WeekSummary {
   weekStart: string;
   weekEnd: string;
+  weekLabel: string;
   days: DayData[];
   totalEntries: number;
   totalLate: number;
@@ -29,8 +29,8 @@ interface WeekSummary {
 }
 
 export default function ExportsPage() {
-  const [selectedWeek, setSelectedWeek] = useState(0);
-  const [selectedMonth] = useState(new Date());
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
+  const [selectedWeekIdx, setSelectedWeekIdx] = useState(0);
   const [weekSummaries, setWeekSummaries] = useState<WeekSummary[]>([]);
   const [monthlyTotal, setMonthlyTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -38,18 +38,18 @@ export default function ExportsPage() {
 
   useEffect(() => {
     fetchExportData();
-  }, []);
+  }, [selectedMonth]);
 
   async function fetchExportData() {
     setLoading(true);
     try {
-      const now = new Date();
-      const monthStart = startOfMonth(now);
-      const monthEnd = endOfMonth(now);
+      const monthStart = startOfMonth(selectedMonth);
+      const monthEnd = endOfMonth(selectedMonth);
       const weeks = eachWeekOfInterval({ start: monthStart, end: monthEnd });
       
       const summaries: WeekSummary[] = [];
       let monthTotal = 0;
+      let weekIdx = 0;
 
       for (const weekStart of weeks) {
         const weekEnd = addDays(weekStart, 4); // Friday
@@ -66,44 +66,50 @@ export default function ExportsPage() {
           const dayName = format(day, 'EEE dd');
           
           // Fetch entries for this day
-          const response = await fetch(`/api/entries?date=${dateStr}`);
-          const entries = await response.json();
-          const dayEntries = Array.isArray(entries) ? entries : [];
-          
-          const lateCount = dayEntries.filter((e: any) => parseFloat(e.computedAmount || '0') > 0 && !e.reason?.includes('SIGN OUT')).length;
-          const signOutCount = dayEntries.filter((e: any) => e.didNotSignOut).length;
-          const dayAmount = dayEntries.reduce((sum: number, e: any) => sum + parseFloat(e.computedAmount || '0'), 0);
+          try {
+            const response = await fetch(`/api/entries?date=${dateStr}`);
+            const entries = await response.json();
+            const dayEntries = Array.isArray(entries) ? entries : [];
+            
+            const lateCount = dayEntries.filter((e: any) => parseFloat(e.computedAmount || '0') > 0 && !e.reason?.includes('SIGN OUT')).length;
+            const signOutCount = dayEntries.filter((e: any) => e.didNotSignOut).length;
+            const dayAmount = dayEntries.reduce((sum: number, e: any) => sum + parseFloat(e.computedAmount || '0'), 0);
 
-          days.push({
-            day: dayName,
-            date: dateStr,
-            entries: dayEntries.length,
-            late: lateCount,
-            signOut: signOutCount,
-            amount: dayAmount,
-            isHoliday: false, // Could fetch from calendar API
-          });
+            days.push({
+              day: dayName,
+              date: dateStr,
+              entries: dayEntries.length,
+              late: lateCount,
+              signOut: signOutCount,
+              amount: dayAmount,
+            });
 
-          weekEntries += dayEntries.length;
-          weekLate += lateCount;
-          weekSignOut += signOutCount;
-          weekAmount += dayAmount;
-          monthTotal += dayAmount;
+            weekEntries += dayEntries.length;
+            weekLate += lateCount;
+            weekSignOut += signOutCount;
+            weekAmount += dayAmount;
+            monthTotal += dayAmount;
+          } catch (err) {
+            console.error(`Failed to fetch entries for ${dateStr}:`, err);
+          }
         }
 
         summaries.push({
           weekStart: format(weekStart, 'yyyy-MM-dd'),
           weekEnd: format(weekEnd, 'yyyy-MM-dd'),
+          weekLabel: `Week ${weekIdx + 1} (${format(weekStart, 'MMM dd')} - ${format(weekEnd, 'MMM dd')})`,
           days,
           totalEntries: weekEntries,
           totalLate: weekLate,
           totalSignOut: weekSignOut,
           totalAmount: weekAmount,
         });
+        weekIdx++;
       }
 
       setWeekSummaries(summaries);
       setMonthlyTotal(monthTotal);
+      setSelectedWeekIdx(0);
     } catch (error) {
       console.error('Failed to fetch export data:', error);
     } finally {
@@ -114,7 +120,7 @@ export default function ExportsPage() {
   async function handleWeeklyExport() {
     setExporting('weekly');
     try {
-      const week = weekSummaries[selectedWeek];
+      const week = weekSummaries[selectedWeekIdx];
       if (!week) return;
 
       const response = await fetch('/api/export/weekly', {
@@ -170,7 +176,7 @@ export default function ExportsPage() {
     }
   }
 
-  const currentWeek = weekSummaries[selectedWeek];
+  const currentWeek = weekSummaries[selectedWeekIdx];
 
   return (
     <DashboardLayout title="Export Center">
@@ -187,18 +193,34 @@ export default function ExportsPage() {
               </div>
             ) : (
               <div className="space-y-4">
+                {/* Month Selector */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">Select Month</label>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="icon" onClick={() => setSelectedMonth(subMonths(selectedMonth, 1))}>
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" className="flex-1 justify-center">
+                      {format(selectedMonth, 'MMMM yyyy')}
+                    </Button>
+                    <Button variant="outline" size="icon" onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
                 {/* Week Selector */}
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-muted-foreground">Select Week</label>
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">Select Week</label>
                   <div className="flex gap-2 flex-wrap">
                     {weekSummaries.map((week, idx) => (
                       <Button
                         key={idx}
-                        variant={idx === selectedWeek ? 'default' : 'outline'}
+                        variant={idx === selectedWeekIdx ? 'default' : 'outline'}
                         size="sm"
-                        onClick={() => setSelectedWeek(idx)}
+                        onClick={() => setSelectedWeekIdx(idx)}
                       >
-                        Week {idx + 1}
+                        {week.weekLabel}
                       </Button>
                     ))}
                   </div>
@@ -229,6 +251,13 @@ export default function ExportsPage() {
                               <td className="py-2 text-right font-mono">GHC {day.amount.toFixed(2)}</td>
                             </tr>
                           ))}
+                          {currentWeek.days.length === 0 && (
+                            <tr>
+                              <td colSpan={5} className="py-4 text-center text-muted-foreground">
+                                No entries for this week
+                              </td>
+                            </tr>
+                          )}
                         </tbody>
                       </table>
                     </div>
@@ -261,10 +290,18 @@ export default function ExportsPage() {
             <h2 className="mb-4 text-center text-lg font-semibold">MONTHLY EXPORT</h2>
             <div className="space-y-4">
               <div>
-                <label className="mb-1 block text-sm font-medium text-muted-foreground">Select Month</label>
-                <Button variant="outline" className="w-full justify-start">
-                  {format(selectedMonth, 'MMMM yyyy')}
-                </Button>
+                <label className="mb-2 block text-sm font-medium text-muted-foreground">Select Month</label>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="icon" onClick={() => setSelectedMonth(subMonths(selectedMonth, 1))}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button variant="outline" className="flex-1 justify-center">
+                    {format(selectedMonth, 'MMMM yyyy')}
+                  </Button>
+                  <Button variant="outline" size="icon" onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
 
               <div className="text-sm text-muted-foreground">
