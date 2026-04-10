@@ -71,28 +71,61 @@ export default function CalendarPage() {
     const dateStr = format(date, 'yyyy-MM-dd');
     const existing = holidays[dateStr];
     
+    // Optimistically update local state
     if (existing) {
-      await fetch(`/api/calendar/holidays/${existing.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          isHoliday: isChecked, 
+      setHolidays(prev => ({
+        ...prev,
+        [dateStr]: {
+          ...existing,
+          isHoliday: isChecked,
           isRemoved: !isChecked,
-        }),
-      });
+          source: existing.source === 'google' && !isChecked ? 'google' : 'manual',
+        }
+      }));
     } else if (isChecked) {
-      await fetch('/api/calendar/holidays', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          date: dateStr, 
-          isHoliday: true, 
-          holidayNote: editingName || 'Holiday', 
-          source: 'manual' 
-        }),
-      });
+      setHolidays(prev => ({
+        ...prev,
+        [dateStr]: {
+          id: 'temp',
+          date: dateStr,
+          isHoliday: true,
+          isRemoved: false,
+          holidayNote: editingName || 'Holiday',
+          source: 'manual',
+        }
+      }));
     }
-    fetchHolidays();
+    
+    // Then persist to database
+    try {
+      if (existing) {
+        await fetch(`/api/calendar/holidays/${existing.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            isHoliday: isChecked, 
+            isRemoved: !isChecked,
+          }),
+        });
+      } else if (isChecked) {
+        await fetch('/api/calendar/holidays', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            date: dateStr, 
+            isHoliday: true, 
+            holidayNote: editingName || 'Holiday', 
+            source: 'manual' 
+          }),
+        });
+      }
+      // Refresh from database to confirm
+      fetchHolidays();
+    } catch (error) {
+      console.error('Failed to update holiday:', error);
+      // Revert on error
+      fetchHolidays();
+    }
   }
 
   async function saveHolidayName(date: Date, name: string) {
