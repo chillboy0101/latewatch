@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx *)",
+      "Bash(npm install *)",
+      "Bash(cat *)",
+      "Bash(mkdir *)",
+      "Bash(npm run *)"
+    ]
+  },
+  "$version": 3
+}
