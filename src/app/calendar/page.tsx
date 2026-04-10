@@ -30,9 +30,9 @@ export default function CalendarPage() {
     triggerSync();
   }, []);
 
-  // Fetch holidays when month changes
+  // Fetch holidays when month changes (silent - no loading spinner)
   useEffect(() => {
-    fetchHolidays();
+    fetchHolidays(true);
   }, [currentMonth]);
 
   async function triggerSync() {
@@ -43,8 +43,8 @@ export default function CalendarPage() {
     }
   }
 
-  async function fetchHolidays() {
-    setLoading(true);
+  async function fetchHolidays(silent = false) {
+    if (!silent) setLoading(true);
     try {
       const year = currentMonth.getFullYear();
       const month = currentMonth.getMonth();
@@ -63,7 +63,7 @@ export default function CalendarPage() {
     } catch (error) {
       console.error('Failed to fetch holidays:', error);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
@@ -71,7 +71,7 @@ export default function CalendarPage() {
     const dateStr = format(date, 'yyyy-MM-dd');
     const existing = holidays[dateStr];
     
-    // Optimistically update local state
+    // Optimistically update local state immediately
     if (existing) {
       setHolidays(prev => ({
         ...prev,
@@ -79,7 +79,6 @@ export default function CalendarPage() {
           ...existing,
           isHoliday: isChecked,
           isRemoved: !isChecked,
-          source: existing.source === 'google' && !isChecked ? 'google' : 'manual',
         }
       }));
     } else if (isChecked) {
@@ -96,7 +95,7 @@ export default function CalendarPage() {
       }));
     }
     
-    // Then persist to database
+    // Persist to database in background
     try {
       if (existing) {
         await fetch(`/api/calendar/holidays/${existing.id}`, {
@@ -119,12 +118,12 @@ export default function CalendarPage() {
           }),
         });
       }
-      // Refresh from database to confirm
-      fetchHolidays();
+      // Silent refresh from database
+      fetchHolidays(true);
     } catch (error) {
       console.error('Failed to update holiday:', error);
       // Revert on error
-      fetchHolidays();
+      fetchHolidays(true);
     }
   }
 
