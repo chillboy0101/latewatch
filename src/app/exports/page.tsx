@@ -5,8 +5,25 @@ import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Download, Upload, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
-import { format, startOfWeek, addDays, startOfMonth, endOfMonth, eachWeekOfInterval, parseISO, subMonths, addMonths } from 'date-fns';
+import { Download, Upload, Loader2 } from 'lucide-react';
+import { format, startOfWeek, addDays, startOfMonth, endOfMonth, parseISO, addMonths } from 'date-fns';
+
+// Generate month options for dropdown (past 12 months + next 12 months)
+function generateMonthOptions() {
+  const now = new Date();
+  const options = [];
+  for (let i = -12; i <= 12; i++) {
+    const month = addMonths(now, i);
+    const value = format(month, 'yyyy-MM');
+    const label = format(month, 'MMMM yyyy');
+    options.push(
+      <option key={value} value={value}>
+        {label}
+      </option>
+    );
+  }
+  return options;
+}
 
 interface DayData {
   day: string;
@@ -45,29 +62,44 @@ export default function ExportsPage() {
     try {
       const monthStart = startOfMonth(selectedMonth);
       const monthEnd = endOfMonth(selectedMonth);
-      const weeks = eachWeekOfInterval({ start: monthStart, end: monthEnd });
       
       const summaries: WeekSummary[] = [];
       let monthTotal = 0;
       let weekIdx = 0;
-
-      for (const weekStart of weeks) {
-        // Get Monday of this week
-        const monday = startOfWeek(weekStart, { weekStartsOn: 1 });
-        // Get Friday of this week
-        const friday = addDays(monday, 4);
+      
+      // Start from the 1st of the month
+      let weekStart = new Date(monthStart);
+      
+      while (weekStart <= monthEnd) {
+        // Calculate the Friday of this week
+        const startDayOfWeek = weekStart.getDay(); // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
+        let daysToFriday: number;
         
-        if (monday > monthEnd) break;
+        if (weekIdx === 0) {
+          // First week: find Friday of this week
+          daysToFriday = startDayOfWeek <= 5 ? 5 - startDayOfWeek : 0;
+        } else {
+          // Subsequent weeks always start on Monday, so Friday is 4 days later
+          daysToFriday = 4;
+        }
+        
+        const weekEnd = addDays(weekStart, daysToFriday);
+        
+        // Skip if this week is entirely after the month
+        if (weekStart > monthEnd) break;
 
         const days: DayData[] = [];
         let weekEntries = 0, weekLate = 0, weekSignOut = 0, weekAmount = 0;
 
-        for (let i = 0; i < 5; i++) { // Mon-Fri
-          const day = addDays(monday, i);
-          if (day > monthEnd) break;
+        // Iterate through each day of this week (Mon-Fri range)
+        for (let d = new Date(weekStart); d <= weekEnd; d = addDays(d, 1)) {
+          // Only include days within this month and Mon-Fri
+          if (d < monthStart || d > monthEnd) continue;
+          const dow = d.getDay();
+          if (dow === 0 || dow === 6) continue; // Skip weekends
 
-          const dateStr = format(day, 'yyyy-MM-dd');
-          const dayName = format(day, 'EEE dd');
+          const dateStr = format(d, 'yyyy-MM-dd');
+          const dayName = format(d, 'EEE dd');
           
           // Fetch entries for this day
           try {
@@ -98,17 +130,27 @@ export default function ExportsPage() {
           }
         }
 
-        summaries.push({
-          weekStart: format(monday, 'yyyy-MM-dd'),
-          weekEnd: format(friday, 'yyyy-MM-dd'),
-          weekLabel: `Week ${weekIdx + 1} (${format(monday, 'MMM dd')} - ${format(friday, 'MMM dd')})`,
-          days,
-          totalEntries: weekEntries,
-          totalLate: weekLate,
-          totalSignOut: weekSignOut,
-          totalAmount: weekAmount,
-        });
-        weekIdx++;
+        // Only add week if it has days in this month
+        if (days.length > 0) {
+          const actualStart = days[0]?.date || format(weekStart, 'yyyy-MM-dd');
+          const actualEnd = days[days.length - 1]?.date || format(weekEnd, 'yyyy-MM-dd');
+          
+          summaries.push({
+            weekStart: actualStart,
+            weekEnd: actualEnd,
+            weekLabel: `Week ${weekIdx + 1} (${format(parseISO(actualStart), 'MMM dd')} - ${format(parseISO(actualEnd), 'MMM dd')})`,
+            days,
+            totalEntries: weekEntries,
+            totalLate: weekLate,
+            totalSignOut: weekSignOut,
+            totalAmount: weekAmount,
+          });
+          weekIdx++;
+        }
+
+        // Move to next week's Monday
+        const nextMonday = addDays(weekEnd, 3); // Saturday + 2 = Monday
+        weekStart = nextMonday;
       }
 
       setWeekSummaries(summaries);
@@ -200,17 +242,13 @@ export default function ExportsPage() {
                 {/* Month Selector */}
                 <div>
                   <label className="mb-2 block text-sm font-medium text-muted-foreground">Select Month</label>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="icon" onClick={() => setSelectedMonth(subMonths(selectedMonth, 1))}>
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <Button variant="outline" className="flex-1 justify-center">
-                      {format(selectedMonth, 'MMMM yyyy')}
-                    </Button>
-                    <Button variant="outline" size="icon" onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}>
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <select
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                    value={format(selectedMonth, 'yyyy-MM')}
+                    onChange={(e) => setSelectedMonth(parseISO(e.target.value + '-01'))}
+                  >
+                    {generateMonthOptions()}
+                  </select>
                 </div>
 
                 {/* Week Selector */}
@@ -295,17 +333,13 @@ export default function ExportsPage() {
             <div className="space-y-4">
               <div>
                 <label className="mb-2 block text-sm font-medium text-muted-foreground">Select Month</label>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="icon" onClick={() => setSelectedMonth(subMonths(selectedMonth, 1))}>
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <Button variant="outline" className="flex-1 justify-center">
-                    {format(selectedMonth, 'MMMM yyyy')}
-                  </Button>
-                  <Button variant="outline" size="icon" onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
+                <select
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  value={format(selectedMonth, 'yyyy-MM')}
+                  onChange={(e) => setSelectedMonth(parseISO(e.target.value + '-01'))}
+                >
+                  {generateMonthOptions()}
+                </select>
               </div>
 
               <div className="text-sm text-muted-foreground">
@@ -326,29 +360,6 @@ export default function ExportsPage() {
                   <Download className="h-4 w-4" />
                 )}
                 {exporting === 'monthly' ? 'Generating...' : 'Download Monthly Excel'}
-              </Button>
-            </div>
-          </div>
-        </Card>
-
-        {/* Template Management */}
-        <Card>
-          <div className="p-6">
-            <h2 className="mb-4 text-center text-lg font-semibold">TEMPLATE MANAGEMENT (Admin)</h2>
-            <div className="space-y-4">
-              <div className="text-sm">
-                <div className="mb-1">
-                  <span className="text-muted-foreground">Active Template:</span>{' '}
-                  <span className="font-medium">LATENESS BOOK MARCH 2026.xlsx (v1)</span>
-                </div>
-                <div className="text-muted-foreground">
-                  Last Updated: 2026-03-01 by admin@company.com
-                </div>
-              </div>
-
-              <Button variant="outline" className="w-full gap-2">
-                <Upload className="h-4 w-4" />
-                Upload New Template
               </Button>
             </div>
           </div>

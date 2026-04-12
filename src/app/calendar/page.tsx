@@ -1,13 +1,27 @@
 // app/calendar/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, isBefore, startOfDay } from 'date-fns';
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  getDay,
+  isSameDay,
+  isBefore,
+  startOfDay,
+  addMonths,
+  subMonths,
+  startOfYear,
+  endOfYear,
+  eachMonthOfInterval,
+} from 'date-fns';
+import { ChevronLeft, ChevronRight, ChevronDown, Plus } from 'lucide-react';
 
 interface Holiday {
   id: string;
@@ -18,43 +32,64 @@ interface Holiday {
   isRemoved: boolean;
 }
 
+// In-memory cache for holidays: key = "YYYY-MM"
+const holidayCache = new Map<string, Holiday[]>();
+const cacheTimestamps = new Map<string, number>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 export default function CalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [holidays, setHolidays] = useState<Record<string, Holiday>>({});
-  const [loading, setLoading] = useState(true);
   const [editingName, setEditingName] = useState('');
+  const [showMonthDropdown, setShowMonthDropdown] = useState(false);
+  const [showYearDropdown, setShowYearDropdown] = useState(false);
+  const monthDropdownRef = useRef<HTMLDivElement>(null);
+  const yearDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Auto-sync on page load
+  // Close dropdowns when clicking outside
   useEffect(() => {
-    triggerSync();
+    function handleClickOutside(event: MouseEvent) {
+      if (monthDropdownRef.current && !monthDropdownRef.current.contains(event.target as Node)) {
+        setShowMonthDropdown(false);
+      }
+      if (yearDropdownRef.current && !yearDropdownRef.current.contains(event.target as Node)) {
+        setShowYearDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Fetch holidays when month changes (silent - no loading spinner)
-  useEffect(() => {
-    fetchHolidays(true);
-  }, [currentMonth]);
+  // Fetch holidays with caching
+  const fetchHolidays = useCallback(async (date: Date, silent = true) => {
+    const cacheKey = format(date, 'yyyy-MM');
+    const now = Date.now();
+    const cached = holidayCache.get(cacheKey);
+    const timestamp = cacheTimestamps.get(cacheKey);
 
-  async function triggerSync() {
-    try {
-      await fetch('/api/calendar/sync', { method: 'POST' });
-    } catch (error) {
-      console.error('Auto-sync failed:', error);
+    // Return cached data if fresh
+    if (cached && timestamp && (now - timestamp) < CACHE_TTL) {
+      const holidayMap: Record<string, Holiday> = {};
+      cached.forEach((h) => {
+        holidayMap[h.date] = h;
+      });
+      setHolidays(holidayMap);
+      return;
     }
-  }
 
-  async function fetchHolidays(silent = false) {
-    if (!silent) setLoading(true);
     try {
-      const year = currentMonth.getFullYear();
-      const month = currentMonth.getMonth();
-      const startDate = format(startOfMonth(new Date(year, month)), 'yyyy-MM-dd');
-      const endDate = format(endOfMonth(new Date(year, month)), 'yyyy-MM-dd');
-      
+      const startDate = format(startOfMonth(date), 'yyyy-MM-dd');
+      const endDate = format(endOfMonth(date), 'yyyy-MM-dd');
+
       const response = await fetch(`/api/calendar?start=${startDate}&end=${endDate}`);
       const data = await response.json();
-      
       const holidayList = Array.isArray(data) ? data : [];
+
+      // Update cache
+      holidayCache.set(cacheKey, holidayList);
+      cacheTimestamps.set(cacheKey, now);
+
       const holidayMap: Record<string, Holiday> = {};
       holidayList.forEach((h: Holiday) => {
         holidayMap[h.date] = h;
@@ -62,27 +97,50 @@ export default function CalendarPage() {
       setHolidays(holidayMap);
     } catch (error) {
       console.error('Failed to fetch holidays:', error);
-    } finally {
-      if (!silent) setLoading(false);
     }
-  }
+  }, []);
+
+  // Pre-fetch adjacent months in background
+  const prefetchAdjacentMonths = useCallback((date: Date) => {
+    const prevMonth = subMonths(date, 1);
+    const nextMonth = addMonths(date, 1);
+    fetchHolidays(prevMonth, true);
+    fetchHolidays(nextMonth, true);
+  }, [fetchHolidays]);
+
+  // Initial load
+  useEffect(() => {
+    fetchHolidays(currentMonth, false);
+    prefetchAdjacentMonths(currentMonth);
+  }, []);
+
+  // When month changes
+  useEffect(() => {
+    fetchHolidays(currentMonth, true);
+    prefetchAdjacentMonths(currentMonth);
+  }, [currentMonth, fetchHolidays, prefetchAdjacentMonths]);
+
+  // Trigger auto-sync in background
+  useEffect(() => {
+    fetch('/api/calendar/sync', { method: 'POST' }).catch(console.error);
+  }, []);
 
   async function toggleHoliday(date: Date, isChecked: boolean) {
     const dateStr = format(date, 'yyyy-MM-dd');
     const existing = holidays[dateStr];
-    
+
     // Optimistically update local state immediately
     if (existing) {
-      setHolidays(prev => ({
+      setHolidays((prev) => ({
         ...prev,
         [dateStr]: {
           ...existing,
           isHoliday: isChecked,
           isRemoved: !isChecked,
-        }
+        },
       }));
     } else if (isChecked) {
-      setHolidays(prev => ({
+      setHolidays((prev) => ({
         ...prev,
         [dateStr]: {
           id: 'temp-' + Date.now(),
@@ -91,68 +149,50 @@ export default function CalendarPage() {
           isRemoved: false,
           holidayNote: editingName || 'Holiday',
           source: 'manual',
-        }
+        },
       }));
     }
-    
-    // Persist to database in background - DO NOT refetch to avoid losing state
+
+    // Persist to database
     try {
       if (existing) {
-        const response = await fetch(`/api/calendar/holidays/${existing.id}`, {
+        await fetch(`/api/calendar/holidays/${existing.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            isHoliday: isChecked, 
-            isRemoved: !isChecked,
-          }),
+          body: JSON.stringify({ isHoliday: isChecked, isRemoved: !isChecked }),
         });
-        if (response.ok) {
-          const updated = await response.json();
-          // Update state with actual response
-          setHolidays(prev => ({
-            ...prev,
-            [dateStr]: { ...prev[dateStr], ...updated },
-          }));
-        }
       } else if (isChecked) {
-        const response = await fetch('/api/calendar/holidays', {
+        await fetch('/api/calendar/holidays', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            date: dateStr, 
-            isHoliday: true, 
-            holidayNote: editingName || 'Holiday', 
-            source: 'manual' 
+          body: JSON.stringify({
+            date: dateStr,
+            isHoliday: true,
+            holidayNote: editingName || 'Holiday',
+            source: 'manual',
           }),
         });
-        if (response.ok) {
-          const created = await response.json();
-          // Update state with actual response
-          setHolidays(prev => ({
-            ...prev,
-            [dateStr]: { ...prev[dateStr], ...created },
-          }));
-        }
       }
+      // Refresh cache
+      fetchHolidays(currentMonth, true);
     } catch (error) {
       console.error('Failed to update holiday:', error);
-      // Revert on error
-      fetchHolidays(true);
+      fetchHolidays(currentMonth, true);
     }
   }
 
   async function saveHolidayName(date: Date, name: string) {
     const dateStr = format(date, 'yyyy-MM-dd');
     const existing = holidays[dateStr];
-    
+
     if (existing) {
       await fetch(`/api/calendar/holidays/${existing.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ holidayNote: name }),
       });
+      fetchHolidays(currentMonth, true);
     }
-    fetchHolidays();
   }
 
   const monthStart = startOfMonth(currentMonth);
@@ -181,99 +221,200 @@ export default function CalendarPage() {
     return holidays[dateStr];
   };
 
+  const yearStart = startOfYear(new Date());
+  const yearEnd = endOfYear(new Date());
+  const yearOptions = eachMonthOfInterval({ start: addMonths(yearStart, -24), end: addMonths(yearEnd, 12) });
+
   return (
     <DashboardLayout title="Calendar">
       <div className="space-y-6">
         <Card>
           <div className="p-6">
-            {/* Month Navigation */}
+            {/* Month/Year Navigation - Google Calendar Style */}
             <div className="mb-6 flex items-center justify-between">
-              <Button variant="outline" size="icon" onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}>
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <h2 className="text-xl font-semibold">
-                {format(currentMonth, 'MMMM yyyy')}
-              </h2>
-              <Button variant="outline" size="icon" onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}>
-                <ChevronRight className="h-4 w-4" />
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+
+                {/* Month Dropdown */}
+                <div className="relative" ref={monthDropdownRef}>
+                  <Button
+                    variant="ghost"
+                    className="gap-1 font-semibold text-lg"
+                    onClick={() => {
+                      setShowMonthDropdown(!showMonthDropdown);
+                      setShowYearDropdown(false);
+                    }}
+                  >
+                    {format(currentMonth, 'MMMM')}
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                  {showMonthDropdown && (
+                    <div className="absolute left-0 top-full z-50 mt-1 grid w-48 grid-cols-3 gap-1 rounded-lg border border-border bg-card p-2 shadow-lg">
+                      {Array.from({ length: 12 }, (_, i) => {
+                        const monthDate = new Date(currentMonth.getFullYear(), i, 1);
+                        const isSelected = i === currentMonth.getMonth();
+                        return (
+                          <button
+                            key={i}
+                            onClick={() => {
+                              setCurrentMonth(monthDate);
+                              setShowMonthDropdown(false);
+                            }}
+                            className={`rounded px-2 py-1.5 text-sm hover:bg-accent ${
+                              isSelected ? 'bg-primary text-primary-foreground font-medium' : ''
+                            }`}
+                          >
+                            {format(monthDate, 'MMM')}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Year Dropdown */}
+                <div className="relative" ref={yearDropdownRef}>
+                  <Button
+                    variant="ghost"
+                    className="gap-1 font-semibold text-lg"
+                    onClick={() => {
+                      setShowYearDropdown(!showYearDropdown);
+                      setShowMonthDropdown(false);
+                    }}
+                  >
+                    {format(currentMonth, 'yyyy')}
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                  {showYearDropdown && (
+                    <div className="absolute left-0 top-full z-50 mt-1 grid w-32 grid-cols-3 gap-1 rounded-lg border border-border bg-card p-2 shadow-lg max-h-60 overflow-y-auto">
+                      {Array.from({ length: 21 }, (_, i) => {
+                        const year = new Date().getFullYear() - 10 + i;
+                        const isSelected = year === currentMonth.getFullYear();
+                        return (
+                          <button
+                            key={year}
+                            onClick={() => {
+                              setCurrentMonth(new Date(year, currentMonth.getMonth(), 1));
+                              setShowYearDropdown(false);
+                            }}
+                            className={`rounded px-2 py-1.5 text-sm hover:bg-accent ${
+                              isSelected ? 'bg-primary text-primary-foreground font-medium' : ''
+                            }`}
+                          >
+                            {year}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <Button variant="outline" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Today Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setCurrentMonth(new Date());
+                  setSelectedDate(new Date());
+                }}
+              >
+                Today
               </Button>
             </div>
 
             {/* Calendar Grid */}
-            {loading ? (
-              <div className="flex h-64 items-center justify-center text-muted-foreground">
-                Loading holidays...
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-7 gap-1">
-                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                    <div key={day} className="py-2 text-center text-xs font-medium text-muted-foreground">
-                      {day}
-                    </div>
-                  ))}
+            <div className="grid grid-cols-7 gap-1">
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                <div key={day} className="py-2 text-center text-xs font-medium text-muted-foreground">
+                  {day}
+                </div>
+              ))}
 
-                  {weeks.map((week, weekIndex) => (
-                    <div key={weekIndex} className="contents">
-                      {week.map((day, dayIndex) => {
-                        if (!day) return <div key={dayIndex} className="p-1" />;
+              {weeks.map((week, weekIndex) => (
+                <div key={weekIndex} className="contents">
+                  {week.map((day, dayIndex) => {
+                    if (!day) return <div key={dayIndex} className="p-1" />;
 
-                        const holiday = getHolidayForDate(day);
-                        const isHoliday = holiday?.isHoliday && !holiday?.isRemoved;
-                        const isSelected = selectedDate && isSameDay(day, selectedDate);
-                        const isToday = isSameDay(day, new Date());
-                        const holidayName = holiday?.holidayNote || '';
+                    const holiday = getHolidayForDate(day);
+                    const isHoliday = holiday?.isHoliday && !holiday?.isRemoved;
+                    const isSelected = selectedDate && isSameDay(day, selectedDate);
+                    const isToday = isSameDay(day, new Date());
+                    const holidayName = holiday?.holidayNote || '';
+                    const dayOfWeek = day.getDay();
+                    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
-                        return (
-                          <div key={dayIndex} className="p-1">
-                            <button
-                              onClick={() => {
-                                setSelectedDate(day);
-                                setEditingName(holidayName || '');
-                              }}
-                              className={`relative flex h-16 w-full flex-col items-start justify-start rounded-lg px-1.5 py-1 text-sm transition-colors ${
-                                isSelected
-                                  ? 'bg-primary text-primary-foreground'
-                                  : isToday
-                                  ? 'ring-2 ring-warning ring-offset-1'
-                                  : isHoliday
-                                  ? 'bg-success/10 hover:bg-success/20'
-                                  : 'hover:bg-card'
+                    return (
+                      <div key={dayIndex} className="p-1">
+                        <button
+                          onClick={() => {
+                            setSelectedDate(day);
+                            setEditingName(holidayName || '');
+                          }}
+                          className={`relative flex h-16 w-full flex-col items-start justify-start rounded-lg px-1.5 py-1 text-sm transition-colors ${
+                            isSelected
+                              ? 'bg-primary text-primary-foreground'
+                              : isToday
+                              ? 'ring-2 ring-warning ring-offset-1'
+                              : isHoliday
+                              ? 'bg-success/10 hover:bg-success/20'
+                              : isWeekend
+                              ? 'bg-muted/30 hover:bg-muted/50'
+                              : 'hover:bg-card'
+                          }`}
+                        >
+                          <span
+                            className={`text-sm font-medium ${
+                              isToday
+                                ? 'font-bold text-warning'
+                                : isHoliday
+                                ? 'text-success'
+                                : isWeekend
+                                ? 'text-muted-foreground'
+                                : ''
+                            }`}
+                          >
+                            {format(day, 'd')}
+                          </span>
+
+                          {isHoliday && holidayName && (
+                            <span
+                              className={`mt-0.5 w-full truncate text-[10px] leading-tight ${
+                                isSelected ? 'text-primary-foreground/80' : 'text-success'
                               }`}
                             >
-                              <span className={`text-sm font-medium ${
-                                isToday ? 'font-bold text-warning' : 
-                                isHoliday ? 'text-success' : ''
-                              }`}>
-                                {format(day, 'd')}
-                              </span>
-                              
-                              {isHoliday && holidayName && (
-                                <span className={`mt-0.5 w-full truncate text-[10px] leading-tight ${
-                                  isSelected ? 'text-primary-foreground/80' : 'text-success'
-                                }`}>
-                                  {holidayName}
-                                </span>
-                              )}
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
+                              {holidayName}
+                            </span>
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
+              ))}
+            </div>
 
-                {/* Legend */}
-                <div className="mt-4 flex items-center gap-4 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <span className="h-2 w-2 rounded-full bg-warning" /> Today
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="h-2 w-2 rounded-full bg-success" /> Holiday
-                  </span>
-                </div>
-              </>
-            )}
+            {/* Legend */}
+            <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-warning" /> Today
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-success" /> Holiday
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-muted" /> Weekend
+              </span>
+              <span className="text-muted-foreground">
+                Working days: Mon - Fri
+              </span>
+            </div>
           </div>
         </Card>
 
@@ -288,6 +429,8 @@ export default function CalendarPage() {
                 const holiday = getHolidayForDate(selectedDate);
                 const isMarked = holiday?.isHoliday && !holiday?.isRemoved;
                 const isPast = isBefore(startOfDay(selectedDate), startOfDay(new Date()));
+                const dayOfWeek = selectedDate.getDay();
+                const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
                 return (
                   <div className="space-y-4">
@@ -298,12 +441,18 @@ export default function CalendarPage() {
                         checked={!!isMarked}
                         onChange={(e) => toggleHoliday(selectedDate, e.target.checked)}
                         className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                        disabled={isWeekend}
                       />
                       <label htmlFor="isHoliday" className="text-sm font-medium">
                         Mark as Holiday
                         {isPast && (
                           <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">
                             Past Date
+                          </span>
+                        )}
+                        {isWeekend && (
+                          <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            Weekend (not editable)
                           </span>
                         )}
                       </label>
@@ -318,10 +467,7 @@ export default function CalendarPage() {
                             value={editingName}
                             onChange={(e) => setEditingName(e.target.value)}
                           />
-                          <Button
-                            size="sm"
-                            onClick={() => saveHolidayName(selectedDate, editingName)}
-                          >
+                          <Button size="sm" onClick={() => saveHolidayName(selectedDate, editingName)}>
                             <Plus className="h-4 w-4" />
                           </Button>
                         </div>

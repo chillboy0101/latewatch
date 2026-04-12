@@ -73,6 +73,8 @@ export default function EntriesPage() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isHoliday, setIsHoliday] = useState(false);
+  const [holidayName, setHolidayName] = useState('');
 
   useEffect(() => {
     fetchStaffAndEntries();
@@ -85,13 +87,20 @@ export default function EntriesPage() {
       const staffData = await staffResponse.json();
       const staffList = Array.isArray(staffData) ? staffData : [];
       setStaff(staffList);
-      
-      // Initialize entries
+
+      // Check if today is a holiday
       const today = format(selectedDate, 'yyyy-MM-dd');
+      const calendarResponse = await fetch(`/api/calendar?start=${today}&end=${today}`);
+      const calendarData = await calendarResponse.json();
+      const holiday = Array.isArray(calendarData) ? calendarData.find((h: any) => h.isHoliday && !h.isRemoved) : null;
+      setIsHoliday(!!holiday);
+      setHolidayName(holiday?.holidayNote || 'Holiday');
+
+      // Initialize entries
       const entriesResponse = await fetch(`/api/entries?date=${today}`);
       const entriesData = await entriesResponse.json();
       const entriesList = Array.isArray(entriesData) ? entriesData : [];
-      
+
       // Merge staff with entries
       const mergedEntries = staffList.map((s: StaffMember) => {
         const existing = entriesList.find((e: any) => e.staffId === s.id);
@@ -103,7 +112,7 @@ export default function EntriesPage() {
           reason: existing?.reason || '',
         };
       });
-      
+
       setEntries(mergedEntries);
     } catch (error) {
       console.error('Failed to fetch data:', error);
@@ -144,11 +153,13 @@ export default function EntriesPage() {
           entries: entries,
         }),
       });
-      
+
       if (response.ok) {
-        alert('Entries saved successfully!');
+        const data = await response.json();
+        alert(`Entries saved successfully! ${data.count || entries.length} entries recorded.`);
       } else {
-        alert('Failed to save entries');
+        const errorData = await response.json();
+        alert(errorData.error || 'Failed to save entries');
       }
     } catch (error) {
       console.error('Failed to save entries:', error);
@@ -200,6 +211,19 @@ export default function EntriesPage() {
   return (
     <DashboardLayout title="Daily Entry">
       <div className="space-y-6">
+        {/* Holiday Warning */}
+        {isHoliday && (
+          <Card className="bg-warning/10 border-warning">
+            <div className="flex items-center gap-3 p-4">
+              <span className="text-2xl">🎉</span>
+              <div>
+                <p className="font-medium text-warning">This is a holiday</p>
+                <p className="text-sm text-muted-foreground">{holidayName} - No entries can be recorded on holidays</p>
+              </div>
+            </div>
+          </Card>
+        )}
+
         {/* Date Selector */}
         <div className="flex items-center gap-4">
           <Button variant="outline" className="gap-2">
@@ -286,12 +310,12 @@ export default function EntriesPage() {
 
         {/* Actions */}
         <div className="flex items-center justify-between">
-          <Button variant="outline">
+          <Button variant="outline" disabled={isHoliday}>
             <Save className="mr-2 h-4 w-4" />
             Save Draft
           </Button>
-          <Button onClick={handleSaveAll} disabled={saving}>
-            {saving ? 'Saving...' : 'Submit All Entries'}
+          <Button onClick={handleSaveAll} disabled={saving || isHoliday}>
+            {saving ? 'Saving...' : isHoliday ? 'Holiday - No Entries' : 'Submit All Entries'}
           </Button>
         </div>
 

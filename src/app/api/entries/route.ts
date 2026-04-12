@@ -1,22 +1,22 @@
 // app/api/entries/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { latenessEntry } from '@/db/schema';
+import { latenessEntry, workCalendar } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date');
-    
+
     if (!date) {
       return NextResponse.json({ error: 'Date parameter required' }, { status: 400 });
     }
-    
+
     const entries = await db.query.latenessEntry.findMany({
       where: (entry, { eq }) => eq(entry.date, date),
     });
-    
+
     return NextResponse.json(entries);
   } catch (error) {
     console.error('Failed to fetch entries:', error);
@@ -28,13 +28,25 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { date, entries } = body;
-    
+
     if (!date || !Array.isArray(entries)) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
-    
+
+    // Check if the date is a holiday
+    const holidayCheck = await db.query.workCalendar.findFirst({
+      where: (cal, { eq, and }) => and(eq(cal.date, date), eq(cal.isHoliday, true)),
+    });
+
+    if (holidayCheck) {
+      return NextResponse.json(
+        { error: `Cannot create entries for ${date} - it is marked as a holiday (${holidayCheck.holidayNote || 'Holiday'})` },
+        { status: 400 }
+      );
+    }
+
     const results = [];
-    
+
     for (const entry of entries) {
       const existing = await db.query.latenessEntry.findFirst({
         where: (e, { and, eq }) => and(
@@ -42,7 +54,7 @@ export async function POST(request: NextRequest) {
           eq(e.date, date)
         ),
       });
-      
+
       let result;
       if (existing) {
         [result] = await db.update(latenessEntry)
@@ -65,10 +77,10 @@ export async function POST(request: NextRequest) {
           reason: entry.reason,
         }).returning();
       }
-      
+
       results.push(result);
     }
-    
+
     return NextResponse.json({ success: true, count: results.length });
   } catch (error) {
     console.error('Failed to save entries:', error);
