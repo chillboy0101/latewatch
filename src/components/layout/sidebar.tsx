@@ -10,6 +10,7 @@ import {
   Table2,
   Download,
   Calendar,
+  Shield,
 } from 'lucide-react';
 
 const navigation = [
@@ -18,6 +19,7 @@ const navigation = [
   { name: 'Entries', href: '/entries', icon: Table2 },
   { name: 'Exports', href: '/exports', icon: Download },
   { name: 'Calendar', href: '/calendar', icon: Calendar },
+  { name: 'Audit Trail', href: '/audit-trail', icon: Shield },
 ];
 
 export function Sidebar() {
