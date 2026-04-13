@@ -42,12 +42,8 @@ interface Pagination {
 
 export default function AuditTrailPage() {
   const [logs, setLogs] = useState<AuditEvent[]>([]);
-  const [pagination, setPagination] = useState<Pagination>({
-    page: 1,
-    limit: 20,
-    totalCount: 0,
-    totalPages: 0,
-  });
+  const [pagination, setPagination] = useState<Pagination | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
     entityType: 'all',
@@ -60,14 +56,14 @@ export default function AuditTrailPage() {
 
   useEffect(() => {
     fetchAuditTrail();
-  }, [pagination.page, filters]);
+  }, [currentPage, filters]);
 
   async function fetchAuditTrail() {
     setLoading(true);
     try {
       const params = new URLSearchParams({
-        page: pagination.page.toString(),
-        limit: pagination.limit.toString(),
+        page: currentPage.toString(),
+        limit: '20',
       });
       
       if (filters.entityType !== 'all') params.set('entityType', filters.entityType);
@@ -259,7 +255,7 @@ export default function AuditTrailPage() {
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
               <p className="text-sm text-muted-foreground">
-                Showing {logs.length} of {pagination.totalCount} events
+                Showing {logs.length} of {pagination?.totalCount || 0} events
               </p>
             </div>
 
@@ -322,17 +318,17 @@ export default function AuditTrailPage() {
             </div>
 
             {/* Pagination */}
-            {pagination.totalPages > 1 && (
+            {pagination && pagination.totalPages > 1 && (
               <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
                 <p className="text-sm text-muted-foreground">
-                  Page {pagination.page} of {pagination.totalPages}
+                  Page {currentPage} of {pagination.totalPages}
                 </p>
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setPagination({ ...pagination, page: pagination.page - 1 })}
-                    disabled={pagination.page === 1}
+                    onClick={() => setCurrentPage(currentPage - 1)}
+                    disabled={currentPage === 1}
                   >
                     <ChevronLeft className="h-4 w-4 mr-1" />
                     Previous
@@ -340,8 +336,8 @@ export default function AuditTrailPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setPagination({ ...pagination, page: pagination.page + 1 })}
-                    disabled={pagination.page >= pagination.totalPages}
+                    onClick={() => setCurrentPage(currentPage + 1)}
+                    disabled={currentPage >= pagination.totalPages}
                   >
                     Next
                     <ChevronRight className="h-4 w-4 ml-1" />
