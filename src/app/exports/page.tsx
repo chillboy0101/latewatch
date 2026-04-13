@@ -285,59 +285,21 @@ export default function ExportsPage() {
                   </div>
                 </div>
 
-                {/* Preview Table */}
-                {currentWeek && (
-                  <>
-                    <div>
-                      <h3 className="mb-2 text-sm font-medium text-muted-foreground">Preview:</h3>
-                      <table className="w-full text-sm">
-                        <thead className="border-b border-border">
-                          <tr>
-                            <th className="pb-2 text-left font-medium">Day</th>
-                            <th className="pb-2 text-center font-medium">Entries</th>
-                            <th className="pb-2 text-center font-medium">Late</th>
-                            <th className="pb-2 text-center font-medium">Sign Out</th>
-                            <th className="pb-2 text-right font-medium">Total</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border">
-                          {currentWeek.days.map((day, idx) => (
-                            <tr key={idx}>
-                              <td className="py-2">{day.day}</td>
-                              <td className="py-2 text-center">{day.entries}</td>
-                              <td className="py-2 text-center">{day.late}</td>
-                              <td className="py-2 text-center">{day.signOut}</td>
-                              <td className="py-2 text-right font-mono">GHC {day.amount.toFixed(2)}</td>
-                            </tr>
-                          ))}
-                          {currentWeek.days.length === 0 && (
-                            <tr>
-                              <td colSpan={5} className="py-4 text-center text-muted-foreground">
-                                No entries for this week
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
+                <div className="border-t border-border pt-4">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">Week Total:</span>
+                    <span className="font-mono font-semibold">GHC {currentWeek?.totalAmount.toFixed(2) || '0.00'}</span>
+                  </div>
+                </div>
 
-                    <div className="border-t border-border pt-4">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">Week Total:</span>
-                        <span className="font-mono font-semibold">GHC {currentWeek.totalAmount.toFixed(2)}</span>
-                      </div>
-                    </div>
-
-                    <Button className="w-full gap-2" onClick={handleWeeklyExport} disabled={exporting === 'weekly'}>
-                      {exporting === 'weekly' ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Download className="h-4 w-4" />
-                      )}
-                      {exporting === 'weekly' ? 'Generating...' : 'Download Weekly Excel'}
-                    </Button>
-                  </>
-                )}
+                <Button className="w-full gap-2" onClick={handleWeeklyExport} disabled={exporting === 'weekly'}>
+                  {exporting === 'weekly' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  {exporting === 'weekly' ? 'Generating...' : 'Download Weekly Excel'}
+                </Button>
               </div>
             )}
           </div>

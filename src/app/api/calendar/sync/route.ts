@@ -1,16 +1,17 @@
 // app/api/calendar/sync/route.ts
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { workCalendar } from '@/db/schema';
 import { fetchGhanaHolidaysForYear } from '@/lib/google-calendar';
 import { eq } from 'drizzle-orm';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
-    const currentYear = new Date().getFullYear();
+    const body = await request.json().catch(() => ({}));
+    const year = body.year || new Date().getFullYear();
     
-    // Fetch holidays from Google Calendar for current year
-    const googleHolidays = await fetchGhanaHolidaysForYear(currentYear);
+    // Fetch holidays from Google Calendar for the specified year
+    const googleHolidays = await fetchGhanaHolidaysForYear(year);
     
     if (googleHolidays.length === 0) {
       return NextResponse.json({ 
@@ -56,7 +57,7 @@ export async function POST() {
         
         skipped++;
       } else {
-        // Add new holiday from Google (including past dates for completeness)
+        // Add new holiday from Google
         await db.insert(workCalendar).values({
           date: holiday.date,
           isHoliday: true,
@@ -71,9 +72,10 @@ export async function POST() {
 
     return NextResponse.json({ 
       success: true, 
-      message: `Added ${added}, updated ${updated}, skipped ${skipped}.`,
+      message: `Added ${added}, updated ${updated}, skipped ${skipped} for ${year}.`,
       synced: added,
       total: googleHolidays.length,
+      year,
       syncedAt: new Date().toISOString(),
     });
   } catch (error) {

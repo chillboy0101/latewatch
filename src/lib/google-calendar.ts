@@ -21,7 +21,7 @@ export async function fetchGhanaHolidays(
   month?: number
 ): Promise<GhanaHoliday[]> {
   const apiKey = process.env.GOOGLE_CALENDAR_API_KEY;
-  
+
   if (!apiKey) {
     console.warn('GOOGLE_CALENDAR_API_KEY not set. Skipping Google Calendar sync.');
     return [];
@@ -29,11 +29,11 @@ export async function fetchGhanaHolidays(
 
   try {
     const calendar = google.calendar({ version: 'v3', auth: apiKey });
-    
+
     // Build date range
     let timeMin: string;
     let timeMax: string;
-    
+
     if (year !== undefined && month !== undefined) {
       // Specific month
       const startDate = new Date(year, month, 1);
@@ -60,9 +60,9 @@ export async function fetchGhanaHolidays(
     });
 
     const events = response.data.items || [];
-    
+
     return events
-      .filter((event): event is GoogleCalendarEvent => 
+      .filter((event): event is GoogleCalendarEvent =>
         !!(event.summary && event.start?.date)
       )
       .map((event) => ({
@@ -85,4 +85,19 @@ export async function fetchGhanaHolidaysForMonth(
   month: number
 ): Promise<GhanaHoliday[]> {
   return fetchGhanaHolidays(year, month);
+}
+
+/**
+ * Sync multiple years at once (previous, current, next).
+ * Returns results per year.
+ */
+export async function fetchGhanaHolidaysForYears(years: number[]): Promise<Map<number, GhanaHoliday[]>> {
+  const results = new Map<number, GhanaHoliday[]>();
+  await Promise.all(
+    years.map(async (year) => {
+      const holidays = await fetchGhanaHolidaysForYear(year);
+      results.set(year, holidays);
+    })
+  );
+  return results;
 }
