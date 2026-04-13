@@ -240,8 +240,8 @@ export default function ExportsPage() {
             ) : (
               <div className="space-y-4">
                 {/* Month/Year Selector */}
-                <div className="flex gap-2">
-                  <div className="flex-1">
+                <div className="flex gap-2 items-end">
+                  <div className="w-48">
                     <label className="mb-2 block text-sm font-medium text-muted-foreground">Month</label>
                     <select
                       className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
@@ -253,7 +253,7 @@ export default function ExportsPage() {
                       ))}
                     </select>
                   </div>
-                  <div className="w-32">
+                  <div className="w-24">
                     <label className="mb-2 block text-sm font-medium text-muted-foreground">Year</label>
                     <select
                       className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
@@ -348,8 +348,8 @@ export default function ExportsPage() {
           <div className="p-6">
             <h2 className="mb-4 text-center text-lg font-semibold">MONTHLY EXPORT</h2>
             <div className="space-y-4">
-              <div className="flex gap-2">
-                <div className="flex-1">
+              <div className="flex gap-2 items-end">
+                <div className="w-48">
                   <label className="mb-2 block text-sm font-medium text-muted-foreground">Month</label>
                   <select
                     className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
@@ -361,7 +361,7 @@ export default function ExportsPage() {
                     ))}
                   </select>
                 </div>
-                <div className="w-32">
+                <div className="w-24">
                   <label className="mb-2 block text-sm font-medium text-muted-foreground">Year</label>
                   <select
                     className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
