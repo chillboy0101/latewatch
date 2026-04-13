@@ -239,16 +239,33 @@ export default function ExportsPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {/* Month Selector */}
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-muted-foreground">Select Month</label>
-                  <select
-                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                    value={format(selectedMonth, 'yyyy-MM')}
-                    onChange={(e) => setSelectedMonth(parseISO(e.target.value + '-01'))}
-                  >
-                    {generateMonthOptions()}
-                  </select>
+                {/* Month/Year Selector */}
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="mb-2 block text-sm font-medium text-muted-foreground">Month</label>
+                    <select
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                      value={selectedMonth.getMonth()}
+                      onChange={(e) => setSelectedMonth(new Date(selectedMonth.getFullYear(), parseInt(e.target.value), 1))}
+                    >
+                      {Array.from({ length: 12 }, (_, i) => (
+                        <option key={i} value={i}>{format(new Date(2026, i, 1), 'MMMM')}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="w-32">
+                    <label className="mb-2 block text-sm font-medium text-muted-foreground">Year</label>
+                    <select
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                      value={selectedMonth.getFullYear()}
+                      onChange={(e) => setSelectedMonth(new Date(parseInt(e.target.value), selectedMonth.getMonth(), 1))}
+                    >
+                      {Array.from({ length: 11 }, (_, i) => {
+                        const year = 2024 + i;
+                        return <option key={year} value={year}>{year}</option>;
+                      })}
+                    </select>
+                  </div>
                 </div>
 
                 {/* Week Selector */}
@@ -331,15 +348,32 @@ export default function ExportsPage() {
           <div className="p-6">
             <h2 className="mb-4 text-center text-lg font-semibold">MONTHLY EXPORT</h2>
             <div className="space-y-4">
-              <div>
-                <label className="mb-2 block text-sm font-medium text-muted-foreground">Select Month</label>
-                <select
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                  value={format(selectedMonth, 'yyyy-MM')}
-                  onChange={(e) => setSelectedMonth(parseISO(e.target.value + '-01'))}
-                >
-                  {generateMonthOptions()}
-                </select>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">Month</label>
+                  <select
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                    value={selectedMonth.getMonth()}
+                    onChange={(e) => setSelectedMonth(new Date(selectedMonth.getFullYear(), parseInt(e.target.value), 1))}
+                  >
+                    {Array.from({ length: 12 }, (_, i) => (
+                      <option key={i} value={i}>{format(new Date(2026, i, 1), 'MMMM')}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="w-32">
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">Year</label>
+                  <select
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                    value={selectedMonth.getFullYear()}
+                    onChange={(e) => setSelectedMonth(new Date(parseInt(e.target.value), selectedMonth.getMonth(), 1))}
+                  >
+                    {Array.from({ length: 11 }, (_, i) => {
+                      const year = 2024 + i;
+                      return <option key={year} value={year}>{year}</option>;
+                    })}
+                  </select>
+                </div>
               </div>
 
               <div className="text-sm text-muted-foreground">

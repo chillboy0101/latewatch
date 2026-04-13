@@ -21,7 +21,7 @@ import {
   endOfYear,
   eachMonthOfInterval,
 } from 'date-fns';
-import { ChevronLeft, ChevronRight, ChevronDown, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Plus, RefreshCw } from 'lucide-react';
 
 interface Holiday {
   id: string;
@@ -44,6 +44,10 @@ export default function CalendarPage() {
   const [editingName, setEditingName] = useState('');
   const [showMonthDropdown, setShowMonthDropdown] = useState(false);
   const [showYearDropdown, setShowYearDropdown] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<{ type: 'success' | 'error' | 'syncing' | null; message: string }>({
+    type: null,
+    message: '',
+  });
   const monthDropdownRef = useRef<HTMLDivElement>(null);
   const yearDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -122,8 +126,32 @@ export default function CalendarPage() {
 
   // Trigger auto-sync in background
   useEffect(() => {
-    fetch('/api/calendar/sync', { method: 'POST' }).catch(console.error);
+    handleSync(true);
   }, []);
+
+  async function handleSync(silent = false) {
+    if (!silent) {
+      setSyncStatus({ type: 'syncing', message: 'Syncing holidays...' });
+    }
+    try {
+      const response = await fetch('/api/calendar/sync', { method: 'POST' });
+      const data = await response.json();
+      
+      if (data.success) {
+        setSyncStatus({ type: 'success', message: data.message || `Synced ${data.synced} holidays` });
+        // Refresh holidays after sync
+        fetchHolidays(currentMonth, false);
+      } else {
+        setSyncStatus({ type: 'error', message: data.message || 'Sync failed' });
+      }
+    } catch (error) {
+      console.error('Sync failed:', error);
+      setSyncStatus({ type: 'error', message: 'Sync failed - check API key' });
+    }
+    
+    // Clear status after 5 seconds
+    setTimeout(() => setSyncStatus({ type: null, message: '' }), 5000);
+  }
 
   async function toggleHoliday(date: Date, isChecked: boolean) {
     const dateStr = format(date, 'yyyy-MM-dd');
@@ -316,17 +344,37 @@ export default function CalendarPage() {
                 </Button>
               </div>
 
-              {/* Today Button */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setCurrentMonth(new Date());
-                  setSelectedDate(new Date());
-                }}
-              >
-                Today
-              </Button>
+              {/* Sync Status & Buttons */}
+              <div className="flex items-center gap-2">
+                {syncStatus.type && (
+                  <span className={`text-sm ${
+                    syncStatus.type === 'success' ? 'text-success' : 
+                    syncStatus.type === 'error' ? 'text-danger' : 
+                    'text-muted-foreground'
+                  }`}>
+                    {syncStatus.message}
+                  </span>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleSync(false)}
+                  disabled={syncStatus.type === 'syncing'}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${syncStatus.type === 'syncing' ? 'animate-spin' : ''}`} />
+                  Sync Holidays
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setCurrentMonth(new Date());
+                    setSelectedDate(new Date());
+                  }}
+                >
+                  Today
+                </Button>
+              </div>
             </div>
 
             {/* Calendar Grid */}
