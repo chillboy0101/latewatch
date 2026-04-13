@@ -1,4 +1,3 @@
-// app/calendar/page.tsx
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -17,9 +16,6 @@ import {
   startOfDay,
   addMonths,
   subMonths,
-  startOfYear,
-  endOfYear,
-  eachMonthOfInterval,
 } from 'date-fns';
 import { ChevronLeft, ChevronRight, ChevronDown, Plus, RefreshCw } from 'lucide-react';
 
@@ -35,7 +31,7 @@ interface Holiday {
 // In-memory cache for holidays: key = "YYYY-MM"
 const holidayCache = new Map<string, Holiday[]>();
 const cacheTimestamps = new Map<string, number>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 export default function CalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -65,14 +61,14 @@ export default function CalendarPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Fetch holidays with caching
+  // Fetch holidays with caching - INSTANT, no blocking
   const fetchHolidays = useCallback(async (date: Date, silent = true) => {
     const cacheKey = format(date, 'yyyy-MM');
     const now = Date.now();
     const cached = holidayCache.get(cacheKey);
     const timestamp = cacheTimestamps.get(cacheKey);
 
-    // Return cached data if fresh
+    // Return cached data immediately if fresh
     if (cached && timestamp && (now - timestamp) < CACHE_TTL) {
       const holidayMap: Record<string, Holiday> = {};
       cached.forEach((h) => {
@@ -82,6 +78,7 @@ export default function CalendarPage() {
       return;
     }
 
+    // Fetch in background - don't block UI
     try {
       const startDate = format(startOfMonth(date), 'yyyy-MM-dd');
       const endDate = format(endOfMonth(date), 'yyyy-MM-dd');
@@ -90,7 +87,7 @@ export default function CalendarPage() {
       const data = await response.json();
       const holidayList = Array.isArray(data) ? data : [];
 
-      // Update cache
+      // Update cache immediately
       holidayCache.set(cacheKey, holidayList);
       cacheTimestamps.set(cacheKey, now);
 
@@ -112,60 +109,57 @@ export default function CalendarPage() {
     fetchHolidays(nextMonth, true);
   }, [fetchHolidays]);
 
-  // Initial load
+  // Initial load - fetch immediately
   useEffect(() => {
     fetchHolidays(currentMonth, false);
     prefetchAdjacentMonths(currentMonth);
   }, []);
 
-  // When month changes
+  // When month changes - instant switch
   useEffect(() => {
     fetchHolidays(currentMonth, true);
     prefetchAdjacentMonths(currentMonth);
   }, [currentMonth, fetchHolidays, prefetchAdjacentMonths]);
 
-  // Trigger auto-sync in background
+  // Auto-sync from Google Calendar on page load
   useEffect(() => {
     handleSync(true);
   }, []);
 
   async function handleSync(silent = false) {
     if (!silent) {
-      setSyncStatus({ type: 'syncing', message: 'Syncing holidays...' });
+      setSyncStatus({ type: 'syncing', message: 'Syncing...' });
     }
     try {
       const response = await fetch('/api/calendar/sync', { method: 'POST' });
       const data = await response.json();
       
       if (data.success) {
-        setSyncStatus({ type: 'success', message: data.message || `Synced ${data.synced} holidays` });
-        // Refresh holidays after sync
+        setSyncStatus({ type: 'success', message: `Added ${data.synced} holidays` });
+        // Refresh current month holidays after sync
+        holidayCache.delete(format(currentMonth, 'yyyy-MM'));
         fetchHolidays(currentMonth, false);
       } else {
-        setSyncStatus({ type: 'error', message: data.message || 'Sync failed' });
+        setSyncStatus({ type: 'error', message: data.message || 'No API key set' });
       }
     } catch (error) {
       console.error('Sync failed:', error);
-      setSyncStatus({ type: 'error', message: 'Sync failed - check API key' });
+      setSyncStatus({ type: 'error', message: 'Sync failed' });
     }
     
-    // Clear status after 5 seconds
-    setTimeout(() => setSyncStatus({ type: null, message: '' }), 5000);
+    // Clear status after 4 seconds
+    setTimeout(() => setSyncStatus({ type: null, message: '' }), 4000);
   }
 
   async function toggleHoliday(date: Date, isChecked: boolean) {
     const dateStr = format(date, 'yyyy-MM-dd');
     const existing = holidays[dateStr];
 
-    // Optimistically update local state immediately
+    // Update state instantly (optimistic)
     if (existing) {
       setHolidays((prev) => ({
         ...prev,
-        [dateStr]: {
-          ...existing,
-          isHoliday: isChecked,
-          isRemoved: !isChecked,
-        },
+        [dateStr]: { ...existing, isHoliday: isChecked, isRemoved: !isChecked },
       }));
     } else if (isChecked) {
       setHolidays((prev) => ({
@@ -201,8 +195,6 @@ export default function CalendarPage() {
           }),
         });
       }
-      // Refresh cache
-      fetchHolidays(currentMonth, true);
     } catch (error) {
       console.error('Failed to update holiday:', error);
       fetchHolidays(currentMonth, true);
@@ -214,15 +206,19 @@ export default function CalendarPage() {
     const existing = holidays[dateStr];
 
     if (existing) {
+      setHolidays((prev) => ({
+        ...prev,
+        [dateStr]: { ...existing, holidayNote: name },
+      }));
       await fetch(`/api/calendar/holidays/${existing.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ holidayNote: name }),
       });
-      fetchHolidays(currentMonth, true);
     }
   }
 
+  // Build calendar grid - INSTANT, no loading
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
@@ -249,18 +245,17 @@ export default function CalendarPage() {
     return holidays[dateStr];
   };
 
-  const yearStart = startOfYear(new Date());
-  const yearEnd = endOfYear(new Date());
-  const yearOptions = eachMonthOfInterval({ start: addMonths(yearStart, -24), end: addMonths(yearEnd, 12) });
+  // Count holidays for current month
+  const holidayCount = Object.values(holidays).filter((h) => h.isHoliday && !h.isRemoved).length;
 
   return (
     <DashboardLayout title="Calendar">
-      <div className="space-y-6">
+      <div className="space-y-4">
         <Card>
-          <div className="p-6">
-            {/* Month/Year Navigation - Google Calendar Style */}
-            <div className="mb-6 flex items-center justify-between">
-              <div className="flex items-center gap-1">
+          <div className="p-4">
+            {/* Header with Month/Year Navigation */}
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
                 <Button variant="outline" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
@@ -269,14 +264,14 @@ export default function CalendarPage() {
                 <div className="relative" ref={monthDropdownRef}>
                   <Button
                     variant="ghost"
-                    className="gap-1 font-semibold text-lg"
+                    className="gap-1 font-semibold"
                     onClick={() => {
                       setShowMonthDropdown(!showMonthDropdown);
                       setShowYearDropdown(false);
                     }}
                   >
                     {format(currentMonth, 'MMMM')}
-                    <ChevronDown className="h-4 w-4" />
+                    <ChevronDown className="h-3 w-3" />
                   </Button>
                   {showMonthDropdown && (
                     <div className="absolute left-0 top-full z-50 mt-1 grid w-48 grid-cols-3 gap-1 rounded-lg border border-border bg-card p-2 shadow-lg">
@@ -306,14 +301,14 @@ export default function CalendarPage() {
                 <div className="relative" ref={yearDropdownRef}>
                   <Button
                     variant="ghost"
-                    className="gap-1 font-semibold text-lg"
+                    className="gap-1 font-semibold"
                     onClick={() => {
                       setShowYearDropdown(!showYearDropdown);
                       setShowMonthDropdown(false);
                     }}
                   >
                     {format(currentMonth, 'yyyy')}
-                    <ChevronDown className="h-4 w-4" />
+                    <ChevronDown className="h-3 w-3" />
                   </Button>
                   {showYearDropdown && (
                     <div className="absolute left-0 top-full z-50 mt-1 grid w-32 grid-cols-3 gap-1 rounded-lg border border-border bg-card p-2 shadow-lg max-h-60 overflow-y-auto">
@@ -344,25 +339,24 @@ export default function CalendarPage() {
                 </Button>
               </div>
 
-              {/* Sync Status & Buttons */}
+              {/* Sync Button & Status */}
               <div className="flex items-center gap-2">
                 {syncStatus.type && (
-                  <span className={`text-sm ${
-                    syncStatus.type === 'success' ? 'text-success' : 
-                    syncStatus.type === 'error' ? 'text-danger' : 
-                    'text-muted-foreground'
-                  }`}>
+                  <span
+                    className={`text-xs ${
+                      syncStatus.type === 'success'
+                        ? 'text-success'
+                        : syncStatus.type === 'error'
+                        ? 'text-danger'
+                        : 'text-muted-foreground'
+                    }`}
+                  >
                     {syncStatus.message}
                   </span>
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleSync(false)}
-                  disabled={syncStatus.type === 'syncing'}
-                >
-                  <RefreshCw className={`h-4 w-4 mr-2 ${syncStatus.type === 'syncing' ? 'animate-spin' : ''}`} />
-                  Sync Holidays
+                <Button variant="outline" size="sm" onClick={() => handleSync(false)} disabled={syncStatus.type === 'syncing'}>
+                  <RefreshCw className={`h-3 w-3 mr-1.5 ${syncStatus.type === 'syncing' ? 'animate-spin' : ''}`} />
+                  Sync
                 </Button>
                 <Button
                   variant="outline"
@@ -377,7 +371,15 @@ export default function CalendarPage() {
               </div>
             </div>
 
-            {/* Calendar Grid */}
+            {/* Holiday Count */}
+            {holidayCount > 0 && (
+              <div className="mb-3 flex items-center gap-2 text-sm text-success">
+                <span className="h-2 w-2 rounded-full bg-success" />
+                {holidayCount} holiday{holidayCount > 1 ? 's' : ''} this month
+              </div>
+            )}
+
+            {/* Calendar Grid - Always visible, instant render */}
             <div className="grid grid-cols-7 gap-1">
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
                 <div key={day} className="py-2 text-center text-xs font-medium text-muted-foreground">
@@ -405,7 +407,7 @@ export default function CalendarPage() {
                             setSelectedDate(day);
                             setEditingName(holidayName || '');
                           }}
-                          className={`relative flex h-16 w-full flex-col items-start justify-start rounded-lg px-1.5 py-1 text-sm transition-colors ${
+                          className={`relative flex h-14 w-full flex-col items-start justify-start rounded-lg px-1.5 py-1 text-sm transition-colors ${
                             isSelected
                               ? 'bg-primary text-primary-foreground'
                               : isToday
@@ -413,7 +415,7 @@ export default function CalendarPage() {
                               : isHoliday
                               ? 'bg-success/10 hover:bg-success/20'
                               : isWeekend
-                              ? 'bg-muted/30 hover:bg-muted/50'
+                              ? 'bg-muted/40 hover:bg-muted/60'
                               : 'hover:bg-card'
                           }`}
                         >
@@ -433,8 +435,8 @@ export default function CalendarPage() {
 
                           {isHoliday && holidayName && (
                             <span
-                              className={`mt-0.5 w-full truncate text-[10px] leading-tight ${
-                                isSelected ? 'text-primary-foreground/80' : 'text-success'
+                              className={`mt-0.5 w-full truncate text-[9px] leading-tight font-medium ${
+                                isSelected ? 'text-primary-foreground/90' : 'text-success'
                               }`}
                             >
                               {holidayName}
@@ -449,7 +451,7 @@ export default function CalendarPage() {
             </div>
 
             {/* Legend */}
-            <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
                 <span className="h-2 w-2 rounded-full bg-warning" /> Today
               </span>
@@ -459,9 +461,6 @@ export default function CalendarPage() {
               <span className="flex items-center gap-1">
                 <span className="h-2 w-2 rounded-full bg-muted" /> Weekend
               </span>
-              <span className="text-muted-foreground">
-                Working days: Mon - Fri
-              </span>
             </div>
           </div>
         </Card>
@@ -469,19 +468,18 @@ export default function CalendarPage() {
         {/* Selected Date Editor */}
         {selectedDate && (
           <Card>
-            <div className="p-6">
-              <h3 className="mb-4 font-semibold">
+            <div className="p-4">
+              <h3 className="mb-3 font-semibold text-sm">
                 {format(selectedDate, 'EEEE, MMMM d, yyyy')}
               </h3>
               {(() => {
                 const holiday = getHolidayForDate(selectedDate);
                 const isMarked = holiday?.isHoliday && !holiday?.isRemoved;
-                const isPast = isBefore(startOfDay(selectedDate), startOfDay(new Date()));
                 const dayOfWeek = selectedDate.getDay();
                 const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
                 return (
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     <div className="flex items-center gap-3">
                       <input
                         type="checkbox"
@@ -491,34 +489,25 @@ export default function CalendarPage() {
                         className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                         disabled={isWeekend}
                       />
-                      <label htmlFor="isHoliday" className="text-sm font-medium">
+                      <label htmlFor="isHoliday" className="text-sm font-medium cursor-pointer">
                         Mark as Holiday
-                        {isPast && (
-                          <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">
-                            Past Date
-                          </span>
-                        )}
                         {isWeekend && (
-                          <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                            Weekend (not editable)
-                          </span>
+                          <span className="ml-2 text-xs text-muted-foreground">(Weekends not editable)</span>
                         )}
                       </label>
                     </div>
 
                     {isMarked && (
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Holiday Name</label>
-                        <div className="flex gap-2">
-                          <Input
-                            placeholder="e.g., Independence Day"
-                            value={editingName}
-                            onChange={(e) => setEditingName(e.target.value)}
-                          />
-                          <Button size="sm" onClick={() => saveHolidayName(selectedDate, editingName)}>
-                            <Plus className="h-4 w-4" />
-                          </Button>
-                        </div>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Holiday name (e.g., Independence Day)"
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          className="h-8 text-sm"
+                        />
+                        <Button size="sm" onClick={() => saveHolidayName(selectedDate, editingName)} className="h-8">
+                          <Plus className="h-3 w-3" />
+                        </Button>
                       </div>
                     )}
                   </div>
