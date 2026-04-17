@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { workCalendar } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { publishRealtime } from '@/lib/realtime';
 
 // POST - Create a new holiday entry
 export async function POST(request: NextRequest) {
@@ -40,6 +41,8 @@ export async function POST(request: NextRequest) {
         isRemoved: false,
       }).returning();
     }
+
+    publishRealtime('dashboard', 'invalidate', { reason: 'calendar' });
 
     return NextResponse.json(result);
   } catch (error) {

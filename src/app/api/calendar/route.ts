@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { workCalendar } from '@/db/schema';
 import { eq, and, gte, lte } from 'drizzle-orm';
+import { publishRealtime } from '@/lib/realtime';
 
 // GET - Fetch holidays for a date range
 export async function GET(request: NextRequest) {
@@ -67,6 +68,8 @@ export async function POST(request: NextRequest) {
         isRemoved: false,
       }).returning();
     }
+
+    publishRealtime('dashboard', 'invalidate', { reason: 'calendar' });
 
     return NextResponse.json(result);
   } catch (error) {

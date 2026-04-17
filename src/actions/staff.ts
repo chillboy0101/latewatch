@@ -5,6 +5,7 @@ import { requireRole } from '@/lib/auth/roles';
 import { db } from '@/db';
 import { staff as staffTable } from '@/db/schema';
 import { updateTag } from 'next/cache';
+import { publishRealtime } from '@/lib/realtime';
 import { eq } from 'drizzle-orm';
 
 export async function getStaff() {
@@ -27,6 +28,7 @@ export async function createStaff(data: { fullName: string; department?: string;
   }).returning();
   
   updateTag('staff');
+  publishRealtime('dashboard', 'invalidate', { reason: 'staff' });
   
   return newStaff[0];
 }
@@ -43,6 +45,7 @@ export async function updateStaff(id: string, data: { fullName?: string; active?
     .returning();
   
   updateTag('staff');
+  publishRealtime('dashboard', 'invalidate', { reason: 'staff' });
   
   return updated[0];
 }

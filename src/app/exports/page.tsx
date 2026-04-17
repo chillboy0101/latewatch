@@ -1,29 +1,11 @@
-// app/exports/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Download, Upload, Loader2 } from 'lucide-react';
-import { format, startOfWeek, addDays, startOfMonth, endOfMonth, parseISO, addMonths } from 'date-fns';
-
-// Generate month options for dropdown (past 12 months + next 12 months)
-function generateMonthOptions() {
-  const now = new Date();
-  const options = [];
-  for (let i = -12; i <= 12; i++) {
-    const month = addMonths(now, i);
-    const value = format(month, 'yyyy-MM');
-    const label = format(month, 'MMMM yyyy');
-    options.push(
-      <option key={value} value={value}>
-        {label}
-      </option>
-    );
-  }
-  return options;
-}
+import { Download, Loader2, FileSpreadsheet } from 'lucide-react';
+import { format, startOfMonth, endOfMonth, addDays, addMonths, parseISO } from 'date-fns';
 
 interface DayData {
   day: string;
@@ -53,88 +35,81 @@ export default function ExportsPage() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState<'weekly' | 'monthly' | null>(null);
 
-  useEffect(() => {
-    fetchExportData();
-  }, [selectedMonth]);
-
-  async function fetchExportData() {
+  const fetchExportData = useCallback(async () => {
     setLoading(true);
     try {
       const monthStart = startOfMonth(selectedMonth);
       const monthEnd = endOfMonth(selectedMonth);
-      
+      const startStr = format(monthStart, 'yyyy-MM-dd');
+      const endStr = format(monthEnd, 'yyyy-MM-dd');
+
+      // Single batch fetch for the entire month
+      const response = await fetch(`/api/entries?start=${startStr}&end=${endStr}`);
+      const allEntries = await response.json();
+      const entriesList = Array.isArray(allEntries) ? allEntries : [];
+
+      // Group entries by date
+      const entriesByDate: Record<string, any[]> = {};
+      for (const entry of entriesList) {
+        if (!entriesByDate[entry.date]) entriesByDate[entry.date] = [];
+        entriesByDate[entry.date].push(entry);
+      }
+
+      // Build week summaries
       const summaries: WeekSummary[] = [];
       let monthTotal = 0;
       let weekIdx = 0;
-      
-      // Start from the 1st of the month
       let weekStart = new Date(monthStart);
-      
+
       while (weekStart <= monthEnd) {
-        // Calculate the Friday of this week
-        const startDayOfWeek = weekStart.getDay(); // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
+        const startDayOfWeek = weekStart.getDay();
         let daysToFriday: number;
-        
+
         if (weekIdx === 0) {
-          // First week: find Friday of this week
           daysToFriday = startDayOfWeek <= 5 ? 5 - startDayOfWeek : 0;
         } else {
-          // Subsequent weeks always start on Monday, so Friday is 4 days later
           daysToFriday = 4;
         }
-        
+
         const weekEnd = addDays(weekStart, daysToFriday);
-        
-        // Skip if this week is entirely after the month
         if (weekStart > monthEnd) break;
 
         const days: DayData[] = [];
         let weekEntries = 0, weekLate = 0, weekSignOut = 0, weekAmount = 0;
 
-        // Iterate through each day of this week (Mon-Fri range)
         for (let d = new Date(weekStart); d <= weekEnd; d = addDays(d, 1)) {
-          // Only include days within this month and Mon-Fri
           if (d < monthStart || d > monthEnd) continue;
           const dow = d.getDay();
-          if (dow === 0 || dow === 6) continue; // Skip weekends
+          if (dow === 0 || dow === 6) continue;
 
           const dateStr = format(d, 'yyyy-MM-dd');
           const dayName = format(d, 'EEE dd');
-          
-          // Fetch entries for this day
-          try {
-            const response = await fetch(`/api/entries?date=${dateStr}`);
-            const entries = await response.json();
-            const dayEntries = Array.isArray(entries) ? entries : [];
-            
-            const lateCount = dayEntries.filter((e: any) => parseFloat(e.computedAmount || '0') > 0 && !e.reason?.includes('SIGN OUT')).length;
-            const signOutCount = dayEntries.filter((e: any) => e.didNotSignOut).length;
-            const dayAmount = dayEntries.reduce((sum: number, e: any) => sum + parseFloat(e.computedAmount || '0'), 0);
+          const dayEntries = entriesByDate[dateStr] || [];
 
-            days.push({
-              day: dayName,
-              date: dateStr,
-              entries: dayEntries.length,
-              late: lateCount,
-              signOut: signOutCount,
-              amount: dayAmount,
-            });
+          const lateCount = dayEntries.filter((e: any) => parseFloat(e.computedAmount || '0') > 0 && !e.reason?.includes('SIGN OUT')).length;
+          const signOutCount = dayEntries.filter((e: any) => e.didNotSignOut).length;
+          const dayAmount = dayEntries.reduce((sum: number, e: any) => sum + parseFloat(e.computedAmount || '0'), 0);
 
-            weekEntries += dayEntries.length;
-            weekLate += lateCount;
-            weekSignOut += signOutCount;
-            weekAmount += dayAmount;
-            monthTotal += dayAmount;
-          } catch (err) {
-            console.error(`Failed to fetch entries for ${dateStr}:`, err);
-          }
+          days.push({
+            day: dayName,
+            date: dateStr,
+            entries: dayEntries.length,
+            late: lateCount,
+            signOut: signOutCount,
+            amount: dayAmount,
+          });
+
+          weekEntries += dayEntries.length;
+          weekLate += lateCount;
+          weekSignOut += signOutCount;
+          weekAmount += dayAmount;
+          monthTotal += dayAmount;
         }
 
-        // Only add week if it has days in this month
         if (days.length > 0) {
           const actualStart = days[0]?.date || format(weekStart, 'yyyy-MM-dd');
           const actualEnd = days[days.length - 1]?.date || format(weekEnd, 'yyyy-MM-dd');
-          
+
           summaries.push({
             weekStart: actualStart,
             weekEnd: actualEnd,
@@ -148,8 +123,7 @@ export default function ExportsPage() {
           weekIdx++;
         }
 
-        // Move to next week's Monday
-        const nextMonday = addDays(weekEnd, 3); // Saturday + 2 = Monday
+        const nextMonday = addDays(weekEnd, 3);
         weekStart = nextMonday;
       }
 
@@ -161,7 +135,11 @@ export default function ExportsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [selectedMonth]);
+
+  useEffect(() => {
+    fetchExportData();
+  }, [fetchExportData]);
 
   async function handleWeeklyExport() {
     setExporting('weekly');
@@ -230,8 +208,11 @@ export default function ExportsPage() {
         {/* Weekly Export */}
         <Card>
           <div className="p-6">
-            <h2 className="mb-4 text-center text-lg font-semibold">WEEKLY EXPORT</h2>
-            
+            <div className="flex items-center gap-2 mb-4">
+              <FileSpreadsheet className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold">Weekly Export</h2>
+            </div>
+
             {loading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -285,12 +266,29 @@ export default function ExportsPage() {
                   </div>
                 </div>
 
-                <div className="border-t border-border pt-4">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">Week Total:</span>
-                    <span className="font-mono font-semibold">GHC {currentWeek?.totalAmount.toFixed(2) || '0.00'}</span>
+                {/* Week details */}
+                {currentWeek && (
+                  <div className="rounded-lg border border-border p-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Entries:</span>{' '}
+                        <span className="font-medium">{currentWeek.totalEntries}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Late:</span>{' '}
+                        <span className="font-medium text-danger">{currentWeek.totalLate}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">No Sign Out:</span>{' '}
+                        <span className="font-medium text-warning">{currentWeek.totalSignOut}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Total:</span>{' '}
+                        <span className="font-mono font-semibold">GHC {currentWeek.totalAmount.toFixed(2)}</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <Button className="w-full gap-2" onClick={handleWeeklyExport} disabled={exporting === 'weekly'}>
                   {exporting === 'weekly' ? (
@@ -308,7 +306,10 @@ export default function ExportsPage() {
         {/* Monthly Export */}
         <Card>
           <div className="p-6">
-            <h2 className="mb-4 text-center text-lg font-semibold">MONTHLY EXPORT</h2>
+            <div className="flex items-center gap-2 mb-4">
+              <FileSpreadsheet className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold">Monthly Export</h2>
+            </div>
             <div className="space-y-4">
               <div className="flex gap-2 items-end">
                 <div className="w-48">
@@ -342,9 +343,9 @@ export default function ExportsPage() {
                 Weeks included: {weekSummaries.map((_, idx) => `Week ${idx + 1}`).join(', ')}
               </div>
 
-              <div className="border-t border-border pt-4">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">Month Total:</span>
+              <div className="rounded-lg border border-border p-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Month Total:</span>
                   <span className="font-mono font-semibold">GHC {monthlyTotal.toFixed(2)}</span>
                 </div>
               </div>

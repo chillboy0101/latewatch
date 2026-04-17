@@ -1,23 +1,62 @@
 // app/api/entries/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { latenessEntry, workCalendar } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { latenessEntry, workCalendar, staff } from '@/db/schema';
+import { eq, and, gte, lte, asc } from 'drizzle-orm';
+import { publishRealtime } from '@/lib/realtime';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const date = searchParams.get('date');
+    const url = new URL(request.url);
+    const date = url.searchParams.get('date');
+    const start = url.searchParams.get('start');
+    const end = url.searchParams.get('end');
 
-    if (!date) {
-      return NextResponse.json({ error: 'Date parameter required' }, { status: 400 });
+    // Single date query
+    if (date) {
+      const entries = await db.select({
+        id: latenessEntry.id,
+        staffId: latenessEntry.staffId,
+        date: latenessEntry.date,
+        arrivalTime: latenessEntry.arrivalTime,
+        didNotSignOut: latenessEntry.didNotSignOut,
+        reason: latenessEntry.reason,
+        computedAmount: latenessEntry.computedAmount,
+        createdAt: latenessEntry.createdAt,
+      })
+      .from(latenessEntry)
+      .where(eq(latenessEntry.date, date));
+      return NextResponse.json(entries, {
+        headers: {
+          'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
+        },
+      });
     }
 
-    const entries = await db.query.latenessEntry.findMany({
-      where: (entry, { eq }) => eq(entry.date, date),
-    });
+    // Date range query (for exports/performance)
+    if (start && end) {
+      const entries = await db.select({
+        id: latenessEntry.id,
+        staffId: latenessEntry.staffId,
+        date: latenessEntry.date,
+        arrivalTime: latenessEntry.arrivalTime,
+        didNotSignOut: latenessEntry.didNotSignOut,
+        reason: latenessEntry.reason,
+        computedAmount: latenessEntry.computedAmount,
+        createdAt: latenessEntry.createdAt,
+      })
+      .from(latenessEntry)
+      .where(and(gte(latenessEntry.date, start), lte(latenessEntry.date, end)));
+      return NextResponse.json(entries, {
+        headers: {
+          'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120',
+        },
+      });
+    }
 
-    return NextResponse.json(entries);
+    return NextResponse.json({ error: 'Date or start/end parameters required' }, { status: 400 });
   } catch (error) {
     console.error('Failed to fetch entries:', error);
     return NextResponse.json({ error: 'Failed to fetch entries' }, { status: 500 });
@@ -34,9 +73,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if the date is a holiday
-    const holidayCheck = await db.query.workCalendar.findFirst({
-      where: (cal, { eq, and }) => and(eq(cal.date, date), eq(cal.isHoliday, true)),
-    });
+    const [holidayCheck] = await db.select()
+      .from(workCalendar)
+      .where(and(eq(workCalendar.date, date), eq(workCalendar.isHoliday, true)));
 
     if (holidayCheck) {
       return NextResponse.json(
@@ -48,12 +87,9 @@ export async function POST(request: NextRequest) {
     const results = [];
 
     for (const entry of entries) {
-      const existing = await db.query.latenessEntry.findFirst({
-        where: (e, { and, eq }) => and(
-          eq(e.staffId, entry.staffId),
-          eq(e.date, date)
-        ),
-      });
+      const [existing] = await db.select()
+        .from(latenessEntry)
+        .where(and(eq(latenessEntry.staffId, entry.staffId), eq(latenessEntry.date, date)));
 
       let result;
       if (existing) {
@@ -80,6 +116,8 @@ export async function POST(request: NextRequest) {
 
       results.push(result);
     }
+
+    publishRealtime('dashboard', 'invalidate', { reason: 'entries' });
 
     return NextResponse.json({ success: true, count: results.length });
   } catch (error) {

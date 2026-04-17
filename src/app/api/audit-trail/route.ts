@@ -2,55 +2,67 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { auditEvent } from '@/db/schema';
-import { eq, desc, gte, lte, like, and, SQL } from 'drizzle-orm';
+import { eq, desc, gte, lte, like, and, count } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
-    const entityType = searchParams.get('entityType');
-    const action = searchParams.get('action');
-    const actorEmail = searchParams.get('actorEmail');
-    const startDate = searchParams.get('startDate');
-    const endDate = searchParams.get('endDate');
+    const url = new URL(request.url);
+    const page = parseInt(url.searchParams.get('page') || '1');
+    const limit = parseInt(url.searchParams.get('limit') || '20');
+    const entityType = url.searchParams.get('entityType');
+    const action = url.searchParams.get('action');
+    const actorEmail = url.searchParams.get('actorEmail');
+    const startDate = url.searchParams.get('startDate');
+    const endDate = url.searchParams.get('endDate');
 
     // Build conditions
-    const conditions: SQL[] = [];
-    
+    const conditions = [];
+
     if (entityType && entityType !== 'all') {
       conditions.push(eq(auditEvent.entityType, entityType));
     }
-    
+
     if (action && action !== 'all') {
-      conditions.push(eq(auditEvent.action, action));
+      conditions.push(eq(auditEvent.action, action as any));
     }
-    
+
     if (actorEmail) {
       conditions.push(like(auditEvent.actorEmail, `%${actorEmail}%`));
     }
-    
+
     if (startDate) {
       conditions.push(gte(auditEvent.timestamp, new Date(startDate)));
     }
-    
+
     if (endDate) {
-      conditions.push(lte(auditEvent.timestamp, new Date(endDate)));
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(auditEvent.timestamp, end));
     }
 
-    // Get total count
-    const allEvents = await db.select({ id: auditEvent.id }).from(auditEvent);
-    const totalCount = allEvents.length;
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    // Get filtered count
+    const countResult = await db.select({ count: count() }).from(auditEvent).where(whereClause);
+    const totalCount = Number(countResult[0]?.count || 0);
 
     // Get paginated data
-    const logs = await db.query.auditEvent.findMany({
-      where: conditions.length > 0 
-        ? (audit, { and }) => and(...conditions)
-        : undefined,
-      orderBy: [desc(auditEvent.timestamp)],
-      limit,
-      offset: (page - 1) * limit,
-    });
+    const logs = await db.select({
+      id: auditEvent.id,
+      entityType: auditEvent.entityType,
+      entityId: auditEvent.entityId,
+      action: auditEvent.action,
+      beforeJson: auditEvent.beforeJson,
+      afterJson: auditEvent.afterJson,
+      actorUserId: auditEvent.actorUserId,
+      actorEmail: auditEvent.actorEmail,
+      timestamp: auditEvent.timestamp,
+    })
+    .from(auditEvent)
+    .where(whereClause)
+    .orderBy(desc(auditEvent.timestamp))
+    .limit(limit)
+    .offset((page - 1) * limit);
 
     return NextResponse.json({
       data: logs,

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { workCalendar } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { publishRealtime } from '@/lib/realtime';
 
 // GET single holiday
 export async function GET(
@@ -54,6 +55,8 @@ export async function PUT(
       .where(eq(workCalendar.id, id))
       .returning();
 
+    publishRealtime('dashboard', 'invalidate', { reason: 'calendar' });
+
     return NextResponse.json(updated[0]);
   } catch (error) {
     console.error('Failed to update holiday:', error);
@@ -69,6 +72,8 @@ export async function DELETE(
   try {
     const { id } = await params;
     await db.delete(workCalendar).where(eq(workCalendar.id, id));
+
+    publishRealtime('dashboard', 'invalidate', { reason: 'calendar' });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Failed to delete holiday:', error);

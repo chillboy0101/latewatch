@@ -5,6 +5,7 @@ import { requireRole } from '@/lib/auth/roles';
 import { db } from '@/db';
 import { latenessEntry, auditEvent, workCalendar } from '@/db/schema';
 import { updateTag } from 'next/cache';
+import { publishRealtime } from '@/lib/realtime';
 import { z } from 'zod';
 import { computePenalty } from '@/lib/penalty-calculator';
 import { eq, and } from 'drizzle-orm';
@@ -113,6 +114,7 @@ export async function saveEntry(formData: FormData) {
   }
 
   updateTag(`entries-${parsed.date}`);
+  publishRealtime('dashboard', 'invalidate', { reason: 'entries' });
 
   return entry;
 }
@@ -142,6 +144,7 @@ export async function deleteEntry(id: string, date: string) {
   });
   
   updateTag(`entries-${date}`);
+  publishRealtime('dashboard', 'invalidate', { reason: 'entries' });
 }
 
 export async function bulkSaveEntries(entries: Array<{
@@ -204,6 +207,7 @@ export async function bulkSaveEntries(entries: Array<{
   }
   
   updateTag(`entries-${entries[0]?.date}`);
+  publishRealtime('dashboard', 'invalidate', { reason: 'entries' });
   
   return results;
 }

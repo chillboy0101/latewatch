@@ -1,14 +1,13 @@
-// app/entries/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card } from '@/components/ui/card';
 import { format, startOfWeek, addDays } from 'date-fns';
-import { Save, Calendar as CalendarIcon } from 'lucide-react';
+import { Save, Calendar as CalendarIcon, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 
 interface StaffMember {
   id: string;
@@ -75,33 +74,34 @@ export default function EntriesPage() {
   const [saving, setSaving] = useState(false);
   const [isHoliday, setIsHoliday] = useState(false);
   const [holidayName, setHolidayName] = useState('');
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  useEffect(() => {
-    fetchStaffAndEntries();
-  }, []);
-
-  async function fetchStaffAndEntries() {
+  const fetchStaffAndEntries = useCallback(async () => {
     try {
-      // Fetch staff
-      const staffResponse = await fetch('/api/staff');
-      const staffData = await staffResponse.json();
+      const today = format(selectedDate, 'yyyy-MM-dd');
+
+      // Fetch all data in parallel
+      const [staffResponse, calendarResponse, entriesResponse] = await Promise.all([
+        fetch('/api/staff'),
+        fetch(`/api/calendar?start=${today}&end=${today}`),
+        fetch(`/api/entries?date=${today}`),
+      ]);
+
+      const [staffData, calendarData, entriesData] = await Promise.all([
+        staffResponse.json(),
+        calendarResponse.json(),
+        entriesResponse.json(),
+      ]);
+
       const staffList = Array.isArray(staffData) ? staffData : [];
       setStaff(staffList);
 
-      // Check if today is a holiday
-      const today = format(selectedDate, 'yyyy-MM-dd');
-      const calendarResponse = await fetch(`/api/calendar?start=${today}&end=${today}`);
-      const calendarData = await calendarResponse.json();
       const holiday = Array.isArray(calendarData) ? calendarData.find((h: any) => h.isHoliday && !h.isRemoved) : null;
       setIsHoliday(!!holiday);
       setHolidayName(holiday?.holidayNote || 'Holiday');
 
-      // Initialize entries
-      const entriesResponse = await fetch(`/api/entries?date=${today}`);
-      const entriesData = await entriesResponse.json();
       const entriesList = Array.isArray(entriesData) ? entriesData : [];
 
-      // Merge staff with entries
       const mergedEntries = staffList.map((s: StaffMember) => {
         const existing = entriesList.find((e: any) => e.staffId === s.id);
         return {
@@ -119,7 +119,11 @@ export default function EntriesPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    fetchStaffAndEntries();
+  }, [fetchStaffAndEntries]);
 
   const updateEntry = (staffId: string, field: keyof Entry, value: any) => {
     setEntries((prev) =>
@@ -143,6 +147,7 @@ export default function EntriesPage() {
 
   async function handleSaveAll() {
     setSaving(true);
+    setMessage(null);
     try {
       const today = format(selectedDate, 'yyyy-MM-dd');
       const response = await fetch('/api/entries', {
@@ -156,16 +161,20 @@ export default function EntriesPage() {
 
       if (response.ok) {
         const data = await response.json();
-        alert(`Entries saved successfully! ${data.count || entries.length} entries recorded.`);
+        setMessage({ type: 'success', text: `${data.count || entries.length} entries saved successfully` });
+        // Refresh data after save
+        await fetchStaffAndEntries();
       } else {
         const errorData = await response.json();
-        alert(errorData.error || 'Failed to save entries');
+        setMessage({ type: 'error', text: errorData.error || 'Failed to save entries' });
       }
     } catch (error) {
       console.error('Failed to save entries:', error);
-      alert('Failed to save entries');
+      setMessage({ type: 'error', text: 'Failed to save entries' });
     } finally {
       setSaving(false);
+      // Auto-dismiss message after 5 seconds
+      setTimeout(() => setMessage(null), 5000);
     }
   }
 
@@ -182,8 +191,11 @@ export default function EntriesPage() {
   if (loading) {
     return (
       <DashboardLayout title="Daily Entry">
-        <div className="flex h-64 items-center justify-center text-muted-foreground">
-          Loading...
+        <div className="flex h-64 items-center justify-center">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <div className="h-5 w-5 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+            Loading entries...
+          </div>
         </div>
       </DashboardLayout>
     );
@@ -195,10 +207,9 @@ export default function EntriesPage() {
         <div className="space-y-6">
           <Card>
             <div className="p-8 text-center">
-              <p className="text-lg mb-2">📝</p>
-              <p className="text-muted-foreground">No staff members found</p>
-              <p className="text-sm mt-2">Please add staff members first before recording entries</p>
-              <Button className="mt-4" onClick={() => window.location.href = '/staff'}>
+              <p className="text-lg mb-2">No staff members found</p>
+              <p className="text-sm text-muted-foreground mb-4">Please add staff members first before recording entries</p>
+              <Button onClick={() => window.location.href = '/staff'}>
                 Go to Staff Management
               </Button>
             </div>
@@ -211,6 +222,22 @@ export default function EntriesPage() {
   return (
     <DashboardLayout title="Daily Entry">
       <div className="space-y-6">
+        {/* Success/Error Message */}
+        {message && (
+          <div className={`flex items-center gap-3 rounded-lg border p-4 ${
+            message.type === 'success'
+              ? 'border-success/30 bg-success/10 text-success'
+              : 'border-danger/30 bg-danger/10 text-danger'
+          }`}>
+            {message.type === 'success' ? (
+              <CheckCircle className="h-5 w-5 shrink-0" />
+            ) : (
+              <AlertCircle className="h-5 w-5 shrink-0" />
+            )}
+            <p className="text-sm font-medium">{message.text}</p>
+          </div>
+        )}
+
         {/* Holiday Warning */}
         {isHoliday && (
           <Card className="bg-warning/10 border-warning">
@@ -224,18 +251,24 @@ export default function EntriesPage() {
           </Card>
         )}
 
-        {/* Date Selector */}
-        <div className="flex items-center gap-4">
-          <Button variant="outline" className="gap-2">
-            <CalendarIcon className="h-4 w-4" />
-            {format(selectedDate, 'MMMM yyyy')}
-          </Button>
-          <Button variant="outline">
-            Week: {format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'MMM dd')} -{' '}
-            {format(addDays(startOfWeek(selectedDate, { weekStartsOn: 1 }), 4), 'MMM dd')}
-          </Button>
-          <Button variant="outline">
-            Day: {format(selectedDate, 'EEE dd')}
+        {/* Date Info & Refresh */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button variant="outline" className="gap-2">
+              <CalendarIcon className="h-4 w-4" />
+              {format(selectedDate, 'MMMM yyyy')}
+            </Button>
+            <Button variant="outline">
+              Week: {format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'MMM dd')} -{' '}
+              {format(addDays(startOfWeek(selectedDate, { weekStartsOn: 1 }), 4), 'MMM dd')}
+            </Button>
+            <Button variant="outline">
+              Day: {format(selectedDate, 'EEE dd')}
+            </Button>
+          </div>
+          <Button variant="ghost" size="sm" className="gap-1.5" onClick={fetchStaffAndEntries}>
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh
           </Button>
         </div>
 
@@ -245,19 +278,19 @@ export default function EntriesPage() {
             <table className="w-full">
               <thead className="border-b border-border bg-card">
                 <tr>
-                  <th className="w-12 px-4 py-3 text-left text-sm font-medium text-muted-foreground">#</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Name</th>
-                  <th className="w-32 px-4 py-3 text-left text-sm font-medium text-muted-foreground">Time</th>
-                  <th className="w-28 px-4 py-3 text-left text-sm font-medium text-muted-foreground">Amount</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Reason</th>
-                  <th className="w-24 px-4 py-3 text-center text-sm font-medium text-muted-foreground">No Sign Out</th>
+                  <th className="w-12 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">#</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</th>
+                  <th className="w-32 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Time</th>
+                  <th className="w-28 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Amount</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Reason</th>
+                  <th className="w-24 px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wide">No Sign Out</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {entries.map((entry, index) => {
                   const member = staff.find((s) => s.id === entry.staffId);
                   return (
-                    <tr key={entry.staffId} className="hover:bg-card/50">
+                    <tr key={entry.staffId} className="hover:bg-card/50 transition-colors">
                       <td className="px-4 py-3 text-sm text-muted-foreground">
                         {String(index + 1).padStart(2, '0')}
                       </td>
@@ -272,10 +305,15 @@ export default function EntriesPage() {
                           }
                           className="h-8 w-24 font-mono"
                           maxLength={5}
+                          disabled={isHoliday}
                         />
                       </td>
                       <td className="px-4 py-3 text-sm font-mono">
-                        {entry.amount > 0 ? `GHC ${entry.amount}` : '—'}
+                        {entry.amount > 0 ? (
+                          <span className="text-danger">GHC {entry.amount}</span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">
                         {entry.reason || '—'}
@@ -286,6 +324,7 @@ export default function EntriesPage() {
                           onCheckedChange={(checked) =>
                             updateEntry(entry.staffId, 'didNotSignOut', checked)
                           }
+                          disabled={isHoliday}
                         />
                       </td>
                     </tr>
@@ -296,21 +335,9 @@ export default function EntriesPage() {
           </div>
         </Card>
 
-        {/* Tips */}
-        <Card className="bg-warning/10">
-          <div className="p-4 text-sm">
-            <strong>💡 Tips:</strong>
-            <ul className="mt-2 list-inside space-y-1 text-muted-foreground">
-              <li>• Leave TIME blank for staff who arrived on time</li>
-              <li>• Check "Did not sign out" to add GHC 2 penalty</li>
-              <li>• Reason auto-generates based on time + sign-out status</li>
-            </ul>
-          </div>
-        </Card>
-
         {/* Actions */}
         <div className="flex items-center justify-between">
-          <Button variant="outline" disabled={isHoliday}>
+          <Button variant="outline" disabled={isHoliday} onClick={handleSaveAll}>
             <Save className="mr-2 h-4 w-4" />
             Save Draft
           </Button>
@@ -322,23 +349,23 @@ export default function EntriesPage() {
         {/* Day Summary */}
         <Card>
           <div className="p-4">
-            <h3 className="mb-3 font-semibold">📊 Day Summary</h3>
-            <div className="flex gap-6 text-sm">
-              <div>
-                <span className="text-muted-foreground">Total Late:</span>{' '}
-                <span className="font-mono font-medium text-danger">{totals.late}</span>
+            <h3 className="mb-3 font-semibold">Day Summary</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="rounded-lg border border-border p-3 text-center">
+                <p className="text-2xl font-bold font-mono text-danger">{totals.late}</p>
+                <p className="text-xs text-muted-foreground mt-1">Late</p>
               </div>
-              <div>
-                <span className="text-muted-foreground">On Time:</span>{' '}
-                <span className="font-mono font-medium text-success">{totals.onTime}</span>
+              <div className="rounded-lg border border-border p-3 text-center">
+                <p className="text-2xl font-bold font-mono text-success">{totals.onTime}</p>
+                <p className="text-xs text-muted-foreground mt-1">On Time</p>
               </div>
-              <div>
-                <span className="text-muted-foreground">Did Not Sign Out:</span>{' '}
-                <span className="font-mono font-medium text-warning">{totals.didNotSignOut}</span>
+              <div className="rounded-lg border border-border p-3 text-center">
+                <p className="text-2xl font-bold font-mono text-warning">{totals.didNotSignOut}</p>
+                <p className="text-xs text-muted-foreground mt-1">No Sign Out</p>
               </div>
-              <div>
-                <span className="text-muted-foreground">Total Amount:</span>{' '}
-                <span className="font-mono font-medium">GHC {totals.totalAmount}</span>
+              <div className="rounded-lg border border-border p-3 text-center">
+                <p className="text-2xl font-bold font-mono">GHC {totals.totalAmount}</p>
+                <p className="text-xs text-muted-foreground mt-1">Total Amount</p>
               </div>
             </div>
           </div>
