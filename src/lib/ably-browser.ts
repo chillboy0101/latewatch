@@ -1,13 +1,13 @@
 'use client';
 
-import * as Ably from 'ably';
+import { Realtime } from 'ably';
 
-let realtime: Ably.Types.RealtimePromise | null = null;
+let realtime: Realtime | null = null;
 
 export async function getAblyRealtime() {
   if (realtime) return realtime;
 
-  realtime = new (Ably as any).Realtime.Promise({
+  realtime = new Realtime({
     authUrl: '/api/realtime/token',
     autoConnect: true,
     echoMessages: false,

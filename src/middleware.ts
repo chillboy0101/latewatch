@@ -11,18 +11,25 @@ const isProtectedRoute = createRouteMatcher([
   '/settings(.*)',
 ]);
 
-export default clerkMiddleware(async (auth, req) => {
-  try {
-    if (isProtectedRoute(req)) {
-      await auth.protect();
-    }
-    return NextResponse.next();
-  } catch (error) {
-    console.error('Middleware error:', error);
-    // Don't block requests on middleware errors in production
-    return NextResponse.next();
-  }
-});
+const clerkConfigured =
+  !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && !!process.env.CLERK_SECRET_KEY;
+
+const handler = clerkConfigured
+  ? clerkMiddleware(async (auth, req) => {
+      try {
+        if (isProtectedRoute(req)) {
+          await auth.protect();
+        }
+        return NextResponse.next();
+      } catch (error) {
+        console.error('Middleware error:', error);
+        // Don't block requests on middleware errors in production
+        return NextResponse.next();
+      }
+    })
+  : () => NextResponse.next();
+
+export default handler;
 
 export const config = {
   matcher: [
