@@ -76,32 +76,6 @@ export async function POST(request: NextRequest) {
       return `${displayH}:${minutes.toString().padStart(2, '0')} ${ampm}`;
     }
 
-    // Create Excel workbook
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Lateness Book');
-
-    // Disable gridlines for cleaner look
-    worksheet.views = [{ showGridLines: false }];
-
-    // Set column widths
-    worksheet.columns = [
-      { header: 'Name', key: 'name', width: 25 },
-      { header: 'Time', key: 'time', width: 12 },
-      { header: 'Amount', key: 'amount', width: 15 },
-      { header: 'Reason', key: 'reason', width: 45 },
-      { header: 'Holiday', key: 'holiday', width: 15 },
-    ];
-
-    // Helper: generate date header row text like "MONDAY,23RD MARCH 2026"
-    function formatDateHeader(dateStr: string): string {
-      const d = parseISO(dateStr);
-      const dayName = format(d, 'EEEE').toUpperCase();
-      const dayNum = d.getDate();
-      const suffix = getOrdinalSuffix(dayNum);
-      const monthYear = format(d, 'MMMM yyyy').toUpperCase();
-      return `${dayName},${dayNum}${suffix} ${monthYear}`;
-    }
-
     function getOrdinalSuffix(n: number): string {
       if (n > 3 && n < 21) return 'TH';
       switch (n % 10) {
@@ -127,74 +101,81 @@ export async function POST(request: NextRequest) {
     const staffTotals: Record<string, number> = {};
     for (const s of allStaff) staffTotals[s.id] = 0;
 
-    // Style for date header rows
-    const dateHeaderStyle = {
-      font: { bold: true, size: 11 },
-      alignment: { horizontal: 'left' as const },
-    };
+    // ── Create Excel workbook ───────────────────────────────────────────
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Lateness Book');
 
-    // Style for column headers
-    const colHeaderStyle = {
-      font: { bold: true, size: 10, color: { argb: 'FFFFFFFF' } },
-      fill: { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FF2563EB' } },
-      alignment: { horizontal: 'center' as const },
-      border: {
-        top: { style: 'thin' as const },
-        bottom: { style: 'thin' as const },
-        left: { style: 'thin' as const },
-        right: { style: 'thin' as const },
-      },
-    };
+    worksheet.views = [{ showGridLines: false }];
 
-    // Style for data rows
-    const dataRowStyle = {
-      font: { size: 10 },
-      border: {
-        top: { style: 'thin' as const },
-        bottom: { style: 'thin' as const },
-        left: { style: 'thin' as const },
-        right: { style: 'thin' as const },
-      },
-    };
+    // Column widths match CSV exactly
+    worksheet.columns = [
+      { key: 'name', width: 26 },
+      { key: 'time', width: 13 },
+      { key: 'amount', width: 16 },
+      { key: 'reason', width: 44 },
+      { key: 'holiday', width: 13 },
+    ];
 
-    // Style for total header
-    const totalHeaderStyle = {
-      font: { bold: true, size: 11 },
-      alignment: { horizontal: 'left' as const },
-    };
-
-    // Generate sheet sections for each weekday
-    for (const dateStr of weekdays) {
-      // Date header row
-      const dateRow = worksheet.addRow([
-        formatDateHeader(dateStr), '', '', '', ''
-      ]);
-      dateRow.getCell(1).font = dateHeaderStyle.font;
-      dateRow.getCell(1).alignment = dateHeaderStyle.alignment;
-      // Apply border to all cells in date row
-      for (let i = 1; i <= 5; i++) {
-        dateRow.getCell(i).border = {
-          top: { style: 'medium' as const },
-          bottom: { style: 'medium' as const },
-          left: { style: 'medium' as const },
-          right: { style: 'medium' as const },
+    // Helper: apply medium border to a range of cells in a row
+    function applyMediumBorder(row: ExcelJS.Row, cols = 5) {
+      for (let i = 1; i <= cols; i++) {
+        row.getCell(i).border = {
+          top: { style: 'medium' },
+          bottom: { style: 'medium' },
+          left: { style: 'medium' },
+          right: { style: 'medium' },
         };
       }
+    }
 
-      // Column header row
+    // Helper: apply thin border to a range of cells in a row
+    function applyThinBorder(row: ExcelJS.Row, cols = 5) {
+      for (let i = 1; i <= cols; i++) {
+        row.getCell(i).border = {
+          top: { style: 'thin' },
+          bottom: { style: 'thin' },
+          left: { style: 'thin' },
+          right: { style: 'thin' },
+        };
+      }
+    }
+
+    // ── Daily sections ───────────────────────────────────────────────────
+    for (const dateStr of weekdays) {
+      const d = parseISO(dateStr);
+      const dayName = format(d, 'EEEE').toUpperCase();
+      const dayNum = d.getDate();
+      const suffix = getOrdinalSuffix(dayNum);
+      const monthYear = format(d, 'MMMM yyyy').toUpperCase();
+      const dateHeaderText = `${dayName},${dayNum}${suffix} ${monthYear}`;
+
+      const isHoliday = holidaySet.has(dateStr);
+
+      // Row 1: Date header (bold, left-aligned, medium border)
+      const dateRow = worksheet.addRow([dateHeaderText, '', '', '', '']);
+      dateRow.getCell(1).font = { bold: true, size: 11 };
+      dateRow.getCell(1).alignment = { horizontal: 'left' };
+      applyMediumBorder(dateRow);
+
+      // Row 2: blank (no content, no border)
+      worksheet.addRow(['', '', '', '', '']);
+
+      // Row 3: Column headers (white text on blue, centered, medium border)
       const colHeaderRow = worksheet.addRow(['NAME', 'TIME', 'AMOUNT', 'REASON', 'HOLIDAY']);
       for (let i = 1; i <= 5; i++) {
         const cell = colHeaderRow.getCell(i);
-        cell.font = colHeaderStyle.font;
-        cell.fill = colHeaderStyle.fill;
-        cell.alignment = colHeaderStyle.alignment;
-        cell.border = colHeaderStyle.border;
+        cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
+        cell.alignment = { horizontal: 'center' };
+        cell.border = {
+          top: { style: 'medium' },
+          bottom: { style: 'medium' },
+          left: { style: 'medium' },
+          right: { style: 'medium' },
+        };
       }
 
-      // Check if this is a holiday
-      const isHoliday = holidaySet.has(dateStr);
-
-      // All staff rows
+      // Rows 4–18: staff rows (regular font, thin border)
       for (const s of allStaff) {
         const entry = entryMap[dateStr]?.[s.id];
         const amount = entry ? parseFloat(String(entry.computedAmount || '0')) : 0;
@@ -212,37 +193,33 @@ export async function POST(request: NextRequest) {
 
         for (let i = 1; i <= 5; i++) {
           const cell = dataRow.getCell(i);
-          cell.font = dataRowStyle.font;
-          cell.border = dataRowStyle.border;
-          if (i === 4 && entry?.reason) {
-            // Reason column - wrap text
-            cell.alignment = { wrapText: true };
-          }
+          cell.font = { size: 10 };
+          cell.border = {
+            top: { style: 'thin' },
+            bottom: { style: 'thin' },
+            left: { style: 'thin' },
+            right: { style: 'thin' },
+          };
         }
       }
 
-      // Spacer row - no borders
-      const spacerRow = worksheet.addRow(['', '', '', '', '']);
+      // Row after staff: blank spacer
+      worksheet.addRow(['', '', '', '', '']);
     }
 
-    // === WEEKLY TOTALS SECTION ===
-    // Spacer
+    // ── Weekly totals section ────────────────────────────────────────────
+    // Blank spacer row
     worksheet.addRow(['', '', '', '', '']);
 
-    // Total header row
+    // "NAME" header + "TOTAL AMOUNT FOR THE WEEK" header
     const totalHeaderRow = worksheet.addRow(['NAME', 'TOTAL AMOUNT FOR THE WEEK', '', '', '']);
-    totalHeaderRow.getCell(1).font = totalHeaderStyle.font;
-    totalHeaderRow.getCell(1).alignment = totalHeaderStyle.alignment;
-    for (let i = 1; i <= 5; i++) {
-      totalHeaderRow.getCell(i).border = {
-        top: { style: 'medium' as const },
-        bottom: { style: 'medium' as const },
-        left: { style: 'medium' as const },
-        right: { style: 'medium' as const },
-      };
-    }
+    totalHeaderRow.getCell(1).font = { bold: true, size: 11 };
+    totalHeaderRow.getCell(1).alignment = { horizontal: 'left' };
+    totalHeaderRow.getCell(2).font = { bold: true, size: 11 };
+    totalHeaderRow.getCell(2).alignment = { horizontal: 'left' };
+    applyMediumBorder(totalHeaderRow);
 
-    // Per-staff totals
+    // Per-staff total rows
     let grandTotal = 0;
     for (const s of allStaff) {
       const total = staffTotals[s.id];
@@ -254,24 +231,21 @@ export async function POST(request: NextRequest) {
       ]);
       for (let i = 1; i <= 5; i++) {
         const cell = totalRow.getCell(i);
-        cell.font = dataRowStyle.font;
-        cell.border = dataRowStyle.border;
+        cell.font = { size: 10 };
+        cell.border = {
+          top: { style: 'thin' },
+          bottom: { style: 'thin' },
+          left: { style: 'thin' },
+          right: { style: 'thin' },
+        };
       }
     }
 
-    // Grand total row - bold and larger
+    // Grand total row
     const grandTotalRow = worksheet.addRow(['TOTAL:', `GHC ${grandTotal.toFixed(2)}`, '', '', '']);
     grandTotalRow.getCell(1).font = { bold: true, size: 11 };
     grandTotalRow.getCell(2).font = { bold: true, size: 11 };
-    for (let i = 1; i <= 5; i++) {
-      const cell = grandTotalRow.getCell(i);
-      cell.border = {
-        top: { style: 'medium' as const },
-        bottom: { style: 'medium' as const },
-        left: { style: 'medium' as const },
-        right: { style: 'medium' as const },
-      };
-    }
+    applyMediumBorder(grandTotalRow);
 
     // Generate buffer
     const buffer = await workbook.xlsx.writeBuffer();
