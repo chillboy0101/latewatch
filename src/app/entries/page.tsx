@@ -336,13 +336,10 @@ export default function EntriesPage() {
         </Card>
 
         {/* Actions */}
-        <div className="flex items-center justify-between">
-          <Button variant="outline" disabled={isHoliday} onClick={handleSaveAll}>
-            <Save className="mr-2 h-4 w-4" />
-            Save Draft
-          </Button>
+        <div className="flex justify-end">
           <Button onClick={handleSaveAll} disabled={saving || isHoliday}>
-            {saving ? 'Saving...' : isHoliday ? 'Holiday - No Entries' : 'Submit All Entries'}
+            <Save className="mr-2 h-4 w-4" />
+            {saving ? 'Saving...' : isHoliday ? 'Holiday — No Entries' : 'Save Entries'}
           </Button>
         </div>
 
