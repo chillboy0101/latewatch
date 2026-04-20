@@ -184,16 +184,20 @@ export async function POST(request: NextRequest) {
     // Generate buffer
     const buffer = await workbook.xlsx.writeBuffer();
 
-    // Audit log
-    await db.insert(auditEvent).values({
-      entityType: 'export',
-      entityId: `weekly-${weekStart}-${weekEnd}`,
-      action: 'EXPORT',
-      beforeJson: null,
-      afterJson: { weekStart, weekEnd, grandTotal, staffCount: allStaff.length },
-      actorUserId,
-      actorEmail,
-    });
+    // Audit log (non-blocking - don't fail export if audit fails)
+    try {
+      await db.insert(auditEvent).values({
+        entityType: 'export',
+        entityId: `weekly-${weekStart}-${weekEnd}`,
+        action: 'EXPORT',
+        beforeJson: null,
+        afterJson: { weekStart, weekEnd, grandTotal, staffCount: allStaff.length },
+        actorUserId,
+        actorEmail,
+      });
+    } catch (auditError) {
+      console.error('Audit log failed (export still succeeded):', auditError);
+    }
 
     return new NextResponse(buffer, {
       headers: {
