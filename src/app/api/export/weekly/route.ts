@@ -47,42 +47,42 @@ export async function POST(request: NextRequest) {
     ];
 
     // Fetch all active staff from DB
-    const allStaff = await db.query.staff.findMany({
-      where: (s, { eq }) => eq(s.active, true),
-    });
+    const allStaffRows = await db.select({
+      id: staff.id,
+      fullName: staff.fullName,
+      active: staff.active,
+    })
+    .from(staff)
+    .where(eq(staff.active, true));
 
     // Map DB staff to fixed order (preserve template order, fill missing with null)
     const orderedStaff = STAFF_ORDER.map(name => {
-      const found = allStaff.find(s => s.fullName === name);
+      const found = allStaffRows.find(s => s.fullName === name);
       return found || null;
-    }).filter(Boolean) as typeof allStaff;
+    }).filter(Boolean) as typeof allStaffRows;
 
     if (orderedStaff.length === 0) {
       return NextResponse.json({ error: 'No active staff found' }, { status: 400 });
     }
 
-    // Fetch all entries for the week
-    const entries = await db.query.latenessEntry.findMany({
-      where: (entry, { and, gte, lte }) =>
-        and(
-          gte(entry.date, weekStart),
-          lte(entry.date, weekEnd)
-        ),
-      with: {
-        staff: true,
-      },
-    });
+    // Fetch all entries for the week (no join needed, we only need the amount and time)
+    const entries = await db.select({
+      id: latenessEntry.id,
+      staffId: latenessEntry.staffId,
+      date: latenessEntry.date,
+      arrivalTime: latenessEntry.arrivalTime,
+      computedAmount: latenessEntry.computedAmount,
+      reason: latenessEntry.reason,
+    })
+    .from(latenessEntry)
+    .where(and(gte(latenessEntry.date, weekStart), lte(latenessEntry.date, weekEnd)));
 
     // Fetch holidays for the week
-    const holidays = await db.query.workCalendar.findMany({
-      where: (cal, { and, gte, lte, eq }) =>
-        and(
-          gte(cal.date, weekStart),
-          lte(cal.date, weekEnd),
-          eq(cal.isHoliday, true)
-        ),
-    });
-    const holidaySet = new Set(holidays.filter(h => !h.isRemoved).map(h => h.date));
+    const holidays = await db.select({
+      date: workCalendar.date,
+    })
+    .from(workCalendar)
+    const holidaySet = new Set(holidays.map(h => h.date));
 
     // Group entries by (date, staffId)
     const entryMap: Record<string, Record<string, typeof entries[0]>> = {};
