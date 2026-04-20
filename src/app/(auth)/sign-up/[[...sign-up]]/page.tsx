@@ -14,14 +14,8 @@ export default function Page() {
         }}
       />
 
-      {/* Logo and Clerk Form */}
-      <div className="relative z-10 flex min-h-screen flex-col items-center justify-center px-4">
-        {/* Logo Mark */}
-        <div className="mb-8 flex h-16 w-16 items-center justify-center rounded-xl bg-primary shadow-lg shadow-primary/25">
-          <span className="text-xl font-bold text-primary-foreground">LW</span>
-        </div>
-
-        {/* Clerk SignUp Component */}
+      {/* Clerk SignUp Component - centered */}
+      <div className="relative z-10 flex min-h-screen items-center justify-center px-4">
         <SignUp
           routing="path"
           path="/sign-up"
@@ -39,11 +33,8 @@ export default function Page() {
             elements: {
               rootBox: 'mx-auto w-full max-w-[400px]',
               card: 'bg-card border border-border shadow-xl rounded-xl',
-              headerTitle: 'hidden',
-              headerSubtitle: 'hidden',
               formButtonPrimary:
                 'bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg transition-colors',
-              footer: 'hidden',
               socialButtonsBlockButton:
                 'bg-card hover:bg-accent border border-border text-foreground rounded-lg transition-colors',
               socialButtonsProviderIcon: 'hidden',
