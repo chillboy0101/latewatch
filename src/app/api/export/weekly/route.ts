@@ -221,11 +221,8 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Spacer row
+      // Spacer row - no borders
       const spacerRow = worksheet.addRow(['', '', '', '', '']);
-      for (let i = 1; i <= 5; i++) {
-        spacerRow.getCell(i).border = { style: 'none' as const };
-      }
     }
 
     // === WEEKLY TOTALS SECTION ===
