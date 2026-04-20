@@ -247,20 +247,23 @@ export default function AuditTrailPage() {
               className="h-9 pl-9"
             />
           </div>
-          <Input
-            type="date"
-            placeholder="From"
-            value={filters.startDate}
-            onChange={(e) => { setFilters({ ...filters, startDate: e.target.value }); setCurrentPage(1); }}
-            className="h-9 w-36"
-          />
-          <Input
-            type="date"
-            placeholder="To"
-            value={filters.endDate}
-            onChange={(e) => { setFilters({ ...filters, endDate: e.target.value }); setCurrentPage(1); }}
-            className="h-9 w-36"
-          />
+          {/* Date range */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground shrink-0">From</span>
+            <Input
+              type="date"
+              value={filters.startDate}
+              onChange={(e) => { setFilters({ ...filters, startDate: e.target.value }); setCurrentPage(1); }}
+              className="h-9 w-[140px]"
+            />
+            <span className="text-xs text-muted-foreground shrink-0">To</span>
+            <Input
+              type="date"
+              value={filters.endDate}
+              onChange={(e) => { setFilters({ ...filters, endDate: e.target.value }); setCurrentPage(1); }}
+              className="h-9 w-[140px]"
+            />
+          </div>
           {hasActiveFilters && (
             <Button variant="ghost" size="sm" className="h-9 gap-2" onClick={clearFilters}>
               <RotateCcw className="h-4 w-4" />
