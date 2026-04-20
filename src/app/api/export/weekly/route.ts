@@ -80,7 +80,10 @@ export async function POST(request: NextRequest) {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Lateness Book');
 
-    // Set column widths to match CSV structure
+    // Disable gridlines for cleaner look
+    worksheet.views = [{ showGridLines: false }];
+
+    // Set column widths
     worksheet.columns = [
       { header: 'Name', key: 'name', width: 25 },
       { header: 'Time', key: 'time', width: 12 },
@@ -124,21 +127,74 @@ export async function POST(request: NextRequest) {
     const staffTotals: Record<string, number> = {};
     for (const s of allStaff) staffTotals[s.id] = 0;
 
+    // Style for date header rows
+    const dateHeaderStyle = {
+      font: { bold: true, size: 11 },
+      alignment: { horizontal: 'left' as const },
+    };
+
+    // Style for column headers
+    const colHeaderStyle = {
+      font: { bold: true, size: 10, color: { argb: 'FFFFFFFF' } },
+      fill: { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FF2563EB' } },
+      alignment: { horizontal: 'center' as const },
+      border: {
+        top: { style: 'thin' as const },
+        bottom: { style: 'thin' as const },
+        left: { style: 'thin' as const },
+        right: { style: 'thin' as const },
+      },
+    };
+
+    // Style for data rows
+    const dataRowStyle = {
+      font: { size: 10 },
+      border: {
+        top: { style: 'thin' as const },
+        bottom: { style: 'thin' as const },
+        left: { style: 'thin' as const },
+        right: { style: 'thin' as const },
+      },
+    };
+
+    // Style for total header
+    const totalHeaderStyle = {
+      font: { bold: true, size: 11 },
+      alignment: { horizontal: 'left' as const },
+    };
+
     // Generate sheet sections for each weekday
     for (const dateStr of weekdays) {
-      // Date header row (merged cells - just text in first column)
+      // Date header row
       const dateRow = worksheet.addRow([
         formatDateHeader(dateStr), '', '', '', ''
       ]);
-      dateRow.getCell(1).font = { bold: true };
+      dateRow.getCell(1).font = dateHeaderStyle.font;
+      dateRow.getCell(1).alignment = dateHeaderStyle.alignment;
+      // Apply border to all cells in date row
+      for (let i = 1; i <= 5; i++) {
+        dateRow.getCell(i).border = {
+          top: { style: 'medium' as const },
+          bottom: { style: 'medium' as const },
+          left: { style: 'medium' as const },
+          right: { style: 'medium' as const },
+        };
+      }
 
       // Column header row
-      worksheet.addRow(['NAME', 'TIME', 'AMOUNT', 'REASON', 'HOLIDAY']);
+      const colHeaderRow = worksheet.addRow(['NAME', 'TIME', 'AMOUNT', 'REASON', 'HOLIDAY']);
+      for (let i = 1; i <= 5; i++) {
+        const cell = colHeaderRow.getCell(i);
+        cell.font = colHeaderStyle.font;
+        cell.fill = colHeaderStyle.fill;
+        cell.alignment = colHeaderStyle.alignment;
+        cell.border = colHeaderStyle.border;
+      }
 
       // Check if this is a holiday
       const isHoliday = holidaySet.has(dateStr);
 
-      // All 15 staff rows
+      // All staff rows
       for (const s of allStaff) {
         const entry = entryMap[dateStr]?.[s.id];
         const amount = entry ? parseFloat(String(entry.computedAmount || '0')) : 0;
@@ -146,40 +202,79 @@ export async function POST(request: NextRequest) {
           staffTotals[s.id] += amount;
         }
 
-        worksheet.addRow([
+        const dataRow = worksheet.addRow([
           s.fullName,
           entry?.arrivalTime ? formatTime(entry.arrivalTime) : '',
           amount > 0 ? `GHC ${amount.toFixed(2)}` : '',
           entry?.reason || '',
           isHoliday ? 'HOLIDAY' : '',
         ]);
+
+        for (let i = 1; i <= 5; i++) {
+          const cell = dataRow.getCell(i);
+          cell.font = dataRowStyle.font;
+          cell.border = dataRowStyle.border;
+          if (i === 4 && entry?.reason) {
+            // Reason column - wrap text
+            cell.alignment = { wrapText: true };
+          }
+        }
       }
 
       // Spacer row
-      worksheet.addRow(['', '', '', '', '']);
+      const spacerRow = worksheet.addRow(['', '', '', '', '']);
+      for (let i = 1; i <= 5; i++) {
+        spacerRow.getCell(i).border = { style: 'none' as const };
+      }
     }
 
     // === WEEKLY TOTALS SECTION ===
-    // Header row
+    // Spacer
     worksheet.addRow(['', '', '', '', '']);
+
+    // Total header row
     const totalHeaderRow = worksheet.addRow(['NAME', 'TOTAL AMOUNT FOR THE WEEK', '', '', '']);
-    totalHeaderRow.getCell(1).font = { bold: true };
+    totalHeaderRow.getCell(1).font = totalHeaderStyle.font;
+    totalHeaderRow.getCell(1).alignment = totalHeaderStyle.alignment;
+    for (let i = 1; i <= 5; i++) {
+      totalHeaderRow.getCell(i).border = {
+        top: { style: 'medium' as const },
+        bottom: { style: 'medium' as const },
+        left: { style: 'medium' as const },
+        right: { style: 'medium' as const },
+      };
+    }
 
     // Per-staff totals
     let grandTotal = 0;
     for (const s of allStaff) {
       const total = staffTotals[s.id];
       grandTotal += total;
-      worksheet.addRow([
+      const totalRow = worksheet.addRow([
         s.fullName,
         `GHC ${total.toFixed(2)}`,
         '', '', ''
       ]);
+      for (let i = 1; i <= 5; i++) {
+        const cell = totalRow.getCell(i);
+        cell.font = dataRowStyle.font;
+        cell.border = dataRowStyle.border;
+      }
     }
 
-    // Grand total row
+    // Grand total row - bold and larger
     const grandTotalRow = worksheet.addRow(['TOTAL:', `GHC ${grandTotal.toFixed(2)}`, '', '', '']);
-    grandTotalRow.getCell(1).font = { bold: true };
+    grandTotalRow.getCell(1).font = { bold: true, size: 11 };
+    grandTotalRow.getCell(2).font = { bold: true, size: 11 };
+    for (let i = 1; i <= 5; i++) {
+      const cell = grandTotalRow.getCell(i);
+      cell.border = {
+        top: { style: 'medium' as const },
+        bottom: { style: 'medium' as const },
+        left: { style: 'medium' as const },
+        right: { style: 'medium' as const },
+      };
+    }
 
     // Generate buffer
     const buffer = await workbook.xlsx.writeBuffer();
