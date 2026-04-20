@@ -203,10 +203,8 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Export failed:', error);
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes('computedAmount') || message.includes(' Unexpected end')) {
-      return NextResponse.json({ error: 'Export generation error - data format issue' }, { status: 500 });
-    }
-    return NextResponse.json({ error: 'Export failed' }, { status: 500 });
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('Error details:', errMsg);
+    return NextResponse.json({ error: `Export failed: ${errMsg}` }, { status: 500 });
   }
 }
