@@ -14,20 +14,12 @@ export default function Page() {
         }}
       />
 
-      {/* Logo and Branding */}
+      {/* Logo and Clerk Form */}
       <div className="relative z-10 flex min-h-screen flex-col items-center justify-center px-4">
         {/* Logo Mark */}
-        <div className="mb-8 flex h-20 w-20 items-center justify-center rounded-2xl bg-primary shadow-lg shadow-primary/25">
-          <span className="text-3xl font-bold text-primary-foreground">LW</span>
+        <div className="mb-8 flex h-16 w-16 items-center justify-center rounded-xl bg-primary shadow-lg shadow-primary/25">
+          <span className="text-xl font-bold text-primary-foreground">LW</span>
         </div>
-
-        {/* Brand Name */}
-        <h1 className="mb-2 text-4xl font-bold tracking-tight text-foreground">
-          LateWatch
-        </h1>
-        <p className="mb-12 text-center text-sm text-muted-foreground">
-          GRA Lateness Tracking System
-        </p>
 
         {/* Clerk SignUp Component */}
         <SignUp
@@ -47,7 +39,8 @@ export default function Page() {
             elements: {
               rootBox: 'mx-auto w-full max-w-[400px]',
               card: 'bg-card border border-border shadow-xl rounded-xl',
-              header: 'hidden',
+              headerTitle: 'hidden',
+              headerSubtitle: 'hidden',
               formButtonPrimary:
                 'bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg transition-colors',
               footer: 'hidden',
