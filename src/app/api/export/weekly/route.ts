@@ -146,62 +146,67 @@ export async function POST(request: NextRequest) {
       cell.value = titleText;
     }
 
+    // ── Clear all AMOUNT (C) and REASON (D) cells in day rows first ─────
+    // This removes any stale data from a previous export session
+    for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
+      const dataStart = DAY_DATA_START[dayIdx];
+      for (let staffIdx = 0; staffIdx < STAFF_ORDER.length; staffIdx++) {
+        const row = dataStart + staffIdx;
+        worksheet.getCell(row, 3).value = undefined;  // clear AMOUNT
+        worksheet.getCell(row, 4).value = undefined;  // clear REASON
+      }
+    }
+
     // ── Fill in TIME (col B), AMOUNT (col C), REASON (col D) ───────────
-    // Also mark HOLIDAY column (col E) for holiday days in the header row
     for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
       const dateStr = dayDates[dayIdx];
       const dataStart = DAY_DATA_START[dayIdx];
       const headerRow = DAY_HEADER_ROW[dayIdx];
       const d = parseISO(dateStr);
 
-      // Check if this is a weekday holiday (not a weekend day)
       const isWeekdayHoliday = !isWeekend(d) && holidaySet.has(dateStr);
 
-      // Mark HOLIDAY in col E at the header row (spans merged cells below)
+      // Holiday cell (col E) — write in header row; the merge spans all staff rows
       const holidayCell = worksheet.getCell(headerRow, 5);
+      holidayCell.value = isWeekdayHoliday ? 'HOLIDAY' : '';
       if (isWeekdayHoliday) {
-        holidayCell.value = 'HOLIDAY';
-      } else {
-        holidayCell.value = '';
+        holidayCell.alignment = { horizontal: 'center', vertical: 'center' };
       }
 
-      // Fill in each staff row for this day
       for (let staffIdx = 0; staffIdx < STAFF_ORDER.length; staffIdx++) {
         const row = dataStart + staffIdx;
         const staffId = orderedStaff[staffIdx].id;
         const entry = staffId ? entryByStaff[staffId] : null;
         const amount = entry ? parseFloat(String(entry.computedAmount || '0')) : 0;
 
-        // TIME (col 2) — write as time value so Excel formats it
+        // TIME (col 2)
         const timeCell = worksheet.getCell(row, 2);
         if (entry?.arrivalTime) {
-          // Parse "HH:MM" and create a JS Date for the time portion
           const [hours, minutes] = entry.arrivalTime.split(':').map(Number);
-          const timeDate = new Date(2000, 0, 1, hours, minutes); // noon to avoid DST issues
+          const timeDate = new Date(2000, 0, 1, hours, minutes);
           timeCell.value = timeDate;
-          timeCell.numFmt = 'h:mm AM/PM';  // "8:41 AM" format
+          timeCell.numFmt = 'h:mm AM/PM';
         } else {
-          timeCell.value = '';
+          timeCell.value = undefined;
         }
 
-        // AMOUNT (col 3) — numeric, formatted as "GHC #,##0.00"
+        // AMOUNT (col 3)
         const amountCell = worksheet.getCell(row, 3);
         if (amount > 0) {
           amountCell.value = amount;
           amountCell.numFmt = '"GHC "#,##0.00';
-        } else {
-          amountCell.value = '';
         }
+        // If amount is 0, leave it cleared (undefined) from the pre-clear above
 
         // REASON (col 4)
         const reasonCell = worksheet.getCell(row, 4);
-        reasonCell.value = entry?.reason || '';
+        reasonCell.value = entry?.reason || undefined;
       }
     }
 
     // ── Save & return ───────────────────────────────────────────────────
-    // DO NOT touch B95:B110 — those SUM formulas are preserved from template
-    const buffer = await workbook.xlsx.writeBuffer();
+    // B95:B110 SUM formulas are preserved from template — they auto-calculate
+    // when AMOUNT cells (col C) are populated with real numbers above
 
     // Audit log (non-blocking)
     try {
