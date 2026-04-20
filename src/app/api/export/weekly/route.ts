@@ -207,6 +207,7 @@ export async function POST(request: NextRequest) {
     // ── Save & return ───────────────────────────────────────────────────
     // B95:B110 SUM formulas are preserved from template — they auto-calculate
     // when AMOUNT cells (col C) are populated with real numbers above
+    const buffer = await workbook.xlsx.writeBuffer();
 
     // Audit log (non-blocking)
     try {
