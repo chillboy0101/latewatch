@@ -175,7 +175,7 @@ export async function GET(request: NextRequest) {
 
     const notifications: Notification[] = events.map(event =>
       formatNotification(event, readIds.has(event.id))
-    ;
+    );
 
     // ─── System-level alerts ──────────────────────────────────────────
     const todayStr = format(new Date(), 'yyyy-MM-dd');
