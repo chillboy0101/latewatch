@@ -7,6 +7,7 @@ import ExcelJS from 'exceljs';
 import { currentUser } from '@clerk/nextjs/server';
 import { format, parseISO, isWeekend } from 'date-fns';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 export async function POST(request: NextRequest) {
   try {
