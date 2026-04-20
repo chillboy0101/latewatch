@@ -112,8 +112,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ── Load template workbook ─────────────────────────────────────────
-    const templatePath = path.join(process.cwd(), 'public', 'lateness-book.xlsx');
+    // ── Load template workbook from src/ directory (available at runtime on server) ──
+    const __dirname = path.dirname(fileURLToPath(import.meta.url));
+    const templatePath = path.join(__dirname, '..', '..', 'lateness-book.xlsx');
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(templatePath);
     const worksheet = workbook.getWorksheet('WEEK 4') || workbook.getWorksheet('WEEK 1');
