@@ -1,7 +1,7 @@
 // app/api/export/weekly/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { latenessEntry, staff as staffTable, workCalendar, auditEvent } from '@/db/schema';
+import { latenessEntry, workCalendar, auditEvent } from '@/db/schema';
 import { and, gte, lte, eq } from 'drizzle-orm';
 import ExcelJS from 'exceljs';
 import { currentUser } from '@clerk/nextjs/server';
@@ -61,6 +61,15 @@ export async function POST(request: NextRequest) {
     for (const entry of entries) {
       if (!entryMap[entry.date]) entryMap[entry.date] = {};
       entryMap[entry.date][entry.staffId] = entry;
+    }
+
+    // Helper: format time string "HH:MM" to "H:MM AM/PM"
+    function formatTime(time: string): string {
+      if (!time) return '';
+      const [hours, minutes] = time.split(':').map(Number);
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      const displayH = hours % 12 || 12;
+      return `${displayH}:${minutes.toString().padStart(2, '0')} ${ampm}`;
     }
 
     // Create Excel workbook
@@ -166,15 +175,6 @@ export async function POST(request: NextRequest) {
     // Grand total row
     const grandTotalRow = worksheet.addRow(['TOTAL:', `GHC ${grandTotal.toFixed(2)}`, '', '', '']);
     grandTotalRow.getCell(1).font = { bold: true };
-
-    // Helper: format time string "HH:MM" to "H:MM AM/PM"
-    function formatTime(time: string): string {
-      if (!time) return '';
-      const [hours, minutes] = time.split(':').map(Number);
-      const ampm = hours >= 12 ? 'PM' : 'AM';
-      const displayH = hours % 12 || 12;
-      return `${displayH}:${minutes.toString().padStart(2, '0')} ${ampm}`;
-    }
 
     // Generate buffer
     const buffer = await workbook.xlsx.writeBuffer();

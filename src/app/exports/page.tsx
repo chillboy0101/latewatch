@@ -34,6 +34,7 @@ export default function ExportsPage() {
   const [monthlyTotal, setMonthlyTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState<'weekly' | 'monthly' | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchExportData = useCallback(async () => {
     setLoading(true);
@@ -143,6 +144,7 @@ export default function ExportsPage() {
 
   async function handleWeeklyExport() {
     setExporting('weekly');
+    setError(null);
     try {
       const week = weekSummaries[selectedWeekIdx];
       if (!week) return;
@@ -156,17 +158,23 @@ export default function ExportsPage() {
         }),
       });
 
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `Lateness_${week.weekStart}_${week.weekEnd}.xlsx`;
-        a.click();
-        window.URL.revokeObjectURL(url);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Export failed (${response.status})`);
       }
-    } catch (error) {
-      console.error('Export failed:', error);
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Lateness_${week.weekStart}_${week.weekEnd}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+      setError(err instanceof Error ? err.message : 'Export failed');
     } finally {
       setExporting(null);
     }
@@ -174,6 +182,7 @@ export default function ExportsPage() {
 
   async function handleMonthlyExport() {
     setExporting('monthly');
+    setError(null);
     try {
       const year = selectedMonth.getFullYear();
       const month = selectedMonth.getMonth();
@@ -184,17 +193,23 @@ export default function ExportsPage() {
         body: JSON.stringify({ year, month }),
       });
 
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `Lateness_Monthly_${year}_${month + 1}.xlsx`;
-        a.click();
-        window.URL.revokeObjectURL(url);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Export failed (${response.status})`);
       }
-    } catch (error) {
-      console.error('Export failed:', error);
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Lateness_Monthly_${year}_${month + 1}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+      setError(err instanceof Error ? err.message : 'Export failed');
     } finally {
       setExporting(null);
     }
@@ -298,6 +313,9 @@ export default function ExportsPage() {
                   )}
                   {exporting === 'weekly' ? 'Generating...' : 'Download Weekly Excel'}
                 </Button>
+                {error && (
+                  <p className="text-sm text-danger text-center">{error}</p>
+                )}
               </div>
             )}
           </div>
