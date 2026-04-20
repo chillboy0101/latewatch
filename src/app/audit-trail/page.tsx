@@ -254,14 +254,14 @@ export default function AuditTrailPage() {
               type="date"
               value={filters.startDate}
               onChange={(e) => { setFilters({ ...filters, startDate: e.target.value }); setCurrentPage(1); }}
-              className="h-9 w-[160px] pr-12"
+              className="h-9 w-[180px] pr-10"
             />
             <span className="text-xs text-muted-foreground shrink-0">To</span>
             <Input
               type="date"
               value={filters.endDate}
               onChange={(e) => { setFilters({ ...filters, endDate: e.target.value }); setCurrentPage(1); }}
-              className="h-9 w-[160px] pr-12"
+              className="h-9 w-[180px] pr-10"
             />
           </div>
           {hasActiveFilters && (
