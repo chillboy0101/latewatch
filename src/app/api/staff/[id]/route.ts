@@ -98,11 +98,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
     }
 
-    // Soft-delete: mark inactive rather than destroying data
-    const [updated] = await db.update(staff)
-      .set({ active: false, updatedAt: new Date() })
-      .where(eq(staff.id, id))
-      .returning();
+    // Hard delete from database
+    await db.delete(staff).where(eq(staff.id, id));
 
     // Audit log
     const { auditEvent } = await import('@/db/schema');
@@ -122,7 +119,7 @@ export async function DELETE(
       entityId: id,
       action: 'DELETE',
       beforeJson: before,
-      afterJson: updated,
+      afterJson: null,
       actorUserId,
       actorEmail,
     });
