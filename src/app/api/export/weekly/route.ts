@@ -1,10 +1,11 @@
 // app/api/export/weekly/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { latenessEntry, staff as staffTable, auditEvent } from '@/db/schema';
-import { and, gte, lte } from 'drizzle-orm';
+import { latenessEntry, staff as staffTable, workCalendar, auditEvent } from '@/db/schema';
+import { and, gte, lte, eq } from 'drizzle-orm';
 import ExcelJS from 'exceljs';
 import { currentUser } from '@clerk/nextjs/server';
+import { format, addDays, parseISO, isWeekend } from 'date-fns';
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,6 +27,12 @@ export async function POST(request: NextRequest) {
       }
     } catch { /* continue */ }
 
+    // Fetch ALL active staff in alphabetical order
+    const allStaff = await db.query.staff.findMany({
+      where: (s, { eq }) => eq(s.active, true),
+      orderBy: (s, { asc }) => [asc(s.fullName)],
+    });
+
     // Fetch all entries for the week
     const entries = await db.query.latenessEntry.findMany({
       where: (entry, { and, gte, lte }) =>
@@ -36,49 +43,138 @@ export async function POST(request: NextRequest) {
       with: {
         staff: true,
       },
-      orderBy: (entry, { asc }) => [asc(entry.date), asc(entry.staffId)],
     });
+
+    // Fetch holidays for the week
+    const holidays = await db.query.workCalendar.findMany({
+      where: (cal, { and, gte, lte, eq }) =>
+        and(
+          gte(cal.date, weekStart),
+          lte(cal.date, weekEnd),
+          eq(cal.isHoliday, true)
+        ),
+    });
+    const holidaySet = new Set(holidays.filter(h => !h.isRemoved).map(h => h.date));
+
+    // Group entries by date and staffId for fast lookup
+    const entryMap: Record<string, Record<string, typeof entries[0]>> = {};
+    for (const entry of entries) {
+      if (!entryMap[entry.date]) entryMap[entry.date] = {};
+      entryMap[entry.date][entry.staffId] = entry;
+    }
 
     // Create Excel workbook
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Lateness Book');
 
-    // Add headers
+    // Set column widths to match CSV structure
     worksheet.columns = [
       { header: 'Name', key: 'name', width: 25 },
-      { header: 'Date', key: 'date', width: 12 },
-      { header: 'Arrival Time', key: 'time', width: 12 },
-      { header: 'Amount (GHC)', key: 'amount', width: 15 },
+      { header: 'Time', key: 'time', width: 12 },
+      { header: 'Amount', key: 'amount', width: 15 },
       { header: 'Reason', key: 'reason', width: 45 },
+      { header: 'Holiday', key: 'holiday', width: 15 },
     ];
 
-    // Style header
-    worksheet.getRow(1).fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FF2563EB' },
-    };
-    worksheet.getRow(1).font = { color: { argb: 'FFFFFFFF' }, bold: true };
-
-    // Add data
-    for (const entry of entries) {
-      worksheet.addRow({
-        name: entry.staff?.fullName || 'Unknown',
-        date: entry.date,
-        time: entry.arrivalTime || '',
-        amount: parseFloat(entry.computedAmount || '0'),
-        reason: entry.reason || '',
-      });
+    // Helper: generate date header row text like "MONDAY,23RD MARCH 2026"
+    function formatDateHeader(dateStr: string): string {
+      const d = parseISO(dateStr);
+      const dayName = format(d, 'EEEE').toUpperCase();
+      const dayNum = d.getDate();
+      const suffix = getOrdinalSuffix(dayNum);
+      const monthYear = format(d, 'MMMM yyyy').toUpperCase();
+      return `${dayName},${dayNum}${suffix} ${monthYear}`;
     }
 
-    // Add summary
-    const totalAmount = entries.reduce((sum, e) => sum + parseFloat(e.computedAmount || '0'), 0);
-    worksheet.addRow({});
-    const summaryRow = worksheet.addRow({
-      name: 'TOTAL',
-      amount: totalAmount,
-    });
-    summaryRow.font = { bold: true };
+    function getOrdinalSuffix(n: number): string {
+      if (n > 3 && n < 21) return 'TH';
+      switch (n % 10) {
+        case 1: return 'ST';
+        case 2: return 'ND';
+        case 3: return 'RD';
+        default: return 'TH';
+      }
+    }
+
+    // Collect all weekdays in the range
+    const weekdays: string[] = [];
+    let currentDate = parseISO(weekStart);
+    const endDate = parseISO(weekEnd);
+    while (currentDate <= endDate) {
+      if (!isWeekend(currentDate)) {
+        weekdays.push(format(currentDate, 'yyyy-MM-dd'));
+      }
+      currentDate = addDays(currentDate, 1);
+    }
+
+    // Track per-staff weekly totals
+    const staffTotals: Record<string, number> = {};
+    for (const s of allStaff) staffTotals[s.id] = 0;
+
+    // Generate sheet sections for each weekday
+    for (const dateStr of weekdays) {
+      // Date header row (merged cells - just text in first column)
+      const dateRow = worksheet.addRow([
+        formatDateHeader(dateStr), '', '', '', ''
+      ]);
+      dateRow.getCell(1).font = { bold: true };
+
+      // Column header row
+      worksheet.addRow(['NAME', 'TIME', 'AMOUNT', 'REASON', 'HOLIDAY']);
+
+      // Check if this is a holiday
+      const isHoliday = holidaySet.has(dateStr);
+
+      // All 15 staff rows
+      for (const s of allStaff) {
+        const entry = entryMap[dateStr]?.[s.id];
+        if (entry) {
+          staffTotals[s.id] += parseFloat(entry.computedAmount || '0');
+        }
+
+        worksheet.addRow([
+          s.fullName,
+          entry?.arrivalTime ? formatTime(entry.arrivalTime) : '',
+          entry && parseFloat(entry.computedAmount || '0') > 0 ? `GHC ${parseFloat(entry.computedAmount).toFixed(2)}` : '',
+          entry?.reason || '',
+          isHoliday ? 'HOLIDAY' : '',
+        ]);
+      }
+
+      // Spacer row
+      worksheet.addRow(['', '', '', '', '']);
+    }
+
+    // === WEEKLY TOTALS SECTION ===
+    // Header row
+    worksheet.addRow(['', '', '', '', '']);
+    const totalHeaderRow = worksheet.addRow(['NAME', 'TOTAL AMOUNT FOR THE WEEK', '', '', '']);
+    totalHeaderRow.getCell(1).font = { bold: true };
+
+    // Per-staff totals
+    let grandTotal = 0;
+    for (const s of allStaff) {
+      const total = staffTotals[s.id];
+      grandTotal += total;
+      worksheet.addRow([
+        s.fullName,
+        `GHC ${total.toFixed(2)}`,
+        '', '', ''
+      ]);
+    }
+
+    // Grand total row
+    const grandTotalRow = worksheet.addRow(['TOTAL:', `GHC ${grandTotal.toFixed(2)}`, '', '', '']);
+    grandTotalRow.getCell(1).font = { bold: true };
+
+    // Helper: format time string "HH:MM" to "H:MM AM/PM"
+    function formatTime(time: string): string {
+      if (!time) return '';
+      const [hours, minutes] = time.split(':').map(Number);
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      const displayH = hours % 12 || 12;
+      return `${displayH}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+    }
 
     // Generate buffer
     const buffer = await workbook.xlsx.writeBuffer();
@@ -89,7 +185,7 @@ export async function POST(request: NextRequest) {
       entityId: `weekly-${weekStart}-${weekEnd}`,
       action: 'EXPORT',
       beforeJson: null,
-      afterJson: { weekStart, weekEnd, totalAmount, entriesCount: entries.length },
+      afterJson: { weekStart, weekEnd, grandTotal, staffCount: allStaff.length },
       actorUserId,
       actorEmail,
     });
