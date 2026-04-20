@@ -167,9 +167,10 @@ export async function POST(request: NextRequest) {
       const isWeekdayHoliday = !isWeekend(d) && holidaySet.has(dateStr);
 
       // Holiday cell (col E) — write in header row; the merge spans all staff rows
-      const holidayCell = worksheet.getCell(headerRow, 5);
-      holidayCell.value = isWeekdayHoliday ? 'HOLIDAY' : '';
+      // Only set value and alignment when it IS a holiday — otherwise leave template cell untouched
       if (isWeekdayHoliday) {
+        const holidayCell = worksheet.getCell(headerRow, 5);
+        holidayCell.value = 'HOLIDAY';
         holidayCell.alignment = { horizontal: 'center' as any, vertical: 'center' as any };
       }
 
