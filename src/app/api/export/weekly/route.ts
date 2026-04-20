@@ -33,6 +33,10 @@ export async function POST(request: NextRequest) {
       orderBy: (s, { asc }) => [asc(s.fullName)],
     });
 
+    if (allStaff.length === 0) {
+      return NextResponse.json({ error: 'No active staff found' }, { status: 400 });
+    }
+
     // Fetch all entries for the week
     const entries = await db.query.latenessEntry.findMany({
       where: (entry, { and, gte, lte }) =>
@@ -137,14 +141,15 @@ export async function POST(request: NextRequest) {
       // All 15 staff rows
       for (const s of allStaff) {
         const entry = entryMap[dateStr]?.[s.id];
-        if (entry) {
-          staffTotals[s.id] += parseFloat(entry.computedAmount || '0');
+        const amount = entry ? parseFloat(String(entry.computedAmount || '0')) : 0;
+        if (entry && amount > 0) {
+          staffTotals[s.id] += amount;
         }
 
         worksheet.addRow([
           s.fullName,
           entry?.arrivalTime ? formatTime(entry.arrivalTime) : '',
-          entry && parseFloat(entry.computedAmount || '0') > 0 ? `GHC ${parseFloat(entry.computedAmount).toFixed(2)}` : '',
+          amount > 0 ? `GHC ${amount.toFixed(2)}` : '',
           entry?.reason || '',
           isHoliday ? 'HOLIDAY' : '',
         ]);
@@ -198,6 +203,10 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Export failed:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('computedAmount') || message.includes(' Unexpected end')) {
+      return NextResponse.json({ error: 'Export generation error - data format issue' }, { status: 500 });
+    }
     return NextResponse.json({ error: 'Export failed' }, { status: 500 });
   }
 }
