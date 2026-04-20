@@ -1,10 +1,11 @@
 // app/api/calendar/sync/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { workCalendar } from '@/db/schema';
+import { workCalendar, auditEvent } from '@/db/schema';
 import { fetchGhanaHolidaysForYear } from '@/lib/google-calendar';
 import { eq } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
+import { currentUser } from '@clerk/nextjs/server';
 
 export async function POST(request: NextRequest) {
   try {
@@ -79,6 +80,30 @@ export async function POST(request: NextRequest) {
 
     if (totalAdded > 0 || totalUpdated > 0) {
       publishRealtime('dashboard', 'invalidate', { reason: 'calendar' });
+    }
+
+    // Get current user for audit
+    let actorEmail = 'system';
+    let actorUserId: string | null = null;
+    try {
+      const user = await currentUser();
+      if (user) {
+        actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';
+        actorUserId = user.id;
+      }
+    } catch { /* continue */ }
+
+    // Audit log for bulk sync (summary entry)
+    if (totalAdded > 0) {
+      await db.insert(auditEvent).values({
+        entityType: 'calendar',
+        entityId: `sync-${Date.now()}`,
+        action: 'CREATE',
+        beforeJson: null,
+        afterJson: { years, totalAdded, totalUpdated, totalSkipped },
+        actorUserId,
+        actorEmail,
+      });
     }
 
     return NextResponse.json({

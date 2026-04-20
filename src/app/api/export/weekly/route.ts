@@ -1,9 +1,10 @@
 // app/api/export/weekly/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { latenessEntry, staff as staffTable } from '@/db/schema';
+import { latenessEntry, staff as staffTable, auditEvent } from '@/db/schema';
 import { and, gte, lte } from 'drizzle-orm';
 import ExcelJS from 'exceljs';
+import { currentUser } from '@clerk/nextjs/server';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,6 +14,17 @@ export async function POST(request: NextRequest) {
     if (!weekStart || !weekEnd) {
       return NextResponse.json({ error: 'Week start and end required' }, { status: 400 });
     }
+
+    // Get current user for audit
+    let actorEmail = 'system';
+    let actorUserId: string | null = null;
+    try {
+      const user = await currentUser();
+      if (user) {
+        actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';
+        actorUserId = user.id;
+      }
+    } catch { /* continue */ }
 
     // Fetch all entries for the week
     const entries = await db.query.latenessEntry.findMany({
@@ -70,6 +82,17 @@ export async function POST(request: NextRequest) {
 
     // Generate buffer
     const buffer = await workbook.xlsx.writeBuffer();
+
+    // Audit log
+    await db.insert(auditEvent).values({
+      entityType: 'export',
+      entityId: `weekly-${weekStart}-${weekEnd}`,
+      action: 'EXPORT',
+      beforeJson: null,
+      afterJson: { weekStart, weekEnd, totalAmount, entriesCount: entries.length },
+      actorUserId,
+      actorEmail,
+    });
 
     return new NextResponse(buffer, {
       headers: {

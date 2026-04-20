@@ -1,10 +1,11 @@
 // app/api/export/monthly/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { latenessEntry, staff as staffTable } from '@/db/schema';
+import { latenessEntry, staff as staffTable, auditEvent } from '@/db/schema';
 import { and, gte, lte } from 'drizzle-orm';
 import ExcelJS from 'exceljs';
 import { format, eachWeekOfInterval, startOfMonth, endOfMonth, addDays } from 'date-fns';
+import { currentUser } from '@clerk/nextjs/server';
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,6 +15,17 @@ export async function POST(request: NextRequest) {
     if (year === undefined || month === undefined) {
       return NextResponse.json({ error: 'Year and month required' }, { status: 400 });
     }
+
+    // Get current user for audit
+    let actorEmail = 'system';
+    let actorUserId: string | null = null;
+    try {
+      const user = await currentUser();
+      if (user) {
+        actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';
+        actorUserId = user.id;
+      }
+    } catch { /* continue */ }
 
     const monthStart = startOfMonth(new Date(year, month));
     const monthEnd = endOfMonth(new Date(year, month));
@@ -86,6 +98,17 @@ export async function POST(request: NextRequest) {
 
     // Generate buffer
     const buffer = await workbook.xlsx.writeBuffer();
+
+    // Audit log
+    await db.insert(auditEvent).values({
+      entityType: 'export',
+      entityId: `monthly-${year}-${month + 1}`,
+      action: 'EXPORT',
+      beforeJson: null,
+      afterJson: { year, month: month + 1, totalEntries, totalLate, totalAmount },
+      actorUserId,
+      actorEmail,
+    });
 
     return new NextResponse(buffer, {
       headers: {
