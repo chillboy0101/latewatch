@@ -52,7 +52,7 @@ export const workCalendar = pgTable('work_calendar', {
 export const auditEvent = pgTable('audit_event', {
   id: uuid('id').primaryKey().defaultRandom(),
   entityType: text('entity_type').notNull(),
-  entityId: uuid('entity_id').notNull(),
+  entityId: text('entity_id').notNull(),
   action: text('action').notNull(),
   beforeJson: jsonb('before_json'),
   afterJson: jsonb('after_json'),
@@ -71,3 +71,12 @@ export const templateVersion = pgTable('template_version', {
   uploadedBy: uuid('uploaded_by'),
   createdAt: timestamp('created_at').defaultNow(),
 });
+
+export const notificationRead = pgTable('notification_read', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  notificationId: text('notification_id').notNull(),
+  userId: text('user_id').notNull(),
+  readAt: timestamp('read_at').defaultNow(),
+}, (table) => [
+  unique().on(table.notificationId, table.userId),
+]);
