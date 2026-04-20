@@ -1,9 +1,10 @@
 // app/api/entries/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { latenessEntry, workCalendar, staff } from '@/db/schema';
-import { eq, and, gte, lte, asc } from 'drizzle-orm';
+import { latenessEntry, workCalendar, staff, auditEvent } from '@/db/schema';
+import { eq, and, gte, lte } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
+import { currentUser } from '@clerk/nextjs/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,6 +66,19 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Get current user for audit logging (optional — we still allow the save even if it fails)
+    let actorEmail = 'system';
+    let actorUserId: string | undefined = undefined;
+    try {
+      const user = await currentUser();
+      if (user) {
+        actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';
+        actorUserId = user.id;
+      }
+    } catch {
+      // continue without auth info
+    }
+
     const body = await request.json();
     const { date, entries } = body;
 
@@ -84,6 +98,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Fetch staff names for audit logging
+    const staffList = await db.select({ id: staff.id, fullName: staff.fullName }).from(staff);
+    const staffMap = new Map(staffList.map(s => [s.id, s.fullName]));
+
     const results = [];
 
     for (const entry of entries) {
@@ -93,6 +111,7 @@ export async function POST(request: NextRequest) {
 
       let result;
       if (existing) {
+        const before = { ...existing };
         [result] = await db.update(latenessEntry)
           .set({
             arrivalTime: entry.arrivalTime || null,
@@ -103,6 +122,20 @@ export async function POST(request: NextRequest) {
           })
           .where(eq(latenessEntry.id, existing.id))
           .returning();
+
+        // Audit log for update
+        await db.insert(auditEvent).values({
+          entityType: 'entry',
+          entityId: result.id,
+          action: 'UPDATE',
+          beforeJson: before,
+          afterJson: {
+            ...result,
+            staff: { fullName: staffMap.get(entry.staffId) || 'Unknown' },
+          },
+          actorUserId: actorUserId ?? null,
+          actorEmail,
+        });
       } else {
         [result] = await db.insert(latenessEntry).values({
           staffId: entry.staffId,
@@ -112,6 +145,20 @@ export async function POST(request: NextRequest) {
           computedAmount: entry.amount.toString(),
           reason: entry.reason,
         }).returning();
+
+        // Audit log for create
+        await db.insert(auditEvent).values({
+          entityType: 'entry',
+          entityId: result.id,
+          action: 'CREATE',
+          beforeJson: null,
+          afterJson: {
+            ...result,
+            staff: { fullName: staffMap.get(entry.staffId) || 'Unknown' },
+          },
+          actorUserId: actorUserId ?? null,
+          actorEmail,
+        });
       }
 
       results.push(result);

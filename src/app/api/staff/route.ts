@@ -1,9 +1,10 @@
 // app/api/staff/route.ts
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { staff } from '@/db/schema';
+import { staff, auditEvent } from '@/db/schema';
 import { asc, eq } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
+import { currentUser } from '@clerk/nextjs/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +35,18 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    let actorEmail = 'system';
+    let actorUserId: string | undefined = undefined;
+    try {
+      const user = await currentUser();
+      if (user) {
+        actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';
+        actorUserId = user.id;
+      }
+    } catch {
+      // continue without auth info
+    }
+
     const body = await request.json();
     const { fullName, department, unit } = body;
 
@@ -46,6 +59,16 @@ export async function POST(request: Request) {
       department,
       unit,
     }).returning();
+
+    await db.insert(auditEvent).values({
+      entityType: 'staff',
+      entityId: newStaff[0].id,
+      action: 'CREATE',
+      beforeJson: null,
+      afterJson: newStaff[0],
+      actorUserId: actorUserId ?? null,
+      actorEmail,
+    });
 
     publishRealtime('dashboard', 'invalidate', { reason: 'staff' });
 

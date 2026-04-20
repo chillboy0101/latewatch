@@ -19,15 +19,52 @@ interface NotificationContextType {
   fetchNotifications: () => Promise<void>;
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
+  dismissNotification: (id: string) => void;
+  clearAllNotifications: () => void;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
+
+// ─── localStorage helpers ───────────────────────────────────────────────────
+
+function getDismissedIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    return new Set<string>(JSON.parse(localStorage.getItem('dismissedNotificationIds') || '[]'));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveDismissedIds(ids: Set<string>) {
+  localStorage.setItem('dismissedNotificationIds', JSON.stringify(Array.from(ids)));
+}
+
+function getReadIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    return new Set<string>(JSON.parse(localStorage.getItem('readNotificationIds') || '[]'));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveReadIds(ids: Set<string>) {
+  localStorage.setItem('readNotificationIds', JSON.stringify(Array.from(ids)));
+}
+
+// ─── Provider ───────────────────────────────────────────────────────────────
+
+const POLL_INTERVAL = 120_000; // 2 minutes – plenty for a dashboard app
+const DEBOUNCE_MS = 3_000;    // debounce rapid Ably/SSE invalidations
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
   const fetchingRef = useRef(false);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ─── Core fetch ─────────────────────────────────────────────────────
   const fetchNotifications = useCallback(async () => {
     // Prevent concurrent fetches
     if (fetchingRef.current) return;
@@ -41,19 +78,19 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
       const data = await response.json();
       const nextNotifications = Array.isArray(data?.notifications) ? data.notifications : null;
-      if (!nextNotifications) {
-        return;
-      }
+      if (!nextNotifications) return;
 
-      const readIdsRaw = typeof window !== 'undefined'
-        ? localStorage.getItem('readNotificationIds') || '[]'
-        : '[]';
-      const readIds = new Set<string>(JSON.parse(readIdsRaw));
+      const readIds = getReadIds();
+      const dismissedIds = getDismissedIds();
 
-      const updated = nextNotifications.map((n: Notification) => ({
-        ...n,
-        read: readIds.has(n.id) && n.entityType !== 'system',
-      }));
+      // Filter out dismissed notifications and apply read state.
+      // System notifications also respect the read/dismiss state now.
+      const updated = nextNotifications
+        .filter((n: Notification) => !dismissedIds.has(n.id))
+        .map((n: Notification) => ({
+          ...n,
+          read: readIds.has(n.id),
+        }));
 
       setNotifications(updated);
     } catch (error) {
@@ -63,7 +100,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Initialize notifications once
+  // Debounced fetch for realtime events (prevents rapid flickering)
+  const debouncedFetch = useCallback(() => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      fetchNotifications();
+    }, DEBOUNCE_MS);
+  }, [fetchNotifications]);
+
+  // ─── Initialize once ─────────────────────────────────────────────────
   useEffect(() => {
     if (!isInitialized) {
       setIsInitialized(true);
@@ -71,13 +116,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
   }, [isInitialized, fetchNotifications]);
 
-  // Poll every 30 seconds
+  // ─── Poll (long interval – just a safety net) ────────────────────────
   useEffect(() => {
-    const interval = setInterval(fetchNotifications, 30000);
+    const interval = setInterval(fetchNotifications, POLL_INTERVAL);
     return () => clearInterval(interval);
   }, [fetchNotifications]);
 
-  // Realtime refresh via Ably (Vercel-safe). Falls back to polling if Ably isn't configured.
+  // ─── Realtime via Ably ────────────────────────────────────────────────
   useEffect(() => {
     let cleanup: (() => void) | undefined;
 
@@ -85,48 +130,72 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       try {
         const ably = await getAblyRealtime();
         const channel = ably.channels.get('latewatch:dashboard');
-        const onInvalidate = () => fetchNotifications();
+        const onInvalidate = () => debouncedFetch();
         await channel.subscribe('invalidate', onInvalidate);
         cleanup = () => {
           channel.unsubscribe('invalidate', onInvalidate);
         };
       } catch {
-        // ignore
+        // Ably not configured – rely on polling
       }
     })();
 
-    return () => cleanup?.();
-  }, [fetchNotifications]);
+    return () => {
+      cleanup?.();
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, [debouncedFetch]);
 
+  // ─── Mark single notification as read ─────────────────────────────────
   const markAsRead = useCallback((id: string) => {
-    const notif = notifications.find((n) => n.id === id);
-    if (notif?.entityType === 'system') {
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-      );
-      return;
-    }
-
-    const readIds = new Set<string>(JSON.parse(localStorage.getItem('readNotificationIds') || '[]'));
+    const readIds = getReadIds();
     readIds.add(id);
-    localStorage.setItem('readNotificationIds', JSON.stringify(Array.from(readIds)));
+    saveReadIds(readIds);
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read: true } : n))
     );
-  }, [notifications]);
+  }, []);
 
+  // ─── Mark all as read ─────────────────────────────────────────────────
   const markAllAsRead = useCallback(() => {
-    const nonSystemIds = notifications.filter((n) => n.entityType !== 'system').map((n) => n.id);
-    const existingIds = new Set<string>(JSON.parse(localStorage.getItem('readNotificationIds') || '[]'));
-    nonSystemIds.forEach(id => existingIds.add(id));
-    localStorage.setItem('readNotificationIds', JSON.stringify(Array.from(existingIds)));
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  }, [notifications]);
+    const readIds = getReadIds();
+    setNotifications((prev) => {
+      prev.forEach((n) => readIds.add(n.id));
+      saveReadIds(readIds);
+      return prev.map((n) => ({ ...n, read: true }));
+    });
+  }, []);
+
+  // ─── Dismiss one notification (removes from list + persists) ──────────
+  const dismissNotification = useCallback((id: string) => {
+    const dismissedIds = getDismissedIds();
+    dismissedIds.add(id);
+    saveDismissedIds(dismissedIds);
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  }, []);
+
+  // ─── Clear all notifications ─────────────────────────────────────────
+  const clearAllNotifications = useCallback(() => {
+    setNotifications((prev) => {
+      const dismissedIds = getDismissedIds();
+      prev.forEach((n) => dismissedIds.add(n.id));
+      saveDismissedIds(dismissedIds);
+      return [];
+    });
+  }, []);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
-    <NotificationContext.Provider value={{ notifications, unreadCount, fetchNotifications, markAsRead, markAllAsRead }}>
+    <NotificationContext.Provider value={{
+      notifications,
+      unreadCount,
+      fetchNotifications,
+      markAsRead,
+      markAllAsRead,
+      dismissNotification,
+      clearAllNotifications,
+    }}>
       {children}
     </NotificationContext.Provider>
   );

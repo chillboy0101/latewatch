@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Plus, Search, UserCheck, UserX, Pencil, Loader2 } from 'lucide-react';
+import { Plus, Search, UserCheck, UserX, Pencil, Loader2, Trash2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -29,6 +29,7 @@ export default function StaffPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [submitMessage, setSubmitMessage] = useState('');
 
   // Add form state
@@ -113,6 +114,21 @@ export default function StaffPage() {
       }
     } catch (error) {
       console.error('Failed to update staff:', error);
+    }
+  };
+
+  const handleDeleteStaff = async (id: string, name: string) => {
+    if (!confirm(`Remove "${name}" from active staff? They will be marked inactive.`)) return;
+    setDeletingId(id);
+    try {
+      const response = await fetch(`/api/staff/${id}`, { method: 'DELETE' });
+      if (response.ok) {
+        setStaff((prev) => prev.filter((s) => s.id !== id));
+      }
+    } catch (error) {
+      console.error('Failed to delete staff:', error);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -327,6 +343,18 @@ export default function StaffPage() {
                                   title={member.active ? 'Deactivate' : 'Activate'}
                                 >
                                   {member.active ? <UserX className="h-3.5 w-3.5 text-muted-foreground" /> : <UserCheck className="h-3.5 w-3.5 text-success" />}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 hover:text-danger"
+                                  onClick={() => handleDeleteStaff(member.id, member.fullName)}
+                                  disabled={deletingId === member.id}
+                                  title="Remove staff member"
+                                >
+                                  {deletingId === member.id
+                                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    : <Trash2 className="h-3.5 w-3.5" />}
                                 </Button>
                               </div>
                             </td>

@@ -1,8 +1,8 @@
 // app/api/notifications/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { auditEvent, latenessEntry, staff } from '@/db/schema';
-import { desc, count, gte, and, eq, sql } from 'drizzle-orm';
+import { auditEvent, latenessEntry, staff, workCalendar } from '@/db/schema';
+import { desc, count, gte, eq, and } from 'drizzle-orm';
 import { format, subDays } from 'date-fns';
 
 export const dynamic = 'force-dynamic';
@@ -128,7 +128,10 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url);
     const limit = parseInt(url.searchParams.get('limit') || '20');
 
-    // Fetch recent audit events
+    // Fetch recent audit events (last 7 days only for relevance)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
     const events = await db.select({
       id: auditEvent.id,
       entityType: auditEvent.entityType,
@@ -141,52 +144,62 @@ export async function GET(request: NextRequest) {
       timestamp: auditEvent.timestamp,
     })
     .from(auditEvent)
+    .where(gte(auditEvent.timestamp, sevenDaysAgo))
     .orderBy(desc(auditEvent.timestamp))
     .limit(limit);
 
     const notifications: Notification[] = events.map(formatNotification);
 
-    // Add system-level alerts
-    const today = format(new Date(), 'yyyy-MM-dd');
+    // ─── System-level alerts ──────────────────────────────────────────
     const todayStr = format(new Date(), 'yyyy-MM-dd');
-
-    // Check if today's entries have been recorded
-    const todayEntries = await db.select({ id: latenessEntry.id })
-      .from(latenessEntry)
-      .where(eq(latenessEntry.date, todayStr));
-
-    // Get total staff count
-    const staffCountResult = await db.select({ count: count() }).from(staff);
-    const staffCount = Number(staffCountResult[0]?.count || 0);
-
+    const dayOfWeek = new Date().getDay(); // 0=Sun, 1=Mon ... 6=Sat
     const currentHour = new Date().getHours();
+    const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
 
-    // Alert: entries not recorded today if it's past 10 AM on a weekday
-    const dayOfWeek = new Date().getDay();
-    if (dayOfWeek >= 1 && dayOfWeek <= 5 && currentHour >= 10 && todayEntries.length === 0) {
-      notifications.push({
-        id: 'alert-no-entries-today',
-        title: 'Entries Not Recorded',
-        message: "Today's lateness entries have not been recorded yet",
-        time: 'Action needed',
-        read: false,
-        type: 'alert',
-        entityType: 'system',
-        entityId: 'today-entries',
-        action: 'ALERT',
-      });
+    // Check if today is a holiday
+    let todayIsHoliday = false;
+    if (isWeekday) {
+      const [holidayCheck] = await db.select({ id: workCalendar.id })
+        .from(workCalendar)
+        .where(and(eq(workCalendar.date, todayStr), eq(workCalendar.isHoliday, true)));
+      todayIsHoliday = !!holidayCheck;
     }
 
-    // Alert: check for high penalty amounts this week
-    const weekStart = format(subDays(new Date(), new Date().getDay() === 0 ? 6 : new Date().getDay() - 1), 'yyyy-MM-dd');
+    // Alert: entries not recorded today (only on weekdays, after 10 AM, not a holiday)
+    if (isWeekday && !todayIsHoliday && currentHour >= 10) {
+      const todayEntries = await db.select({ id: latenessEntry.id })
+        .from(latenessEntry)
+        .where(eq(latenessEntry.date, todayStr))
+        .limit(1);
+
+      if (todayEntries.length === 0) {
+        notifications.unshift({
+          id: `system-no-entries-${todayStr}`,
+          title: 'Entries Not Recorded',
+          message: "Today's lateness entries have not been recorded yet",
+          time: 'Action needed',
+          read: false,
+          type: 'alert',
+          entityType: 'system',
+          entityId: 'today-entries',
+          action: 'ALERT',
+        });
+      }
+    }
+
+    // Alert: high penalty this week (> GHC 500)
+    const weekStart = format(
+      subDays(new Date(), dayOfWeek === 0 ? 6 : dayOfWeek - 1),
+      'yyyy-MM-dd'
+    );
     const weekEntries = await db.select({ computedAmount: latenessEntry.computedAmount })
       .from(latenessEntry)
       .where(gte(latenessEntry.date, weekStart));
     const weekTotal = weekEntries.reduce((sum, e) => sum + parseFloat(e.computedAmount || '0'), 0);
 
     if (weekTotal > 500) {
-      notifications.push({
-        id: 'alert-high-penalties',
+      notifications.unshift({
+        id: `system-high-penalties-${weekStart}`,
         title: 'High Penalty Amount',
         message: `This week's penalties total GHC ${weekTotal.toLocaleString()}`,
         time: 'This week',
@@ -198,7 +211,27 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Deduplicate system alerts (keep at top)
+    // Alert: no active staff at all
+    const staffCountResult = await db.select({ count: count() }).from(staff).where(eq(staff.active, true));
+    const activeStaffCount = Number(staffCountResult[0]?.count || 0);
+
+    if (activeStaffCount === 0) {
+      // Use week-based suffix so this resets if dismissed before adding staff
+      const weekSuffix = format(new Date(), 'yyyy-ww');
+      notifications.unshift({
+        id: `system-no-staff-${weekSuffix}`,
+        title: 'No Active Staff',
+        message: 'Add staff members before you can record lateness entries',
+        time: 'Setup needed',
+        read: false,
+        type: 'warning',
+        entityType: 'system',
+        entityId: 'staff-setup',
+        action: 'ALERT',
+      });
+    }
+
+    // Deduplicate (keep first occurrence)
     const seen = new Set<string>();
     const deduped = notifications.filter((n) => {
       if (seen.has(n.id)) return false;
@@ -220,15 +253,11 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Mark notifications as read
+// POST - Mark notifications as read (server-side acknowledgement)
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { readIds } = body;
-
-    // We store read state in localStorage on the client side
-    // This endpoint confirms the operation and can be extended
-    // to store read state server-side if needed in the future
     return NextResponse.json({ success: true, readCount: readIds?.length || 0 });
   } catch (error) {
     console.error('Failed to mark notifications:', error);
