@@ -52,17 +52,13 @@ export async function POST(request: NextRequest) {
     const monthStartDate = startOfMonth(new Date(year, month));
     const monthEnd = endOfMonth(new Date(year, month));
 
-    // Find all Mon-Fri weeks that have at least one day in the month
+    // Find weeks that have at least one day in the month
     const weeks: { weekStart: Date; weekEnd: Date }[] = [];
     let cursor = new Date(monthStartDate);
-    // Advance to first Monday at or before month start
     while (cursor.getDay() !== 1) cursor = addDays(cursor, -1);
-
     while (cursor <= monthEnd) {
-      // Cap the week's Friday to the last day of the month
       const rawWeekEnd = addDays(cursor, 4);
       const weekEnd = rawWeekEnd > monthEnd ? monthEnd : rawWeekEnd;
-      // Only include this week if it has at least one day in the target month
       if (weekEnd >= monthStartDate) {
         weeks.push({ weekStart: new Date(cursor), weekEnd });
       }
@@ -78,7 +74,7 @@ export async function POST(request: NextRequest) {
 
     const templatePath = path.join(process.cwd(), 'src', 'lateness-book.xlsx');
 
-    // Single workbook — one sheet per week, all using the full template
+    // Single workbook — one sheet per week
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'LateWatch';
     workbook.created = new Date();
@@ -115,19 +111,19 @@ export async function POST(request: NextRequest) {
       const entryByStaff: Record<string, typeof entries[0]> = {};
       for (const e of entries) entryByStaff[e.staffId] = e;
 
-      // Generate day dates for the week — cap at monthEnd to avoid next-month dates
-      // This generates 0-5 dates depending on where the month falls in the week
+      // Generate day dates — stop at month boundary
       const dayDates: string[] = [];
       for (let i = 0; i < 5; i++) {
         const d = new Date(weekStart);
         d.setDate(d.getDate() + i);
-        if (d > monthEnd) break;   // stop at month boundary (last week may be partial)
+        if (d > monthEnd) break;
         dayDates.push(format(d, 'yyyy-MM-dd'));
       }
 
       // Update date title rows
       for (let i = 0; i < 5; i++) {
         const dateStr = dayDates[i];
+        if (!dateStr) continue;
         const d = parseISO(dateStr);
         const dayName = format(d, 'EEEE').toUpperCase();
         const dayNum = d.getDate();
@@ -150,6 +146,7 @@ export async function POST(request: NextRequest) {
       // Fill in data
       for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
         const dateStr = dayDates[dayIdx];
+        if (!dateStr) continue;
         const dataStart = DAY_DATA_START[dayIdx];
         const headerRow = DAY_HEADER_ROW[dayIdx];
         const d = parseISO(dateStr);
@@ -168,9 +165,10 @@ export async function POST(request: NextRequest) {
           const amount = entry ? parseFloat(String(entry.computedAmount ?? '0')) : 0;
 
           if (entry?.arrivalTime) {
-            const timeParts = String(entry.arrivalTime).split(':');
-            const hours = parseInt(timeParts[0] || '0', 10);
-            const minutes = parseInt(timeParts[1] || '0', 10);
+            const timeStr = String(entry.arrivalTime);
+            const parts = timeStr.split(':');
+            const hours = parseInt(parts[0] || '0', 10);
+            const minutes = parseInt(parts[1] || '0', 10);
             const tc = ws.getCell(row, 2);
             tc.value = new Date(2000, 0, 1, hours, minutes);
             tc.numFmt = 'h:mm AM/PM';
@@ -184,47 +182,21 @@ export async function POST(request: NextRequest) {
             ac.numFmt = '"GHC "#,##0.00';
           }
 
-          ws.getCell(row, 4).value = entry?.reason || undefined;
+          ws.getCell(row, 4).value = entry?.reason ?? undefined;
         }
       }
 
-      // Copy the filled worksheet (with full formatting) into the final workbook
-      const srcSheet = ws;
-      const newSheet = workbook.addWorksheet(srcSheet.name);
-
-      // Copy every row from the source sheet's model
-      const srcRows: any[] = (srcSheet as any)._rows || [];
-      for (let ri = 0; ri < srcRows.length; ri++) {
-        const srcRow = srcRows[ri];
-        if (!srcRow) continue;
-        const destRow = newSheet.getRow(ri + 1);
-        const srcCells: any[] = srcRow._cells || [];
-        for (let ci = 0; ci < srcCells.length; ci++) {
-          const srcCell = srcCells[ci];
-          if (!srcCell) continue;
-          const destCell = destRow.getCell(ci + 1);
-          destCell.value = srcCell.value;
-          if (srcCell.numFmt) destCell.numFmt = srcCell.numFmt;
-          if (srcCell.font) destCell.font = srcCell.font;
-          if (srcCell.fill) destCell.fill = srcCell.fill;
-          if (srcCell.border) destCell.border = srcCell.border;
-          if (srcCell.alignment) destCell.alignment = srcCell.alignment;
-        }
-        if (srcRow.height) destRow.height = srcRow.height;
-      }
-
-      // Copy column widths
-      for (let ci = 0; ci < 5; ci++) {
-        const col = srcSheet.getColumn(ci + 1);
-        if (col.width) newSheet.getColumn(ci + 1).width = col.width;
-      }
-
-      // Copy merge ranges — _merges is a Record, so use Object.keys
-      const mergeKeys = Object.keys((srcSheet as any)._merges || {});
-      for (const mergeKey of mergeKeys) {
-        const range = (srcSheet as any)._merges[mergeKey];
-        const { top, left, bottom, right } = range.model || range;
-        newSheet.mergeCells(top, left, bottom, right);
+      // Add the filled worksheet directly to the final workbook
+      // (keep template worksheet in its own workbook; xlsx.load doesn't support cross-workbook sheet copy)
+      // Use workbook.addSheet by cloning from the weekBook via buffer round-trip
+      const weekBuf = await weekBook.xlsx.writeBuffer();
+      const tmpBook = new ExcelJS.Workbook();
+      await tmpBook.xlsx.load(Buffer.from(weekBuf as ArrayBuffer).buffer);
+      const srcSheet = tmpBook.getWorksheet(ws.name);
+      if (srcSheet) {
+        const newSheet = workbook.addWorksheet(srcSheet.name);
+        // Copy model directly (preserves all styling including empty styled cells)
+        (newSheet as any).model = JSON.parse(JSON.stringify((srcSheet as any).model));
       }
     }
 
