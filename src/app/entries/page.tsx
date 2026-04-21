@@ -295,9 +295,10 @@ export default function EntriesPage() {
                 <Calendar
                   mode="single"
                   selected={selectedDate}
-                  onSelect={(date) => date && handleDateChange(date)}
-                  disabled={{ before: new Date(2020, 0, 1), after: new Date() }}
-                  initialFocus
+                  onSelect={(date) => {
+                    if (date) handleDateChange(date);
+                  }}
+                  hidden={{ after: new Date() }}
                 />
               </PopoverContent>
             </Popover>
