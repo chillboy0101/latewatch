@@ -52,12 +52,17 @@ export async function POST(request: NextRequest) {
     const monthStartDate = startOfMonth(new Date(year, month));
     const monthEnd = endOfMonth(new Date(year, month));
 
-    // Find all Mon-Fri weeks in the month
+    // Find all Mon-Fri weeks that have at least one day in the month
     const weeks: { weekStart: Date; weekEnd: Date }[] = [];
     let cursor = new Date(monthStartDate);
-    while (cursor.getDay() !== 1) cursor = addDays(cursor, 1);
+    // Advance to first Monday at or before month start
+    while (cursor.getDay() !== 1) cursor = addDays(cursor, -1);
+
     while (cursor <= monthEnd) {
-      const weekEnd = addDays(cursor, 4);
+      // Cap the week's Friday to the last day of the month
+      const rawWeekEnd = addDays(cursor, 4);
+      const weekEnd = rawWeekEnd > monthEnd ? monthEnd : rawWeekEnd;
+      // Only include this week if it has at least one day in the target month
       if (weekEnd >= monthStartDate) {
         weeks.push({ weekStart: new Date(cursor), weekEnd });
       }
@@ -110,11 +115,13 @@ export async function POST(request: NextRequest) {
       const entryByStaff: Record<string, typeof entries[0]> = {};
       for (const e of entries) entryByStaff[e.staffId] = e;
 
-      // Generate 5 day dates from Monday of this week
+      // Generate day dates for the week — cap at monthEnd to avoid next-month dates
+      // This generates 0-5 dates depending on where the month falls in the week
       const dayDates: string[] = [];
       for (let i = 0; i < 5; i++) {
         const d = new Date(weekStart);
         d.setDate(d.getDate() + i);
+        if (d > monthEnd) break;   // stop at month boundary (last week may be partial)
         dayDates.push(format(d, 'yyyy-MM-dd'));
       }
 
