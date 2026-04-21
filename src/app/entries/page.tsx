@@ -6,8 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card } from '@/components/ui/card';
-import { format, startOfWeek, addDays } from 'date-fns';
-import { Save, Calendar as CalendarIcon, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { format, startOfWeek, addDays, parseISO, isWeekend } from 'date-fns';
+import { Save, Calendar as CalendarIcon, CheckCircle, AlertCircle, RefreshCw, ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 
 interface StaffMember {
   id: string;
@@ -68,13 +74,15 @@ function computePenalty(
 
 export default function EntriesPage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
-  const [selectedDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isHoliday, setIsHoliday] = useState(false);
   const [holidayName, setHolidayName] = useState('');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
   const fetchStaffAndEntries = useCallback(async () => {
     try {
@@ -123,7 +131,28 @@ export default function EntriesPage() {
 
   useEffect(() => {
     fetchStaffAndEntries();
-  }, [fetchStaffAndEntries]);
+  }, [fetchStaffAndEntries, selectedDate]);
+
+  const handleDateChange = (date: Date) => {
+    if (isWeekend(date)) return;
+    setSelectedDate(date);
+    setWeekStart(startOfWeek(date, { weekStartsOn: 1 }));
+    setCalendarOpen(false);
+  };
+
+  const goToPrevDay = () => {
+    const prev = addDays(selectedDate, -1);
+    if (isWeekend(prev)) return;
+    setSelectedDate(prev);
+    setWeekStart(startOfWeek(prev, { weekStartsOn: 1 }));
+  };
+
+  const goToNextDay = () => {
+    const next = addDays(selectedDate, 1);
+    if (isWeekend(next)) return;
+    setSelectedDate(next);
+    setWeekStart(startOfWeek(next, { weekStartsOn: 1 }));
+  };
 
   const updateEntry = (staffId: string, field: keyof Entry, value: any) => {
     setEntries((prev) =>
@@ -251,20 +280,58 @@ export default function EntriesPage() {
           </Card>
         )}
 
-        {/* Date Info & Refresh */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="outline" className="gap-2">
-              <CalendarIcon className="h-4 w-4" />
-              {format(selectedDate, 'MMMM yyyy')}
+        {/* Date Navigation */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            {/* Month selector */}
+            <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="gap-2 cursor-pointer">
+                  <CalendarIcon className="h-4 w-4" />
+                  {format(selectedDate, 'MMMM yyyy')}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(date) => date && handleDateChange(date)}
+                  disabled={{ before: new Date(2020, 0, 1), after: new Date() }}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+
+            {/* Week navigation */}
+            <Button variant="outline" size="icon" onClick={() => {
+              const prev = addDays(weekStart, -7);
+              if (!isWeekend(prev)) { setSelectedDate(prev); setWeekStart(prev); }
+            }}>
+              <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button variant="outline">
-              Week: {format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'MMM dd')} -{' '}
-              {format(addDays(startOfWeek(selectedDate, { weekStartsOn: 1 }), 4), 'MMM dd')}
+            <Button variant="outline" className="text-xs font-normal">
+              {format(weekStart, 'MMM dd')} — {format(addDays(weekStart, 4), 'MMM dd')}
             </Button>
-            <Button variant="outline">
-              Day: {format(selectedDate, 'EEE dd')}
+            <Button variant="outline" size="icon" onClick={() => {
+              const next = addDays(weekStart, 7);
+              if (!isWeekend(next) && next <= new Date()) { setSelectedDate(next); setWeekStart(next); }
+            }}>
+              <ChevronRight className="h-4 w-4" />
             </Button>
+
+            {/* Day navigation */}
+            <span className="flex items-center gap-1 ml-2">
+              <Button variant="outline" size="icon" onClick={goToPrevDay} disabled={isWeekend(addDays(selectedDate, -1))}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" className="gap-1 cursor-pointer" onClick={() => setCalendarOpen(true)}>
+                <CalendarDays className="h-3 w-3" />
+                {format(selectedDate, 'EEE dd')}
+              </Button>
+              <Button variant="outline" size="icon" onClick={goToNextDay} disabled={isWeekend(addDays(selectedDate, 1))}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </span>
           </div>
           <Button variant="ghost" size="sm" className="gap-1.5" onClick={fetchStaffAndEntries}>
             <RefreshCw className="h-3.5 w-3.5" />
