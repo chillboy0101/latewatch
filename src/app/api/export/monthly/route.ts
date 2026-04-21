@@ -205,6 +205,24 @@ export async function POST(request: NextRequest) {
       const newSheet = workbook.addWorksheet(sheetName);
       const clonedModel = JSON.parse(JSON.stringify(ws.model));
       (clonedModel as any).cols = JSON.parse(JSON.stringify((ws.model as any).cols));
+
+      // Re-create Date objects in cells since JSON.stringify converts them to ISO strings
+      if (clonedModel.rows) {
+        for (const row of clonedModel.rows) {
+          if (!row || !row.cells) continue;
+          for (const cell of row.cells) {
+            if (!cell || cell.value === null || cell.value === undefined) continue;
+            if (typeof cell.value === 'string') {
+              // Try to parse as ISO date string
+              const parsed = new Date(cell.value);
+              if (!isNaN(parsed.getTime()) && /^\\d{4}-\\d{2}-\\d{2}T/.test(cell.value)) {
+                cell.value = parsed;
+              }
+            }
+          }
+        }
+      }
+
       newSheet.model = clonedModel;
       newSheet.state = ws.state;
     }
