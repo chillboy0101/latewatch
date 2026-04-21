@@ -91,9 +91,8 @@ export async function POST(request: NextRequest) {
             const colLetter = addr.replace(/[0-9]/g, '');
             const colNum = colLetter.split('').reduce((acc, ch) => acc * 26 + (ch.charCodeAt(0) - 64), 0);
             const newCell = newRow.getCell(colNum);
-            if (cell.value !== undefined && cell.value !== null) {
-              newCell.value = cell.value as ExcelJS.CellValue;
-            }
+            // Always set value so the cell is created in the sheet (even if undefined)
+            newCell.value = cell.value as ExcelJS.CellValue;
             const style = cell.style as Record<string, unknown> | undefined;
             if (style) newCell.style = style as unknown as ExcelJS.Style;
             const numFmt = cell.numFmt as string | undefined;
