@@ -28,7 +28,6 @@ export async function POST(request: NextRequest) {
       }
     } catch { /* continue */ }
 
-    // ── Fixed staff order matching the LATENESS BOOK template ──────────
     const STAFF_ORDER = [
       'CHARLES DODGATSE',
       'EYRAM MENSAH-GBAGBO',
@@ -47,30 +46,26 @@ export async function POST(request: NextRequest) {
       'EMMANUEL CHUKWUDI',
     ];
 
-    // Day block layout (1-based row indices from template)
     const DAY_DATA_START = [4, 22, 40, 58, 76];
     const DAY_HEADER_ROW  = [3, 21, 39, 57, 75];
     const DAY_TITLE_ROW   = [1, 19, 37, 55, 73];
 
-    // Month boundaries
     const monthStart = startOfMonth(new Date(year, month));
     const monthEnd = endOfMonth(new Date(year, month));
 
     // Find all Mon-Fri weeks in the month
     const weeks: { weekStart: Date; weekEnd: Date }[] = [];
     let cursor = new Date(monthStart);
-    // Advance to first Monday
     while (cursor.getDay() !== 1) cursor = addDays(cursor, 1);
 
     while (cursor <= monthEnd) {
-      const weekEnd = addDays(cursor, 4); // Friday
+      const weekEnd = addDays(cursor, 4);
       if (weekEnd >= monthStart) {
         weeks.push({ weekStart: new Date(cursor), weekEnd });
       }
       cursor = addDays(cursor, 7);
     }
 
-    // Fetch all active staff from DB
     const allStaffRows = await db.select({ id: staff.id, fullName: staff.fullName })
       .from(staff)
       .where(eq(staff.active, true));
@@ -83,24 +78,27 @@ export async function POST(request: NextRequest) {
       id: staffNameToId[name] || null,
     }));
 
-    // Template path shared across all week iterations
     const templatePath = path.join(process.cwd(), 'src', 'lateness-book.xlsx');
 
-    // Build week workbooks (one per week) then combine
-    const weekBuffers: { label: string; buffer: Uint8Array }[] = [];
+    // One workbook, add a sheet per week
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'LateWatch';
+    workbook.created = new Date();
+    // Remove default sheet
+    workbook.removeWorksheet(workbook.getWorksheet(1)?.id || 1);
 
     for (let w = 0; w < weeks.length; w++) {
       const { weekStart, weekEnd } = weeks[w];
       const weekStartStr = format(weekStart, 'yyyy-MM-dd');
       const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
 
-      // Clone template workbook for this week
+      // Load template fresh for each week
       const weekBook = new ExcelJS.Workbook();
       await weekBook.xlsx.readFile(templatePath);
       const ws = weekBook.getWorksheet('WEEK 4') || weekBook.getWorksheet('WEEK 1');
       if (!ws) continue;
 
-      ws.name = `WEEK ${w + 1} - ${format(weekStart, 'MMM dd')}`;
+      const sheetName = `WEEK ${w + 1} - ${format(weekStart, 'MMM dd')}`;
 
       // Fetch entries for this week
       const entries = await db.select({
@@ -122,7 +120,7 @@ export async function POST(request: NextRequest) {
       const entryByStaff: Record<string, typeof entries[0]> = {};
       for (const e of entries) entryByStaff[e.staffId] = e;
 
-      // Generate 5 day dates from weekStart
+      // Generate 5 day dates
       const dayDates: string[] = [];
       for (let i = 0; i < 5; i++) {
         const d = new Date(weekStart);
@@ -193,47 +191,53 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const wbBuffer = await weekBook.xlsx.writeBuffer();
-      weekBuffers.push({ label: ws.name, buffer: new Uint8Array(wbBuffer as any) });
-    }
+      // Copy the worksheet (with all formatting intact) into the final workbook
+      const srcSheet = ws;
+      const newSheet = workbook.addWorksheet(sheetName);
 
-    // Merge all week buffers into one workbook with multiple sheets
-    const mergedBook = new ExcelJS.Workbook();
-    mergedBook.creator = 'LateWatch';
-    mergedBook.created = new Date();
-    for (const { label, buffer } of weekBuffers) {
-      const weekBook = new ExcelJS.Workbook();
-      await weekBook.xlsx.load(buffer as any);
-      const srcSheet = weekBook.worksheets[0];
-      if (srcSheet) {
-        const newSheet = mergedBook.addWorksheet(label);
-        // Copy cells
-        srcSheet.eachRow((row, rowNum) => {
-          if (rowNum === 1) return; // skip template header row if any
-          row.eachCell((cell, colNum) => {
-            const targetCell = newSheet.getCell(rowNum, colNum);
-            targetCell.value = cell.value;
-            targetCell.numFmt = cell.numFmt;
-            targetCell.alignment = cell.alignment;
-            targetCell.font = cell.font;
-            targetCell.fill = cell.fill;
-            targetCell.border = cell.border;
-          });
-        });
-        // Copy column widths
-        srcSheet.columns.forEach((col, idx) => {
-          if (col.width) newSheet.getColumn(idx + 1).width = col.width;
-        });
-        // Copy merges
-        if (srcSheet.model?.merges) {
-          for (const merge of srcSheet.model.merges) {
-            newSheet.mergeCells(merge);
-          }
+      // Copy all rows (including styled-empty rows) by iterating model rows
+      // Build a lookup of rowNum -> modelRow for fast access
+      const modelRowsByNum: Record<number, any> = {};
+      const modelRows: any[] = (srcSheet as any).model?.rows || [];
+      for (const mr of modelRows) {
+        if (mr.number) modelRowsByNum[mr.number] = mr;
+      }
+
+      // Iterate ALL rows from 1 to the last row in the template
+      const lastRow = (srcSheet as any).model?.table?.rows?.length
+        ? Math.max(...modelRows.map((mr: any) => mr.number).filter(Boolean))
+        : 95;
+
+      for (let rowNum = 1; rowNum <= lastRow; rowNum++) {
+        const modelRow = modelRowsByNum[rowNum];
+        if (!modelRow) continue; // empty/unstyled row — skip
+
+        for (const modelCell of modelRow.cells || []) {
+          const colNum = modelCell.index + 1;
+          const cell = newSheet.getCell(rowNum, colNum);
+          if (modelCell.value !== undefined) cell.value = modelCell.value;
+          if (modelCell.numFmt) cell.numFmt = modelCell.numFmt;
+          if (modelCell.alignment) cell.alignment = modelCell.alignment;
+          if (modelCell.font) cell.font = modelCell.font;
+          if (modelCell.fill) cell.fill = modelCell.fill;
+          if (modelCell.border) cell.border = modelCell.border;
+        }
+      }
+
+      // Copy column widths
+      srcSheet.columns.forEach((col, idx) => {
+        if (col.width) newSheet.getColumn(idx + 1).width = col.width;
+      });
+
+      // Copy merge ranges
+      if ((srcSheet as any).model?.merges) {
+        for (const merge of (srcSheet as any).model.merges) {
+          newSheet.mergeCells(merge);
         }
       }
     }
 
-    const buffer = await mergedBook.xlsx.writeBuffer();
+    const buffer = await workbook.xlsx.writeBuffer();
 
     // Audit log
     try {
