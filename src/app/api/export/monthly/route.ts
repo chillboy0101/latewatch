@@ -139,8 +139,7 @@ export async function POST(request: NextRequest) {
       const monthDayToDayIdx: Record<string, number> = {};
       for (const d of monthDays) monthDayToDayIdx[format(d, 'yyyy-MM-dd')] = getDay(d) - 1;
 
-      // Clear only the data cells (TIME, AMOUNT, REASON) for all 5 days
-      // Do NOT clear title rows — template has date labels we want to keep
+      // Clear the data cells and header rows for all 5 day slots
       for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
         const dataStart = DAY_DATA_START[dayIdx];
         for (let staffIdx = 0; staffIdx < STAFF_ORDER.length; staffIdx++) {
@@ -149,7 +148,8 @@ export async function POST(request: NextRequest) {
           ws.getCell(row, 3).value = undefined; // AMOUNT
           ws.getCell(row, 4).value = undefined; // REASON
         }
-        // Also clear holiday cell in the header row for this day block
+        // Clear title and holiday for this slot too
+        ws.getCell(DAY_TITLE_ROW[dayIdx], 1).value = undefined;
         ws.getCell(DAY_HEADER_ROW[dayIdx], 5).value = undefined;
       }
 
