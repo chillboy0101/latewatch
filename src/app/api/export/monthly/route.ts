@@ -93,6 +93,11 @@ export async function POST(request: NextRequest) {
             const newCell = newRow.getCell(colNum);
             // Always set value so the cell is created in the sheet (even if undefined)
             newCell.value = cell.value as ExcelJS.CellValue;
+            // Copy formula if present (for formula cells like TOTAL section)
+            const cellAny = cell as unknown as Record<string, unknown>;
+            if (cellAny.formula) {
+              (newCell as unknown as Record<string, unknown>).formula = cellAny.formula;
+            }
             const style = cell.style as Record<string, unknown> | undefined;
             if (style) newCell.style = style as unknown as ExcelJS.Style;
             const numFmt = cell.numFmt as string | undefined;
