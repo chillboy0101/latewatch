@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card } from '@/components/ui/card';
-import { format, startOfWeek, addDays, isWeekend } from 'date-fns';
-import { Save, CheckCircle, AlertCircle, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { format } from 'date-fns';
+import { Save, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 
 interface StaffMember {
   id: string;
@@ -68,8 +68,7 @@ function computePenalty(
 
 export default function EntriesPage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [selectedDate] = useState(new Date());
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -126,27 +125,7 @@ export default function EntriesPage() {
     fetchStaffAndEntries();
   }, [fetchStaffAndEntries, selectedDate]);
 
-  const handleDateChange = (dateStr: string) => {
-    const d = new Date(dateStr + 'T12:00:00');
-    if (isWeekend(d)) return;
-    setSelectedDate(d);
-    setWeekStart(startOfWeek(d, { weekStartsOn: 1 }));
-  };
-
-  const goToPrevDay = () => {
-    const prev = addDays(selectedDate, -1);
-    if (isWeekend(prev)) return;
-    setSelectedDate(prev);
-    setWeekStart(startOfWeek(prev, { weekStartsOn: 1 }));
-  };
-
-  const goToNextDay = () => {
-    const next = addDays(selectedDate, 1);
-    if (isWeekend(next)) return;
-    setSelectedDate(next);
-    setWeekStart(startOfWeek(next, { weekStartsOn: 1 }));
-  };
-
+  
   const updateEntry = (staffId: string, field: keyof Entry, value: any) => {
     setEntries((prev) =>
       prev.map((entry) => {
@@ -273,54 +252,10 @@ export default function EntriesPage() {
           </Card>
         )}
 
-        {/* Date Navigation */}
-        <div className="flex items-center gap-4 flex-wrap">
-          {/* Month / Year selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground shrink-0">Month</span>
-            <Input
-              type="month"
-              value={format(selectedDate, 'yyyy-MM')}
-              onChange={(e) => {
-                if (!e.target.value) return;
-                const d = new Date(e.target.value + '-01T12:00:00');
-                if (!isWeekend(d)) { setSelectedDate(d); setWeekStart(startOfWeek(d, { weekStartsOn: 1 })); }
-              }}
-              className="h-9 w-[160px]"
-            />
-          </div>
-
-          {/* Week navigation */}
-          <Button variant="outline" size="icon" onClick={() => {
-            const prev = addDays(weekStart, -7);
-            if (!isWeekend(prev)) { setSelectedDate(prev); setWeekStart(prev); }
-          }}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" className="text-xs font-normal h-9">
-            {format(weekStart, 'MMM dd')} — {format(addDays(weekStart, 4), 'MMM dd')}
-          </Button>
-          <Button variant="outline" size="icon" onClick={() => {
-            const next = addDays(weekStart, 7);
-            if (!isWeekend(next) && next <= new Date()) { setSelectedDate(next); setWeekStart(next); }
-          }}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-
-          {/* Day selector */}
-          <span className="flex items-center gap-1">
-            <Button variant="outline" size="icon" onClick={goToPrevDay} disabled={isWeekend(addDays(selectedDate, -1))}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Input
-              type="date"
-              value={format(selectedDate, 'yyyy-MM-dd')}
-              onChange={(e) => handleDateChange(e.target.value)}
-              className="h-9 w-[160px] text-center"
-            />
-            <Button variant="outline" size="icon" onClick={goToNextDay} disabled={isWeekend(addDays(selectedDate, 1))}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+        {/* Date Display */}
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">
+            {format(selectedDate, 'EEEE,')} <span className="font-medium">{format(selectedDate, 'MMMM d, yyyy')}</span>
           </span>
         </div>
 
