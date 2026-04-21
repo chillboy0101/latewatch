@@ -70,7 +70,9 @@ export async function POST(request: NextRequest) {
       if (!srcSheet) continue;
 
       const newSheet = monthlyBook.addWorksheet(`Week ${w + 1}`);
-      newSheet.model = JSON.parse(JSON.stringify(srcSheet.model));
+      const clonedModel = JSON.parse(JSON.stringify(srcSheet.model));
+      clonedModel.name = `Week ${w + 1}`;
+      newSheet.model = clonedModel;
       newSheet.state = srcSheet.state;
     }
 
