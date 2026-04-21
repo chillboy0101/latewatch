@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
     const weekKeys = Object.keys(daysByWeek).sort();
     const weeks = weekKeys.map(key => ({
       monday: parseISO(key),
-      days: daysByWeek[key], // already sorted (eachDayOfInterval returns in order)
+      days: daysByWeek[key], // already sorted
     }));
 
     const allStaffRows = await db.select({ id: staff.id, fullName: staff.fullName })
@@ -139,7 +139,8 @@ export async function POST(request: NextRequest) {
       const monthDayToDayIdx: Record<string, number> = {};
       for (const d of monthDays) monthDayToDayIdx[format(d, 'yyyy-MM-dd')] = getDay(d) - 1;
 
-      // Clear ALL day block data first (template may have stale data)
+      // Clear only the data cells (TIME, AMOUNT, REASON) for all 5 days
+      // Do NOT clear title rows — template has date labels we want to keep
       for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
         const dataStart = DAY_DATA_START[dayIdx];
         for (let staffIdx = 0; staffIdx < STAFF_ORDER.length; staffIdx++) {
@@ -148,11 +149,11 @@ export async function POST(request: NextRequest) {
           ws.getCell(row, 3).value = undefined; // AMOUNT
           ws.getCell(row, 4).value = undefined; // REASON
         }
-        ws.getCell(DAY_TITLE_ROW[dayIdx], 1).value = undefined;
-        ws.getCell(DAY_HEADER_ROW[dayIdx], 5).value = undefined; // HOLIDAY
+        // Also clear holiday cell in the header row for this day block
+        ws.getCell(DAY_HEADER_ROW[dayIdx], 5).value = undefined;
       }
 
-      // Fill ONLY the day slots that are in this month
+      // Fill the day slots that are in this month
       for (const dayDate of monthDays) {
         const dayIdx = getDay(dayDate) - 1; // 0=Mon, 1=Tue, ..., 4=Fri
         const dateStr = format(dayDate, 'yyyy-MM-dd');
