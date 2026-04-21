@@ -1,17 +1,11 @@
 // app/api/export/monthly/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { latenessEntry, workCalendar, auditEvent, staff } from '@/db/schema';
-import { and, gte, lte, eq } from 'drizzle-orm';
+import { auditEvent } from '@/db/schema';
 import ExcelJS from 'exceljs';
 import { currentUser } from '@clerk/nextjs/server';
-import { format, parseISO, isWeekend, startOfMonth, endOfMonth, addDays, eachDayOfInterval, getDay } from 'date-fns';
-import path from 'path';
-
-function getOrdinalSuffix(n: number): string {
-  if (n > 3 && n < 21) return 'TH';
-  switch (n % 10) { case 1: return 'ST'; case 2: return 'ND'; case 3: return 'RD'; default: return 'TH'; }
-}
+import { format, parseISO, isWeekend, startOfMonth, endOfMonth, addDays, eachDayOfInterval } from 'date-fns';
+import { buildWeeklyWorkbook } from '@/app/api/export/weekly/route';
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,34 +26,10 @@ export async function POST(request: NextRequest) {
       }
     } catch { /* continue */ }
 
-    // Fixed staff order matching the LATENESS BOOK template
-    const STAFF_ORDER = [
-      'CHARLES DODGATSE',
-      'EYRAM MENSAH-GBAGBO',
-      'ANNA-LISA E. A. HAMMOND',
-      'CLAUDE KWASI BOADI',
-      'EUNICE TWENEBOAA ADU',
-      'ESTHER ADJOKOR ADJEI',
-      'RAPHAELADJEI MENSAH',
-      'DENNIS AKUETTEH ARYEETEY',
-      'DANIEL ASARE KWARTENG',
-      'WISDOM KOFI DATSOMOR',
-      'CARL CHRISTIAN QUIST',
-      'LISABETH SYBIL ADDAIH',
-      'ELEAZAR KWABENA TJ',
-      'REGINA ALLOTEY',
-      'EMMANUEL CHUKWUDI',
-    ];
-
-    // Day block layout (1-based row indices from template)
-    const DAY_DATA_START = [4, 22, 40, 58, 76];
-    const DAY_HEADER_ROW  = [3, 21, 39, 57, 75];
-    const DAY_TITLE_ROW   = [1, 19, 37, 55, 73];
-
     const monthStartDate = startOfMonth(new Date(year, month));
     const monthEnd = endOfMonth(new Date(year, month));
 
-    // Get ALL weekdays (Mon-Fri) in the month
+    // Get all weekdays in the month
     const allMonthDays = eachDayOfInterval({ start: monthStartDate, end: monthEnd })
       .filter(d => !isWeekend(d));
 
@@ -67,8 +37,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No weekdays in this month' }, { status: 400 });
     }
 
-    // Group month days by their week (week starting Monday)
-    const daysByWeek: Record<string, Date[]> = {};
+    // Group days by their Monday-starting week
+    const daysByWeek: Record<string, typeof allMonthDays> = {};
     for (const day of allMonthDays) {
       let monday = new Date(day);
       while (monday.getDay() !== 1) monday = addDays(monday, -1);
@@ -78,134 +48,33 @@ export async function POST(request: NextRequest) {
     }
 
     const weekKeys = Object.keys(daysByWeek).sort();
-    const weeks = weekKeys.map(key => ({
-      monday: parseISO(key),
-      days: daysByWeek[key],
-    }));
 
-    const allStaffRows = await db.select({ id: staff.id, fullName: staff.fullName })
-      .from(staff)
-      .where(eq(staff.active, true));
-    const staffNameToId: Record<string, string> = {};
-    for (const s of allStaffRows) staffNameToId[s.fullName] = s.id;
-    const orderedStaff = STAFF_ORDER.map(name => ({ name, id: staffNameToId[name] || null }));
+    // Build monthly workbook
+    const monthlyBook = new ExcelJS.Workbook();
+    monthlyBook.creator = 'LateWatch';
+    monthlyBook.created = new Date();
 
-    const templatePath = path.join(process.cwd(), 'src', 'lateness-book.xlsx');
+    for (let w = 0; w < weekKeys.length; w++) {
+      const weekStart = weekKeys[w];
+      const weekEnd = format(addDays(parseISO(weekStart), 4), 'yyyy-MM-dd');
 
-    // Single workbook — one sheet per week
-    const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'LateWatch';
-    workbook.created = new Date();
+      // Build weekly workbook (reuses weekly export logic)
+      const weeklyBook = await buildWeeklyWorkbook(weekStart, weekEnd, actorUserId, actorEmail);
+      const weekBuf = await weeklyBook.xlsx.writeBuffer();
 
-    for (let w = 0; w < weeks.length; w++) {
-      const { monday, days: monthDays } = weeks[w];
-
-      // Build the sheet name from first day of month in this week
-      const sheetName = `WEEK ${w + 1} - ${format(monthDays[0], 'MMM dd')}`;
-
-      // Build lookup maps for this week (Mon to Fri)
-      const weekStartStr = format(monday, 'yyyy-MM-dd');
-      const weekEndStr = format(addDays(monday, 4), 'yyyy-MM-dd');
-
-      const entries = await db.select({
-        staffId: latenessEntry.staffId,
-        date: latenessEntry.date,
-        arrivalTime: latenessEntry.arrivalTime,
-        computedAmount: latenessEntry.computedAmount,
-        reason: latenessEntry.reason,
-      })
-      .from(latenessEntry)
-      .where(and(gte(latenessEntry.date, weekStartStr), lte(latenessEntry.date, weekEndStr)));
-
-      const holidays = await db.select({ date: workCalendar.date })
-        .from(workCalendar)
-        .where(and(gte(workCalendar.date, weekStartStr), lte(workCalendar.date, weekEndStr), eq(workCalendar.isHoliday, true)));
-
-      const holidaySet = new Set(holidays.map(h => h.date));
-      const entryByStaff: Record<string, typeof entries[0]> = {};
-      for (const e of entries) entryByStaff[e.staffId] = e;
-
-      // Map month day -> dayIdx
-
-      // Load template
-      const weekBook = new ExcelJS.Workbook();
-      await weekBook.xlsx.readFile(templatePath);
-      const ws = weekBook.getWorksheet('WEEK 4') || weekBook.getWorksheet('WEEK 1');
-      if (!ws) continue;
-
-      ws.name = sheetName;
-
-      // Clear data cells for all 5 day slots
-      for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
-        const dataStart = DAY_DATA_START[dayIdx];
-        for (let staffIdx = 0; staffIdx < STAFF_ORDER.length; staffIdx++) {
-          const row = dataStart + staffIdx;
-          ws.getCell(row, 2).value = undefined;
-          ws.getCell(row, 3).value = undefined;
-          ws.getCell(row, 4).value = undefined;
-        }
-        ws.getCell(DAY_TITLE_ROW[dayIdx], 1).value = undefined;
-        ws.getCell(DAY_HEADER_ROW[dayIdx], 5).value = undefined;
-      }
-
-      // Fill ONLY the day slots that are in this month
-      for (const dayDate of monthDays) {
-        const dayIdx = getDay(dayDate) - 1; // 0=Mon, 1=Tue, ..., 4=Fri
-        const dateStr = format(dayDate, 'yyyy-MM-dd');
-        const dataStart = DAY_DATA_START[dayIdx];
-        const headerRow = DAY_HEADER_ROW[dayIdx];
-
-        const dayName = format(dayDate, 'EEEE').toUpperCase();
-        const dayNum = dayDate.getDate();
-        const monthYear = format(dayDate, 'MMMM yyyy').toUpperCase();
-        ws.getCell(DAY_TITLE_ROW[dayIdx], 1).value = `${dayName},${dayNum}${getOrdinalSuffix(dayNum)} ${monthYear}`;
-
-        const isWeekdayHoliday = !isWeekend(dayDate) && holidaySet.has(dateStr);
-        if (isWeekdayHoliday) {
-          ws.getCell(headerRow, 5).value = 'HOLIDAY';
-          ws.getCell(headerRow, 5).alignment = { horizontal: 'center', vertical: 'middle' };
-        }
-
-        for (let staffIdx = 0; staffIdx < STAFF_ORDER.length; staffIdx++) {
-          const row = dataStart + staffIdx;
-          const staffId = orderedStaff[staffIdx].id;
-          const entry = staffId ? (entryByStaff[staffId] ?? null) : null;
-          const amount = entry?.computedAmount != null ? parseFloat(String(entry.computedAmount)) : 0;
-
-          if (entry?.arrivalTime) {
-            const timeStr = String(entry.arrivalTime ?? '');
-            const parts = timeStr.split(':');
-            const hours = parseInt(parts[0] || '0', 10);
-            const minutes = parseInt(parts[1] || '0', 10);
-            const tc = ws.getCell(row, 2);
-            tc.value = new Date(2000, 0, 1, hours, minutes);
-            tc.numFmt = 'h:mm AM/PM';
-          }
-
-          if (amount > 0) {
-            const ac = ws.getCell(row, 3);
-            ac.value = amount;
-            ac.numFmt = '"GHC "#,##0.00';
-          }
-
-          ws.getCell(row, 4).value = entry?.reason ?? undefined;
-        }
-      }
-
-      // Copy the worksheet from weekBook into the monthly workbook
-      // by loading the weekBook buffer and extracting the sheet
-      const weekBuf = await weekBook.xlsx.writeBuffer();
+      // Load into temp book to clone the sheet model
       const tmpBook = new ExcelJS.Workbook();
       await tmpBook.xlsx.load(weekBuf as any);
-      const srcSheet = tmpBook.getWorksheet(sheetName);
-      if (srcSheet) {
-        const newSheet = workbook.addWorksheet(sheetName);
-        newSheet.model = JSON.parse(JSON.stringify(srcSheet.model));
-        newSheet.state = srcSheet.state;
-      }
+
+      const srcSheet = tmpBook.worksheets[0];
+      if (!srcSheet) continue;
+
+      const newSheet = monthlyBook.addWorksheet(`Week ${w + 1}`);
+      newSheet.model = JSON.parse(JSON.stringify(srcSheet.model));
+      newSheet.state = srcSheet.state;
     }
 
-    const buffer = await workbook.xlsx.writeBuffer();
+    const buffer = await monthlyBook.xlsx.writeBuffer();
 
     // Audit log
     try {
@@ -214,7 +83,7 @@ export async function POST(request: NextRequest) {
         entityId: `monthly-${year}-${month + 1}`,
         action: 'EXPORT',
         beforeJson: null,
-        afterJson: { year, month: month + 1, weekCount: weeks.length },
+        afterJson: { year, month: month + 1, weekCount: weekKeys.length },
         actorUserId,
         actorEmail,
       });
@@ -222,10 +91,11 @@ export async function POST(request: NextRequest) {
       console.error('Audit log failed:', auditError);
     }
 
+    const monthName = format(monthStartDate, 'MMMM_yyyy');
     return new NextResponse(buffer, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="Lateness_${format(monthStartDate, 'MMMM_yyyy')}.xlsx"`,
+        'Content-Disposition': `attachment; filename="${monthName}.xlsx"`,
       },
     });
   } catch (error) {
