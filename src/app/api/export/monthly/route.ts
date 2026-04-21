@@ -79,17 +79,28 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Copy each row using the source worksheet's eachRow
-      srcSheet.eachRow((row, rowNum) => {
+      // Copy each row by iterating model rows (eachRow skips cells with null values)
+      const modelRows = (srcModel.rows as Array<Record<string, unknown>> | undefined) || [];
+      for (const modelRow of modelRows) {
+        const rowNum = modelRow.number as number;
         const newRow = newSheet.getRow(rowNum);
-        newRow.height = row.height;
-        row.eachCell((cell, colNum) => {
-          const newCell = newRow.getCell(colNum);
-          newCell.value = cell.value;
-          newCell.numFmt = cell.numFmt;
-          if (cell.style) newCell.style = { ...cell.style };
-        });
-      });
+        const cells = modelRow.cells as Array<Record<string, unknown>> | undefined;
+        if (cells) {
+          for (const cell of cells) {
+            const addr = cell.address as string;
+            const colLetter = addr.replace(/[0-9]/g, '');
+            const colNum = colLetter.split('').reduce((acc, ch) => acc * 26 + (ch.charCodeAt(0) - 64), 0);
+            const newCell = newRow.getCell(colNum);
+            if (cell.value !== undefined && cell.value !== null) {
+              newCell.value = cell.value as ExcelJS.CellValue;
+            }
+            const style = cell.style as Record<string, unknown> | undefined;
+            if (style) newCell.style = style as unknown as ExcelJS.Style;
+            const numFmt = cell.numFmt as string | undefined;
+            if (numFmt) newCell.numFmt = numFmt;
+          }
+        }
+      }
 
       // Copy merges
       const merges = srcModel.merges as string[] | undefined;
