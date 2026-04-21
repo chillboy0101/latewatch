@@ -5,7 +5,7 @@ import { latenessEntry, workCalendar, auditEvent, staff } from '@/db/schema';
 import { and, gte, lte, eq } from 'drizzle-orm';
 import ExcelJS from 'exceljs';
 import { currentUser } from '@clerk/nextjs/server';
-import { format, parseISO, isWeekend, startOfMonth, endOfMonth, addDays } from 'date-fns';
+import { format, parseISO, isWeekend, startOfMonth, endOfMonth, addDays, eachDayOfInterval, getDay } from 'date-fns';
 import path from 'path';
 
 function getOrdinalSuffix(n: number): string {
@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
       }
     } catch { /* continue */ }
 
+    // Fixed staff order matching the LATENESS BOOK template
     const STAFF_ORDER = [
       'CHARLES DODGATSE',
       'EYRAM MENSAH-GBAGBO',
@@ -50,6 +51,7 @@ export async function POST(request: NextRequest) {
       'EMMANUEL CHUKWUDI',
     ];
 
+    // Day block layout (1-based row indices from template)
     const DAY_DATA_START = [4, 22, 40, 58, 76];
     const DAY_HEADER_ROW  = [3, 21, 39, 57, 75];
     const DAY_TITLE_ROW   = [1, 19, 37, 55, 73];
@@ -57,18 +59,32 @@ export async function POST(request: NextRequest) {
     const monthStartDate = startOfMonth(new Date(year, month));
     const monthEnd = endOfMonth(new Date(year, month));
 
-    // Find weeks that have at least one day in the month
-    const weeks: { weekStart: Date; weekEnd: Date }[] = [];
-    let cursor = new Date(monthStartDate);
-    while (cursor.getDay() !== 1) cursor = addDays(cursor, -1);
-    while (cursor <= monthEnd) {
-      const rawWeekEnd = addDays(cursor, 4);
-      const weekEnd = rawWeekEnd > monthEnd ? monthEnd : rawWeekEnd;
-      if (weekEnd >= monthStartDate) {
-        weeks.push({ weekStart: new Date(cursor), weekEnd });
-      }
-      cursor = addDays(cursor, 7);
+    // Get ALL weekdays (Mon-Fri) in the month
+    const allMonthDays = eachDayOfInterval({ start: monthStartDate, end: monthEnd })
+      .filter(d => !isWeekend(d));
+
+    if (allMonthDays.length === 0) {
+      return NextResponse.json({ error: 'No weekdays in this month' }, { status: 400 });
     }
+
+    // Group month days by their week (week starting Monday)
+    // Key: "YYYY-MM-DD" of the Monday of that week
+    const daysByWeek: Record<string, Date[]> = {};
+    for (const day of allMonthDays) {
+      // Find Monday of this week
+      let monday = new Date(day);
+      while (monday.getDay() !== 1) monday = addDays(monday, -1);
+      const key = format(monday, 'yyyy-MM-dd');
+      if (!daysByWeek[key]) daysByWeek[key] = [];
+      daysByWeek[key].push(day);
+    }
+
+    // Sort weeks
+    const weekKeys = Object.keys(daysByWeek).sort();
+    const weeks = weekKeys.map(key => ({
+      monday: parseISO(key),
+      days: daysByWeek[key], // already sorted (eachDayOfInterval returns in order)
+    }));
 
     const allStaffRows = await db.select({ id: staff.id, fullName: staff.fullName })
       .from(staff)
@@ -85,9 +101,7 @@ export async function POST(request: NextRequest) {
     workbook.created = new Date();
 
     for (let w = 0; w < weeks.length; w++) {
-      const { weekStart, weekEnd } = weeks[w];
-      const weekStartStr = format(weekStart, 'yyyy-MM-dd');
-      const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
+      const { monday, days: monthDays } = weeks[w];
 
       // Load template fresh for each week
       const weekBook = new ExcelJS.Workbook();
@@ -95,10 +109,13 @@ export async function POST(request: NextRequest) {
       const ws = weekBook.getWorksheet('WEEK 4') || weekBook.getWorksheet('WEEK 1');
       if (!ws) continue;
 
-      const sheetName = `WEEK ${w + 1} - ${format(weekStart, 'MMM dd')}`;
+      const sheetName = `WEEK ${w + 1} - ${format(monthDays[0], 'MMM dd')}`;
       ws.name = sheetName;
 
-      // Fetch entries + holidays for this week
+      // Build lookup maps for this week
+      const weekStartStr = format(monday, 'yyyy-MM-dd');
+      const weekEndStr = format(addDays(monday, 4), 'yyyy-MM-dd');
+
       const entries = await db.select({
         staffId: latenessEntry.staffId,
         date: latenessEntry.date,
@@ -117,52 +134,45 @@ export async function POST(request: NextRequest) {
       const entryByStaff: Record<string, typeof entries[0]> = {};
       for (const e of entries) entryByStaff[e.staffId] = e;
 
-      // Generate day dates — stop at month boundary
-      const dayDates: string[] = [];
-      for (let i = 0; i < 5; i++) {
-        const d = new Date(weekStart);
-        d.setDate(d.getDate() + i);
-        if (d > monthEnd) break;
-        dayDates.push(format(d, 'yyyy-MM-dd'));
-      }
+      // Map month day → DAY_INDEX (0=Mon, 1=Tue, ..., 4=Fri)
+      // to know which template slot to fill
+      const monthDayToDayIdx: Record<string, number> = {};
+      for (const d of monthDays) monthDayToDayIdx[format(d, 'yyyy-MM-dd')] = getDay(d) - 1;
 
-      // Update date title rows
-      for (let i = 0; i < 5; i++) {
-        const dateStr = dayDates[i];
-        if (!dateStr) continue;
-        const d = parseISO(dateStr);
-        const dayName = format(d, 'EEEE').toUpperCase();
-        const dayNum = d.getDate();
-        const monthYear = format(d, 'MMMM yyyy').toUpperCase();
-        ws.getCell(DAY_TITLE_ROW[i], 1).value = `${dayName},${dayNum}${getOrdinalSuffix(dayNum)} ${monthYear}`;
-      }
-
-      // Clear all day block data
+      // Clear ALL day block data first (template may have stale data)
       for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
         const dataStart = DAY_DATA_START[dayIdx];
         for (let staffIdx = 0; staffIdx < STAFF_ORDER.length; staffIdx++) {
           const row = dataStart + staffIdx;
-          ws.getCell(row, 3).value = undefined;
-          ws.getCell(row, 4).value = undefined;
+          ws.getCell(row, 2).value = undefined; // TIME
+          ws.getCell(row, 3).value = undefined; // AMOUNT
+          ws.getCell(row, 4).value = undefined; // REASON
         }
-        ws.getCell(DAY_HEADER_ROW[dayIdx], 5).value = undefined;
+        ws.getCell(DAY_TITLE_ROW[dayIdx], 1).value = undefined;
+        ws.getCell(DAY_HEADER_ROW[dayIdx], 5).value = undefined; // HOLIDAY
       }
 
-      // Fill in data
-      for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
-        const dateStr = dayDates[dayIdx];
-        if (!dateStr) continue;
+      // Fill ONLY the day slots that are in this month
+      for (const dayDate of monthDays) {
+        const dayIdx = getDay(dayDate) - 1; // 0=Mon, 1=Tue, ..., 4=Fri
+        const dateStr = format(dayDate, 'yyyy-MM-dd');
         const dataStart = DAY_DATA_START[dayIdx];
         const headerRow = DAY_HEADER_ROW[dayIdx];
-        const d = parseISO(dateStr);
 
-        const isWeekdayHoliday = !isWeekend(d) && holidaySet.has(dateStr);
-        const holidayCell = ws.getCell(headerRow, 5);
+        // Date title: "MONDAY,1ST APRIL 2026"
+        const dayName = format(dayDate, 'EEEE').toUpperCase();
+        const dayNum = dayDate.getDate();
+        const monthYear = format(dayDate, 'MMMM yyyy').toUpperCase();
+        ws.getCell(DAY_TITLE_ROW[dayIdx], 1).value = `${dayName},${dayNum}${getOrdinalSuffix(dayNum)} ${monthYear}`;
+
+        // Holiday check
+        const isWeekdayHoliday = !isWeekend(dayDate) && holidaySet.has(dateStr);
         if (isWeekdayHoliday) {
-          holidayCell.value = 'HOLIDAY';
-          holidayCell.alignment = { horizontal: 'center', vertical: 'middle' };
+          ws.getCell(headerRow, 5).value = 'HOLIDAY';
+          ws.getCell(headerRow, 5).alignment = { horizontal: 'center', vertical: 'middle' };
         }
 
+        // Staff data for this day
         for (let staffIdx = 0; staffIdx < STAFF_ORDER.length; staffIdx++) {
           const row = dataStart + staffIdx;
           const staffId = orderedStaff[staffIdx].id;
@@ -177,8 +187,6 @@ export async function POST(request: NextRequest) {
             const tc = ws.getCell(row, 2);
             tc.value = new Date(2000, 0, 1, hours, minutes);
             tc.numFmt = 'h:mm AM/PM';
-          } else {
-            ws.getCell(row, 2).value = undefined;
           }
 
           if (amount > 0) {
