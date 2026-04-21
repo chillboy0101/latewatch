@@ -8,6 +8,11 @@ import { currentUser } from '@clerk/nextjs/server';
 import { format, parseISO, isWeekend, startOfMonth, endOfMonth, addDays } from 'date-fns';
 import path from 'path';
 
+function getOrdinalSuffix(n: number): string {
+  if (n > 3 && n < 21) return 'TH';
+  switch (n % 10) { case 1: return 'ST'; case 2: return 'ND'; case 3: return 'RD'; default: return 'TH'; }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -90,7 +95,8 @@ export async function POST(request: NextRequest) {
       const ws = weekBook.getWorksheet('WEEK 4') || weekBook.getWorksheet('WEEK 1');
       if (!ws) continue;
 
-      ws.name = `WEEK ${w + 1} - ${format(weekStart, 'MMM dd')}`;
+      const sheetName = `WEEK ${w + 1} - ${format(weekStart, 'MMM dd')}`;
+      ws.name = sheetName;
 
       // Fetch entries + holidays for this week
       const entries = await db.select({
@@ -127,9 +133,8 @@ export async function POST(request: NextRequest) {
         const d = parseISO(dateStr);
         const dayName = format(d, 'EEEE').toUpperCase();
         const dayNum = d.getDate();
-        const suffix = (n: number) => { if (n > 3 && n < 21) return 'TH'; switch (n % 10) { case 1: return 'ST'; case 2: return 'ND'; case 3: return 'RD'; default: return 'TH'; } };
         const monthYear = format(d, 'MMMM yyyy').toUpperCase();
-        ws.getCell(DAY_TITLE_ROW[i], 1).value = `${dayName},${dayNum}${suffix(dayNum)} ${monthYear}`;
+        ws.getCell(DAY_TITLE_ROW[i], 1).value = `${dayName},${dayNum}${getOrdinalSuffix(dayNum)} ${monthYear}`;
       }
 
       // Clear all day block data
@@ -186,17 +191,27 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Add the filled worksheet directly to the final workbook
-      // (keep template worksheet in its own workbook; xlsx.load doesn't support cross-workbook sheet copy)
-      // Use workbook.addSheet by cloning from the weekBook via buffer round-trip
-      const weekBuf = await weekBook.xlsx.writeBuffer();
-      const tmpBook = new ExcelJS.Workbook();
-      await tmpBook.xlsx.load(weekBuf as any);
-      const srcSheet = tmpBook.getWorksheet(ws.name);
-      if (srcSheet) {
-        const newSheet = workbook.addWorksheet(srcSheet.name);
-        // Copy model directly (preserves all styling including empty styled cells)
-        (newSheet as any).model = JSON.parse(JSON.stringify((srcSheet as any).model));
+      // Add the filled worksheet to the final workbook — copy cells directly
+      const newSheet = workbook.addWorksheet(sheetName);
+      ws.eachRow((row, rowNum) => {
+        row.eachCell((cell, colNum) => {
+          const newCell = newSheet.getCell(rowNum, colNum);
+          newCell.value = cell.value;
+          newCell.numFmt = cell.numFmt;
+          if (cell.font) newCell.font = JSON.parse(JSON.stringify(cell.font));
+          if (cell.fill) newCell.fill = JSON.parse(JSON.stringify(cell.fill));
+          if (cell.border) newCell.border = JSON.parse(JSON.stringify(cell.border));
+          if (cell.alignment) newCell.alignment = JSON.parse(JSON.stringify(cell.alignment));
+        });
+      });
+
+      // Copy merged cells
+      const merges = (ws as any)._merges;
+      if (merges) {
+        for (const key of Object.keys(merges)) {
+          const m = merges[key].model;
+          newSheet.mergeCells(m.top, m.left, m.bottom, m.right);
+        }
       }
     }
 
