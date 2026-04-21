@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
       cell.value = titleText;
     }
 
-    // ── Clear all AMOUNT (C) and REASON (D) cells in day rows first ─────
+    // ── Clear all AMOUNT (C), REASON (D), and HOLIDAY (E) cells in day rows first ─────
     // This removes any stale data from a previous export session
     for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
       const dataStart = DAY_DATA_START[dayIdx];
@@ -155,6 +155,9 @@ export async function POST(request: NextRequest) {
         worksheet.getCell(row, 3).value = undefined;  // clear AMOUNT
         worksheet.getCell(row, 4).value = undefined;  // clear REASON
       }
+      // Also clear holiday cell in the header row for this day block
+      const headerRow = DAY_HEADER_ROW[dayIdx];
+      worksheet.getCell(headerRow, 5).value = undefined;
     }
 
     // ── Fill in TIME (col B), AMOUNT (col C), REASON (col D) ───────────
@@ -167,9 +170,8 @@ export async function POST(request: NextRequest) {
       const isWeekdayHoliday = !isWeekend(d) && holidaySet.has(dateStr);
 
       // Holiday cell (col E) — write in header row; the merge spans all staff rows
-      // Only set value and alignment when it IS a holiday — otherwise leave template cell untouched
+      const holidayCell = worksheet.getCell(headerRow, 5);
       if (isWeekdayHoliday) {
-        const holidayCell = worksheet.getCell(headerRow, 5);
         holidayCell.value = 'HOLIDAY';
         holidayCell.alignment = { horizontal: 'center', vertical: 'middle' };
       }
