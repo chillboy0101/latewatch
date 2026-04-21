@@ -69,11 +69,14 @@ export async function POST(request: NextRequest) {
       const srcSheet = tmpBook.worksheets[0];
       if (!srcSheet) continue;
 
-      const newSheet = monthlyBook.addWorksheet(`Week ${w + 1}`);
+      // Build a clean model with the correct sheet name
       const clonedModel = JSON.parse(JSON.stringify(srcSheet.model));
       clonedModel.name = `Week ${w + 1}`;
-      newSheet.model = clonedModel;
+      delete clonedModel.id; // let ExcelJS assign a new id
+
+      const newSheet = monthlyBook.addWorksheet(`Week ${w + 1}`);
       newSheet.state = srcSheet.state;
+      newSheet.model = clonedModel;
     }
 
     const buffer = await monthlyBook.xlsx.writeBuffer();
