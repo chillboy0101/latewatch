@@ -164,11 +164,13 @@ export async function POST(request: NextRequest) {
         for (let staffIdx = 0; staffIdx < STAFF_ORDER.length; staffIdx++) {
           const row = dataStart + staffIdx;
           const staffId = orderedStaff[staffIdx].id;
-          const entry = staffId ? entryByStaff[staffId] : null;
-          const amount = entry ? parseFloat(String(entry.computedAmount || '0')) : 0;
+          const entry = staffId ? (entryByStaff[staffId] ?? null) : null;
+          const amount = entry ? parseFloat(String(entry.computedAmount ?? '0')) : 0;
 
           if (entry?.arrivalTime) {
-            const [hours, minutes] = entry.arrivalTime.split(':').map(Number);
+            const timeParts = String(entry.arrivalTime).split(':');
+            const hours = parseInt(timeParts[0] || '0', 10);
+            const minutes = parseInt(timeParts[1] || '0', 10);
             const tc = ws.getCell(row, 2);
             tc.value = new Date(2000, 0, 1, hours, minutes);
             tc.numFmt = 'h:mm AM/PM';
