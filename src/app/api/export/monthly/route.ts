@@ -57,8 +57,15 @@ export async function POST(request: NextRequest) {
       const weekStart = weekKeys[w];
       const weekEnd = format(addDays(parseISO(weekStart), 4), 'yyyy-MM-dd');
 
-      // Build weekly workbook, passing month end to respect boundaries
-      const weeklyBook = await buildWeeklyWorkbook(weekStart, weekEnd, actorUserId, actorEmail, format(monthEnd, 'yyyy-MM-dd'));
+      // Build weekly workbook, passing month boundaries to respect them
+      const weeklyBook = await buildWeeklyWorkbook(
+        weekStart,
+        weekEnd,
+        actorUserId,
+        actorEmail,
+        format(monthStartDate, 'yyyy-MM-dd'),
+        format(monthEnd, 'yyyy-MM-dd'),
+      );
       const weekBuf = await weeklyBook.xlsx.writeBuffer();
 
       // Load weekly book from buffer
