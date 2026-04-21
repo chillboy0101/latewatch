@@ -47,9 +47,11 @@ export async function POST(request: NextRequest) {
 
     const weekKeys = Object.keys(daysByWeek).sort();
 
-    const monthlyBook = new ExcelJS.Workbook();
-    monthlyBook.creator = 'LateWatch';
-    monthlyBook.created = new Date();
+    // Create a temporary workbook that will hold all week sheets
+    // We build each week, write to buffer, then load that buffer and add its sheet
+    const combinedBook = new ExcelJS.Workbook();
+    combinedBook.creator = 'LateWatch';
+    combinedBook.created = new Date();
 
     for (let w = 0; w < weekKeys.length; w++) {
       const weekStart = weekKeys[w];
@@ -59,23 +61,46 @@ export async function POST(request: NextRequest) {
       const weeklyBook = await buildWeeklyWorkbook(weekStart, weekEnd, actorUserId, actorEmail);
       const weekBuf = await weeklyBook.xlsx.writeBuffer();
 
-      // Load into temp book to clone the sheet model
+      // Load weekly book from buffer
       const tmpBook = new ExcelJS.Workbook();
       await tmpBook.xlsx.load(weekBuf as any);
+
       const srcSheet = tmpBook.worksheets[0];
       if (!srcSheet) continue;
 
-      // Clone model directly - preserves all cells, styles, merges, column widths
-      const clonedModel = JSON.parse(JSON.stringify(srcSheet.model));
-      clonedModel.name = `Week ${w + 1}`;
-      // Remove id so ExcelJS assigns fresh one
-      delete clonedModel.id;
+      // Copy cells directly from srcSheet to new sheet in combinedBook
+      const newSheet = combinedBook.addWorksheet(`Week ${w + 1}`);
 
-      const newSheet = monthlyBook.addWorksheet(`Week ${w + 1}`);
-      newSheet.model = clonedModel;
+      // Copy column widths
+      const srcModel = srcSheet.model as unknown as Record<string, unknown>;
+      if (srcModel?.cols) {
+        for (const col of srcModel.cols as Array<{ min: number; width?: number }>) {
+          if (col.width) newSheet.getColumn(col.min).width = col.width;
+        }
+      }
+
+      // Copy each row using the source worksheet's eachRow
+      srcSheet.eachRow((row, rowNum) => {
+        const newRow = newSheet.getRow(rowNum);
+        newRow.height = row.height;
+        row.eachCell((cell, colNum) => {
+          const newCell = newRow.getCell(colNum);
+          newCell.value = cell.value;
+          newCell.numFmt = cell.numFmt;
+          if (cell.style) newCell.style = { ...cell.style };
+        });
+      });
+
+      // Copy merges
+      const merges = srcModel.merges as string[] | undefined;
+      if (merges) {
+        for (const merge of merges) {
+          try { newSheet.mergeCells(merge); } catch { /* skip */ }
+        }
+      }
     }
 
-    const buffer = await monthlyBook.xlsx.writeBuffer();
+    const buffer = await combinedBook.xlsx.writeBuffer();
 
     try {
       await db.insert(auditEvent).values({
