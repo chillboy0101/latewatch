@@ -96,7 +96,10 @@ export async function POST(request: NextRequest) {
             // Copy formula if present (for formula cells like TOTAL section)
             const cellAny = cell as unknown as Record<string, unknown>;
             if (cellAny.formula) {
-              (newCell as unknown as Record<string, unknown>).formula = cellAny.formula;
+              // For formula cells: value must be set as { formula: '...' } to preserve the formula
+              (newCell as unknown as Record<string, unknown>).value = { formula: cellAny.formula };
+            } else {
+              newCell.value = cell.value as ExcelJS.CellValue;
             }
             const style = cell.style as Record<string, unknown> | undefined;
             if (style) newCell.style = style as unknown as ExcelJS.Style;
