@@ -7,38 +7,6 @@ import { currentUser } from '@clerk/nextjs/server';
 import { format, parseISO, isWeekend, startOfMonth, endOfMonth, addDays, eachDayOfInterval } from 'date-fns';
 import { buildWeeklyWorkbook } from '@/app/api/export/weekly/route';
 
-/**
- * Copy all cells, values, styles, numFmt, and merges from src to dst sheet.
- */
-function copySheet(src: ExcelJS.Worksheet, dst: ExcelJS.Worksheet) {
-  // Copy column widths from model
-  const srcModel = src.model as unknown as Record<string, unknown> | undefined;
-  if (srcModel?.cols) {
-    for (const col of srcModel.cols as Array<{ min: number; width?: number }>) {
-      const idx = col.min;
-      if (col.width) dst.getColumn(idx).width = col.width;
-    }
-  }
-
-  // Copy each row and cell
-  src.eachRow((row, rowNum) => {
-    const dstRow = dst.getRow(rowNum);
-    dstRow.height = row.height;
-    row.eachCell((cell, colNum) => {
-      const dstCell = dstRow.getCell(colNum);
-      dstCell.value = cell.value;
-      if (cell.numFmt) dstCell.numFmt = cell.numFmt;
-      if (cell.style) dstCell.style = { ...cell.style };
-    });
-  });
-
-  // Copy merges
-  const merges = srcModel?.merges as string[] | undefined;
-  for (const merge of merges || []) {
-    try { dst.mergeCells(merge); } catch { /* skip bad merges */ }
-  }
-}
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -87,12 +55,24 @@ export async function POST(request: NextRequest) {
       const weekStart = weekKeys[w];
       const weekEnd = format(addDays(parseISO(weekStart), 4), 'yyyy-MM-dd');
 
+      // Build weekly workbook
       const weeklyBook = await buildWeeklyWorkbook(weekStart, weekEnd, actorUserId, actorEmail);
-      const srcSheet = weeklyBook.worksheets[0];
+      const weekBuf = await weeklyBook.xlsx.writeBuffer();
+
+      // Load into temp book to clone the sheet model
+      const tmpBook = new ExcelJS.Workbook();
+      await tmpBook.xlsx.load(weekBuf as any);
+      const srcSheet = tmpBook.worksheets[0];
       if (!srcSheet) continue;
 
+      // Clone model directly - preserves all cells, styles, merges, column widths
+      const clonedModel = JSON.parse(JSON.stringify(srcSheet.model));
+      clonedModel.name = `Week ${w + 1}`;
+      // Remove id so ExcelJS assigns fresh one
+      delete clonedModel.id;
+
       const newSheet = monthlyBook.addWorksheet(`Week ${w + 1}`);
-      copySheet(srcSheet, newSheet);
+      newSheet.model = clonedModel;
     }
 
     const buffer = await monthlyBook.xlsx.writeBuffer();
