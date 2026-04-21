@@ -57,7 +57,6 @@ export default function ExportsPage() {
 
       // Build week summaries
       const summaries: WeekSummary[] = [];
-      let monthTotal = 0;
       let weekIdx = 0;
       let weekStart = new Date(monthStart);
 
@@ -103,7 +102,6 @@ export default function ExportsPage() {
           weekLate += lateCount;
           weekSignOut += signOutCount;
           weekAmount += dayAmount;
-          monthTotal += dayAmount;
         }
 
         if (days.length > 0) {
@@ -128,7 +126,6 @@ export default function ExportsPage() {
       }
 
       setWeekSummaries(summaries);
-      setMonthlyTotal(monthTotal);
       setSelectedWeekIdx(0);
     } catch (error) {
       console.error('Failed to fetch export data:', error);
