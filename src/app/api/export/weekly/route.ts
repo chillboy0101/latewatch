@@ -5,7 +5,7 @@ import { latenessEntry, workCalendar, auditEvent, staff } from '@/db/schema';
 import { and, gte, lte, eq } from 'drizzle-orm';
 import ExcelJS from 'exceljs';
 import { currentUser } from '@clerk/nextjs/server';
-import { format, parseISO, isWeekend } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import path from 'path';
 
 // ── Fixed staff order matching the LATENESS BOOK template ──────────
@@ -28,6 +28,7 @@ const STAFF_ORDER = [
 ];
 
 // Day block layout (1-based row indices from template)
+// Index 0=Monday block, 1=Tuesday, 2=Wednesday, 3=Thursday, 4=Friday
 const DAY_DATA_START = [4, 22, 40, 58, 76];
 const DAY_HEADER_ROW  = [3, 21, 39, 57, 75];
 const DAY_TITLE_ROW   = [1, 19, 37, 55, 73];
@@ -35,6 +36,16 @@ const DAY_TITLE_ROW   = [1, 19, 37, 55, 73];
 function getOrdinalSuffix(n: number): string {
   if (n > 3 && n < 21) return 'TH';
   switch (n % 10) { case 1: return 'ST'; case 2: return 'ND'; case 3: return 'RD'; default: return 'TH'; }
+}
+
+/**
+ * Returns which template slot (0-4, Mon-Fri) a given date maps to.
+ * Returns -1 if the date is a weekend.
+ */
+function dayToSlot(d: Date): number {
+  const dow = d.getDay(); // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
+  if (dow === 0 || dow === 6) return -1; // weekend
+  return dow - 1; // Mon(1)→0, Tue(2)→1, Wed(3)→2, Thu(4)→3, Fri(5)→4
 }
 
 /**
@@ -86,26 +97,33 @@ export async function buildWeeklyWorkbook(
   const worksheet = workbook.getWorksheet('WEEK 4') || workbook.getWorksheet('WEEK 1');
   if (!worksheet) throw new Error('Template sheet not found');
 
-  // Determine the 5 dates for this week (Mon→Fri)
+  // Determine the actual valid days for this week within the month range
+  // (respects month boundaries and excludes weekends)
   const startDate = parseISO(weekStart);
-  const dayDates: string[] = [];
-  for (let i = 0; i < 5; i++) {
-    const d = new Date(startDate);
-    d.setDate(d.getDate() + i);
-    dayDates.push(format(d, 'yyyy-MM-dd'));
+  const endDate = parseISO(weekEnd);
+
+  // Build list of valid (non-weekend) dates for this week
+  const validDays: { date: Date; dateStr: string; slot: number }[] = [];
+  for (let d = new Date(startDate); d <= endDate; d = new Date(d.getTime() + 86400000)) {
+    const slot = dayToSlot(d);
+    if (slot === -1) continue; // skip weekend
+    validDays.push({
+      date: new Date(d),
+      dateStr: format(d, 'yyyy-MM-dd'),
+      slot,
+    });
   }
 
-  // Update date title rows
-  for (let i = 0; i < 5; i++) {
-    const d = parseISO(dayDates[i]);
-    const dayName = format(d, 'EEEE').toUpperCase();
-    const dayNum = d.getDate();
-    const monthYear = format(d, 'MMMM yyyy').toUpperCase();
+  // Update date title rows only for days that exist in this week
+  for (const day of validDays) {
+    const dayName = format(day.date, 'EEEE').toUpperCase();
+    const dayNum = day.date.getDate();
+    const monthYear = format(day.date, 'MMMM yyyy').toUpperCase();
     const titleText = `${dayName},${dayNum}${getOrdinalSuffix(dayNum)} ${monthYear}`;
-    worksheet.getCell(DAY_TITLE_ROW[i], 1).value = titleText;
+    worksheet.getCell(DAY_TITLE_ROW[day.slot], 1).value = titleText;
   }
 
-  // Clear all AMOUNT (C), REASON (D), and HOLIDAY (E) cells first
+  // Clear all AMOUNT (C), REASON (D), and HOLIDAY (E) cells for all 5 blocks first
   for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
     const dataStart = DAY_DATA_START[dayIdx];
     for (let staffIdx = 0; staffIdx < STAFF_ORDER.length; staffIdx++) {
@@ -116,14 +134,14 @@ export async function buildWeeklyWorkbook(
     worksheet.getCell(DAY_HEADER_ROW[dayIdx], 5).value = undefined;
   }
 
-  // Fill TIME (col B), AMOUNT (col C), REASON (col D)
-  for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
-    const dateStr = dayDates[dayIdx];
-    const dataStart = DAY_DATA_START[dayIdx];
-    const headerRow = DAY_HEADER_ROW[dayIdx];
-    const d = parseISO(dateStr);
+  // Fill TIME (col B), AMOUNT (col C), REASON (col D) for each valid day
+  for (const day of validDays) {
+    const { dateStr, slot } = day;
+    const dataStart = DAY_DATA_START[slot];
+    const headerRow = DAY_HEADER_ROW[slot];
+    const d = new Date(dateStr);
 
-    const isWeekdayHoliday = !isWeekend(d) && holidaySet.has(dateStr);
+    const isWeekdayHoliday = holidaySet.has(dateStr);
     if (isWeekdayHoliday) {
       const holidayCell = worksheet.getCell(headerRow, 5);
       holidayCell.value = 'HOLIDAY';
