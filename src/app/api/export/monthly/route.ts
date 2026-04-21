@@ -215,7 +215,7 @@ export async function POST(request: NextRequest) {
             if (typeof cell.value === 'string') {
               // Try to parse as ISO date string
               const parsed = new Date(cell.value);
-              if (!isNaN(parsed.getTime()) && /^\\d{4}-\\d{2}-\\d{2}T/.test(cell.value)) {
+              if (!isNaN(parsed.getTime()) && /^\d{4}-\d{2}-\d{2}T/.test(cell.value)) {
                 cell.value = parsed;
               }
             }
