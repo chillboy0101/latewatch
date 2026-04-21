@@ -13,6 +13,7 @@ export async function GET() {
     const staffList = await db.select({
       id: staff.id,
       fullName: staff.fullName,
+      displayOrder: staff.displayOrder,
       active: staff.active,
       department: staff.department,
       unit: staff.unit,
