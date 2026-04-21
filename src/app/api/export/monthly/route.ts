@@ -210,10 +210,12 @@ export async function POST(request: NextRequest) {
         if (col.width) newSheet.getColumn(ci + 1).width = col.width;
       }
 
-      // Copy merge ranges
-      const merges: string[] = (srcSheet as any)._merges || [];
-      for (const merge of merges) {
-        newSheet.mergeCells(merge);
+      // Copy merge ranges — _merges is a Record, so use Object.keys
+      const mergeKeys = Object.keys((srcSheet as any)._merges || {});
+      for (const mergeKey of mergeKeys) {
+        const range = (srcSheet as any)._merges[mergeKey];
+        const { top, left, bottom, right } = range.model || range;
+        newSheet.mergeCells(top, left, bottom, right);
       }
     }
 
