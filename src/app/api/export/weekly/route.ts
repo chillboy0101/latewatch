@@ -158,6 +158,11 @@ export async function buildWeeklyWorkbook(
     }
   }
 
+  // Set GHC currency format on TOTAL column B (rows 95-110)
+  for (let r = 95; r <= 110; r++) {
+    worksheet.getCell(r, 2).numFmt = '"GHC "#,##0.00';
+  }
+
   return workbook;
 }
 
