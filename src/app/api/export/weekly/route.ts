@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
       if (isWeekdayHoliday) {
         const holidayCell = worksheet.getCell(headerRow, 5);
         holidayCell.value = 'HOLIDAY';
-        holidayCell.alignment = { horizontal: 'center' as any, vertical: 'center' as any };
+        holidayCell.alignment = { horizontal: 'center', vertical: 'middle' };
       }
 
       for (let staffIdx = 0; staffIdx < STAFF_ORDER.length; staffIdx++) {

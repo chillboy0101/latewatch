@@ -5,6 +5,7 @@ import { relations } from 'drizzle-orm';
 export const staff = pgTable('staff', {
   id: uuid('id').primaryKey().defaultRandom(),
   fullName: text('full_name').notNull(),
+  displayOrder: integer('display_order'),
   active: boolean('active').default(true),
   department: text('department'),
   unit: text('unit'),

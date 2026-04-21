@@ -20,7 +20,7 @@ export async function GET() {
       updatedAt: staff.updatedAt,
     })
     .from(staff)
-    .orderBy(asc(staff.fullName));
+    .orderBy(asc(staff.displayOrder), asc(staff.fullName));
 
     return NextResponse.json(staffList, {
       headers: {
