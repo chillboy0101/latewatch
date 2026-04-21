@@ -5,7 +5,7 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Download, Loader2, FileSpreadsheet } from 'lucide-react';
-import { format, startOfMonth, endOfMonth, addDays, addMonths, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, addDays, parseISO } from 'date-fns';
 
 interface DayData {
   day: string;
@@ -31,9 +31,8 @@ export default function ExportsPage() {
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [selectedWeekIdx, setSelectedWeekIdx] = useState(0);
   const [weekSummaries, setWeekSummaries] = useState<WeekSummary[]>([]);
-  const [monthlyTotal, setMonthlyTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [exporting, setExporting] = useState<'weekly' | 'monthly' | null>(null);
+  const [exporting, setExporting] = useState<'weekly' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const fetchExportData = useCallback(async () => {
@@ -180,41 +179,6 @@ export default function ExportsPage() {
     }
   }
 
-  async function handleMonthlyExport() {
-    setExporting('monthly');
-    setError(null);
-    try {
-      const year = selectedMonth.getFullYear();
-      const month = selectedMonth.getMonth();
-
-      const response = await fetch('/api/export/monthly', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year, month }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Export failed (${response.status})`);
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Lateness_Monthly_${year}_${month + 1}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Export failed:', err);
-      setError(err instanceof Error ? err.message : 'Export failed');
-    } finally {
-      setExporting(null);
-    }
-  }
-
   const currentWeek = weekSummaries[selectedWeekIdx];
 
   return (
@@ -321,65 +285,7 @@ export default function ExportsPage() {
           </div>
         </Card>
 
-        {/* Monthly Export */}
-        <Card>
-          <div className="p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <FileSpreadsheet className="h-5 w-5 text-primary" />
-              <h2 className="text-lg font-semibold">Monthly Export</h2>
-            </div>
-            <div className="space-y-4">
-              <div className="flex gap-2 items-end">
-                <div className="w-48">
-                  <label className="mb-2 block text-sm font-medium text-muted-foreground">Month</label>
-                  <select
-                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                    value={selectedMonth.getMonth()}
-                    onChange={(e) => setSelectedMonth(new Date(selectedMonth.getFullYear(), parseInt(e.target.value), 1))}
-                  >
-                    {Array.from({ length: 12 }, (_, i) => (
-                      <option key={i} value={i}>{format(new Date(2026, i, 1), 'MMMM')}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="w-24">
-                  <label className="mb-2 block text-sm font-medium text-muted-foreground">Year</label>
-                  <select
-                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                    value={selectedMonth.getFullYear()}
-                    onChange={(e) => setSelectedMonth(new Date(parseInt(e.target.value), selectedMonth.getMonth(), 1))}
-                  >
-                    {Array.from({ length: 11 }, (_, i) => {
-                      const year = 2024 + i;
-                      return <option key={year} value={year}>{year}</option>;
-                    })}
-                  </select>
-                </div>
               </div>
-
-              <div className="text-sm text-muted-foreground">
-                Weeks included: {weekSummaries.map((_, idx) => `Week ${idx + 1}`).join(', ')}
-              </div>
-
-              <div className="rounded-lg border border-border p-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Month Total:</span>
-                  <span className="font-mono font-semibold">GHC {monthlyTotal.toFixed(2)}</span>
-                </div>
-              </div>
-
-              <Button className="w-full gap-2" onClick={handleMonthlyExport} disabled={exporting === 'monthly'}>
-                {exporting === 'monthly' ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4" />
-                )}
-                {exporting === 'monthly' ? 'Generating...' : 'Download Monthly Excel'}
-              </Button>
-            </div>
-          </div>
-        </Card>
-      </div>
     </DashboardLayout>
   );
 }
