@@ -163,8 +163,8 @@ export default function EntriesPage() {
       if (response.ok) {
         const data = await response.json();
         setMessage({ type: 'success', text: `${data.count || entries.length} entries saved successfully` });
-        // Refresh data after save
-        await fetchStaffAndEntries();
+        // Re-fetch fresh data from DB so saved entries display immediately
+        setTimeout(() => fetchStaffAndEntries(), 50);
       } else {
         const errorData = await response.json();
         setMessage({ type: 'error', text: errorData.error || 'Failed to save entries' });
