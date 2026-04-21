@@ -200,28 +200,13 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Add the filled worksheet to the final workbook — copy cells directly
+      // Add the filled worksheet to the final workbook via model clone
+      // (preserves column widths, styling, merges — everything)
       const newSheet = workbook.addWorksheet(sheetName);
-      ws.eachRow((row, rowNum) => {
-        row.eachCell((cell, colNum) => {
-          const newCell = newSheet.getCell(rowNum, colNum);
-          newCell.value = cell.value;
-          newCell.numFmt = cell.numFmt;
-          if (cell.font) newCell.font = JSON.parse(JSON.stringify(cell.font));
-          if (cell.fill) newCell.fill = JSON.parse(JSON.stringify(cell.fill));
-          if (cell.border) newCell.border = JSON.parse(JSON.stringify(cell.border));
-          if (cell.alignment) newCell.alignment = JSON.parse(JSON.stringify(cell.alignment));
-        });
-      });
-
-      // Copy merged cells
-      const merges = (ws as any)._merges;
-      if (merges) {
-        for (const key of Object.keys(merges)) {
-          const m = merges[key].model;
-          newSheet.mergeCells(m.top, m.left, m.bottom, m.right);
-        }
-      }
+      const clonedModel = JSON.parse(JSON.stringify(ws.model));
+      (clonedModel as any).cols = JSON.parse(JSON.stringify((ws.model as any).cols));
+      newSheet.model = clonedModel;
+      newSheet.state = ws.state;
     }
 
     const buffer = await workbook.xlsx.writeBuffer();
