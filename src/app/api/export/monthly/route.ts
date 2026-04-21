@@ -17,7 +17,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Year and month required' }, { status: 400 });
     }
 
-    // Get current user for audit
     let actorEmail = 'system';
     let actorUserId: string | null = null;
     try {
@@ -50,17 +49,16 @@ export async function POST(request: NextRequest) {
     const DAY_HEADER_ROW  = [3, 21, 39, 57, 75];
     const DAY_TITLE_ROW   = [1, 19, 37, 55, 73];
 
-    const monthStart = startOfMonth(new Date(year, month));
+    const monthStartDate = startOfMonth(new Date(year, month));
     const monthEnd = endOfMonth(new Date(year, month));
 
     // Find all Mon-Fri weeks in the month
     const weeks: { weekStart: Date; weekEnd: Date }[] = [];
-    let cursor = new Date(monthStart);
+    let cursor = new Date(monthStartDate);
     while (cursor.getDay() !== 1) cursor = addDays(cursor, 1);
-
     while (cursor <= monthEnd) {
       const weekEnd = addDays(cursor, 4);
-      if (weekEnd >= monthStart) {
+      if (weekEnd >= monthStartDate) {
         weeks.push({ weekStart: new Date(cursor), weekEnd });
       }
       cursor = addDays(cursor, 7);
@@ -69,23 +67,16 @@ export async function POST(request: NextRequest) {
     const allStaffRows = await db.select({ id: staff.id, fullName: staff.fullName })
       .from(staff)
       .where(eq(staff.active, true));
-
     const staffNameToId: Record<string, string> = {};
     for (const s of allStaffRows) staffNameToId[s.fullName] = s.id;
-
-    const orderedStaff = STAFF_ORDER.map(name => ({
-      name,
-      id: staffNameToId[name] || null,
-    }));
+    const orderedStaff = STAFF_ORDER.map(name => ({ name, id: staffNameToId[name] || null }));
 
     const templatePath = path.join(process.cwd(), 'src', 'lateness-book.xlsx');
 
-    // One workbook, add a sheet per week
+    // Single workbook — one sheet per week, all using the full template
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'LateWatch';
     workbook.created = new Date();
-    // Remove default sheet
-    workbook.removeWorksheet(workbook.getWorksheet(1)?.id || 1);
 
     for (let w = 0; w < weeks.length; w++) {
       const { weekStart, weekEnd } = weeks[w];
@@ -98,9 +89,9 @@ export async function POST(request: NextRequest) {
       const ws = weekBook.getWorksheet('WEEK 4') || weekBook.getWorksheet('WEEK 1');
       if (!ws) continue;
 
-      const sheetName = `WEEK ${w + 1} - ${format(weekStart, 'MMM dd')}`;
+      ws.name = `WEEK ${w + 1} - ${format(weekStart, 'MMM dd')}`;
 
-      // Fetch entries for this week
+      // Fetch entries + holidays for this week
       const entries = await db.select({
         staffId: latenessEntry.staffId,
         date: latenessEntry.date,
@@ -111,7 +102,6 @@ export async function POST(request: NextRequest) {
       .from(latenessEntry)
       .where(and(gte(latenessEntry.date, weekStartStr), lte(latenessEntry.date, weekEndStr)));
 
-      // Fetch holidays for this week
       const holidays = await db.select({ date: workCalendar.date })
         .from(workCalendar)
         .where(and(gte(workCalendar.date, weekStartStr), lte(workCalendar.date, weekEndStr), eq(workCalendar.isHoliday, true)));
@@ -120,7 +110,7 @@ export async function POST(request: NextRequest) {
       const entryByStaff: Record<string, typeof entries[0]> = {};
       for (const e of entries) entryByStaff[e.staffId] = e;
 
-      // Generate 5 day dates
+      // Generate 5 day dates from Monday of this week
       const dayDates: string[] = [];
       for (let i = 0; i < 5; i++) {
         const d = new Date(weekStart);
@@ -158,7 +148,6 @@ export async function POST(request: NextRequest) {
         const d = parseISO(dateStr);
 
         const isWeekdayHoliday = !isWeekend(d) && holidaySet.has(dateStr);
-
         const holidayCell = ws.getCell(headerRow, 5);
         if (isWeekdayHoliday) {
           holidayCell.value = 'HOLIDAY';
@@ -173,9 +162,8 @@ export async function POST(request: NextRequest) {
 
           if (entry?.arrivalTime) {
             const [hours, minutes] = entry.arrivalTime.split(':').map(Number);
-            const timeDate = new Date(2000, 0, 1, hours, minutes);
             const tc = ws.getCell(row, 2);
-            tc.value = timeDate;
+            tc.value = new Date(2000, 0, 1, hours, minutes);
             tc.numFmt = 'h:mm AM/PM';
           } else {
             ws.getCell(row, 2).value = undefined;
@@ -191,49 +179,41 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Copy the worksheet (with all formatting intact) into the final workbook
+      // Copy the filled worksheet (with full formatting) into the final workbook
       const srcSheet = ws;
-      const newSheet = workbook.addWorksheet(sheetName);
+      const newSheet = workbook.addWorksheet(srcSheet.name);
 
-      // Copy all rows (including styled-empty rows) by iterating model rows
-      // Build a lookup of rowNum -> modelRow for fast access
-      const modelRowsByNum: Record<number, any> = {};
-      const modelRows: any[] = (srcSheet as any).model?.rows || [];
-      for (const mr of modelRows) {
-        if (mr.number) modelRowsByNum[mr.number] = mr;
-      }
-
-      // Iterate ALL rows from 1 to the last row in the template
-      const lastRow = (srcSheet as any).model?.table?.rows?.length
-        ? Math.max(...modelRows.map((mr: any) => mr.number).filter(Boolean))
-        : 95;
-
-      for (let rowNum = 1; rowNum <= lastRow; rowNum++) {
-        const modelRow = modelRowsByNum[rowNum];
-        if (!modelRow) continue; // empty/unstyled row — skip
-
-        for (const modelCell of modelRow.cells || []) {
-          const colNum = modelCell.index + 1;
-          const cell = newSheet.getCell(rowNum, colNum);
-          if (modelCell.value !== undefined) cell.value = modelCell.value;
-          if (modelCell.numFmt) cell.numFmt = modelCell.numFmt;
-          if (modelCell.alignment) cell.alignment = modelCell.alignment;
-          if (modelCell.font) cell.font = modelCell.font;
-          if (modelCell.fill) cell.fill = modelCell.fill;
-          if (modelCell.border) cell.border = modelCell.border;
+      // Copy every row from the source sheet's model
+      const srcRows: any[] = (srcSheet as any)._rows || [];
+      for (let ri = 0; ri < srcRows.length; ri++) {
+        const srcRow = srcRows[ri];
+        if (!srcRow) continue;
+        const destRow = newSheet.getRow(ri + 1);
+        const srcCells: any[] = srcRow._cells || [];
+        for (let ci = 0; ci < srcCells.length; ci++) {
+          const srcCell = srcCells[ci];
+          if (!srcCell) continue;
+          const destCell = destRow.getCell(ci + 1);
+          destCell.value = srcCell.value;
+          if (srcCell.numFmt) destCell.numFmt = srcCell.numFmt;
+          if (srcCell.font) destCell.font = srcCell.font;
+          if (srcCell.fill) destCell.fill = srcCell.fill;
+          if (srcCell.border) destCell.border = srcCell.border;
+          if (srcCell.alignment) destCell.alignment = srcCell.alignment;
         }
+        if (srcRow.height) destRow.height = srcRow.height;
       }
 
       // Copy column widths
-      srcSheet.columns.forEach((col, idx) => {
-        if (col.width) newSheet.getColumn(idx + 1).width = col.width;
-      });
+      for (let ci = 0; ci < 5; ci++) {
+        const col = srcSheet.getColumn(ci + 1);
+        if (col.width) newSheet.getColumn(ci + 1).width = col.width;
+      }
 
       // Copy merge ranges
-      if ((srcSheet as any).model?.merges) {
-        for (const merge of (srcSheet as any).model.merges) {
-          newSheet.mergeCells(merge);
-        }
+      const merges: string[] = (srcSheet as any)._merges || [];
+      for (const merge of merges) {
+        newSheet.mergeCells(merge);
       }
     }
 
@@ -257,7 +237,7 @@ export async function POST(request: NextRequest) {
     return new NextResponse(buffer, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="Lateness_${format(monthStart, 'MMMM_yyyy')}.xlsx"`,
+        'Content-Disposition': `attachment; filename="Lateness_${format(monthStartDate, 'MMMM_yyyy')}.xlsx"`,
       },
     });
   } catch (error) {
