@@ -58,6 +58,7 @@ export async function buildWeeklyWorkbook(
   weekEnd: string,
   actorUserId?: string | null,
   actorEmail?: string,
+  actualMonthEnd?: string,
 ): Promise<ExcelJS.Workbook> {
   const templatePath = path.join(process.cwd(), 'src', 'lateness-book.xlsx');
 
@@ -107,6 +108,8 @@ export async function buildWeeklyWorkbook(
   for (let d = new Date(startDate); d <= endDate; d = new Date(d.getTime() + 86400000)) {
     const slot = dayToSlot(d);
     if (slot === -1) continue; // skip weekend
+    // Respect actual month end if provided (used by monthly export)
+    if (actualMonthEnd && d > parseISO(actualMonthEnd)) continue;
     validDays.push({
       date: new Date(d),
       dateStr: format(d, 'yyyy-MM-dd'),
