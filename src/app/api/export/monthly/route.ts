@@ -240,6 +240,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Monthly export failed:', error);
-    return NextResponse.json({ error: 'Monthly export failed' }, { status: 500 });
+    const errMsg = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: `Monthly export failed: ${errMsg}` }, { status: 500 });
   }
 }
