@@ -182,6 +182,7 @@ export async function bulkSaveEntries(entries: Array<{
     
     let result;
     if (existing) {
+      const before = { ...existing };
       [result] = await db.update(latenessEntry)
         .set({
           arrivalTime: entry.arrivalTime,
@@ -192,6 +193,16 @@ export async function bulkSaveEntries(entries: Array<{
         })
         .where(eq(latenessEntry.id, existing.id))
         .returning();
+
+      await db.insert(auditEvent).values({
+        entityType: 'entry',
+        entityId: result.id,
+        action: 'UPDATE',
+        beforeJson: before,
+        afterJson: result,
+        actorUserId: user.id,
+        actorEmail: user.email,
+      });
     } else {
       [result] = await db.insert(latenessEntry).values({
         staffId: entry.staffId,
@@ -201,6 +212,16 @@ export async function bulkSaveEntries(entries: Array<{
         computedAmount: amount.toString(),
         reason: reason,
       }).returning();
+
+      await db.insert(auditEvent).values({
+        entityType: 'entry',
+        entityId: result.id,
+        action: 'CREATE',
+        beforeJson: null,
+        afterJson: result,
+        actorUserId: user.id,
+        actorEmail: user.email,
+      });
     }
     
     results.push(result);
