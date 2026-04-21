@@ -7,6 +7,38 @@ import { currentUser } from '@clerk/nextjs/server';
 import { format, parseISO, isWeekend, startOfMonth, endOfMonth, addDays, eachDayOfInterval } from 'date-fns';
 import { buildWeeklyWorkbook } from '@/app/api/export/weekly/route';
 
+/**
+ * Copy all cells, values, styles, numFmt, and merges from src to dst sheet.
+ */
+function copySheet(src: ExcelJS.Worksheet, dst: ExcelJS.Worksheet) {
+  // Copy column widths from model
+  const srcModel = src.model as unknown as Record<string, unknown> | undefined;
+  if (srcModel?.cols) {
+    for (const col of srcModel.cols as Array<{ min: number; width?: number }>) {
+      const idx = col.min;
+      if (col.width) dst.getColumn(idx).width = col.width;
+    }
+  }
+
+  // Copy each row and cell
+  src.eachRow((row, rowNum) => {
+    const dstRow = dst.getRow(rowNum);
+    dstRow.height = row.height;
+    row.eachCell((cell, colNum) => {
+      const dstCell = dstRow.getCell(colNum);
+      dstCell.value = cell.value;
+      if (cell.numFmt) dstCell.numFmt = cell.numFmt;
+      if (cell.style) dstCell.style = { ...cell.style };
+    });
+  });
+
+  // Copy merges
+  const merges = srcModel?.merges as string[] | undefined;
+  for (const merge of merges || []) {
+    try { dst.mergeCells(merge); } catch { /* skip bad merges */ }
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -29,7 +61,6 @@ export async function POST(request: NextRequest) {
     const monthStartDate = startOfMonth(new Date(year, month));
     const monthEnd = endOfMonth(new Date(year, month));
 
-    // Get all weekdays in the month
     const allMonthDays = eachDayOfInterval({ start: monthStartDate, end: monthEnd })
       .filter(d => !isWeekend(d));
 
@@ -37,7 +68,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No weekdays in this month' }, { status: 400 });
     }
 
-    // Group days by their Monday-starting week
     const daysByWeek: Record<string, typeof allMonthDays> = {};
     for (const day of allMonthDays) {
       let monday = new Date(day);
@@ -49,7 +79,6 @@ export async function POST(request: NextRequest) {
 
     const weekKeys = Object.keys(daysByWeek).sort();
 
-    // Build monthly workbook
     const monthlyBook = new ExcelJS.Workbook();
     monthlyBook.creator = 'LateWatch';
     monthlyBook.created = new Date();
@@ -58,30 +87,16 @@ export async function POST(request: NextRequest) {
       const weekStart = weekKeys[w];
       const weekEnd = format(addDays(parseISO(weekStart), 4), 'yyyy-MM-dd');
 
-      // Build weekly workbook (reuses weekly export logic)
       const weeklyBook = await buildWeeklyWorkbook(weekStart, weekEnd, actorUserId, actorEmail);
-      const weekBuf = await weeklyBook.xlsx.writeBuffer();
-
-      // Load into temp book to clone the sheet model
-      const tmpBook = new ExcelJS.Workbook();
-      await tmpBook.xlsx.load(weekBuf as any);
-
-      const srcSheet = tmpBook.worksheets[0];
+      const srcSheet = weeklyBook.worksheets[0];
       if (!srcSheet) continue;
 
-      // Build a clean model with the correct sheet name
-      const clonedModel = JSON.parse(JSON.stringify(srcSheet.model));
-      clonedModel.name = `Week ${w + 1}`;
-      delete clonedModel.id; // let ExcelJS assign a new id
-
       const newSheet = monthlyBook.addWorksheet(`Week ${w + 1}`);
-      newSheet.state = srcSheet.state;
-      newSheet.model = clonedModel;
+      copySheet(srcSheet, newSheet);
     }
 
     const buffer = await monthlyBook.xlsx.writeBuffer();
 
-    // Audit log
     try {
       await db.insert(auditEvent).values({
         entityType: 'export',
