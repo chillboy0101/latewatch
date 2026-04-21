@@ -162,10 +162,10 @@ export async function POST(request: NextRequest) {
           const row = dataStart + staffIdx;
           const staffId = orderedStaff[staffIdx].id;
           const entry = staffId ? (entryByStaff[staffId] ?? null) : null;
-          const amount = entry ? parseFloat(String(entry.computedAmount ?? '0')) : 0;
+          const amount = entry?.computedAmount != null ? parseFloat(String(entry.computedAmount)) : 0;
 
           if (entry?.arrivalTime) {
-            const timeStr = String(entry.arrivalTime);
+            const timeStr = String(entry.arrivalTime ?? '');
             const parts = timeStr.split(':');
             const hours = parseInt(parts[0] || '0', 10);
             const minutes = parseInt(parts[1] || '0', 10);
@@ -191,7 +191,7 @@ export async function POST(request: NextRequest) {
       // Use workbook.addSheet by cloning from the weekBook via buffer round-trip
       const weekBuf = await weekBook.xlsx.writeBuffer();
       const tmpBook = new ExcelJS.Workbook();
-      await tmpBook.xlsx.load(Buffer.from(weekBuf as ArrayBuffer).buffer);
+      await tmpBook.xlsx.load(weekBuf as any);
       const srcSheet = tmpBook.getWorksheet(ws.name);
       if (srcSheet) {
         const newSheet = workbook.addWorksheet(srcSheet.name);
