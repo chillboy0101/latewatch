@@ -68,10 +68,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Group month days by their week (week starting Monday)
-    // Key: "YYYY-MM-DD" of the Monday of that week
     const daysByWeek: Record<string, Date[]> = {};
     for (const day of allMonthDays) {
-      // Find Monday of this week
       let monday = new Date(day);
       while (monday.getDay() !== 1) monday = addDays(monday, -1);
       const key = format(monday, 'yyyy-MM-dd');
@@ -79,11 +77,10 @@ export async function POST(request: NextRequest) {
       daysByWeek[key].push(day);
     }
 
-    // Sort weeks
     const weekKeys = Object.keys(daysByWeek).sort();
     const weeks = weekKeys.map(key => ({
       monday: parseISO(key),
-      days: daysByWeek[key], // already sorted
+      days: daysByWeek[key],
     }));
 
     const allStaffRows = await db.select({ id: staff.id, fullName: staff.fullName })
@@ -103,16 +100,10 @@ export async function POST(request: NextRequest) {
     for (let w = 0; w < weeks.length; w++) {
       const { monday, days: monthDays } = weeks[w];
 
-      // Load template fresh for each week
-      const weekBook = new ExcelJS.Workbook();
-      await weekBook.xlsx.readFile(templatePath);
-      const ws = weekBook.getWorksheet('WEEK 4') || weekBook.getWorksheet('WEEK 1');
-      if (!ws) continue;
-
+      // Build the sheet name from first day of month in this week
       const sheetName = `WEEK ${w + 1} - ${format(monthDays[0], 'MMM dd')}`;
-      ws.name = sheetName;
 
-      // Build lookup maps for this week
+      // Build lookup maps for this week (Mon to Fri)
       const weekStartStr = format(monday, 'yyyy-MM-dd');
       const weekEndStr = format(addDays(monday, 4), 'yyyy-MM-dd');
 
@@ -134,46 +125,47 @@ export async function POST(request: NextRequest) {
       const entryByStaff: Record<string, typeof entries[0]> = {};
       for (const e of entries) entryByStaff[e.staffId] = e;
 
-      // Map month day → DAY_INDEX (0=Mon, 1=Tue, ..., 4=Fri)
-      // to know which template slot to fill
-      const monthDayToDayIdx: Record<string, number> = {};
-      for (const d of monthDays) monthDayToDayIdx[format(d, 'yyyy-MM-dd')] = getDay(d) - 1;
+      // Map month day -> dayIdx
 
-      // Clear the data cells and header rows for all 5 day slots
+      // Load template
+      const weekBook = new ExcelJS.Workbook();
+      await weekBook.xlsx.readFile(templatePath);
+      const ws = weekBook.getWorksheet('WEEK 4') || weekBook.getWorksheet('WEEK 1');
+      if (!ws) continue;
+
+      ws.name = sheetName;
+
+      // Clear data cells for all 5 day slots
       for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
         const dataStart = DAY_DATA_START[dayIdx];
         for (let staffIdx = 0; staffIdx < STAFF_ORDER.length; staffIdx++) {
           const row = dataStart + staffIdx;
-          ws.getCell(row, 2).value = undefined; // TIME
-          ws.getCell(row, 3).value = undefined; // AMOUNT
-          ws.getCell(row, 4).value = undefined; // REASON
+          ws.getCell(row, 2).value = undefined;
+          ws.getCell(row, 3).value = undefined;
+          ws.getCell(row, 4).value = undefined;
         }
-        // Clear title and holiday for this slot too
         ws.getCell(DAY_TITLE_ROW[dayIdx], 1).value = undefined;
         ws.getCell(DAY_HEADER_ROW[dayIdx], 5).value = undefined;
       }
 
-      // Fill the day slots that are in this month
+      // Fill ONLY the day slots that are in this month
       for (const dayDate of monthDays) {
         const dayIdx = getDay(dayDate) - 1; // 0=Mon, 1=Tue, ..., 4=Fri
         const dateStr = format(dayDate, 'yyyy-MM-dd');
         const dataStart = DAY_DATA_START[dayIdx];
         const headerRow = DAY_HEADER_ROW[dayIdx];
 
-        // Date title: "MONDAY,1ST APRIL 2026"
         const dayName = format(dayDate, 'EEEE').toUpperCase();
         const dayNum = dayDate.getDate();
         const monthYear = format(dayDate, 'MMMM yyyy').toUpperCase();
         ws.getCell(DAY_TITLE_ROW[dayIdx], 1).value = `${dayName},${dayNum}${getOrdinalSuffix(dayNum)} ${monthYear}`;
 
-        // Holiday check
         const isWeekdayHoliday = !isWeekend(dayDate) && holidaySet.has(dateStr);
         if (isWeekdayHoliday) {
           ws.getCell(headerRow, 5).value = 'HOLIDAY';
           ws.getCell(headerRow, 5).alignment = { horizontal: 'center', vertical: 'middle' };
         }
 
-        // Staff data for this day
         for (let staffIdx = 0; staffIdx < STAFF_ORDER.length; staffIdx++) {
           const row = dataStart + staffIdx;
           const staffId = orderedStaff[staffIdx].id;
@@ -200,31 +192,17 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Add the filled worksheet to the final workbook via model clone
-      // (preserves column widths, styling, merges — everything)
-      const newSheet = workbook.addWorksheet(sheetName);
-      const clonedModel = JSON.parse(JSON.stringify(ws.model));
-      (clonedModel as any).cols = JSON.parse(JSON.stringify((ws.model as any).cols));
-
-      // Re-create Date objects in cells since JSON.stringify converts them to ISO strings
-      if (clonedModel.rows) {
-        for (const row of clonedModel.rows) {
-          if (!row || !row.cells) continue;
-          for (const cell of row.cells) {
-            if (!cell || cell.value === null || cell.value === undefined) continue;
-            if (typeof cell.value === 'string') {
-              // Try to parse as ISO date string
-              const parsed = new Date(cell.value);
-              if (!isNaN(parsed.getTime()) && /^\d{4}-\d{2}-\d{2}T/.test(cell.value)) {
-                cell.value = parsed;
-              }
-            }
-          }
-        }
+      // Copy the worksheet from weekBook into the monthly workbook
+      // by loading the weekBook buffer and extracting the sheet
+      const weekBuf = await weekBook.xlsx.writeBuffer();
+      const tmpBook = new ExcelJS.Workbook();
+      await tmpBook.xlsx.load(weekBuf as any);
+      const srcSheet = tmpBook.getWorksheet(sheetName);
+      if (srcSheet) {
+        const newSheet = workbook.addWorksheet(sheetName);
+        newSheet.model = JSON.parse(JSON.stringify(srcSheet.model));
+        newSheet.state = srcSheet.state;
       }
-
-      newSheet.model = clonedModel;
-      newSheet.state = ws.state;
     }
 
     const buffer = await workbook.xlsx.writeBuffer();
