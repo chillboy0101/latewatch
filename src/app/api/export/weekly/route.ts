@@ -2,30 +2,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { latenessEntry, workCalendar, auditEvent, staff } from '@/db/schema';
-import { and, gte, lte, eq } from 'drizzle-orm';
+import { and, gte, lte, eq, asc, sql } from 'drizzle-orm';
 import ExcelJS from 'exceljs';
 import { currentUser } from '@clerk/nextjs/server';
 import { format, parseISO } from 'date-fns';
 import path from 'path';
 
-// ── Fixed staff order matching the LATENESS BOOK template ──────────
-const STAFF_ORDER = [
-  'CHARLES DODGATSE',
-  'EYRAM MENSAH-GBAGBO',
-  'ANNA-LISA E. A. HAMMOND',
-  'CLAUDE KWASI BOADI',
-  'EUNICE TWENEBOAA ADU',
-  'ESTHER ADJOKOR ADJEI',
-  'RAPHAELADJEI MENSAH',
-  'DENNIS AKUETTEH ARYEETEY',
-  'DANIEL ASARE KWARTENG',
-  'WISDOM KOFI DATSOMOR',
-  'CARL CHRISTIAN QUIST',
-  'LISABETH SYBIL ADDAIH',
-  'ELEAZAR KWABENA TJ',
-  'REGINA ALLOTEY',
-  'EMMANUEL CHUKWUDI',
-];
+// ── Staff order: fetched from DB ordered by displayOrder then fullName ──
 
 // Day block layout (1-based row indices from template)
 // Index 0=Monday block, 1=Tuesday, 2=Wednesday, 3=Thursday, 4=Friday
@@ -63,15 +46,14 @@ export async function buildWeeklyWorkbook(
 ): Promise<ExcelJS.Workbook> {
   const templatePath = path.join(process.cwd(), 'src', 'lateness-book.xlsx');
 
-  // Fetch all active staff from DB
+  // Fetch all active staff from DB ordered by displayOrder then fullName
   const allStaffRows = await db.select({ id: staff.id, fullName: staff.fullName })
     .from(staff)
-    .where(eq(staff.active, true));
+    .where(eq(staff.active, true))
+    .orderBy(asc(staff.displayOrder), asc(staff.fullName));
 
-  const staffNameToId: Record<string, string> = {};
-  for (const s of allStaffRows) staffNameToId[s.fullName] = s.id;
-
-  const orderedStaff = STAFF_ORDER.map(name => ({ name, id: staffNameToId[name] || null }));
+  // Map staff to their template row (rows 4-18 for Monday block, etc.)
+  const orderedStaff = allStaffRows; // already ordered
 
   // Fetch entries for the week
   const entries = await db.select({
@@ -128,14 +110,44 @@ export async function buildWeeklyWorkbook(
     worksheet.getCell(DAY_TITLE_ROW[day.slot], 1).value = titleText;
   }
 
-  // Clear all AMOUNT (C), REASON (D), and HOLIDAY (E) cells for all 5 blocks first
+  // Clear all cells (NAME col A, TIME col B, AMOUNT col C, REASON col D, HOLIDAY col E) for all 5 blocks first
   for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
     const dataStart = DAY_DATA_START[dayIdx];
-    for (let staffIdx = 0; staffIdx < STAFF_ORDER.length; staffIdx++) {
+    for (let staffIdx = 0; staffIdx < orderedStaff.length; staffIdx++) {
       const row = dataStart + staffIdx;
+      worksheet.getCell(row, 1).value = undefined; // NAME
+      worksheet.getCell(row, 2).value = undefined; // TIME
+      worksheet.getCell(row, 3).value = undefined; // AMOUNT
+      worksheet.getCell(row, 4).value = undefined; // REASON
+    }
+    worksheet.getCell(DAY_HEADER_ROW[dayIdx], 5).value = undefined;
+  }
+
+  // Also clear unused template rows beyond our staff count (leave template NAME cells empty)
+  for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
+    const dataStart = DAY_DATA_START[dayIdx];
+    for (let staffIdx = orderedStaff.length; staffIdx < 15; staffIdx++) {
+      const row = dataStart + staffIdx;
+      worksheet.getCell(row, 1).value = undefined;
+      worksheet.getCell(row, 2).value = undefined;
       worksheet.getCell(row, 3).value = undefined;
       worksheet.getCell(row, 4).value = undefined;
     }
+    // Clear TOTAL section unused rows
+    const totalStart = 95;
+    for (let staffIdx = orderedStaff.length; staffIdx < 15; staffIdx++) {
+      const row = totalStart + staffIdx;
+      worksheet.getCell(row, 1).value = undefined;
+      worksheet.getCell(row, 2).value = undefined;
+    }
+  }
+
+  // Clear all TITLE and HEADER rows first (reset to empty)
+  for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
+    worksheet.getCell(DAY_TITLE_ROW[dayIdx], 1).value = undefined;
+    worksheet.getCell(DAY_TITLE_ROW[dayIdx], 2).value = undefined;
+    worksheet.getCell(DAY_HEADER_ROW[dayIdx], 1).value = undefined;
+    worksheet.getCell(DAY_HEADER_ROW[dayIdx], 2).value = undefined;
     worksheet.getCell(DAY_HEADER_ROW[dayIdx], 5).value = undefined;
   }
 
@@ -153,7 +165,7 @@ export async function buildWeeklyWorkbook(
       holidayCell.alignment = { horizontal: 'center', vertical: 'middle' };
     }
 
-    for (let staffIdx = 0; staffIdx < STAFF_ORDER.length; staffIdx++) {
+    for (let staffIdx = 0; staffIdx < orderedStaff.length; staffIdx++) {
       const row = dataStart + staffIdx;
       const staffId = orderedStaff[staffIdx].id;
       const entry = staffId ? entryByStaff[staffId] : null;
@@ -179,6 +191,31 @@ export async function buildWeeklyWorkbook(
       // REASON (col 4)
       worksheet.getCell(row, 4).value = entry?.reason || undefined;
     }
+  }
+
+  // Write staff names into the NAME column (col A) for each day block
+  for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
+    const dataStart = DAY_DATA_START[dayIdx];
+    for (let staffIdx = 0; staffIdx < orderedStaff.length; staffIdx++) {
+      const row = dataStart + staffIdx;
+      worksheet.getCell(row, 1).value = orderedStaff[staffIdx].fullName;
+    }
+  }
+
+  // Write staff names into TOTAL section and set formulas
+  const totalStart = 95; // row where TOTAL section begins
+  for (let staffIdx = 0; staffIdx < orderedStaff.length; staffIdx++) {
+    const row = totalStart + staffIdx;
+    const staffId = orderedStaff[staffIdx].id;
+    const name = orderedStaff[staffIdx].fullName;
+    worksheet.getCell(row, 1).value = name;
+    // Build SUM formula across all 5 day columns for this staff member
+    const cRefs = [0, 1, 2, 3, 4].map(di => {
+      const r = DAY_DATA_START[di] + staffIdx;
+      return `C${r}`;
+    }).join(',');
+    worksheet.getCell(row, 2).value = { formula: `SUM(${cRefs})` };
+    worksheet.getCell(row, 2).numFmt = '"GHC "#,##0.00';
   }
 
   // Set GHC currency format on TOTAL column B (rows 95-110)
@@ -213,12 +250,15 @@ export async function POST(request: NextRequest) {
 
     // Audit log (non-blocking)
     try {
+      const [{ count }] = await db.select({ count: sql`count(*)::int` })
+        .from(staff)
+        .where(eq(staff.active, true));
       await db.insert(auditEvent).values({
         entityType: 'export',
         entityId: `weekly-${weekStart}-${weekEnd}`,
         action: 'EXPORT',
         beforeJson: null,
-        afterJson: { weekStart, weekEnd, staffCount: STAFF_ORDER.length },
+        afterJson: { weekStart, weekEnd, staffCount: count },
         actorUserId,
         actorEmail,
       });
