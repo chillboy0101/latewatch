@@ -145,6 +145,8 @@ export default function ExportsPage() {
       const week = weekSummaries[selectedWeekIdx];
       if (!week) return;
 
+      // Use actual day boundaries (actualStart/actualEnd) instead of
+      // the potentially wider Mon-Fri weekEnd that includes weekend padding
       const response = await fetch('/api/export/weekly', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
