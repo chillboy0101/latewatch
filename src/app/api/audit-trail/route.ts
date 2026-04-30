@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (action && action !== 'all') {
-      conditions.push(eq(auditEvent.action, action as any));
+      conditions.push(eq(auditEvent.action, action));
     }
 
     if (actorEmail) {

@@ -3,6 +3,7 @@
 
 import { Sidebar } from './sidebar';
 import { Header } from './header';
+import { NotificationProvider } from '@/contexts/notification-context';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -12,12 +13,14 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children, title, userRole }: DashboardLayoutProps) {
   return (
-    <div className="flex h-screen w-full">
-      <Sidebar />
-      <div className="flex flex-1 flex-col">
-        <Header title={title} userRole={userRole} />
-        <main className="flex-1 overflow-auto p-6">{children}</main>
+    <NotificationProvider>
+      <div className="flex h-screen w-full">
+        <Sidebar />
+        <div className="flex flex-1 flex-col">
+          <Header title={title} userRole={userRole} />
+          <main className="flex-1 overflow-auto p-6">{children}</main>
+        </div>
       </div>
-    </div>
+    </NotificationProvider>
   );
 }

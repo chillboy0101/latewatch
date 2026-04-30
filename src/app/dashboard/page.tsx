@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, Plus, Download, Eye, Clock, Users, RefreshCw } from 'lucide-react';
+import { TrendingUp, Plus, Download, Eye, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
-import { format, startOfWeek, addDays, subWeeks } from 'date-fns';
+import { format, startOfWeek, addDays } from 'date-fns';
 import { getAblyRealtime } from '@/lib/ably-browser';
 
 interface WeekDayData {
@@ -135,7 +135,15 @@ export default function DashboardPage() {
     <DashboardLayout title="Dashboard">
       <div className="space-y-6">
         {/* Refresh */}
-        <div className="flex justify-end">
+        <div className="flex items-center justify-end gap-3">
+          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
+            realtimeConnected
+              ? 'border-success/30 bg-success/10 text-success'
+              : 'border-warning/30 bg-warning/10 text-warning'
+          }`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${realtimeConnected ? 'bg-success' : 'bg-warning'}`} />
+            {realtimeConnected ? 'Live' : 'Polling'}
+          </span>
           <Button variant="ghost" size="sm" className="gap-1.5" onClick={handleRefresh} disabled={refreshing}>
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
             Refresh

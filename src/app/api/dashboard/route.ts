@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { latenessEntry, staff, workCalendar } from '@/db/schema';
-import { gte, lte, and, desc, sql, count, eq } from 'drizzle-orm';
+import { gte, lte, and, desc, count, eq } from 'drizzle-orm';
 import { startOfWeek, addDays, subWeeks, format } from 'date-fns';
 
 export async function GET() {

@@ -4,7 +4,7 @@
 import { requireRole } from '@/lib/auth/roles';
 import { db } from '@/db';
 import { auditEvent } from '@/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, type SQL } from 'drizzle-orm';
 
 export async function getAuditLogs(
   entityType?: string,
@@ -13,7 +13,7 @@ export async function getAuditLogs(
 ) {
   await requireRole(['admin', 'hr']);
   
-  let conditions = [];
+  const conditions: SQL[] = [];
   
   if (entityType) {
     conditions.push(eq(auditEvent.entityType, entityType));

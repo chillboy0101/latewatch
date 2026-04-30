@@ -1,10 +1,9 @@
 // app/api/realtime/dashboard/route.ts
-import { NextRequest } from 'next/server';
 import { registerRealtimeClient } from '@/lib/realtime';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(_request: NextRequest) {
+export async function GET() {
   const encoder = new TextEncoder();
 
   let cleanup: (() => void) | null = null;

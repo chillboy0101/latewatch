@@ -22,7 +22,7 @@ export async function GET(
     }
 
     return NextResponse.json(holiday);
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Failed to fetch holiday' }, { status: 500 });
   }
 }

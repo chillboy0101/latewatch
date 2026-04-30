@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { staff, auditEvent } from '@/db/schema';
-import { asc, eq } from 'drizzle-orm';
+import { asc } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 import { currentUser } from '@clerk/nextjs/server';
 

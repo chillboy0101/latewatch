@@ -156,7 +156,6 @@ export async function buildWeeklyWorkbook(
     const { dateStr, slot } = day;
     const dataStart = DAY_DATA_START[slot];
     const headerRow = DAY_HEADER_ROW[slot];
-    const d = new Date(dateStr);
 
     const isWeekdayHoliday = holidaySet.has(dateStr);
     if (isWeekdayHoliday) {
@@ -206,7 +205,6 @@ export async function buildWeeklyWorkbook(
   const totalStart = 95; // row where TOTAL section begins
   for (let staffIdx = 0; staffIdx < orderedStaff.length; staffIdx++) {
     const row = totalStart + staffIdx;
-    const staffId = orderedStaff[staffIdx].id;
     const name = orderedStaff[staffIdx].fullName;
     worksheet.getCell(row, 1).value = name;
     // Build SUM formula across all 5 day columns for this staff member

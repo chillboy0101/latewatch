@@ -42,7 +42,7 @@ export function getMonthWeeks(year: number, month: number): { start: Date; end: 
   const lastDay = new Date(year, month + 1, 0);
   const weeks: { start: Date; end: Date }[] = [];
   
-  let current = new Date(firstDay);
+  const current = new Date(firstDay);
   while (current <= lastDay) {
     const weekStart = new Date(current);
     const weekEnd = new Date(current);

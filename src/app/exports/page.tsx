@@ -27,6 +27,13 @@ interface WeekSummary {
   totalAmount: number;
 }
 
+interface ExportEntry {
+  date: string;
+  didNotSignOut: boolean | null;
+  computedAmount: string | number | null;
+  reason: string | null;
+}
+
 export default function ExportsPage() {
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [selectedWeekIdx, setSelectedWeekIdx] = useState(0);
@@ -46,10 +53,10 @@ export default function ExportsPage() {
       // Single batch fetch for the entire month
       const response = await fetch(`/api/entries?start=${startStr}&end=${endStr}`);
       const allEntries = await response.json();
-      const entriesList = Array.isArray(allEntries) ? allEntries : [];
+      const entriesList = Array.isArray(allEntries) ? allEntries as ExportEntry[] : [];
 
       // Group entries by date
-      const entriesByDate: Record<string, any[]> = {};
+      const entriesByDate: Record<string, ExportEntry[]> = {};
       for (const entry of entriesList) {
         if (!entriesByDate[entry.date]) entriesByDate[entry.date] = [];
         entriesByDate[entry.date].push(entry);
@@ -85,9 +92,9 @@ export default function ExportsPage() {
           const dayName = format(d, 'EEE dd');
           const dayEntries = entriesByDate[dateStr] || [];
 
-          const lateCount = dayEntries.filter((e: any) => parseFloat(e.computedAmount || '0') > 0 && !e.reason?.includes('SIGN OUT')).length;
-          const signOutCount = dayEntries.filter((e: any) => e.didNotSignOut).length;
-          const dayAmount = dayEntries.reduce((sum: number, e: any) => sum + parseFloat(e.computedAmount || '0'), 0);
+          const lateCount = dayEntries.filter((e) => parseFloat(String(e.computedAmount || '0')) > 0 && !e.reason?.includes('SIGN OUT')).length;
+          const signOutCount = dayEntries.filter((e) => e.didNotSignOut).length;
+          const dayAmount = dayEntries.reduce((sum, e) => sum + parseFloat(String(e.computedAmount || '0')), 0);
 
           days.push({
             day: dayName,

@@ -133,7 +133,7 @@ export async function GET() {
     return NextResponse.json({
       lastSyncedAt: lastSync?.updatedAt?.toISOString() || null,
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ lastSyncedAt: null });
   }
 }

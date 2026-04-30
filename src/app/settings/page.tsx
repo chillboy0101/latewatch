@@ -5,25 +5,25 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Moon, Sun, Monitor, Check } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+
+type ThemePreference = 'light' | 'dark' | 'system';
+
+function getInitialTheme(): ThemePreference {
+  if (typeof window === 'undefined') return 'dark';
+
+  const saved = localStorage.getItem('theme');
+  if (saved === 'light' || saved === 'dark') return saved;
+
+  return 'system';
+}
 
 export default function SettingsPage() {
   const { user } = useUser();
   const role = (user?.publicMetadata?.role as string) || 'viewer';
-  const [currentTheme, setCurrentTheme] = useState<'light' | 'dark' | 'system'>('dark');
+  const [currentTheme, setCurrentTheme] = useState<ThemePreference>(getInitialTheme);
 
-  useEffect(() => {
-    const saved = localStorage.getItem('theme');
-    if (saved === 'light') {
-      setCurrentTheme('light');
-    } else if (saved === 'dark') {
-      setCurrentTheme('dark');
-    } else {
-      setCurrentTheme('system');
-    }
-  }, []);
-
-  const applyTheme = (theme: 'light' | 'dark' | 'system') => {
+  const applyTheme = (theme: ThemePreference) => {
     setCurrentTheme(theme);
     if (theme === 'light') {
       document.documentElement.classList.remove('dark');
@@ -118,7 +118,7 @@ export default function SettingsPage() {
   );
 }
 
-function ThemeButton({ variant, active, onApply }: { variant: 'light' | 'dark' | 'system'; active: boolean; onApply: (t: 'light' | 'dark' | 'system') => void }) {
+function ThemeButton({ variant, active, onApply }: { variant: ThemePreference; active: boolean; onApply: (t: ThemePreference) => void }) {
   const icons = { light: Sun, dark: Moon, system: Monitor };
   const Icon = icons[variant];
 

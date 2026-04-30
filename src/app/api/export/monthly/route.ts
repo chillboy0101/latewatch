@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
 
       // Load weekly book from buffer
       const tmpBook = new ExcelJS.Workbook();
-      await tmpBook.xlsx.load(weekBuf as any);
+      await tmpBook.xlsx.load(weekBuf);
 
       const srcSheet = tmpBook.worksheets[0];
       if (!srcSheet) continue;

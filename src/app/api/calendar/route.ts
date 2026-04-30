@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { workCalendar, auditEvent } from '@/db/schema';
-import { eq, and, gte, lte } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 import { currentUser } from '@clerk/nextjs/server';
 

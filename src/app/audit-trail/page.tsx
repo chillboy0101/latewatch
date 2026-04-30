@@ -27,12 +27,25 @@ interface AuditEvent {
   entityType: string;
   entityId: string;
   action: 'CREATE' | 'UPDATE' | 'DELETE' | 'EXPORT';
-  beforeJson: any;
-  afterJson: any;
+  beforeJson: AuditPayload | null;
+  afterJson: AuditPayload | null;
   actorUserId: string | null;
   actorEmail: string;
   timestamp: Date | null;
 }
+
+type AuditPayload = Record<string, unknown> & {
+  active?: boolean;
+  computedAmount?: number | string;
+  date?: string;
+  department?: string | null;
+  fullName?: string;
+  holidayNote?: string;
+  staff?: { fullName?: string };
+  unit?: string | null;
+  weekEnd?: string;
+  weekStart?: string;
+};
 
 interface Pagination {
   page: number;
@@ -174,8 +187,9 @@ export default function AuditTrailPage() {
       if (event.entityType === 'entry') {
         const name = afterData?.staff?.fullName;
         const amount = afterData?.computedAmount;
+        const amountValue = amount === undefined ? 0 : parseFloat(String(amount));
         return name
-          ? `Entry for ${name}${amount && parseFloat(amount) > 0 ? ` — GHC ${amount}` : ''}`
+          ? `Entry for ${name}${amountValue > 0 ? ` - GHC ${amount}` : ''}`
           : `New entry created`;
       }
       if (event.entityType === 'calendar') {
@@ -230,7 +244,6 @@ export default function AuditTrailPage() {
   }
 
   const hasActiveFilters = filters.entityType !== 'all' || filters.action !== 'all' || filters.actorEmail || filters.startDate || filters.endDate;
-  const activeFilterCount = [filters.entityType !== 'all', filters.action !== 'all', !!filters.actorEmail, !!filters.startDate, !!filters.endDate].filter(Boolean).length;
   const dropdownFilterCount = [filters.entityType !== 'all', filters.action !== 'all'].filter(Boolean).length;
 
   return (

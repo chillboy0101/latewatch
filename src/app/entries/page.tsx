@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card } from '@/components/ui/card';
 import { format } from 'date-fns';
-import { Save, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { Save, CheckCircle, AlertCircle } from 'lucide-react';
 
 interface StaffMember {
   id: string;
@@ -20,6 +20,20 @@ interface Entry {
   didNotSignOut: boolean;
   amount: number;
   reason: string;
+}
+
+interface CalendarDay {
+  isHoliday?: boolean | null;
+  isRemoved?: boolean | null;
+  holidayNote?: string | null;
+}
+
+interface ExistingEntry {
+  staffId: string;
+  arrivalTime: string | null;
+  didNotSignOut: boolean | null;
+  computedAmount: string | number | null;
+  reason: string | null;
 }
 
 function computePenalty(
@@ -96,19 +110,20 @@ export default function EntriesPage() {
       const staffList = Array.isArray(staffData) ? staffData : [];
       setStaff(staffList);
 
-      const holiday = Array.isArray(calendarData) ? calendarData.find((h: any) => h.isHoliday && !h.isRemoved) : null;
+      const calendarDays = Array.isArray(calendarData) ? calendarData as CalendarDay[] : [];
+      const holiday = calendarDays.find((h) => h.isHoliday && !h.isRemoved) ?? null;
       setIsHoliday(!!holiday);
       setHolidayName(holiday?.holidayNote || 'Holiday');
 
-      const entriesList = Array.isArray(entriesData) ? entriesData : [];
+      const entriesList = Array.isArray(entriesData) ? entriesData as ExistingEntry[] : [];
 
       const mergedEntries = staffList.map((s: StaffMember) => {
-        const existing = entriesList.find((e: any) => e.staffId === s.id);
+        const existing = entriesList.find((e) => e.staffId === s.id);
         return {
           staffId: s.id,
           arrivalTime: existing?.arrivalTime || '',
           didNotSignOut: existing?.didNotSignOut || false,
-          amount: existing ? parseFloat(existing.computedAmount || '0') : 0,
+          amount: existing ? parseFloat(String(existing.computedAmount || '0')) : 0,
           reason: existing?.reason || '',
         };
       });
@@ -119,14 +134,14 @@ export default function EntriesPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedDate]);
 
   useEffect(() => {
     fetchStaffAndEntries();
-  }, [fetchStaffAndEntries, selectedDate]);
+  }, [fetchStaffAndEntries]);
 
   
-  const updateEntry = (staffId: string, field: keyof Entry, value: any) => {
+  const updateEntry = <K extends keyof Entry>(staffId: string, field: K, value: Entry[K]) => {
     setEntries((prev) =>
       prev.map((entry) => {
         if (entry.staffId === staffId) {
@@ -309,7 +324,7 @@ export default function EntriesPage() {
                         <Checkbox
                           checked={entry.didNotSignOut}
                           onCheckedChange={(checked) =>
-                            updateEntry(entry.staffId, 'didNotSignOut', checked)
+                            updateEntry(entry.staffId, 'didNotSignOut', checked === true)
                           }
                           disabled={isHoliday}
                         />

@@ -3,10 +3,9 @@
 
 import { requireRole } from '@/lib/auth/roles';
 import { db } from '@/db';
-import { latenessEntry, staff as staffTable, workCalendar, auditEvent } from '@/db/schema';
-import { eq, and, gte, lte, inArray } from 'drizzle-orm';
+import { auditEvent } from '@/db/schema';
 import ExcelJS from 'exceljs';
-import { r2 } from '@/lib/r2/client';
+import { getR2Client } from '@/lib/r2/client';
 import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
@@ -32,16 +31,6 @@ export async function generateWeeklyExport(weekStart: string, weekEnd: string) {
     orderBy: (s, { asc }) => [asc(s.fullName)],
   });
   
-  // Get holidays for the week
-  const holidays = await db.query.workCalendar.findMany({
-    where: (cal, { and, gte, lte }) =>
-      and(
-        gte(cal.date, weekStart),
-        lte(cal.date, weekEnd),
-        eq(cal.isHoliday, true)
-      ),
-  });
-  
   // Create Excel workbook
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Lateness Book');
@@ -65,8 +54,6 @@ export async function generateWeeklyExport(weekStart: string, weekEnd: string) {
   worksheet.getRow(1).font = { color: { argb: 'FFFFFFFF' }, bold: true };
   
   // Add data
-  const holidayDates = new Set(holidays.map((h) => h.date));
-  
   for (const s of allStaff) {
     const staffEntries = entries.filter((e) => e.staffId === s.id);
     
@@ -95,6 +82,7 @@ export async function generateWeeklyExport(weekStart: string, weekEnd: string) {
   // Upload to R2
   const key = `exports/weekly-${weekStart}-${weekEnd}.xlsx`;
   const bufferArray = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+  const r2 = getR2Client();
   await r2.send(
     new PutObjectCommand({
       Bucket: process.env.CF_R2_BUCKET,
@@ -218,6 +206,7 @@ export async function generateMonthlyExport(year: number, month: number) {
   // Upload to R2
   const key = `exports/monthly-${year}-${month}.xlsx`;
   const bufferArray = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+  const r2 = getR2Client();
   await r2.send(
     new PutObjectCommand({
       Bucket: process.env.CF_R2_BUCKET,

@@ -5,6 +5,13 @@ import { staff } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 
+type StaffUpdateBody = {
+  active?: boolean;
+  department?: string | null;
+  fullName?: string;
+  unit?: string | null;
+};
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -30,10 +37,10 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
-    const body = await request.json();
+    const body = await request.json() as StaffUpdateBody;
     const { fullName, department, unit, active } = body;
 
-    const updateData: Record<string, any> = { updatedAt: new Date() };
+    const updateData: Partial<typeof staff.$inferInsert> = { updatedAt: new Date() };
     if (fullName !== undefined) updateData.fullName = fullName;
     if (department !== undefined) updateData.department = department;
     if (unit !== undefined) updateData.unit = unit;
@@ -98,8 +105,10 @@ export async function DELETE(
       return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
     }
 
-    // Hard delete from database
-    await db.delete(staff).where(eq(staff.id, id));
+    const [updated] = await db.update(staff)
+      .set({ active: false, updatedAt: new Date() })
+      .where(eq(staff.id, id))
+      .returning();
 
     // Audit log
     const { auditEvent } = await import('@/db/schema');
@@ -119,14 +128,14 @@ export async function DELETE(
       entityId: id,
       action: 'DELETE',
       beforeJson: before,
-      afterJson: null,
+      afterJson: updated,
       actorUserId,
       actorEmail,
     });
 
     publishRealtime('dashboard', 'invalidate', { reason: 'staff' });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, staff: updated });
   } catch (error) {
     console.error('Failed to delete staff member:', error);
     return NextResponse.json({ error: 'Failed to delete staff member' }, { status: 500 });

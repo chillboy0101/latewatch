@@ -3,12 +3,12 @@
 
 import { requireRole } from '@/lib/auth/roles';
 import { db } from '@/db';
-import { latenessEntry, auditEvent, workCalendar } from '@/db/schema';
+import { latenessEntry, auditEvent } from '@/db/schema';
 import { updateTag } from 'next/cache';
 import { publishRealtime } from '@/lib/realtime';
 import { z } from 'zod';
 import { computePenalty } from '@/lib/penalty-calculator';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 const entrySchema = z.object({
   staffId: z.string().uuid(),

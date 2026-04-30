@@ -20,6 +20,31 @@ interface Notification {
   action: string;
 }
 
+type AuditJson = Record<string, unknown> & {
+  active?: boolean;
+  computedAmount?: number | string;
+  date?: string;
+  fullName?: string;
+  holidayNote?: string;
+  staff?: { fullName?: string };
+  weekStart?: string;
+};
+
+interface AuditNotificationEvent {
+  id: string;
+  entityType: string;
+  entityId: string;
+  action: string;
+  beforeJson: unknown;
+  afterJson: unknown;
+  actorEmail: string | null;
+  timestamp: Date | string | null;
+}
+
+function toAuditJson(value: unknown): AuditJson | null {
+  return value && typeof value === 'object' ? value as AuditJson : null;
+}
+
 function getTimeAgo(date: Date): string {
   const now = new Date();
   const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
@@ -31,12 +56,12 @@ function getTimeAgo(date: Date): string {
   return date.toLocaleDateString();
 }
 
-function formatNotification(event: any, read = false): Notification {
+function formatNotification(event: AuditNotificationEvent, read = false): Notification {
   const timestamp = event.timestamp ? new Date(event.timestamp) : new Date();
   const timeAgo = getTimeAgo(timestamp);
 
-  const afterData = event.afterJson && typeof event.afterJson === 'object' ? event.afterJson : null;
-  const beforeData = event.beforeJson && typeof event.beforeJson === 'object' ? event.beforeJson : null;
+  const afterData = toAuditJson(event.afterJson);
+  const beforeData = toAuditJson(event.beforeJson);
 
   switch (event.action) {
     case 'CREATE':
@@ -49,7 +74,7 @@ function formatNotification(event: any, read = false): Notification {
       }
       if (event.entityType === 'entry') {
         const staffName = afterData?.staff?.fullName || afterData?.fullName || 'Unknown';
-        const amount = afterData?.computedAmount || '0';
+        const amount = String(afterData?.computedAmount || '0');
         const isLate = parseFloat(amount) > 0;
         return {
           id: event.id,
@@ -137,12 +162,10 @@ export async function GET(request: NextRequest) {
 
     // Get current user
     let userId = 'anonymous';
-    let actorEmail = 'anonymous';
     try {
       const user = await currentUser();
       if (user) {
         userId = user.id;
-        actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';
       }
     } catch { /* continue as anonymous */ }
 

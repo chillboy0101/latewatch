@@ -11,10 +11,20 @@ interface HeaderProps {
   userRole?: string;
 }
 
+function getInitialIsDark() {
+  if (typeof window === 'undefined') return true;
+
+  const savedTheme = localStorage.getItem('theme');
+  if (savedTheme === 'light') return false;
+  if (savedTheme === 'dark') return true;
+
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
 export function Header({ title, userRole }: HeaderProps) {
   const { user, isLoaded } = useUser();
   const firstName = user?.firstName || 'User';
-  const [isDark, setIsDark] = useState(true);
+  const [isDark, setIsDark] = useState(getInitialIsDark);
   const [showNotifications, setShowNotifications] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
 
@@ -27,18 +37,6 @@ export function Header({ title, userRole }: HeaderProps) {
     dismissNotification,
     clearAllNotifications,
   } = useNotifications();
-
-  // Apply theme from localStorage on mount
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'light') {
-      setIsDark(false);
-      document.documentElement.classList.remove('dark');
-    } else {
-      setIsDark(true);
-      document.documentElement.classList.add('dark');
-    }
-  }, []);
 
   const toggleTheme = () => {
     const newDark = !isDark;
