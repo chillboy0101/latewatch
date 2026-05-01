@@ -3,9 +3,10 @@
 
 import { requireRole } from '@/lib/auth/roles';
 import { db } from '@/db';
-import { latenessEntry, auditEvent } from '@/db/schema';
+import { latenessEntry } from '@/db/schema';
 import { updateTag } from 'next/cache';
 import { publishRealtime } from '@/lib/realtime';
+import { writeAuditEvent } from '@/lib/audit';
 import { z } from 'zod';
 import { computePenalty } from '@/lib/penalty-calculator';
 import { eq } from 'drizzle-orm';
@@ -81,15 +82,14 @@ export async function saveEntry(formData: FormData) {
       .where(eq(latenessEntry.id, existing.id))
       .returning();
     
-    // Audit log
-    await db.insert(auditEvent).values({
+    await writeAuditEvent({
       entityType: 'entry',
       entityId: entry.id,
       action: 'UPDATE',
-      beforeJson: before,
-      afterJson: entry,
-      actorUserId: user.id,
-      actorEmail: user.email,
+      before,
+      after: entry,
+      actor: user,
+      reason: 'entries',
     });
   } else {
     [entry] = await db.insert(latenessEntry).values({
@@ -101,15 +101,14 @@ export async function saveEntry(formData: FormData) {
       reason: reason,
     }).returning();
     
-    // Audit log
-    await db.insert(auditEvent).values({
+    await writeAuditEvent({
       entityType: 'entry',
       entityId: entry.id,
       action: 'CREATE',
-      beforeJson: null,
-      afterJson: entry,
-      actorUserId: user.id,
-      actorEmail: user.email,
+      before: null,
+      after: entry,
+      actor: user,
+      reason: 'entries',
     });
   }
 
@@ -132,15 +131,14 @@ export async function deleteEntry(id: string, date: string) {
   
   await db.delete(latenessEntry).where(eq(latenessEntry.id, id));
   
-  // Audit log
-  await db.insert(auditEvent).values({
+  await writeAuditEvent({
     entityType: 'entry',
     entityId: id,
     action: 'DELETE',
-    beforeJson: existing,
-    afterJson: null,
-    actorUserId: user.id,
-    actorEmail: user.email,
+    before: existing,
+    after: null,
+    actor: user,
+    reason: 'entries',
   });
   
   updateTag(`entries-${date}`);
@@ -194,14 +192,14 @@ export async function bulkSaveEntries(entries: Array<{
         .where(eq(latenessEntry.id, existing.id))
         .returning();
 
-      await db.insert(auditEvent).values({
+      await writeAuditEvent({
         entityType: 'entry',
         entityId: result.id,
         action: 'UPDATE',
-        beforeJson: before,
-        afterJson: result,
-        actorUserId: user.id,
-        actorEmail: user.email,
+        before,
+        after: result,
+        actor: user,
+        reason: 'entries',
       });
     } else {
       [result] = await db.insert(latenessEntry).values({
@@ -213,14 +211,14 @@ export async function bulkSaveEntries(entries: Array<{
         reason: reason,
       }).returning();
 
-      await db.insert(auditEvent).values({
+      await writeAuditEvent({
         entityType: 'entry',
         entityId: result.id,
         action: 'CREATE',
-        beforeJson: null,
-        afterJson: result,
-        actorUserId: user.id,
-        actorEmail: user.email,
+        before: null,
+        after: result,
+        actor: user,
+        reason: 'entries',
       });
     }
     

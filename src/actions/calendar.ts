@@ -3,9 +3,10 @@
 
 import { requireRole } from '@/lib/auth/roles';
 import { db } from '@/db';
-import { workCalendar, auditEvent } from '@/db/schema';
+import { workCalendar } from '@/db/schema';
 import { updateTag } from 'next/cache';
 import { publishRealtime } from '@/lib/realtime';
+import { writeAuditEvent } from '@/lib/audit';
 import { eq } from 'drizzle-orm';
 
 export async function getCalendar(year: number, month: number) {
@@ -46,15 +47,14 @@ export async function markHoliday(date: string, note?: string) {
       .where(eq(workCalendar.id, existing.id))
       .returning();
 
-    // Audit log
-    await db.insert(auditEvent).values({
+    await writeAuditEvent({
       entityType: 'calendar',
       entityId: calendar.id,
       action: 'UPDATE',
-      beforeJson: before,
-      afterJson: calendar,
-      actorUserId: user.id,
-      actorEmail: user.email,
+      before,
+      after: calendar,
+      actor: user,
+      reason: 'calendar',
     });
   } else {
     [calendar] = await db.insert(workCalendar).values({
@@ -63,15 +63,14 @@ export async function markHoliday(date: string, note?: string) {
       holidayNote: note,
     }).returning();
 
-    // Audit log
-    await db.insert(auditEvent).values({
+    await writeAuditEvent({
       entityType: 'calendar',
       entityId: calendar.id,
       action: 'CREATE',
-      beforeJson: null,
-      afterJson: calendar,
-      actorUserId: user.id,
-      actorEmail: user.email,
+      before: null,
+      after: calendar,
+      actor: user,
+      reason: 'calendar',
     });
   }
 
@@ -103,15 +102,14 @@ export async function unmarkHoliday(date: string) {
     .where(eq(workCalendar.id, existing.id))
     .returning();
 
-  // Audit log
-  await db.insert(auditEvent).values({
+  await writeAuditEvent({
     entityType: 'calendar',
     entityId: calendar.id,
     action: 'UPDATE',
-    beforeJson: before,
-    afterJson: calendar,
-    actorUserId: user.id,
-    actorEmail: user.email,
+    before,
+    after: calendar,
+    actor: user,
+    reason: 'calendar',
   });
 
   const monthNum = parseInt(date.split('-')[1]);

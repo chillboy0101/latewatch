@@ -1,12 +1,18 @@
-// app/api/notifications/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
-import { auditEvent, latenessEntry, staff, workCalendar, notificationRead } from '@/db/schema';
-import { desc, count, gte, eq, and } from 'drizzle-orm';
+import { auth, currentUser } from '@clerk/nextjs/server';
+import { and, count, desc, eq, gte, ne } from 'drizzle-orm';
 import { format, subDays } from 'date-fns';
-import { currentUser } from '@clerk/nextjs/server';
+import { db } from '@/db';
+import { auditEvent, entrySubmission, latenessEntry, notificationRead, staff, workCalendar } from '@/db/schema';
+import { getAuditActionLabel, getAuditEntityLabel, getAuditOperation } from '@/lib/audit-taxonomy';
+import { tryWriteAuditEvent } from '@/lib/audit';
+import { publishRealtime } from '@/lib/realtime';
 
 export const dynamic = 'force-dynamic';
+
+type NotificationType = 'info' | 'success' | 'warning' | 'alert';
+type NotificationPriority = 'low' | 'normal' | 'high' | 'critical';
+type NotificationCategory = 'audit' | 'attendance' | 'calendar' | 'exports' | 'staff' | 'system';
 
 interface Notification {
   id: string;
@@ -14,20 +20,37 @@ interface Notification {
   message: string;
   time: string;
   read: boolean;
-  type: 'info' | 'success' | 'warning' | 'alert';
+  type: NotificationType;
+  priority: NotificationPriority;
+  category: NotificationCategory;
   entityType: string;
   entityId: string;
+  entityLabel: string;
   action: string;
+  actionLabel: string;
+  actorEmail: string;
+  createdAt: string;
+  href: string;
 }
 
 type AuditJson = Record<string, unknown> & {
   active?: boolean;
   computedAmount?: number | string;
+  count?: number | string;
   date?: string;
   fullName?: string;
   holidayNote?: string;
+  month?: number | string;
+  notificationIds?: string[];
   staff?: { fullName?: string };
+  entryCount?: number | string;
+  submittedByEmail?: string;
+  totalAdded?: number | string;
+  totalSkipped?: number | string;
+  totalUpdated?: number | string;
+  weekEnd?: string;
   weekStart?: string;
+  year?: number | string;
 };
 
 interface AuditNotificationEvent {
@@ -41,13 +64,84 @@ interface AuditNotificationEvent {
   timestamp: Date | string | null;
 }
 
+type NotificationUser = {
+  email: string;
+  id: string;
+};
+
+const DISMISSED_PREFIX = 'dismissed:';
+
 function toAuditJson(value: unknown): AuditJson | null {
-  return value && typeof value === 'object' ? value as AuditJson : null;
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as AuditJson : null;
+}
+
+function getEmailFromSessionClaims(claims: Record<string, unknown> | null) {
+  return [claims?.email, claims?.email_address, claims?.primary_email_address]
+    .find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    ?.trim() || null;
+}
+
+async function getClerkProfileEmail() {
+  try {
+    const user = await currentUser();
+    return user?.emailAddresses[0]?.emailAddress?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function getNotificationUser(options: { resolveEmail?: boolean } = {}): Promise<NotificationUser | null> {
+  const session = await auth();
+  if (!session.userId) return null;
+  const claims = session.sessionClaims as Record<string, unknown> | null;
+  const claimEmail = getEmailFromSessionClaims(claims);
+  const profileEmail = !claimEmail && options.resolveEmail ? await getClerkProfileEmail() : null;
+
+  return {
+    id: session.userId,
+    email: claimEmail || profileEmail || 'unknown',
+  };
+}
+
+function getNotificationHref(entityType: string) {
+  switch (entityType) {
+    case 'staff':
+      return '/staff';
+    case 'entry':
+    case 'entry_submission':
+      return '/entries';
+    case 'calendar':
+      return '/calendar';
+    case 'export':
+      return '/exports';
+    case 'system':
+      return '/dashboard';
+    default:
+      return '/audit-trail';
+  }
+}
+
+function getCategory(entityType: string): NotificationCategory {
+  switch (entityType) {
+    case 'staff':
+      return 'staff';
+    case 'entry':
+    case 'entry_submission':
+      return 'attendance';
+    case 'calendar':
+      return 'calendar';
+    case 'export':
+      return 'exports';
+    case 'system':
+      return 'system';
+    default:
+      return 'audit';
+  }
 }
 
 function getTimeAgo(date: Date): string {
   const now = new Date();
-  const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  const seconds = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 1000));
 
   if (seconds < 60) return 'Just now';
   if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
@@ -56,274 +150,510 @@ function getTimeAgo(date: Date): string {
   return date.toLocaleDateString();
 }
 
-function formatNotification(event: AuditNotificationEvent, read = false): Notification {
+function makeNotification(
+  event: AuditNotificationEvent,
+  read: boolean,
+  title: string,
+  message: string,
+  type: NotificationType,
+  priority: NotificationPriority,
+  overrides: Partial<Notification> = {},
+): Notification {
   const timestamp = event.timestamp ? new Date(event.timestamp) : new Date();
-  const timeAgo = getTimeAgo(timestamp);
+  const operation = getAuditOperation(event.action, event.entityType, event.beforeJson, event.afterJson);
 
+  return {
+    id: event.id,
+    title,
+    message,
+    time: getTimeAgo(timestamp),
+    read,
+    type,
+    priority,
+    category: getCategory(event.entityType),
+    entityType: event.entityType,
+    entityId: event.entityId,
+    entityLabel: getAuditEntityLabel(event.entityType),
+    action: String(operation),
+    actionLabel: getAuditActionLabel(String(operation)),
+    actorEmail: event.actorEmail || 'system',
+    createdAt: timestamp.toISOString(),
+    href: getNotificationHref(event.entityType),
+    ...overrides,
+  };
+}
+
+function formatNotification(event: AuditNotificationEvent, read = false): Notification {
   const afterData = toAuditJson(event.afterJson);
   const beforeData = toAuditJson(event.beforeJson);
+  const operation = getAuditOperation(event.action, event.entityType, beforeData, afterData);
 
-  switch (event.action) {
+  switch (operation) {
     case 'CREATE':
-      if (event.entityType === 'staff') {
-        const name = afterData?.fullName || 'Unknown';
-        return {
-          id: event.id, title: 'New Staff Added', message: `${name} was added to the system`,
-          time: timeAgo, read, type: 'success', entityType: event.entityType, entityId: event.entityId, action: event.action,
-        };
+      if (event.entityType === 'entry_submission') {
+        const dateLabel = afterData?.date ? String(afterData.date) : 'the selected date';
+        const entryCount = Number(afterData?.entryCount || 0);
+
+        return makeNotification(
+          event,
+          read,
+          'Entries submitted',
+          entryCount > 0
+            ? `${entryCount} lateness record${entryCount === 1 ? '' : 's'} saved for ${dateLabel}.`
+            : `Daily entries for ${dateLabel} were submitted with no late arrivals.`,
+          'success',
+          'normal',
+        );
       }
+
+      if (event.entityType === 'staff') {
+        return makeNotification(
+          event,
+          read,
+          'Staff member added',
+          `${afterData?.fullName || 'A staff member'} was added by ${event.actorEmail || 'system'}.`,
+          'success',
+          'normal',
+        );
+      }
+
       if (event.entityType === 'entry') {
-        const staffName = afterData?.staff?.fullName || afterData?.fullName || 'Unknown';
+        const staffName = afterData?.staff?.fullName || afterData?.fullName || 'Staff member';
         const amount = String(afterData?.computedAmount || '0');
         const isLate = parseFloat(amount) > 0;
-        return {
-          id: event.id,
-          title: isLate ? 'Late Entry Recorded' : 'Entry Recorded',
-          message: `${staffName} — ${isLate ? `GHC ${amount} penalty` : 'On time'}`,
-          time: timeAgo, read, type: isLate ? 'warning' : 'info',
-          entityType: event.entityType, entityId: event.entityId, action: event.action,
-        };
+
+        return makeNotification(
+          event,
+          read,
+          isLate ? 'Late entry recorded' : 'Attendance entry recorded',
+          `${staffName} was recorded ${isLate ? `with a GHC ${amount} penalty` : 'on time'}.`,
+          isLate ? 'warning' : 'info',
+          isLate ? 'high' : 'normal',
+        );
       }
+
       if (event.entityType === 'calendar') {
-        const holidayName = afterData?.holidayNote || 'Holiday';
-        return {
-          id: event.id, title: 'Holiday Marked', message: `${holidayName} on ${afterData?.date || 'date'}`,
-          time: timeAgo, read, type: 'info', entityType: event.entityType, entityId: event.entityId, action: event.action,
-        };
+        return makeNotification(
+          event,
+          read,
+          'Holiday added',
+          `${afterData?.holidayNote || 'Holiday'} was marked for ${afterData?.date || 'the selected date'}.`,
+          'info',
+          'normal',
+        );
       }
-      return {
-        id: event.id, title: 'New Record Created', message: `Created ${event.entityType}`,
-        time: timeAgo, read, type: 'info', entityType: event.entityType, entityId: event.entityId, action: event.action,
-      };
+
+      return makeNotification(event, read, 'Record created', `Created ${getAuditEntityLabel(event.entityType)}.`, 'info', 'normal');
+
+    case 'ACTIVATE':
+    case 'DEACTIVATE': {
+      const activated = operation === 'ACTIVATE';
+      const name = afterData?.fullName || beforeData?.fullName || 'Staff member';
+
+      return makeNotification(
+        event,
+        read,
+        activated ? 'Staff member activated' : 'Staff member deactivated',
+        `${name} was ${activated ? 'activated' : 'deactivated'} by ${event.actorEmail || 'system'}.`,
+        activated ? 'success' : 'warning',
+        activated ? 'normal' : 'high',
+      );
+    }
 
     case 'UPDATE':
+      if (event.entityType === 'entry_submission') {
+        const dateLabel = afterData?.date ? String(afterData.date) : 'the selected date';
+        const entryCount = Number(afterData?.entryCount || 0);
+
+        return makeNotification(
+          event,
+          read,
+          'Entries updated',
+          entryCount > 0
+            ? `${entryCount} lateness record${entryCount === 1 ? '' : 's'} saved for ${dateLabel}.`
+            : `Daily entries for ${dateLabel} were updated with no late arrivals.`,
+          'success',
+          'normal',
+        );
+      }
+
       if (event.entityType === 'staff') {
-        const name = afterData?.fullName || beforeData?.fullName || 'Staff';
+        const name = afterData?.fullName || beforeData?.fullName || 'Staff member';
         const changes: string[] = [];
-        if (beforeData?.active !== afterData?.active) {
-          changes.push(afterData?.active ? 'activated' : 'deactivated');
-        }
-        return {
-          id: event.id, title: 'Staff Updated',
-          message: changes.length > 0 ? `${name} was ${changes.join(', ')}` : `${name}'s info was updated`,
-          time: timeAgo, read, type: afterData?.active === false ? 'warning' : 'info',
-          entityType: event.entityType, entityId: event.entityId, action: event.action,
-        };
+        if (beforeData?.fullName !== afterData?.fullName) changes.push('name');
+        if (beforeData?.department !== afterData?.department) changes.push('department');
+        if (beforeData?.unit !== afterData?.unit) changes.push('unit');
+
+        return makeNotification(
+          event,
+          read,
+          'Staff profile updated',
+          `${name}${changes.length > 0 ? ` had ${changes.join(', ')} updated` : ' was updated'}.`,
+          'info',
+          'normal',
+        );
       }
+
       if (event.entityType === 'entry') {
-        const staffName = afterData?.staff?.fullName || afterData?.fullName || 'Unknown';
-        return {
-          id: event.id, title: 'Entry Updated', message: `${staffName}'s entry was modified`,
-          time: timeAgo, read, type: 'info', entityType: event.entityType, entityId: event.entityId, action: event.action,
-        };
+        const staffName = afterData?.staff?.fullName || afterData?.fullName || 'Staff member';
+        return makeNotification(event, read, 'Attendance entry updated', `${staffName}'s entry was modified.`, 'info', 'normal');
       }
+
       if (event.entityType === 'calendar') {
-        return {
-          id: event.id, title: 'Calendar Updated', message: `Calendar entry for ${afterData?.date || 'date'} was modified`,
-          time: timeAgo, read, type: 'info', entityType: event.entityType, entityId: event.entityId, action: event.action,
-        };
+        return makeNotification(
+          event,
+          read,
+          'Calendar updated',
+          `Calendar entry for ${afterData?.date || 'the selected date'} was modified.`,
+          'info',
+          'normal',
+        );
       }
-      return {
-        id: event.id, title: 'Record Updated', message: `${event.entityType} was modified`,
-        time: timeAgo, read, type: 'info', entityType: event.entityType, entityId: event.entityId, action: event.action,
-      };
+
+      return makeNotification(event, read, 'Record updated', `${getAuditEntityLabel(event.entityType)} was modified.`, 'info', 'normal');
 
     case 'DELETE':
-      if (event.entityType === 'staff') {
-        return {
-          id: event.id, title: 'Staff Removed', message: `${beforeData?.fullName || 'Staff member'} was removed`,
-          time: timeAgo, read, type: 'alert', entityType: event.entityType, entityId: event.entityId, action: event.action,
-        };
-      }
-      return {
-        id: event.id, title: 'Record Deleted', message: `${event.entityType} was removed`,
-        time: timeAgo, read, type: 'warning', entityType: event.entityType, entityId: event.entityId, action: event.action,
-      };
+      return makeNotification(event, read, 'Record removed', `${getAuditEntityLabel(event.entityType)} was removed.`, 'warning', 'high');
 
-    case 'EXPORT':
-      return {
-        id: event.id, title: 'Export Generated', message: `${afterData?.weekStart ? 'Weekly' : 'Monthly'} report by ${event.actorEmail || 'unknown'}`,
-        time: timeAgo, read, type: 'success', entityType: event.entityType, entityId: event.entityId, action: event.action,
-      };
+    case 'GENERATE':
+      return makeNotification(
+        event,
+        read,
+        'Export generated',
+        afterData?.weekStart
+          ? `Weekly export generated for ${afterData.weekStart} to ${afterData.weekEnd || '?'}.`
+          : `Monthly export generated${afterData?.year ? ` for ${afterData.year}-${afterData.month || ''}` : ''}.`,
+        'success',
+        'normal',
+      );
+
+    case 'SYNC':
+      return makeNotification(
+        event,
+        read,
+        'Holiday calendar synced',
+        `${afterData?.totalAdded || 0} added, ${afterData?.totalUpdated || 0} updated, ${afterData?.totalSkipped || 0} skipped.`,
+        'info',
+        'normal',
+      );
 
     default:
-      return {
-        id: event.id, title: 'System Event', message: `${event.action} on ${event.entityType}`,
-        time: timeAgo, read, type: 'info', entityType: event.entityType, entityId: event.entityId, action: event.action,
-      };
+      return makeNotification(
+        event,
+        read,
+        'System event',
+        `${getAuditActionLabel(String(operation))} ${getAuditEntityLabel(event.entityType)}.`,
+        'info',
+        'low',
+      );
   }
 }
 
-// GET - Fetch notifications with read state for current user
-export async function GET(request: NextRequest) {
-  try {
-    const url = new URL(request.url);
-    const limit = parseInt(url.searchParams.get('limit') || '20');
+function normalizeIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
 
-    // Get current user
-    let userId = 'anonymous';
-    try {
-      const user = await currentUser();
-      if (user) {
-        userId = user.id;
-      }
-    } catch { /* continue as anonymous */ }
+  return Array.from(
+    new Set(
+      value
+        .filter((id): id is string => typeof id === 'string')
+        .map((id) => id.trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, 250);
+}
 
-    // Fetch recent audit events (last 7 days only for relevance)
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+async function persistNotificationIds(userId: string, ids: string[]) {
+  if (ids.length === 0) return;
 
-    const events = await db.select({
-      id: auditEvent.id,
-      entityType: auditEvent.entityType,
-      entityId: auditEvent.entityId,
-      action: auditEvent.action,
-      beforeJson: auditEvent.beforeJson,
-      afterJson: auditEvent.afterJson,
-      actorUserId: auditEvent.actorUserId,
-      actorEmail: auditEvent.actorEmail,
-      timestamp: auditEvent.timestamp,
-    })
+  await db.insert(notificationRead)
+    .values(ids.map((notificationId) => ({ notificationId, userId })))
+    .onConflictDoNothing();
+}
+
+async function getNotificationState(userId: string) {
+  const rows = await db.select({ notificationId: notificationRead.notificationId })
+    .from(notificationRead)
+    .where(eq(notificationRead.userId, userId));
+
+  const readIds = new Set<string>();
+  const dismissedIds = new Set<string>();
+
+  for (const row of rows) {
+    if (row.notificationId.startsWith(DISMISSED_PREFIX)) {
+      dismissedIds.add(row.notificationId.slice(DISMISSED_PREFIX.length));
+    } else {
+      readIds.add(row.notificationId);
+    }
+  }
+
+  return { dismissedIds, readIds };
+}
+
+async function getAuditNotifications(limit: number, readIds: Set<string>) {
+  const since = subDays(new Date(), 30);
+
+  const events = await db.select({
+    id: auditEvent.id,
+    entityType: auditEvent.entityType,
+    entityId: auditEvent.entityId,
+    action: auditEvent.action,
+    beforeJson: auditEvent.beforeJson,
+    afterJson: auditEvent.afterJson,
+    actorEmail: auditEvent.actorEmail,
+    timestamp: auditEvent.timestamp,
+  })
     .from(auditEvent)
-    .where(gte(auditEvent.timestamp, sevenDaysAgo))
+    .where(and(gte(auditEvent.timestamp, since), ne(auditEvent.entityType, 'notification')))
     .orderBy(desc(auditEvent.timestamp))
     .limit(limit);
 
-    // Get user's read notifications
-    const readNotifications = await db.select({ notificationId: notificationRead.notificationId })
-      .from(notificationRead)
-      .where(eq(notificationRead.userId, userId));
+  return events.map((event) => formatNotification(event, readIds.has(event.id)));
+}
 
-    const readIds = new Set(readNotifications.map(r => r.notificationId));
+async function getSystemNotifications(readIds: Set<string>): Promise<Notification[]> {
+  const today = new Date();
+  const todayStr = format(today, 'yyyy-MM-dd');
+  const dayOfWeek = today.getDay();
+  const currentHour = today.getHours();
+  const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
+  const notifications: Notification[] = [];
 
-    const notifications: Notification[] = events.map(event =>
-      formatNotification(event, readIds.has(event.id))
-    );
+  const [holidayCheck] = await db.select({
+    id: workCalendar.id,
+    holidayNote: workCalendar.holidayNote,
+  })
+    .from(workCalendar)
+    .where(and(eq(workCalendar.date, todayStr), eq(workCalendar.isHoliday, true)))
+    .limit(1);
 
-    // ─── System-level alerts ──────────────────────────────────────────
-    const todayStr = format(new Date(), 'yyyy-MM-dd');
-    const dayOfWeek = new Date().getDay();
-    const currentHour = new Date().getHours();
-    const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
-
-    // Check if today is a holiday
-    let todayIsHoliday = false;
-    if (isWeekday) {
-      const [holidayCheck] = await db.select({ id: workCalendar.id })
-        .from(workCalendar)
-        .where(and(eq(workCalendar.date, todayStr), eq(workCalendar.isHoliday, true)));
-      todayIsHoliday = !!holidayCheck;
-    }
-
-    // Alert: entries not recorded today (only on weekdays, after 10 AM, not a holiday)
-    if (isWeekday && !todayIsHoliday && currentHour >= 10) {
-      const todayEntries = await db.select({ id: latenessEntry.id })
-        .from(latenessEntry)
-        .where(eq(latenessEntry.date, todayStr))
-        .limit(1);
-
-      if (todayEntries.length === 0) {
-        const alertId = `system-no-entries-${todayStr}`;
-        notifications.unshift({
-          id: alertId, title: 'Entries Not Recorded',
-          message: "Today's lateness entries have not been recorded yet",
-          time: 'Action needed', read: readIds.has(alertId), type: 'alert',
-          entityType: 'system', entityId: 'today-entries', action: 'ALERT',
-        });
-      }
-    }
-
-    // Alert: high penalty this week (> GHC 500)
-    const weekStart = format(
-      subDays(new Date(), dayOfWeek === 0 ? 6 : dayOfWeek - 1),
-      'yyyy-MM-dd'
-    );
-    const weekEntries = await db.select({ computedAmount: latenessEntry.computedAmount })
-      .from(latenessEntry)
-      .where(gte(latenessEntry.date, weekStart));
-    const weekTotal = weekEntries.reduce((sum, e) => sum + parseFloat(e.computedAmount || '0'), 0);
-
-    if (weekTotal > 500) {
-      const alertId = `system-high-penalties-${weekStart}`;
-      notifications.unshift({
-        id: alertId, title: 'High Penalty Amount',
-        message: `This week's penalties total GHC ${weekTotal.toLocaleString()}`,
-        time: 'This week', read: readIds.has(alertId), type: 'alert',
-        entityType: 'system', entityId: 'week-penalties', action: 'ALERT',
-      });
-    }
-
-    // Alert: no active staff at all
-    const staffCountResult = await db.select({ count: count() }).from(staff).where(eq(staff.active, true));
-    const activeStaffCount = Number(staffCountResult[0]?.count || 0);
-
-    if (activeStaffCount === 0) {
-      const weekSuffix = format(new Date(), 'yyyy-ww');
-      const alertId = `system-no-staff-${weekSuffix}`;
-      notifications.unshift({
-        id: alertId, title: 'No Active Staff',
-        message: 'Add staff members before you can record lateness entries',
-        time: 'Setup needed', read: readIds.has(alertId), type: 'warning',
-        entityType: 'system', entityId: 'staff-setup', action: 'ALERT',
-      });
-    }
-
-    // Deduplicate (keep first occurrence)
-    const seen = new Set<string>();
-    const deduped = notifications.filter((n) => {
-      if (seen.has(n.id)) return false;
-      seen.add(n.id);
-      return true;
-    });
-
-    return NextResponse.json({
-      notifications: deduped,
-      unreadCount: deduped.filter((n) => !n.read).length,
-    }, {
-      headers: {
-        'Cache-Control': 'no-store',
+  if (holidayCheck) {
+    notifications.push(makeNotification(
+      {
+        id: `system-holiday-today-${todayStr}`,
+        entityType: 'calendar',
+        entityId: holidayCheck.id,
+        action: 'ALERT',
+        beforeJson: null,
+        afterJson: { date: todayStr, holidayNote: holidayCheck.holidayNote },
+        actorEmail: 'system',
+        timestamp: today,
       },
-    });
-  } catch (error) {
-    console.error('Failed to fetch notifications:', error);
-    return NextResponse.json({ notifications: [], unreadCount: 0 });
+      readIds.has(`system-holiday-today-${todayStr}`),
+      'Today is marked as a holiday',
+      `${holidayCheck.holidayNote || 'Holiday'} is marked as a non-working day.`,
+      'info',
+      'normal',
+      {
+        category: 'calendar',
+        href: '/calendar',
+      },
+    ));
+  }
+
+  const staffCountResult = await db.select({ count: count() })
+    .from(staff)
+    .where(and(eq(staff.active, true), eq(staff.archived, false)));
+  const activeStaffCount = Number(staffCountResult[0]?.count || 0);
+
+  if (isWeekday && !holidayCheck && activeStaffCount > 0 && currentHour >= 10) {
+    const [submission] = await db.select({ id: entrySubmission.id })
+      .from(entrySubmission)
+      .where(eq(entrySubmission.date, todayStr))
+      .limit(1);
+
+    if (!submission) {
+      const alertId = `system-no-entries-${todayStr}`;
+      notifications.push(makeNotification(
+        {
+          id: alertId,
+          entityType: 'system',
+          entityId: 'today-entries',
+          action: 'ALERT',
+          beforeJson: null,
+          afterJson: { date: todayStr },
+          actorEmail: 'system',
+          timestamp: today,
+        },
+        readIds.has(alertId),
+        'Entries not recorded',
+        "Today's lateness entries have not been submitted yet.",
+        'alert',
+        'critical',
+        {
+          category: 'attendance',
+          href: '/entries',
+        },
+      ));
+    }
+  }
+
+  const weekStart = format(subDays(today, dayOfWeek === 0 ? 6 : dayOfWeek - 1), 'yyyy-MM-dd');
+  const weekEntries = await db.select({ computedAmount: latenessEntry.computedAmount })
+    .from(latenessEntry)
+    .where(gte(latenessEntry.date, weekStart));
+  const weekTotal = weekEntries.reduce((sum, entry) => sum + parseFloat(entry.computedAmount || '0'), 0);
+
+  if (weekTotal > 500) {
+    const alertId = `system-high-penalties-${weekStart}`;
+    notifications.push(makeNotification(
+      {
+        id: alertId,
+        entityType: 'system',
+        entityId: 'week-penalties',
+        action: 'ALERT',
+        beforeJson: null,
+        afterJson: { weekStart, weekTotal },
+        actorEmail: 'system',
+        timestamp: today,
+      },
+      readIds.has(alertId),
+      'High weekly penalty amount',
+      `This week's penalties total GHC ${weekTotal.toLocaleString()}.`,
+      'alert',
+      'high',
+      {
+        category: 'attendance',
+        href: '/dashboard',
+      },
+    ));
+  }
+
+  if (activeStaffCount === 0) {
+    const weekSuffix = format(today, 'yyyy-ww');
+    const alertId = `system-no-staff-${weekSuffix}`;
+    notifications.push(makeNotification(
+      {
+        id: alertId,
+        entityType: 'system',
+        entityId: 'staff-setup',
+        action: 'ALERT',
+        beforeJson: null,
+        afterJson: { activeStaffCount },
+        actorEmail: 'system',
+        timestamp: today,
+      },
+      readIds.has(alertId),
+      'No active staff',
+      'Add staff members before recording lateness entries.',
+      'warning',
+      'critical',
+      {
+        category: 'staff',
+        href: '/staff',
+      },
+    ));
+  }
+
+  return notifications;
+}
+
+function shouldKeepStatus(notification: Notification, status: string | null) {
+  if (!status || status === 'all') return true;
+  if (status === 'unread') return !notification.read;
+  if (status === 'action_required') return notification.priority === 'critical' || notification.type === 'alert';
+  return true;
+}
+
+function priorityRank(priority: NotificationPriority) {
+  switch (priority) {
+    case 'critical':
+      return 4;
+    case 'high':
+      return 3;
+    case 'normal':
+      return 2;
+    default:
+      return 1;
   }
 }
 
-// POST - Mark notifications as read
+export async function GET(request: NextRequest) {
+  try {
+    const user = await getNotificationUser();
+    if (!user) {
+      return NextResponse.json({ notifications: [], unreadCount: 0 }, { status: 401 });
+    }
+
+    const url = new URL(request.url);
+    const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '40', 10), 1), 100);
+    const status = url.searchParams.get('status');
+    const { dismissedIds, readIds } = await getNotificationState(user.id);
+
+    const [auditNotifications, systemNotifications] = await Promise.all([
+      getAuditNotifications(limit, readIds),
+      getSystemNotifications(readIds),
+    ]);
+
+    const seen = new Set<string>();
+    const notifications = [...systemNotifications, ...auditNotifications]
+      .filter((notification) => {
+        if (seen.has(notification.id) || dismissedIds.has(notification.id)) return false;
+        seen.add(notification.id);
+        return shouldKeepStatus(notification, status);
+      })
+      .sort((a, b) => {
+        const timeDelta = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        if (timeDelta !== 0) return timeDelta;
+        return priorityRank(b.priority) - priorityRank(a.priority);
+      })
+      .slice(0, limit);
+
+    return NextResponse.json({
+      notifications,
+      unreadCount: notifications.filter((notification) => !notification.read).length,
+      actionRequiredCount: notifications.filter((notification) => notification.priority === 'critical' || notification.type === 'alert').length,
+      totalCount: notifications.length,
+      generatedAt: new Date().toISOString(),
+    }, {
+      headers: { 'Cache-Control': 'no-store' },
+    });
+  } catch (error) {
+    console.error('Failed to fetch notifications:', error);
+    return NextResponse.json({ notifications: [], unreadCount: 0 }, { status: 500 });
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
-    // Get current user
-    let userId = 'anonymous';
-    try {
-      const user = await currentUser();
-      if (user) {
-        userId = user.id;
-      }
-    } catch { /* continue as anonymous */ }
+    const user = await getNotificationUser({ resolveEmail: true });
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
 
     const body = await request.json();
-    const { readIds } = body;
+    const action = typeof body?.action === 'string' ? body.action : 'mark_read';
+    const ids = normalizeIds(body?.ids ?? body?.readIds);
 
-    if (!Array.isArray(readIds) || readIds.length === 0) {
+    if (ids.length === 0) {
       return NextResponse.json({ success: true, count: 0 });
     }
 
-    // Insert read records for each notification
-    for (const notificationId of readIds) {
-      try {
-        await db.insert(notificationRead).values({
-          notificationId,
-          userId,
-        }).onConflictDoNothing();
-      } catch {
-        // Already read, ignore
-      }
+    if (action === 'dismiss' || action === 'clear_all') {
+      await persistNotificationIds(user.id, ids);
+      await persistNotificationIds(user.id, ids.map((id) => `${DISMISSED_PREFIX}${id}`));
+    } else {
+      await persistNotificationIds(user.id, ids);
     }
 
-    return NextResponse.json({ success: true, count: readIds.length });
+    await tryWriteAuditEvent({
+      entityType: 'notification',
+      entityId: ids.length === 1 ? ids[0] : 'bulk',
+      action: action === 'dismiss' || action === 'clear_all' ? 'DISMISS' : 'UPDATE',
+      before: null,
+      after: { action, count: ids.length, notificationIds: ids },
+      actor: user,
+      publish: false,
+    });
+
+    publishRealtime('notifications', 'invalidate', {
+      reason: 'notification-state',
+      action,
+      userId: user.id,
+    });
+
+    return NextResponse.json({ success: true, count: ids.length });
   } catch (error) {
-    console.error('Failed to mark notifications as read:', error);
+    console.error('Failed to update notification state:', error);
     return NextResponse.json({ success: false }, { status: 500 });
   }
 }

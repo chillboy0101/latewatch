@@ -1,10 +1,10 @@
 // app/api/calendar/holidays/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { workCalendar, auditEvent } from '@/db/schema';
+import { workCalendar } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
-import { currentUser } from '@clerk/nextjs/server';
+import { writeAuditEvent } from '@/lib/audit';
 
 // POST - Create a new holiday entry
 export async function POST(request: NextRequest) {
@@ -15,17 +15,6 @@ export async function POST(request: NextRequest) {
     if (!date) {
       return NextResponse.json({ error: 'Date is required' }, { status: 400 });
     }
-
-    // Get current user for audit
-    let actorEmail = 'system';
-    let actorUserId: string | null = null;
-    try {
-      const user = await currentUser();
-      if (user) {
-        actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';
-        actorUserId = user.id;
-      }
-    } catch { /* continue */ }
 
     // Check if exists
     const existing = await db.query.workCalendar.findFirst({
@@ -46,15 +35,13 @@ export async function POST(request: NextRequest) {
         .where(eq(workCalendar.id, existing.id))
         .returning();
 
-      // Audit log
-      await db.insert(auditEvent).values({
+      await writeAuditEvent({
         entityType: 'calendar',
         entityId: result.id,
         action: 'UPDATE',
-        beforeJson: before,
-        afterJson: result,
-        actorUserId,
-        actorEmail,
+        before,
+        after: result,
+        reason: 'calendar',
       });
     } else {
       [result] = await db.insert(workCalendar).values({
@@ -65,15 +52,13 @@ export async function POST(request: NextRequest) {
         isRemoved: false,
       }).returning();
 
-      // Audit log
-      await db.insert(auditEvent).values({
+      await writeAuditEvent({
         entityType: 'calendar',
         entityId: result.id,
         action: 'CREATE',
-        beforeJson: null,
-        afterJson: result,
-        actorUserId,
-        actorEmail,
+        before: null,
+        after: result,
+        reason: 'calendar',
       });
     }
 

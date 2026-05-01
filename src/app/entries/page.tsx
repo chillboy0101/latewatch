@@ -6,12 +6,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card } from '@/components/ui/card';
-import { format } from 'date-fns';
-import { Save, CheckCircle, AlertCircle } from 'lucide-react';
+import { LoadingBuffer } from '@/components/ui/loading-buffer';
+import { addDays, format, isValid, parseISO } from 'date-fns';
+import { Save, CheckCircle, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { computePenalty } from '@/lib/penalty-calculator';
 
 interface StaffMember {
   id: string;
   fullName: string;
+  active?: boolean | null;
+  archived?: boolean | null;
 }
 
 interface Entry {
@@ -36,53 +40,9 @@ interface ExistingEntry {
   reason: string | null;
 }
 
-function computePenalty(
-  arrivalTime: string | null,
-  didNotSignOut: boolean
-): { amount: number; reason: string } {
-  const CUTOFF_TIME = '08:30';
-  const BASE_PENALTY = 10;
-  const HOURLY_INCREMENT = 5;
-  const SIGN_OUT_PENALTY = 2;
-
-  if (!arrivalTime) {
-    if (didNotSignOut) {
-      return { amount: SIGN_OUT_PENALTY, reason: 'DID NOT SIGN OUT' };
-    }
-    return { amount: 0, reason: '' };
-  }
-
-  const isLate = arrivalTime > CUTOFF_TIME;
-
-  if (!isLate && didNotSignOut) {
-    return { amount: SIGN_OUT_PENALTY, reason: 'DID NOT SIGN OUT' };
-  }
-
-  if (isLate) {
-    const [hours, minutes] = arrivalTime.split(':').map(Number);
-    const arrivalMinutes = hours * 60 + minutes;
-    const cutoffMinutes = 8 * 60 + 30;
-    const minutesLate = arrivalMinutes - cutoffMinutes;
-    const fullHoursLate = Math.floor(minutesLate / 60);
-    const hourly = HOURLY_INCREMENT * fullHoursLate;
-
-    let reason = "DIDN'T COME BEFORE 8:30AM";
-    let total = BASE_PENALTY + hourly;
-
-    if (didNotSignOut) {
-      total += SIGN_OUT_PENALTY;
-      reason = "DIDN'T COME BEFORE 8:30AM AND DID NOT SIGN OUT";
-    }
-
-    return { amount: total, reason };
-  }
-
-  return { amount: 0, reason: '' };
-}
-
 export default function EntriesPage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
-  const [selectedDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -92,13 +52,14 @@ export default function EntriesPage() {
 
   const fetchStaffAndEntries = useCallback(async () => {
     try {
-      const today = format(selectedDate, 'yyyy-MM-dd');
+      setLoading(true);
+      const selectedDateKey = format(selectedDate, 'yyyy-MM-dd');
 
       // Fetch all data in parallel
       const [staffResponse, calendarResponse, entriesResponse] = await Promise.all([
-        fetch('/api/staff'),
-        fetch(`/api/calendar?start=${today}&end=${today}`),
-        fetch(`/api/entries?date=${today}`),
+        fetch('/api/staff', { cache: 'no-store' }),
+        fetch(`/api/calendar?start=${selectedDateKey}&end=${selectedDateKey}`, { cache: 'no-store' }),
+        fetch(`/api/entries?date=${selectedDateKey}`, { cache: 'no-store' }),
       ]);
 
       const [staffData, calendarData, entriesData] = await Promise.all([
@@ -107,8 +68,7 @@ export default function EntriesPage() {
         entriesResponse.json(),
       ]);
 
-      const staffList = Array.isArray(staffData) ? staffData : [];
-      setStaff(staffList);
+      const allStaffList = Array.isArray(staffData) ? staffData as StaffMember[] : [];
 
       const calendarDays = Array.isArray(calendarData) ? calendarData as CalendarDay[] : [];
       const holiday = calendarDays.find((h) => h.isHoliday && !h.isRemoved) ?? null;
@@ -116,8 +76,14 @@ export default function EntriesPage() {
       setHolidayName(holiday?.holidayNote || 'Holiday');
 
       const entriesList = Array.isArray(entriesData) ? entriesData as ExistingEntry[] : [];
+      const entryStaffIds = new Set(entriesList.map((entry) => entry.staffId));
+      const displayStaff = allStaffList.filter((member) =>
+        (member.active === true && member.archived !== true) || entryStaffIds.has(member.id)
+      );
 
-      const mergedEntries = staffList.map((s: StaffMember) => {
+      setStaff(displayStaff);
+
+      const mergedEntries = displayStaff.map((s: StaffMember) => {
         const existing = entriesList.find((e) => e.staffId === s.id);
         return {
           staffId: s.id,
@@ -146,10 +112,11 @@ export default function EntriesPage() {
       prev.map((entry) => {
         if (entry.staffId === staffId) {
           const updated = { ...entry, [field]: value };
-          const penalty = computePenalty(
-            updated.arrivalTime || null,
-            updated.didNotSignOut
-          );
+          const penalty = computePenalty({
+            arrivalTime: updated.arrivalTime || null,
+            didNotSignOut: updated.didNotSignOut,
+            isHoliday,
+          });
           return {
             ...updated,
             amount: penalty.amount,
@@ -177,7 +144,15 @@ export default function EntriesPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setMessage({ type: 'success', text: `${data.count || entries.length} entries saved successfully` });
+        const savedCount = Number(data.count || 0);
+        const deletedCount = Number(data.deletedCount || 0);
+        const totalChanges = savedCount + deletedCount;
+        setMessage({
+          type: 'success',
+          text: totalChanges > 0
+            ? `${totalChanges} entr${totalChanges === 1 ? 'y' : 'ies'} updated successfully`
+            : 'Entries submitted for this date with no late arrivals',
+        });
         // Re-fetch fresh data from DB so saved entries display immediately
         setTimeout(() => fetchStaffAndEntries(), 50);
       } else {
@@ -194,6 +169,22 @@ export default function EntriesPage() {
     }
   }
 
+  function changeSelectedDate(nextDate: Date) {
+    setSelectedDate(nextDate);
+    setMessage(null);
+  }
+
+  function handleDateInputChange(value: string) {
+    const parsed = parseISO(value);
+    if (isValid(parsed)) {
+      changeSelectedDate(parsed);
+    }
+  }
+
+  const selectedDateKey = format(selectedDate, 'yyyy-MM-dd');
+  const isWeekend = selectedDate.getDay() === 0 || selectedDate.getDay() === 6;
+  const entriesDisabled = isHoliday || isWeekend;
+
   const totals = entries.reduce(
     (acc, entry) => ({
       late: acc.late + (entry.amount > 0 && !entry.reason.includes('SIGN OUT') ? 1 : 0),
@@ -207,12 +198,11 @@ export default function EntriesPage() {
   if (loading) {
     return (
       <DashboardLayout title="Daily Entry">
-        <div className="flex h-64 items-center justify-center">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <div className="h-5 w-5 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-            Loading entries...
-          </div>
-        </div>
+        <LoadingBuffer
+          variant="page"
+          label="Loading entries"
+          description="Checking staff, holidays, and saved lateness records."
+        />
       </DashboardLayout>
     );
   }
@@ -255,23 +245,66 @@ export default function EntriesPage() {
         )}
 
         {/* Holiday Warning */}
-        {isHoliday && (
-          <Card className="bg-warning/10 border-warning">
-            <div className="flex items-center gap-3 p-4">
-              <span className="text-2xl">🎉</span>
-              <div>
-                <p className="font-medium text-warning">This is a holiday</p>
-                <p className="text-sm text-muted-foreground">{holidayName} - No entries can be recorded on holidays</p>
+        {(isHoliday || isWeekend) && (
+          <Card className="overflow-hidden border-warning/30 bg-warning/5">
+            <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-warning/30 bg-warning/10 text-warning">
+                  <AlertCircle className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-base font-semibold">{isWeekend ? 'Weekend' : holidayName}</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    No lateness entries can be recorded on {isWeekend ? 'weekends.' : 'public holidays.'}
+                  </p>
+                </div>
               </div>
             </div>
           </Card>
         )}
 
-        {/* Date Display */}
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">
-            {format(selectedDate, 'EEEE,')} <span className="font-medium">{format(selectedDate, 'MMMM d, yyyy')}</span>
-          </span>
+        {/* Date and Save Action */}
+        <div className="flex flex-col gap-3 rounded-md border border-border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => changeSelectedDate(addDays(selectedDate, -1))}
+                aria-label="Previous date"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Input
+                type="date"
+                value={selectedDateKey}
+                onChange={(event) => handleDateInputChange(event.target.value)}
+                className="h-10 w-[168px]"
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => changeSelectedDate(addDays(selectedDate, 1))}
+                aria-label="Next date"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => changeSelectedDate(new Date())}
+              className="self-start"
+            >
+              Today
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              {format(selectedDate, 'EEEE,')} <span className="font-medium">{format(selectedDate, 'MMMM d, yyyy')}</span>
+            </span>
+          </div>
+          <Button onClick={handleSaveAll} disabled={saving || entriesDisabled} className="self-start sm:self-auto">
+            <Save className="mr-2 h-4 w-4" />
+            {saving ? 'Saving...' : entriesDisabled ? 'Closed - No Entries' : 'Save Entries'}
+          </Button>
         </div>
 
         {/* Entry Grid */}
@@ -296,10 +329,19 @@ export default function EntriesPage() {
                       <td className="px-4 py-3 text-sm text-muted-foreground">
                         {String(index + 1).padStart(2, '0')}
                       </td>
-                      <td className="px-4 py-3 text-sm font-medium">{member?.fullName}</td>
+                      <td className="px-4 py-3 text-sm font-medium">
+                        <div className="flex items-center gap-2">
+                          <span>{member?.fullName}</span>
+                          {member?.archived && (
+                            <span className="rounded-full border border-warning/25 px-2 py-0.5 text-[11px] font-medium text-warning">
+                              Former
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-3">
                         <Input
-                          type="text"
+                          type="time"
                           placeholder="HH:MM"
                           value={entry.arrivalTime}
                           onChange={(e) =>
@@ -307,18 +349,18 @@ export default function EntriesPage() {
                           }
                           className="h-8 w-24 font-mono"
                           maxLength={5}
-                          disabled={isHoliday}
+                          disabled={entriesDisabled}
                         />
                       </td>
                       <td className="px-4 py-3 text-sm font-mono">
                         {entry.amount > 0 ? (
                           <span className="text-danger">GHC {entry.amount}</span>
                         ) : (
-                          <span className="text-muted-foreground">—</span>
+                          <span className="text-muted-foreground">-</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {entry.reason || '—'}
+                        {entry.reason || '-'}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <Checkbox
@@ -326,7 +368,7 @@ export default function EntriesPage() {
                           onCheckedChange={(checked) =>
                             updateEntry(entry.staffId, 'didNotSignOut', checked === true)
                           }
-                          disabled={isHoliday}
+                          disabled={entriesDisabled}
                         />
                       </td>
                     </tr>
@@ -336,14 +378,6 @@ export default function EntriesPage() {
             </table>
           </div>
         </Card>
-
-        {/* Actions */}
-        <div className="flex justify-end">
-          <Button onClick={handleSaveAll} disabled={saving || isHoliday}>
-            <Save className="mr-2 h-4 w-4" />
-            {saving ? 'Saving...' : isHoliday ? 'Holiday — No Entries' : 'Save Entries'}
-          </Button>
-        </div>
 
         {/* Day Summary */}
         <Card>

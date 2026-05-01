@@ -1,12 +1,14 @@
 // app/api/staff/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { staff } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { latenessEntry, staff } from '@/db/schema';
+import { count, eq } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
+import { writeAuditEvent } from '@/lib/audit';
 
 type StaffUpdateBody = {
   active?: boolean;
+  archived?: boolean;
   department?: string | null;
   fullName?: string;
   unit?: string | null;
@@ -38,13 +40,18 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json() as StaffUpdateBody;
-    const { fullName, department, unit, active } = body;
+    const { fullName, department, unit, active, archived } = body;
 
     const updateData: Partial<typeof staff.$inferInsert> = { updatedAt: new Date() };
-    if (fullName !== undefined) updateData.fullName = fullName;
-    if (department !== undefined) updateData.department = department;
-    if (unit !== undefined) updateData.unit = unit;
+    if (fullName !== undefined) updateData.fullName = fullName.trim();
+    if (department !== undefined) updateData.department = typeof department === 'string' && department.trim() ? department.trim() : null;
+    if (unit !== undefined) updateData.unit = typeof unit === 'string' && unit.trim() ? unit.trim() : null;
     if (active !== undefined) updateData.active = active;
+    if (archived !== undefined) {
+      updateData.archived = archived;
+      updateData.archivedAt = archived ? new Date() : null;
+      updateData.active = archived ? false : true;
+    }
 
     // Capture before state for audit
     const [before] = await db.select().from(staff).where(eq(staff.id, id));
@@ -61,27 +68,19 @@ export async function PUT(
       return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
     }
 
-    // Audit log
-    const { auditEvent } = await import('@/db/schema');
-    const { currentUser } = await import('@clerk/nextjs/server');
-    let actorEmail = 'system';
-    let actorUserId: string | null = null;
-    try {
-      const user = await currentUser();
-      if (user) {
-        actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';
-        actorUserId = user.id;
-      }
-    } catch { /* continue */ }
+    const auditAction = typeof archived === 'boolean' && before.archived !== archived
+      ? archived ? 'ARCHIVE' : 'RESTORE'
+      : typeof active === 'boolean' && before.active !== active
+      ? active ? 'ACTIVATE' : 'DEACTIVATE'
+      : 'UPDATE';
 
-    await db.insert(auditEvent).values({
+    await writeAuditEvent({
       entityType: 'staff',
       entityId: id,
-      action: 'UPDATE',
-      beforeJson: before,
-      afterJson: updated[0],
-      actorUserId,
-      actorEmail,
+      action: auditAction,
+      before,
+      after: updated[0],
+      reason: 'staff',
     });
 
     publishRealtime('dashboard', 'invalidate', { reason: 'staff' });
@@ -99,38 +98,71 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    const permanent = request.nextUrl.searchParams.get('permanent') === 'true';
+    const purgeRecords = request.nextUrl.searchParams.get('purgeRecords') === 'true';
 
     const [before] = await db.select().from(staff).where(eq(staff.id, id));
     if (!before) {
       return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
     }
 
+    if (permanent) {
+      if (!before.archived) {
+        return NextResponse.json(
+          { error: 'Archive this staff member before permanently deleting them.' },
+          { status: 400 },
+        );
+      }
+
+      const [entryCount] = await db.select({ count: count() })
+        .from(latenessEntry)
+        .where(eq(latenessEntry.staffId, id));
+
+      const totalEntries = Number(entryCount?.count || 0);
+      if (totalEntries > 0 && !purgeRecords) {
+        return NextResponse.json(
+          {
+            error: `This staff member has ${totalEntries} lateness record${totalEntries === 1 ? '' : 's'}. Archive them instead so historical exports remain accurate.`,
+          },
+          { status: 409 },
+        );
+      }
+
+      await writeAuditEvent({
+        entityType: 'staff',
+        entityId: id,
+        action: 'DELETE',
+        before,
+        after: {
+          fullName: before.fullName,
+          purgedEntryCount: purgeRecords ? totalEntries : 0,
+        },
+        reason: 'staff',
+      });
+
+      if (purgeRecords) {
+        await db.delete(latenessEntry).where(eq(latenessEntry.staffId, id));
+      }
+
+      await db.delete(staff).where(eq(staff.id, id));
+
+      publishRealtime('dashboard', 'invalidate', { reason: 'staff' });
+
+      return NextResponse.json({ success: true, deleted: true, purgedEntryCount: purgeRecords ? totalEntries : 0 });
+    }
+
     const [updated] = await db.update(staff)
-      .set({ active: false, updatedAt: new Date() })
+      .set({ active: false, archived: true, archivedAt: new Date(), updatedAt: new Date() })
       .where(eq(staff.id, id))
       .returning();
 
-    // Audit log
-    const { auditEvent } = await import('@/db/schema');
-    const { currentUser } = await import('@clerk/nextjs/server');
-    let actorEmail = 'system';
-    let actorUserId: string | null = null;
-    try {
-      const user = await currentUser();
-      if (user) {
-        actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';
-        actorUserId = user.id;
-      }
-    } catch { /* continue */ }
-
-    await db.insert(auditEvent).values({
+    await writeAuditEvent({
       entityType: 'staff',
       entityId: id,
-      action: 'DELETE',
-      beforeJson: before,
-      afterJson: updated,
-      actorUserId,
-      actorEmail,
+      action: 'ARCHIVE',
+      before,
+      after: updated,
+      reason: 'staff',
     });
 
     publishRealtime('dashboard', 'invalidate', { reason: 'staff' });

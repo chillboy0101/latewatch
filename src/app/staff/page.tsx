@@ -5,15 +5,20 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Plus, Search, UserCheck, UserX, Pencil, Loader2, Trash2 } from 'lucide-react';
+import { LoadingBuffer } from '@/components/ui/loading-buffer';
+import { Archive, Loader2, Pencil, Plus, RotateCcw, Search, Trash2, UserCheck, UserX } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 
 interface StaffMember {
   id: string;
@@ -21,16 +26,26 @@ interface StaffMember {
   department: string | null;
   unit: string | null;
   active: boolean | null;
+  archived: boolean | null;
+  archivedAt?: string | null;
 }
+
+type StaffFilter = 'all' | 'active' | 'inactive' | 'former';
 
 export default function StaffPage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [staffFilter, setStaffFilter] = useState<StaffFilter>('all');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [actioningId, setActioningId] = useState<string | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [submitMessage, setSubmitMessage] = useState('');
+  const [archiveTarget, setArchiveTarget] = useState<StaffMember | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<StaffMember | null>(null);
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteRecords, setDeleteRecords] = useState(false);
 
   // Add form state
   const [newName, setNewName] = useState('');
@@ -45,7 +60,7 @@ export default function StaffPage() {
 
   const fetchStaff = useCallback(async () => {
     try {
-      const response = await fetch('/api/staff');
+      const response = await fetch('/api/staff', { cache: 'no-store' });
       const data = await response.json();
       const staffList = Array.isArray(data) ? data : (data?.data ? data.data : []);
       setStaff(staffList);
@@ -59,6 +74,30 @@ export default function StaffPage() {
 
   useEffect(() => {
     fetchStaff();
+  }, [fetchStaff]);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    let mounted = true;
+
+    (async () => {
+      const unsubscribe = await subscribeRealtimeChannel({
+        channel: 'dashboard',
+        events: ['invalidate'],
+        onEvent: fetchStaff,
+      });
+
+      if (mounted) {
+        cleanup = unsubscribe;
+      } else {
+        unsubscribe();
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      cleanup?.();
+    };
   }, [fetchStaff]);
 
   const handleAddStaff = async () => {
@@ -79,15 +118,19 @@ export default function StaffPage() {
 
       if (response.ok) {
         const saved = await response.json();
-        setStaff((prev) => [...prev, saved].sort((a, b) => a.fullName.localeCompare(b.fullName)));
+        setStaff((prev) => {
+          const exists = prev.some((member) => member.id === saved.id);
+          const next = exists
+            ? prev.map((member) => (member.id === saved.id ? { ...member, ...saved } : member))
+            : [...prev, saved];
+
+          return next.sort((a, b) => a.fullName.localeCompare(b.fullName));
+        });
         setNewName('');
         setNewDepartment('');
         setNewUnit('');
-        setSubmitMessage('Staff member added successfully');
-        setTimeout(() => {
-          setSubmitMessage('');
-          setIsAddDialogOpen(false);
-        }, 1000);
+        setSubmitMessage('');
+        setIsAddDialogOpen(false);
       } else {
         const error = await response.json();
         setSubmitMessage(error.error || 'Failed to add staff member');
@@ -101,39 +144,94 @@ export default function StaffPage() {
   };
 
   const handleToggleActive = async (id: string, currentActive: boolean) => {
+    const previousStaff = staff;
+    const nextActive = !currentActive;
+    setActioningId(id);
+    setStaff((prev) => prev.map((s) => (s.id === id ? { ...s, active: nextActive } : s)));
+
     try {
       const response = await fetch(`/api/staff/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ active: !currentActive }),
+        body: JSON.stringify({ active: nextActive }),
       });
 
       if (response.ok) {
         const updated = await response.json();
         setStaff((prev) => prev.map((s) => (s.id === id ? { ...s, ...updated } : s)));
+      } else {
+        setStaff(previousStaff);
       }
     } catch (error) {
       console.error('Failed to update staff:', error);
+      setStaff(previousStaff);
+    } finally {
+      setActioningId(null);
     }
   };
 
-  const handleDeleteStaff = async (id: string, name: string) => {
-    if (!confirm(`Remove "${name}" from active staff? They will be marked inactive.`)) return;
-    setDeletingId(id);
+  const handleToggleArchived = async (member: StaffMember, archived: boolean) => {
+    const previousStaff = staff;
+    setActioningId(member.id);
+    setStaff((prev) => prev.map((s) => (
+      s.id === member.id
+        ? { ...s, archived, active: archived ? false : true, archivedAt: archived ? new Date().toISOString() : null }
+        : s
+    )));
+
     try {
-      const response = await fetch(`/api/staff/${id}`, { method: 'DELETE' });
+      const response = await fetch(`/api/staff/${member.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived }),
+      });
+
       if (response.ok) {
-        setStaff((prev) => prev.filter((s) => s.id !== id));
+        const updated = await response.json();
+        setStaff((prev) => prev.map((s) => (s.id === member.id ? { ...s, ...updated } : s)));
+        setArchiveTarget(null);
+      } else {
+        setStaff(previousStaff);
       }
     } catch (error) {
-      console.error('Failed to delete staff:', error);
+      console.error('Failed to update staff archive state:', error);
+      setStaff(previousStaff);
     } finally {
-      setDeletingId(null);
+      setActioningId(null);
+    }
+  };
+
+  const handlePermanentDelete = async () => {
+    if (!deleteTarget) return;
+
+    const targetId = deleteTarget.id;
+    setActioningId(targetId);
+    setDeleteError('');
+
+    try {
+      const response = await fetch(`/api/staff/${targetId}?permanent=true${deleteRecords ? '&purgeRecords=true' : ''}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        setStaff((prev) => prev.filter((member) => member.id !== targetId));
+        setDeleteTarget(null);
+        setDeleteRecords(false);
+      } else {
+        const error = await response.json().catch(() => ({}));
+        setDeleteError(error.error || 'Could not permanently delete this staff member');
+      }
+    } catch (error) {
+      console.error('Failed to permanently delete staff:', error);
+      setDeleteError('Could not permanently delete this staff member');
+    } finally {
+      setActioningId(null);
     }
   };
 
   const handleEdit = async () => {
     if (!editingId || !editName.trim()) return;
+    setSavingEdit(true);
     try {
       const response = await fetch(`/api/staff/${editingId}`, {
         method: 'PUT',
@@ -152,6 +250,8 @@ export default function StaffPage() {
       }
     } catch (error) {
       console.error('Failed to update staff:', error);
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -162,39 +262,86 @@ export default function StaffPage() {
     setEditUnit(member.unit || '');
   };
 
-  const filteredStaff = Array.isArray(staff)
-    ? staff.filter((s) =>
-        s.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (s.department?.toLowerCase().includes(searchTerm.toLowerCase()) || false)
-      )
+  const searchTokens = searchTerm
+    .toLowerCase()
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  const statusFilteredStaff = Array.isArray(staff)
+    ? staff.filter((s) => {
+        if (staffFilter === 'active') return s.active && !s.archived;
+        if (staffFilter === 'inactive') return !s.active && !s.archived;
+        if (staffFilter === 'former') return s.archived;
+        return true;
+      })
     : [];
 
-  const activeCount = staff.filter((s) => s.active).length;
-  const inactiveCount = staff.length - activeCount;
+  const filteredStaff = statusFilteredStaff
+    ? staff.filter((s) => {
+        if (!statusFilteredStaff.some((member) => member.id === s.id)) return false;
+        if (searchTokens.length === 0) return true;
+
+        const searchable = [
+          s.fullName,
+          s.department || '',
+          s.unit || '',
+        ].join(' ').toLowerCase();
+
+        return searchTokens.every((token) => searchable.includes(token));
+      })
+    : [];
+
+  const activeCount = staff.filter((s) => s.active && !s.archived).length;
+  const inactiveCount = staff.filter((s) => !s.active && !s.archived).length;
+  const formerCount = staff.filter((s) => s.archived).length;
+  const totalDisplay = loading ? '-' : staff.length.toString();
+  const activeDisplay = loading ? '-' : activeCount.toString();
+  const inactiveDisplay = loading ? '-' : inactiveCount.toString();
+  const formerDisplay = loading ? '-' : formerCount.toString();
+  const staffFilterCards: Array<{
+    key: StaffFilter;
+    label: string;
+    value: string;
+    valueClassName?: string;
+  }> = [
+    { key: 'all', label: 'Total Staff', value: totalDisplay },
+    { key: 'active', label: 'Active', value: activeDisplay, valueClassName: 'text-success' },
+    { key: 'inactive', label: 'Inactive', value: inactiveDisplay, valueClassName: 'text-muted-foreground' },
+    { key: 'former', label: 'Former Personnel', value: formerDisplay, valueClassName: 'text-warning' },
+  ];
+  const activeFilterLabel = staffFilterCards.find((card) => card.key === staffFilter)?.label || 'staff';
 
   return (
     <DashboardLayout title="Staff">
       <div className="space-y-6">
         {/* Stats Bar */}
-        <div className="grid grid-cols-3 gap-4">
-          <Card>
-            <div className="p-4 text-center">
-              <p className="text-2xl font-bold font-mono">{staff.length}</p>
-              <p className="text-xs text-muted-foreground">Total Staff</p>
-            </div>
-          </Card>
-          <Card>
-            <div className="p-4 text-center">
-              <p className="text-2xl font-bold font-mono text-success">{activeCount}</p>
-              <p className="text-xs text-muted-foreground">Active</p>
-            </div>
-          </Card>
-          <Card>
-            <div className="p-4 text-center">
-              <p className="text-2xl font-bold font-mono text-muted-foreground">{inactiveCount}</p>
-              <p className="text-xs text-muted-foreground">Inactive</p>
-            </div>
-          </Card>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {staffFilterCards.map((card) => {
+            const selected = staffFilter === card.key;
+
+            return (
+              <Card
+                key={card.key}
+                className={cn(
+                  'transition-colors',
+                  selected && 'border-primary bg-primary/5 shadow-sm'
+                )}
+              >
+                <button
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => setStaffFilter(card.key)}
+                  className="h-full w-full rounded-lg p-4 text-center outline-none transition-colors hover:bg-card/70 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                >
+                  <p className={cn('text-2xl font-bold font-mono', card.valueClassName)}>
+                    {card.value}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{card.label}</p>
+                </button>
+              </Card>
+            );
+          })}
         </div>
 
         {/* Search & Add */}
@@ -220,6 +367,9 @@ export default function StaffPage() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Add Staff Member</DialogTitle>
+                <DialogDescription className="sr-only">
+                  Create a staff profile with name, department, and unit.
+                </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 pt-4">
                 <div className="space-y-2">
@@ -273,10 +423,11 @@ export default function StaffPage() {
         {/* Staff Table */}
         <Card>
           {loading ? (
-            <div className="flex items-center justify-center py-8 text-muted-foreground">
-              <div className="h-5 w-5 rounded-full border-2 border-primary border-t-transparent animate-spin mr-2" />
-              Loading staff...
-            </div>
+            <LoadingBuffer
+              variant="section"
+              label="Loading staff"
+              description="Syncing active, inactive, and former personnel."
+            />
           ) : (
             <>
               <div className="overflow-x-auto">
@@ -305,57 +456,96 @@ export default function StaffPage() {
                               <Input value={editUnit} onChange={(e) => setEditUnit(e.target.value)} className="h-8 text-sm" />
                             </td>
                             <td className="px-4 py-3">
-                              <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
-                                member.active ? 'bg-success/10 text-success' : 'bg-muted/10 text-muted'
-                              }`}>
-                                {member.active ? 'Active' : 'Inactive'}
+                              <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getStaffStatusClass(member)}`}>
+                                {getStaffStatusLabel(member)}
                               </span>
                             </td>
                             <td className="px-4 py-2 text-right">
-                              <div className="flex justify-end gap-1">
-                                <Button size="sm" onClick={handleEdit} className="h-7 text-xs">Save</Button>
-                                <Button variant="outline" size="sm" onClick={() => setEditingId(null)} className="h-7 text-xs">Cancel</Button>
+                              <div className="flex justify-end gap-2">
+                                <Button size="sm" onClick={handleEdit} className="h-8 gap-2 text-xs" disabled={savingEdit}>
+                                  {savingEdit && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                  Save
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => setEditingId(null)} className="h-8 text-xs" disabled={savingEdit}>Cancel</Button>
                               </div>
                             </td>
                           </>
                         ) : (
                           <>
                             <td className="px-4 py-3 text-sm font-medium">{member.fullName}</td>
-                            <td className="px-4 py-3 text-sm">{member.department || '—'}</td>
-                            <td className="px-4 py-3 text-sm">{member.unit || '—'}</td>
+                            <td className="px-4 py-3 text-sm">{member.department || '-'}</td>
+                            <td className="px-4 py-3 text-sm">{member.unit || '-'}</td>
                             <td className="px-4 py-3 text-sm">
-                              <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
-                                member.active ? 'bg-success/10 text-success' : 'bg-muted/10 text-muted'
-                              }`}>
-                                {member.active ? 'Active' : 'Inactive'}
+                              <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getStaffStatusClass(member)}`}>
+                                {getStaffStatusLabel(member)}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-right">
-                              <div className="flex justify-end gap-1">
-                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(member)} title="Edit">
+                              <div className="flex justify-end gap-2">
+                                <Button variant="outline" size="sm" className="h-8 gap-2" onClick={() => openEdit(member)}>
                                   <Pencil className="h-3.5 w-3.5" />
+                                  Edit
                                 </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7"
-                                  onClick={() => handleToggleActive(member.id, !!member.active)}
-                                  title={member.active ? 'Deactivate' : 'Activate'}
-                                >
-                                  {member.active ? <UserX className="h-3.5 w-3.5 text-muted-foreground" /> : <UserCheck className="h-3.5 w-3.5 text-success" />}
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 hover:text-danger"
-                                  onClick={() => handleDeleteStaff(member.id, member.fullName)}
-                                  disabled={deletingId === member.id}
-                                  title="Remove staff member"
-                                >
-                                  {deletingId === member.id
-                                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    : <Trash2 className="h-3.5 w-3.5" />}
-                                </Button>
+                                {member.archived ? (
+                                  <>
+                                    <Button
+                                      variant="default"
+                                      size="sm"
+                                      className="h-8 gap-2"
+                                      onClick={() => handleToggleArchived(member, false)}
+                                      disabled={actioningId === member.id}
+                                    >
+                                      {actioningId === member.id ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <RotateCcw className="h-3.5 w-3.5" />
+                                      )}
+                                      Restore
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 gap-2 border-danger/40 text-danger hover:bg-danger/10"
+                                      onClick={() => {
+                                        setDeleteError('');
+                                        setDeleteTarget(member);
+                                      }}
+                                      disabled={actioningId === member.id}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                      Delete
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Button
+                                      variant={member.active ? 'outline' : 'default'}
+                                      size="sm"
+                                      className="h-8 gap-2"
+                                      onClick={() => handleToggleActive(member.id, !!member.active)}
+                                      disabled={actioningId === member.id}
+                                    >
+                                      {actioningId === member.id ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : member.active ? (
+                                        <UserX className="h-3.5 w-3.5" />
+                                      ) : (
+                                        <UserCheck className="h-3.5 w-3.5" />
+                                      )}
+                                      {member.active ? 'Deactivate' : 'Activate'}
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 gap-2 border-warning/40 text-warning hover:bg-warning/10"
+                                      onClick={() => setArchiveTarget(member)}
+                                      disabled={actioningId === member.id}
+                                    >
+                                      <Archive className="h-3.5 w-3.5" />
+                                      Archive
+                                    </Button>
+                                  </>
+                                )}
                               </div>
                             </td>
                           </>
@@ -374,13 +564,124 @@ export default function StaffPage() {
               </div>
               <div className="flex items-center justify-between border-t border-border px-4 py-3">
                 <p className="text-sm text-muted-foreground">
-                  Showing {filteredStaff.length} of {staff.length} staff
+                  Showing {filteredStaff.length} of {statusFilteredStaff.length} {activeFilterLabel.toLowerCase()}
                 </p>
               </div>
             </>
           )}
         </Card>
+
+        <Dialog open={!!archiveTarget} onOpenChange={(open) => !open && setArchiveTarget(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Archive Staff Member</DialogTitle>
+              <DialogDescription className="sr-only">
+                Mark a staff member as former personnel while preserving historical records.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 pt-2">
+              <p className="text-sm text-muted-foreground">
+                {archiveTarget
+                  ? `${archiveTarget.fullName} will be marked as former personnel and removed from future daily entries and exports. Historical entries and audit records will remain intact.`
+                  : 'This person will be marked as former personnel.'}
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setArchiveTarget(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  className="gap-2"
+                  onClick={() => archiveTarget && handleToggleArchived(archiveTarget, true)}
+                  disabled={!archiveTarget || actioningId === archiveTarget.id}
+                >
+                  {archiveTarget && actioningId === archiveTarget.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Archive className="h-4 w-4" />
+                  )}
+                  Mark as Former
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={!!deleteTarget} onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+            setDeleteError('');
+            setDeleteRecords(false);
+          }
+        }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Staff Permanently</DialogTitle>
+              <DialogDescription className="sr-only">
+                Permanently remove a staff profile that has no historical lateness records.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 pt-2">
+              <p className="text-sm text-muted-foreground">
+                {deleteTarget
+                  ? `${deleteTarget.fullName} will be permanently removed from the staff list. Use record removal only for duplicate or test profiles where history should also be erased.`
+                  : 'This staff member will be permanently removed.'}
+              </p>
+              <label className="flex items-start gap-3 rounded-md border border-border p-3 text-sm">
+                <Checkbox
+                  checked={deleteRecords}
+                  onCheckedChange={(checked) => setDeleteRecords(checked === true)}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="font-medium">Also delete all lateness records for this person</span>
+                  <span className="mt-1 block text-muted-foreground">
+                    Leave this off for real former personnel. Turn it on only when removing test or duplicate staff data.
+                  </span>
+                </span>
+              </label>
+              {deleteError && (
+                <p className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+                  {deleteError}
+                </p>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setDeleteTarget(null);
+                    setDeleteError('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="gap-2"
+                  onClick={handlePermanentDelete}
+                  disabled={!deleteTarget || actioningId === deleteTarget.id}
+                >
+                  {deleteTarget && actioningId === deleteTarget.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                  {deleteRecords ? 'Delete Staff and Records' : 'Delete Permanently'}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );
+}
+
+function getStaffStatusLabel(member: StaffMember) {
+  if (member.archived) return 'Former';
+  return member.active ? 'Active' : 'Inactive';
+}
+
+function getStaffStatusClass(member: StaffMember) {
+  if (member.archived) return 'bg-warning/10 text-warning';
+  return member.active ? 'bg-success/10 text-success' : 'bg-muted/10 text-muted-foreground';
 }

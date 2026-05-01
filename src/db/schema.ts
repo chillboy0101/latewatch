@@ -7,6 +7,8 @@ export const staff = pgTable('staff', {
   fullName: text('full_name').notNull(),
   displayOrder: integer('display_order'),
   active: boolean('active').default(true),
+  archived: boolean('archived').default(false),
+  archivedAt: timestamp('archived_at'),
   department: text('department'),
   unit: text('unit'),
   createdAt: timestamp('created_at').defaultNow(),
@@ -38,6 +40,17 @@ export const latenessEntryRelations = relations(latenessEntry, ({ one }) => ({
     references: [staff.id],
   }),
 }));
+
+export const entrySubmission = pgTable('entry_submission', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  date: date('date').unique().notNull(),
+  submittedByUserId: text('submitted_by_user_id'),
+  submittedByEmail: text('submitted_by_email').notNull(),
+  entryCount: integer('entry_count').default(0).notNull(),
+  deletedCount: integer('deleted_count').default(0).notNull(),
+  submittedAt: timestamp('submitted_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
 
 export const workCalendar = pgTable('work_calendar', {
   id: uuid('id').primaryKey().defaultRandom(),

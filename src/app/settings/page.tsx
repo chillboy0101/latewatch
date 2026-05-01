@@ -5,42 +5,16 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Moon, Sun, Monitor, Check } from 'lucide-react';
-import { useState } from 'react';
-
-type ThemePreference = 'light' | 'dark' | 'system';
-
-function getInitialTheme(): ThemePreference {
-  if (typeof window === 'undefined') return 'dark';
-
-  const saved = localStorage.getItem('theme');
-  if (saved === 'light' || saved === 'dark') return saved;
-
-  return 'system';
-}
+import { useSyncExternalStore } from 'react';
+import { applyThemePreference, getThemePreference, subscribeThemeChange, type ThemePreference } from '@/lib/theme';
 
 export default function SettingsPage() {
   const { user } = useUser();
   const role = (user?.publicMetadata?.role as string) || 'viewer';
-  const [currentTheme, setCurrentTheme] = useState<ThemePreference>(getInitialTheme);
+  const currentTheme = useSyncExternalStore(subscribeThemeChange, getThemePreference, () => 'dark');
 
   const applyTheme = (theme: ThemePreference) => {
-    setCurrentTheme(theme);
-    if (theme === 'light') {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    } else if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      // System preference
-      localStorage.removeItem('theme');
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      if (prefersDark) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-    }
+    applyThemePreference(theme);
   };
 
   return (

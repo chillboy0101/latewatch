@@ -3,11 +3,11 @@
 
 import { requireRole } from '@/lib/auth/roles';
 import { db } from '@/db';
-import { auditEvent } from '@/db/schema';
 import ExcelJS from 'exceljs';
 import { getR2Client } from '@/lib/r2/client';
 import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { writeAuditEvent } from '@/lib/audit';
 
 export async function generateWeeklyExport(weekStart: string, weekEnd: string) {
   const user = await requireRole(['admin', 'hr']);
@@ -27,7 +27,7 @@ export async function generateWeeklyExport(weekStart: string, weekEnd: string) {
   
   // Get all staff
   const allStaff = await db.query.staff.findMany({
-    where: (s, { eq }) => eq(s.active, true),
+    where: (s, { and, eq }) => and(eq(s.active, true), eq(s.archived, false)),
     orderBy: (s, { asc }) => [asc(s.fullName)],
   });
   
@@ -102,15 +102,14 @@ export async function generateWeeklyExport(weekStart: string, weekEnd: string) {
     { expiresIn: 3600 } // 1 hour
   );
   
-  // Audit log
-  await db.insert(auditEvent).values({
+  await writeAuditEvent({
     entityType: 'export',
     entityId: key,
-    action: 'EXPORT',
-    beforeJson: null,
-    afterJson: { weekStart, weekEnd, totalAmount },
-    actorUserId: user.id,
-    actorEmail: user.email,
+    action: 'GENERATE',
+    before: null,
+    after: { weekStart, weekEnd, totalAmount },
+    actor: user,
+    reason: 'exports',
   });
   
   return { downloadUrl, fileName: `Lateness_${weekStart}_${weekEnd}.xlsx` };
@@ -226,15 +225,14 @@ export async function generateMonthlyExport(year: number, month: number) {
     { expiresIn: 3600 } // 1 hour
   );
   
-  // Audit log
-  await db.insert(auditEvent).values({
+  await writeAuditEvent({
     entityType: 'export',
     entityId: key,
-    action: 'EXPORT',
-    beforeJson: null,
-    afterJson: { year, month, totalEntries, totalAmount },
-    actorUserId: user.id,
-    actorEmail: user.email,
+    action: 'GENERATE',
+    before: null,
+    after: { year, month, totalEntries, totalAmount },
+    actor: user,
+    reason: 'exports',
   });
   
   return { downloadUrl, fileName: `Lateness_Monthly_${year}_${month}.xlsx` };

@@ -1,10 +1,10 @@
 // app/api/calendar/holidays/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { workCalendar, auditEvent } from '@/db/schema';
+import { workCalendar } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
-import { currentUser } from '@clerk/nextjs/server';
+import { writeAuditEvent } from '@/lib/audit';
 
 // GET single holiday
 export async function GET(
@@ -37,17 +37,6 @@ export async function PUT(
     const body = await request.json();
     const { isHoliday, holidayNote, isRemoved } = body;
 
-    // Get current user for audit
-    let actorEmail = 'system';
-    let actorUserId: string | null = null;
-    try {
-      const user = await currentUser();
-      if (user) {
-        actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';
-        actorUserId = user.id;
-      }
-    } catch { /* continue */ }
-
     const existing = await db.query.workCalendar.findFirst({
       where: (cal, { eq }) => eq(cal.id, id),
     });
@@ -68,15 +57,13 @@ export async function PUT(
       .where(eq(workCalendar.id, id))
       .returning();
 
-    // Audit log
-    await db.insert(auditEvent).values({
+    await writeAuditEvent({
       entityType: 'calendar',
       entityId: id,
       action: 'UPDATE',
-      beforeJson: before,
-      afterJson: updated,
-      actorUserId,
-      actorEmail,
+      before,
+      after: updated,
+      reason: 'calendar',
     });
 
     publishRealtime('dashboard', 'invalidate', { reason: 'calendar' });
@@ -96,17 +83,6 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    // Get current user for audit
-    let actorEmail = 'system';
-    let actorUserId: string | null = null;
-    try {
-      const user = await currentUser();
-      if (user) {
-        actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';
-        actorUserId = user.id;
-      }
-    } catch { /* continue */ }
-
     const [before] = await db.select().from(workCalendar).where(eq(workCalendar.id, id));
     if (!before) {
       return NextResponse.json({ error: 'Holiday not found' }, { status: 404 });
@@ -114,15 +90,13 @@ export async function DELETE(
 
     await db.delete(workCalendar).where(eq(workCalendar.id, id));
 
-    // Audit log
-    await db.insert(auditEvent).values({
+    await writeAuditEvent({
       entityType: 'calendar',
       entityId: id,
       action: 'DELETE',
-      beforeJson: before,
-      afterJson: null,
-      actorUserId,
-      actorEmail,
+      before,
+      after: null,
+      reason: 'calendar',
     });
 
     publishRealtime('dashboard', 'invalidate', { reason: 'calendar' });

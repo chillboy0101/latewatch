@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
+import { LoadingBuffer } from '@/components/ui/loading-buffer';
 
 export default function Home() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -19,12 +20,12 @@ export default function Home() {
   }, [isLoaded, isSignedIn, router]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div className="text-center">
-        <div className="mb-4 text-4xl">⏱️</div>
-        <h1 className="text-2xl font-bold">LateWatch</h1>
-        <p className="mt-2 text-muted-foreground">Loading...</p>
-      </div>
+    <div className="flex min-h-screen items-center justify-center px-6">
+      <LoadingBuffer
+        variant="screen"
+        label="Opening LateWatch"
+        description="Checking your session and preparing the workspace."
+      />
     </div>
   );
 }

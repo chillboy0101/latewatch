@@ -1,9 +1,10 @@
 // app/api/dashboard/route.ts
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { latenessEntry, staff, workCalendar } from '@/db/schema';
+import { auditEvent, latenessEntry, staff, workCalendar } from '@/db/schema';
 import { gte, lte, and, desc, count, eq } from 'drizzle-orm';
 import { startOfWeek, addDays, subWeeks, format } from 'date-fns';
+import { getAuditActivityLabel, getAuditSummary, getAuditTargetName } from '@/lib/audit-display';
 
 export async function GET() {
   try {
@@ -34,10 +35,6 @@ export async function GET() {
     .where(and(gte(latenessEntry.date, weekStartStr), lte(latenessEntry.date, weekEndStr)))
     .orderBy(desc(latenessEntry.createdAt));
 
-    // Fetch staff names separately
-    const staffResult = await db.select({ id: staff.id, fullName: staff.fullName }).from(staff);
-    const staffMap = new Map(staffResult.map(s => [s.id, s.fullName]));
-
     // Fetch previous week entries for comparison
     const prevWeekEntriesResult = await db.select({
       computedAmount: latenessEntry.computedAmount,
@@ -46,7 +43,9 @@ export async function GET() {
     .where(and(gte(latenessEntry.date, prevWeekStartStr), lte(latenessEntry.date, prevWeekEndStr)));
 
     // Fetch active staff count
-    const staffCountResult = await db.select({ count: count() }).from(staff).where(eq(staff.active, true));
+    const staffCountResult = await db.select({ count: count() })
+      .from(staff)
+      .where(and(eq(staff.active, true), eq(staff.archived, false)));
     const staffCount = Number(staffCountResult[0]?.count || 0);
 
     // Fetch holidays for this week
@@ -78,14 +77,30 @@ export async function GET() {
     }
 
     // Build recent entries
-    const recentEntries = weekEntriesResult.slice(0, 10).map((e) => ({
-      id: e.id,
-      staffName: staffMap.get(e.staffId) || 'Unknown',
-      date: e.date,
-      arrivalTime: e.arrivalTime,
-      amount: parseFloat(e.computedAmount || '0'),
-      reason: e.reason || '',
-      createdAt: e.createdAt,
+    const recentEvents = await db.select({
+      id: auditEvent.id,
+      entityType: auditEvent.entityType,
+      entityId: auditEvent.entityId,
+      action: auditEvent.action,
+      beforeJson: auditEvent.beforeJson,
+      afterJson: auditEvent.afterJson,
+      actorUserId: auditEvent.actorUserId,
+      actorEmail: auditEvent.actorEmail,
+      timestamp: auditEvent.timestamp,
+    })
+    .from(auditEvent)
+    .orderBy(desc(auditEvent.timestamp))
+    .limit(10);
+
+    const recentActivity = recentEvents.map((event) => ({
+      id: event.id,
+      actionLabel: getAuditActivityLabel(event),
+      actorEmail: event.actorEmail,
+      entityId: event.entityId,
+      entityLabel: getAuditTargetName(event),
+      entityType: event.entityType,
+      summary: getAuditSummary(event),
+      timestamp: event.timestamp,
     }));
 
     return NextResponse.json({
@@ -95,7 +110,11 @@ export async function GET() {
       prevWeekTotal,
       prevWeekEntryCount: prevWeekEntriesResult.length,
       weekDays,
-      recentEntries,
+      recentActivity,
+    }, {
+      headers: {
+        'Cache-Control': 'no-store',
+      },
     });
   } catch (error) {
     console.error('Failed to fetch dashboard data:', error);

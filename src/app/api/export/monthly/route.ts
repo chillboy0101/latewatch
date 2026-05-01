@@ -1,51 +1,36 @@
 // app/api/export/monthly/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
-import { auditEvent } from '@/db/schema';
 import ExcelJS from 'exceljs';
-import { currentUser } from '@clerk/nextjs/server';
-import { format, parseISO, isWeekend, startOfMonth, endOfMonth, addDays, eachDayOfInterval } from 'date-fns';
+import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 import { buildWeeklyWorkbook } from '@/app/api/export/weekly/route';
+import { getAuditActor, tryWriteAuditEvent } from '@/lib/audit';
+import { getMonthWorkingWeeks, type WorkingWeekRange } from '@/lib/export-weeks';
+
+function sheetNameForWeek(week: WorkingWeekRange) {
+  const startLabel = format(parseISO(week.exportStart), 'MMM d');
+  const endLabel = format(parseISO(week.exportEnd), 'MMM d');
+  return `Week ${week.weekNumber} ${startLabel}-${endLabel}`
+    .replace(/[\\/*?:[\]]/g, '')
+    .slice(0, 31);
+}
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { year, month } = body;
 
-    if (year === undefined || month === undefined) {
+    const exportYear = Number(year);
+    const exportMonth = Number(month);
+
+    if (!Number.isInteger(exportYear) || !Number.isInteger(exportMonth) || exportMonth < 0 || exportMonth > 11) {
       return NextResponse.json({ error: 'Year and month required' }, { status: 400 });
     }
 
-    let actorEmail = 'system';
-    let actorUserId: string | null = null;
-    try {
-      const user = await currentUser();
-      if (user) {
-        actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';
-        actorUserId = user.id;
-      }
-    } catch { /* continue */ }
+    const actor = await getAuditActor();
 
-    const monthStartDate = startOfMonth(new Date(year, month));
-    const monthEnd = endOfMonth(new Date(year, month));
-
-    const allMonthDays = eachDayOfInterval({ start: monthStartDate, end: monthEnd })
-      .filter(d => !isWeekend(d));
-
-    if (allMonthDays.length === 0) {
-      return NextResponse.json({ error: 'No weekdays in this month' }, { status: 400 });
-    }
-
-    const daysByWeek: Record<string, typeof allMonthDays> = {};
-    for (const day of allMonthDays) {
-      let monday = new Date(day);
-      while (monday.getDay() !== 1) monday = addDays(monday, -1);
-      const key = format(monday, 'yyyy-MM-dd');
-      if (!daysByWeek[key]) daysByWeek[key] = [];
-      daysByWeek[key].push(day);
-    }
-
-    const weekKeys = Object.keys(daysByWeek).sort();
+    const monthStartDate = startOfMonth(new Date(exportYear, exportMonth, 1));
+    const monthEnd = endOfMonth(monthStartDate);
+    const workingWeeks = getMonthWorkingWeeks(exportYear, exportMonth);
 
     // Create a temporary workbook that will hold all week sheets
     // We build each week, write to buffer, then load that buffer and add its sheet
@@ -53,18 +38,15 @@ export async function POST(request: NextRequest) {
     combinedBook.creator = 'LateWatch';
     combinedBook.created = new Date();
 
-    for (let w = 0; w < weekKeys.length; w++) {
-      const weekStart = weekKeys[w];
-      const weekEnd = format(addDays(parseISO(weekStart), 4), 'yyyy-MM-dd');
-
-      // Build weekly workbook, passing month boundaries to respect them
+    for (const week of workingWeeks) {
       const weeklyBook = await buildWeeklyWorkbook(
-        weekStart,
-        weekEnd,
-        actorUserId,
-        actorEmail,
+        week.weekStart,
+        week.weekEnd,
+        actor.actorUserId,
+        actor.actorEmail,
         format(monthStartDate, 'yyyy-MM-dd'),
         format(monthEnd, 'yyyy-MM-dd'),
+        week.weekNumber,
       );
       const weekBuf = await weeklyBook.xlsx.writeBuffer();
 
@@ -76,7 +58,7 @@ export async function POST(request: NextRequest) {
       if (!srcSheet) continue;
 
       // Copy cells directly from srcSheet to new sheet in combinedBook
-      const newSheet = combinedBook.addWorksheet(`Week ${w + 1}`);
+      const newSheet = combinedBook.addWorksheet(sheetNameForWeek(week));
 
       // Copy column widths
       const srcModel = srcSheet.model as unknown as Record<string, unknown>;
@@ -91,6 +73,10 @@ export async function POST(request: NextRequest) {
       for (const modelRow of modelRows) {
         const rowNum = modelRow.number as number;
         const newRow = newSheet.getRow(rowNum);
+        const rowHidden = modelRow.hidden as boolean | undefined;
+        const rowHeight = modelRow.height as number | undefined;
+        if (typeof rowHidden === 'boolean') newRow.hidden = rowHidden;
+        if (typeof rowHeight === 'number') newRow.height = rowHeight;
         const cells = modelRow.cells as Array<Record<string, unknown>> | undefined;
         if (cells) {
           for (const cell of cells) {
@@ -128,14 +114,24 @@ export async function POST(request: NextRequest) {
     const buffer = await combinedBook.xlsx.writeBuffer();
 
     try {
-      await db.insert(auditEvent).values({
+      await tryWriteAuditEvent({
         entityType: 'export',
-        entityId: `monthly-${year}-${month + 1}`,
-        action: 'EXPORT',
-        beforeJson: null,
-        afterJson: { year, month: month + 1, weekCount: weekKeys.length },
-        actorUserId,
-        actorEmail,
+        entityId: `monthly-${exportYear}-${exportMonth + 1}`,
+        action: 'GENERATE',
+        before: null,
+        after: {
+          year: exportYear,
+          month: exportMonth + 1,
+          weekCount: workingWeeks.length,
+          weeks: workingWeeks.map((week) => ({
+            weekNumber: week.weekNumber,
+            exportStart: week.exportStart,
+            exportEnd: week.exportEnd,
+            dates: week.dates,
+          })),
+        },
+        actor: { id: actor.actorUserId, email: actor.actorEmail },
+        reason: 'exports',
       });
     } catch (auditError) {
       console.error('Audit log failed:', auditError);
