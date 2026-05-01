@@ -23,6 +23,7 @@ import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 interface StaffMember {
   id: string;
   fullName: string;
+  email: string | null;
   department: string | null;
   unit: string | null;
   active: boolean | null;
@@ -49,12 +50,14 @@ export default function StaffPage() {
 
   // Add form state
   const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
   const [newDepartment, setNewDepartment] = useState('');
   const [newUnit, setNewUnit] = useState('');
 
   // Edit form state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
   const [editDepartment, setEditDepartment] = useState('');
   const [editUnit, setEditUnit] = useState('');
 
@@ -111,6 +114,7 @@ export default function StaffPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fullName: newName.trim(),
+          email: newEmail.trim() || null,
           department: newDepartment.trim() || null,
           unit: newUnit.trim() || null,
         }),
@@ -127,6 +131,7 @@ export default function StaffPage() {
           return next.sort((a, b) => a.fullName.localeCompare(b.fullName));
         });
         setNewName('');
+        setNewEmail('');
         setNewDepartment('');
         setNewUnit('');
         setSubmitMessage('');
@@ -238,6 +243,7 @@ export default function StaffPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fullName: editName.trim(),
+          email: editEmail.trim() || null,
           department: editDepartment.trim() || null,
           unit: editUnit.trim() || null,
         }),
@@ -258,6 +264,7 @@ export default function StaffPage() {
   const openEdit = (member: StaffMember) => {
     setEditingId(member.id);
     setEditName(member.fullName);
+    setEditEmail(member.email || '');
     setEditDepartment(member.department || '');
     setEditUnit(member.unit || '');
   };
@@ -284,6 +291,7 @@ export default function StaffPage() {
 
         const searchable = [
           s.fullName,
+          s.email || '',
           s.department || '',
           s.unit || '',
         ].join(' ').toLowerCase();
@@ -382,6 +390,19 @@ export default function StaffPage() {
                     autoFocus
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-email">Login Email</Label>
+                  <Input
+                    id="new-email"
+                    type="email"
+                    placeholder="name@example.com"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Used to match this staff member to their attendance check-in account.
+                  </p>
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="new-department">Department</Label>
@@ -435,6 +456,7 @@ export default function StaffPage() {
                   <thead className="border-b border-border bg-card">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Login Email</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Department</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Unit</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</th>
@@ -448,6 +470,9 @@ export default function StaffPage() {
                           <>
                             <td className="px-4 py-2">
                               <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="h-8 text-sm" />
+                            </td>
+                            <td className="px-4 py-2">
+                              <Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="h-8 text-sm" />
                             </td>
                             <td className="px-4 py-2">
                               <Input value={editDepartment} onChange={(e) => setEditDepartment(e.target.value)} className="h-8 text-sm" />
@@ -473,6 +498,7 @@ export default function StaffPage() {
                         ) : (
                           <>
                             <td className="px-4 py-3 text-sm font-medium">{member.fullName}</td>
+                            <td className="px-4 py-3 text-sm text-muted-foreground">{member.email || 'Not linked'}</td>
                             <td className="px-4 py-3 text-sm">{member.department || '-'}</td>
                             <td className="px-4 py-3 text-sm">{member.unit || '-'}</td>
                             <td className="px-4 py-3 text-sm">
@@ -554,7 +580,7 @@ export default function StaffPage() {
                     ))}
                     {filteredStaff.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="py-8 text-center text-muted-foreground">
+                        <td colSpan={6} className="py-8 text-center text-muted-foreground">
                           {searchTerm ? 'No staff members match your search' : 'No staff members found'}
                         </td>
                       </tr>

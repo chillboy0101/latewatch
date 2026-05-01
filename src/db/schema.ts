@@ -5,6 +5,7 @@ import { relations } from 'drizzle-orm';
 export const staff = pgTable('staff', {
   id: uuid('id').primaryKey().defaultRandom(),
   fullName: text('full_name').notNull(),
+  email: text('email'),
   displayOrder: integer('display_order'),
   active: boolean('active').default(true),
   archived: boolean('archived').default(false),
@@ -16,6 +17,7 @@ export const staff = pgTable('staff', {
 });
 
 export const staffRelations = relations(staff, ({ many }) => ({
+  attendanceRecords: many(attendanceRecord),
   entries: many(latenessEntry),
 }));
 
@@ -61,6 +63,53 @@ export const workCalendar = pgTable('work_calendar', {
   isRemoved: boolean('is_removed').default(false), // true if user unmarked a Google holiday
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export const officeNetwork = pgTable('office_network', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull().default('Office WiFi'),
+  allowedIp: text('allowed_ip').notNull(),
+  isActive: boolean('is_active').default(true),
+  updatedByUserId: text('updated_by_user_id'),
+  updatedByEmail: text('updated_by_email').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export const attendanceRecord = pgTable('attendance_record', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  staffId: uuid('staff_id').notNull().references(() => staff.id),
+  date: date('date').notNull(),
+  checkInAt: timestamp('check_in_at').notNull(),
+  checkInTime: time('check_in_time').notNull(),
+  status: text('status').notNull(),
+  source: text('source').notNull().default('staff_portal'),
+  networkIp: text('network_ip').notNull(),
+  userAgent: text('user_agent'),
+  computedAmount: decimal('computed_amount', { precision: 10, scale: 2 }).notNull().default('0'),
+  reason: text('reason'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => [unique().on(table.staffId, table.date)]);
+
+export const attendanceRecordRelations = relations(attendanceRecord, ({ one }) => ({
+  staff: one(staff, {
+    fields: [attendanceRecord.staffId],
+    references: [staff.id],
+  }),
+}));
+
+export const attendanceAttempt = pgTable('attendance_attempt', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  staffId: uuid('staff_id').references(() => staff.id),
+  userId: text('user_id'),
+  userEmail: text('user_email').notNull(),
+  date: date('date').notNull(),
+  networkIp: text('network_ip').notNull(),
+  userAgent: text('user_agent'),
+  successful: boolean('successful').default(false).notNull(),
+  result: text('result').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
 });
 
 export const auditEvent = pgTable('audit_event', {

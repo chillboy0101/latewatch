@@ -10,7 +10,13 @@ export async function POST() {
     await db.execute(sql`ALTER TABLE staff ADD COLUMN IF NOT EXISTS display_order INTEGER`);
     await db.execute(sql`ALTER TABLE staff ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT false`);
     await db.execute(sql`ALTER TABLE staff ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP`);
+    await db.execute(sql`ALTER TABLE staff ADD COLUMN IF NOT EXISTS email TEXT`);
     await db.execute(sql`UPDATE staff SET archived = false WHERE archived IS NULL`);
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS staff_email_unique_idx
+      ON staff (lower(email))
+      WHERE email IS NOT NULL
+    `);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS entry_submission (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -23,6 +29,52 @@ export async function POST() {
         updated_at timestamp DEFAULT now()
       )
     `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS office_network (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        name text DEFAULT 'Office WiFi' NOT NULL,
+        allowed_ip text NOT NULL,
+        is_active boolean DEFAULT true,
+        updated_by_user_id text,
+        updated_by_email text NOT NULL,
+        created_at timestamp DEFAULT now(),
+        updated_at timestamp DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS attendance_record (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        staff_id uuid NOT NULL REFERENCES staff(id),
+        date date NOT NULL,
+        check_in_at timestamp NOT NULL,
+        check_in_time time NOT NULL,
+        status text NOT NULL,
+        source text DEFAULT 'staff_portal' NOT NULL,
+        network_ip text NOT NULL,
+        user_agent text,
+        computed_amount numeric(10, 2) DEFAULT '0' NOT NULL,
+        reason text,
+        created_at timestamp DEFAULT now(),
+        updated_at timestamp DEFAULT now(),
+        UNIQUE(staff_id, date)
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS attendance_attempt (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        staff_id uuid REFERENCES staff(id),
+        user_id text,
+        user_email text NOT NULL,
+        date date NOT NULL,
+        network_ip text NOT NULL,
+        user_agent text,
+        successful boolean DEFAULT false NOT NULL,
+        result text NOT NULL,
+        created_at timestamp DEFAULT now()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS attendance_record_date_idx ON attendance_record(date)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS attendance_attempt_date_idx ON attendance_attempt(date)`);
 
     return NextResponse.json({ message: 'schema is up to date' });
   } catch (error) {

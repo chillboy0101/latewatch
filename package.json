@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test tests/export-regression.test.cjs"
+    "test": "node --test tests/*.test.cjs"
   },
   "dependencies": {
     "ably": "^2.10.1",

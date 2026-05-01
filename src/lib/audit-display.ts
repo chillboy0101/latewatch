@@ -43,6 +43,10 @@ export function getAuditPayloads(record: Pick<AuditDisplayRecord, 'afterJson' | 
 export function formatAuditFieldLabel(field: string) {
   if (field === 'active') return 'Status';
   if (field === 'archived') return 'Staff Status';
+  if (field === 'allowedIp') return 'Office IP';
+  if (field === 'networkIp') return 'Network IP';
+  if (field === 'updatedByEmail') return 'Updated By';
+  if (field === 'updatedByUserId') return 'Updated By ID';
 
   return field
     .replace(/([A-Z])/g, ' $1')
@@ -107,6 +111,19 @@ export function getAuditTargetName(record: Pick<AuditDisplayRecord, 'afterJson' 
     return payload.date ? `Entries for ${formatAuditValue(payload.date)}` : record.entityId;
   }
 
+  if (record.entityType === 'attendance') {
+    const staffValue = payload.staff;
+    if (staffValue && typeof staffValue === 'object' && !Array.isArray(staffValue)) {
+      const staffPayload = staffValue as Record<string, unknown>;
+      if (staffPayload.fullName) return `${formatAuditValue(staffPayload.fullName)} on ${formatAuditValue(payload.date)}`;
+    }
+    return payload.date ? `Check-in for ${formatAuditValue(payload.date)}` : record.entityId;
+  }
+
+  if (record.entityType === 'attendance_attempt') {
+    return payload.userEmail ? `${formatAuditValue(payload.userEmail)} on ${formatAuditValue(payload.date)}` : record.entityId;
+  }
+
   if (record.entityType === 'calendar') {
     return payload.holidayNote
       ? `${formatAuditValue(payload.holidayNote)} (${formatAuditValue(payload.date)})`
@@ -121,6 +138,12 @@ export function getAuditTargetName(record: Pick<AuditDisplayRecord, 'afterJson' 
   if (record.entityType === 'notification') {
     if (payload.action) return formatAuditValue(payload.action);
     if (payload.count) return `${formatAuditValue(payload.count)} notification${Number(payload.count) === 1 ? '' : 's'}`;
+  }
+
+  if (record.entityType === 'office_network') {
+    const name = formatAuditValue(payload.name) || 'Office WiFi';
+    const ip = formatAuditValue(payload.allowedIp);
+    return ip && ip !== '-' ? `${name} (${ip})` : name;
   }
 
   return record.entityId;

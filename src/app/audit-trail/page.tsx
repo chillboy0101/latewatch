@@ -58,13 +58,17 @@ interface AuditEvent {
 type AuditPayload = Record<string, unknown> & {
   active?: boolean;
   archived?: boolean;
+  allowedIp?: string;
+  checkInTime?: string;
   computedAmount?: number | string;
   date?: string;
   department?: string | null;
   fullName?: string;
   holidayNote?: string;
+  result?: string;
   staff?: { fullName?: string };
   unit?: string | null;
+  userEmail?: string;
   weekEnd?: string;
   weekStart?: string;
 };
@@ -269,11 +273,14 @@ export default function AuditTrailPage() {
   function getEntityIcon(entityType: string) {
     switch (entityType) {
       case 'staff': return <User className="h-3 w-3" />;
+      case 'attendance': return <UserCheck className="h-3 w-3" />;
+      case 'attendance_attempt': return <Bell className="h-3 w-3" />;
       case 'entry': return <FileText className="h-3 w-3" />;
       case 'entry_submission': return <FileText className="h-3 w-3" />;
       case 'calendar': return <Calendar className="h-3 w-3" />;
       case 'export': return <Download className="h-3 w-3" />;
       case 'notification': return <Bell className="h-3 w-3" />;
+      case 'office_network': return <Shield className="h-3 w-3" />;
       case 'system': return <Shield className="h-3 w-3" />;
       default: return <FileText className="h-3 w-3" />;
     }
@@ -303,6 +310,10 @@ export default function AuditTrailPage() {
       if (event.entityType === 'entry_submission') {
         const count = Number(afterData?.entryCount || 0);
         return `Entries submitted for ${afterData?.date || 'date'} (${count} late record${count === 1 ? '' : 's'})`;
+      }
+      if (event.entityType === 'attendance') {
+        const name = afterData?.staff?.fullName || 'Staff member';
+        return `${name} checked in at ${afterData?.checkInTime || 'the recorded time'}`;
       }
       if (event.entityType === 'calendar') {
         return `Holiday: "${afterData?.holidayNote || 'Unknown'}" on ${afterData?.date || 'date'}`;
@@ -340,7 +351,14 @@ export default function AuditTrailPage() {
       if (event.entityType === 'calendar') {
         return `Calendar entry for ${afterData?.date || 'date'} updated`;
       }
+      if (event.entityType === 'office_network') {
+        return `Office network updated${afterData?.allowedIp ? ` for ${afterData.allowedIp}` : ''}`;
+      }
       return `${getEntityLabel(event.entityType).toLowerCase()} modified`;
+    }
+
+    if (operation === 'ALERT' && event.entityType === 'attendance_attempt') {
+      return `Blocked check-in attempt: ${afterData?.result || 'review required'}`;
     }
 
     if (operation === 'DELETE') {

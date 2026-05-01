@@ -10,12 +10,14 @@ import {
   Table2,
   Download,
   Calendar,
+  ClipboardCheck,
   Shield,
 } from 'lucide-react';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Staff', href: '/staff', icon: Users },
+  { name: 'Attendance', href: '/attendance', icon: ClipboardCheck },
   { name: 'Entries', href: '/entries', icon: Table2 },
   { name: 'Exports', href: '/exports', icon: Download },
   { name: 'Calendar', href: '/calendar', icon: Calendar },

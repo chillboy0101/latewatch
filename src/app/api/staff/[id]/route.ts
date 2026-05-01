@@ -2,14 +2,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { latenessEntry, staff } from '@/db/schema';
-import { count, eq } from 'drizzle-orm';
+import { and, count, eq, ilike, ne } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
+import { normalizeStaffEmail } from '@/lib/attendance';
 
 type StaffUpdateBody = {
   active?: boolean;
   archived?: boolean;
   department?: string | null;
+  email?: string | null;
   fullName?: string;
   unit?: string | null;
 };
@@ -40,10 +42,11 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json() as StaffUpdateBody;
-    const { fullName, department, unit, active, archived } = body;
+    const { fullName, email, department, unit, active, archived } = body;
 
     const updateData: Partial<typeof staff.$inferInsert> = { updatedAt: new Date() };
     if (fullName !== undefined) updateData.fullName = fullName.trim();
+    if (email !== undefined) updateData.email = normalizeStaffEmail(email);
     if (department !== undefined) updateData.department = typeof department === 'string' && department.trim() ? department.trim() : null;
     if (unit !== undefined) updateData.unit = typeof unit === 'string' && unit.trim() ? unit.trim() : null;
     if (active !== undefined) updateData.active = active;
@@ -57,6 +60,20 @@ export async function PUT(
     const [before] = await db.select().from(staff).where(eq(staff.id, id));
     if (!before) {
       return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
+    }
+
+    if (updateData.email) {
+      const [emailOwner] = await db.select({ id: staff.id })
+        .from(staff)
+        .where(and(ilike(staff.email, updateData.email), ne(staff.id, id)))
+        .limit(1);
+
+      if (emailOwner) {
+        return NextResponse.json(
+          { error: 'This email is already linked to another staff member.' },
+          { status: 409 },
+        );
+      }
     }
 
     const updated = await db.update(staff)

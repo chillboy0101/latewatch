@@ -35,11 +35,14 @@ const ACTION_LABELS: Record<CanonicalAuditAction, string> = {
 };
 
 const ENTITY_LABELS: Record<string, string> = {
+  attendance: 'Attendance Check-In',
+  attendance_attempt: 'Attendance Attempt',
   calendar: 'Holiday Calendar',
   entry: 'Lateness Entry',
   entry_submission: 'Daily Entry Submission',
   export: 'Report Export',
   notification: 'Notification',
+  office_network: 'Office Network',
   staff: 'Staff Member',
   system: 'System',
 };

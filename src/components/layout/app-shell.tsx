@@ -5,6 +5,7 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout';
 
 const WORKSPACE_TITLES: Record<string, string> = {
   'audit-trail': 'Audit Trail',
+  attendance: 'Attendance',
   calendar: 'Calendar',
   dashboard: 'Dashboard',
   entries: 'Daily Entry',

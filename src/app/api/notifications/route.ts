@@ -3,7 +3,7 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { and, count, desc, eq, gte, ne } from 'drizzle-orm';
 import { format, subDays } from 'date-fns';
 import { db } from '@/db';
-import { auditEvent, entrySubmission, latenessEntry, notificationRead, staff, workCalendar } from '@/db/schema';
+import { attendanceRecord, auditEvent, entrySubmission, latenessEntry, notificationRead, staff, workCalendar } from '@/db/schema';
 import { getAuditActionLabel, getAuditEntityLabel, getAuditOperation } from '@/lib/audit-taxonomy';
 import { tryWriteAuditEvent } from '@/lib/audit';
 import { publishRealtime } from '@/lib/realtime';
@@ -44,6 +44,9 @@ type AuditJson = Record<string, unknown> & {
   notificationIds?: string[];
   staff?: { fullName?: string };
   entryCount?: number | string;
+  checkInTime?: string;
+  result?: string;
+  status?: string;
   submittedByEmail?: string;
   totalAdded?: number | string;
   totalSkipped?: number | string;
@@ -110,6 +113,11 @@ function getNotificationHref(entityType: string) {
     case 'entry':
     case 'entry_submission':
       return '/entries';
+    case 'attendance':
+    case 'attendance_attempt':
+      return '/attendance';
+    case 'office_network':
+      return '/attendance';
     case 'calendar':
       return '/calendar';
     case 'export':
@@ -127,6 +135,8 @@ function getCategory(entityType: string): NotificationCategory {
       return 'staff';
     case 'entry':
     case 'entry_submission':
+    case 'attendance':
+    case 'attendance_attempt':
       return 'attendance';
     case 'calendar':
       return 'calendar';
@@ -232,6 +242,21 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
         );
       }
 
+      if (event.entityType === 'attendance') {
+        const staffName = afterData?.staff?.fullName || afterData?.fullName || 'Staff member';
+        const amount = parseFloat(String(afterData?.computedAmount || '0'));
+
+        return makeNotification(
+          event,
+          read,
+          amount > 0 ? 'Late check-in recorded' : 'Attendance check-in recorded',
+          `${staffName} checked in at ${afterData?.checkInTime || 'the recorded time'}${amount > 0 ? ` with a GHC ${amount.toFixed(2)} penalty` : ''}.`,
+          amount > 0 ? 'warning' : 'success',
+          amount > 0 ? 'high' : 'normal',
+          { href: '/attendance' },
+        );
+      }
+
       if (event.entityType === 'calendar') {
         return makeNotification(
           event,
@@ -240,6 +265,18 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
           `${afterData?.holidayNote || 'Holiday'} was marked for ${afterData?.date || 'the selected date'}.`,
           'info',
           'normal',
+        );
+      }
+
+      if (event.entityType === 'office_network') {
+        return makeNotification(
+          event,
+          read,
+          'Office network updated',
+          'The office WiFi verification network was updated.',
+          'info',
+          'normal',
+          { href: '/attendance' },
         );
       }
 
@@ -338,6 +375,18 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
       );
 
     default:
+      if (operation === 'ALERT' && event.entityType === 'attendance_attempt') {
+        return makeNotification(
+          event,
+          read,
+          'Blocked attendance check-in',
+          `${afterData?.userEmail || 'A user'} could not check in: ${String(afterData?.result || 'review required').replace(/_/g, ' ').toLowerCase()}.`,
+          'alert',
+          'high',
+          { href: '/attendance' },
+        );
+      }
+
       return makeNotification(
         event,
         read,
@@ -482,6 +531,35 @@ async function getSystemNotifications(readIds: Set<string>): Promise<Notificatio
         {
           category: 'attendance',
           href: '/entries',
+        },
+      ));
+    }
+
+    const attendanceRows = await db.select({ id: attendanceRecord.id })
+      .from(attendanceRecord)
+      .where(eq(attendanceRecord.date, todayStr));
+    const checkedInCount = attendanceRows.length;
+    if (checkedInCount < activeStaffCount) {
+      const alertId = `system-attendance-missing-${todayStr}`;
+      notifications.push(makeNotification(
+        {
+          id: alertId,
+          entityType: 'system',
+          entityId: 'today-attendance',
+          action: 'ALERT',
+          beforeJson: null,
+          afterJson: { date: todayStr, checkedInCount, activeStaffCount },
+          actorEmail: 'system',
+          timestamp: today,
+        },
+        readIds.has(alertId),
+        'Attendance check-ins incomplete',
+        `${activeStaffCount - checkedInCount} active staff member${activeStaffCount - checkedInCount === 1 ? '' : 's'} have not checked in today.`,
+        'alert',
+        'high',
+        {
+          category: 'attendance',
+          href: '/attendance',
         },
       ));
     }

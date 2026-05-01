@@ -5,6 +5,7 @@ import { staff } from '@/db/schema';
 import { and, asc, eq, ilike } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
+import { normalizeStaffEmail } from '@/lib/attendance';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +22,7 @@ export async function GET(request: NextRequest) {
     const staffList = await db.select({
       id: staff.id,
       fullName: staff.fullName,
+      email: staff.email,
       displayOrder: staff.displayOrder,
       active: staff.active,
       archived: staff.archived,
@@ -48,8 +50,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { fullName, department, unit } = body;
+    const { fullName, email, department, unit } = body;
     const name = typeof fullName === 'string' ? fullName.trim() : '';
+    const normalizedEmail = normalizeStaffEmail(email);
 
     if (!name) {
       return NextResponse.json({ error: 'Full name is required' }, { status: 400 });
@@ -63,6 +66,20 @@ export async function POST(request: Request) {
       .where(ilike(staff.fullName, name))
       .limit(1);
 
+    if (normalizedEmail) {
+      const [existingEmail] = await db.select()
+        .from(staff)
+        .where(ilike(staff.email, normalizedEmail))
+        .limit(1);
+
+      if (existingEmail && existingEmail.id !== existingStaff?.id) {
+        return NextResponse.json(
+          { error: 'This email is already linked to another staff member.' },
+          { status: 409 },
+        );
+      }
+    }
+
     if (existingStaff) {
       if (existingStaff.archived) {
         const [restored] = await db.update(staff)
@@ -70,6 +87,7 @@ export async function POST(request: Request) {
             active: true,
             archived: false,
             archivedAt: null,
+            email: normalizedEmail ?? existingStaff.email,
             department: normalizedDepartment ?? existingStaff.department,
             unit: normalizedUnit ?? existingStaff.unit,
             updatedAt: new Date(),
@@ -99,6 +117,7 @@ export async function POST(request: Request) {
 
     const newStaff = await db.insert(staff).values({
       fullName: name,
+      email: normalizedEmail,
       department: normalizedDepartment,
       unit: normalizedUnit,
       active: true,

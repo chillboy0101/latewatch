@@ -1,5 +1,7 @@
 // lib/penalty-calculator.ts
 
+import { WORKDAY_START_TIME } from '@/lib/work-hours';
+
 interface PenaltyInput {
   arrivalTime: string | null;  // HH:MM format
   didNotSignOut: boolean;
@@ -12,7 +14,7 @@ interface PenaltyOutput {
 }
 
 export function computePenalty(input: PenaltyInput): PenaltyOutput {
-  const CUTOFF_TIME = '08:30';
+  const CUTOFF_TIME = WORKDAY_START_TIME;
   const BASE_PENALTY = 10;
   const HOURLY_INCREMENT = 5;
   const SIGN_OUT_PENALTY = 2;
