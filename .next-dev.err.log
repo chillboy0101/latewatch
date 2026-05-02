@@ -697,3 +697,371 @@ params: 2026-04-01T23:30:35.835Z,notification,50
 [browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
 [browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
 [browser] 23:42:20.390 Ably: ConnectionManager.activateTransport(): error = [_ErrorInfo: Unable to resume connection from another site; statusCode=400; code=80023; see https://help.ably.io/error/80023 ] (<anonymous>)
+Failed to fetch notifications: Error: Failed query: select "notification_id" from "notification_read" where "notification_read"."user_id" = $1
+params: user_3C550OqkCR5dIfAUnrnEP62iJKr
+    at async getNotificationState (src\app\api\notifications\route.ts:423:16)
+    at async GET (src\app\api\notifications\route.ts:658:39)
+  421 |
+  422 | async function getNotificationState(userId: string) {
+> 423 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+      |                ^
+  424 |     .from(notificationRead)
+  425 |     .where(eq(notificationRead.userId, userId));
+  426 | {
+  query: 'select "notification_id" from "notification_read" where "notification_read"."user_id" = $1',
+  params: [ 'user_3C550OqkCR5dIfAUnrnEP62iJKr' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getNotificationState (src\app\api\notifications\route.ts:423:16)
+      at async GET (src\app\api\notifications\route.ts:658:39)
+    421 |
+    422 | async function getNotificationState(userId: string) {
+  > 423 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+        |                ^
+    424 |     .from(notificationRead)
+    425 |     .where(eq(notificationRead.userId, userId));
+    426 | {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getNotificationState (src\app\api\notifications\route.ts:423:16)
+        at async GET (src\app\api\notifications\route.ts:658:39)
+      421 |
+      422 | async function getNotificationState(userId: string) {
+    > 423 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+          |                ^
+      424 |     .from(notificationRead)
+      425 |     .where(eq(notificationRead.userId, userId));
+      426 | {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch notifications: Error: Failed query: select "notification_id" from "notification_read" where "notification_read"."user_id" = $1
+params: user_3C550OqkCR5dIfAUnrnEP62iJKr
+    at async getNotificationState (src\app\api\notifications\route.ts:423:16)
+    at async GET (src\app\api\notifications\route.ts:658:39)
+  421 |
+  422 | async function getNotificationState(userId: string) {
+> 423 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+      |                ^
+  424 |     .from(notificationRead)
+  425 |     .where(eq(notificationRead.userId, userId));
+  426 | {
+  query: 'select "notification_id" from "notification_read" where "notification_read"."user_id" = $1',
+  params: [ 'user_3C550OqkCR5dIfAUnrnEP62iJKr' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getNotificationState (src\app\api\notifications\route.ts:423:16)
+      at async GET (src\app\api\notifications\route.ts:658:39)
+    421 |
+    422 | async function getNotificationState(userId: string) {
+  > 423 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+        |                ^
+    424 |     .from(notificationRead)
+    425 |     .where(eq(notificationRead.userId, userId));
+    426 | {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getNotificationState (src\app\api\notifications\route.ts:423:16)
+        at async GET (src\app\api\notifications\route.ts:658:39)
+      421 |
+      422 | async function getNotificationState(userId: string) {
+    > 423 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+          |                ^
+      424 |     .from(notificationRead)
+      425 |     .where(eq(notificationRead.userId, userId));
+      426 | {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Failed to fetch notifications: Error: Failed to fetch notifications: 500
+    at NotificationProvider.useCallback[fetchNotifications] (src/contexts/notification-context.tsx:104:15)
+  102 |
+  103 |       if (!response.ok) {
+> 104 |         throw new Error(`Failed to fetch notifications: ${response.status}`);
+      |               ^
+  105 |       }
+  106 |
+  107 |       const data = await response.json(); (src/contexts/notification-context.tsx:114:15)
+[browser] Failed to fetch notifications: Error: Failed to fetch notifications: 500
+    at NotificationProvider.useCallback[fetchNotifications] (src/contexts/notification-context.tsx:104:15)
+  102 |
+  103 |       if (!response.ok) {
+> 104 |         throw new Error(`Failed to fetch notifications: ${response.status}`);
+      |               ^
+  105 |       }
+  106 |
+  107 |       const data = await response.json(); (src/contexts/notification-context.tsx:114:15)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Failed to fetch RSC payload for http://localhost:3000/dashboard. Falling back to browser navigation. TypeError: Failed to fetch
+[browser] Failed to fetch RSC payload for http://localhost:3000/dashboard. Falling back to browser navigation. TypeError: Failed to fetch
+[browser] Failed to fetch RSC payload for http://localhost:3000/attendance. Falling back to browser navigation. TypeError: Failed to fetch
+[browser] Failed to fetch RSC payload for http://localhost:3000/dashboard. Falling back to browser navigation. TypeError: Failed to fetch
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+Failed to fetch notifications: Error: Failed query: select "notification_id" from "notification_read" where "notification_read"."user_id" = $1
+params: user_3C550OqkCR5dIfAUnrnEP62iJKr
+    at async getNotificationState (src\app\api\notifications\route.ts:423:16)
+    at async GET (src\app\api\notifications\route.ts:658:39)
+  421 |
+  422 | async function getNotificationState(userId: string) {
+> 423 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+      |                ^
+  424 |     .from(notificationRead)
+  425 |     .where(eq(notificationRead.userId, userId));
+  426 | {
+  query: 'select "notification_id" from "notification_read" where "notification_read"."user_id" = $1',
+  params: [ 'user_3C550OqkCR5dIfAUnrnEP62iJKr' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getNotificationState (src\app\api\notifications\route.ts:423:16)
+      at async GET (src\app\api\notifications\route.ts:658:39)
+    421 |
+    422 | async function getNotificationState(userId: string) {
+  > 423 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+        |                ^
+    424 |     .from(notificationRead)
+    425 |     .where(eq(notificationRead.userId, userId));
+    426 | {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getNotificationState (src\app\api\notifications\route.ts:423:16)
+        at async GET (src\app\api\notifications\route.ts:658:39)
+      421 |
+      422 | async function getNotificationState(userId: string) {
+    > 423 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+          |                ^
+      424 |     .from(notificationRead)
+      425 |     .where(eq(notificationRead.userId, userId));
+      426 | {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Failed to fetch notifications: Error: Failed to fetch notifications: 500
+    at NotificationProvider.useCallback[fetchNotifications] (src/contexts/notification-context.tsx:104:15)
+  102 |
+  103 |       if (!response.ok) {
+> 104 |         throw new Error(`Failed to fetch notifications: ${response.status}`);
+      |               ^
+  105 |       }
+  106 |
+  107 |       const data = await response.json(); (src/contexts/notification-context.tsx:114:15)
+Failed to fetch notifications: Error: Failed query: select "notification_id" from "notification_read" where "notification_read"."user_id" = $1
+params: user_3C550OqkCR5dIfAUnrnEP62iJKr
+    at async getNotificationState (src\app\api\notifications\route.ts:423:16)
+    at async GET (src\app\api\notifications\route.ts:658:39)
+  421 |
+  422 | async function getNotificationState(userId: string) {
+> 423 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+      |                ^
+  424 |     .from(notificationRead)
+  425 |     .where(eq(notificationRead.userId, userId));
+  426 | {
+  query: 'select "notification_id" from "notification_read" where "notification_read"."user_id" = $1',
+  params: [ 'user_3C550OqkCR5dIfAUnrnEP62iJKr' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getNotificationState (src\app\api\notifications\route.ts:423:16)
+      at async GET (src\app\api\notifications\route.ts:658:39)
+    421 |
+    422 | async function getNotificationState(userId: string) {
+  > 423 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+        |                ^
+    424 |     .from(notificationRead)
+    425 |     .where(eq(notificationRead.userId, userId));
+    426 | {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getNotificationState (src\app\api\notifications\route.ts:423:16)
+        at async GET (src\app\api\notifications\route.ts:658:39)
+      421 |
+      422 | async function getNotificationState(userId: string) {
+    > 423 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+          |                ^
+      424 |     .from(notificationRead)
+      425 |     .where(eq(notificationRead.userId, userId));
+      426 | {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Failed to fetch notifications: Error: Failed to fetch notifications: 500
+    at NotificationProvider.useCallback[fetchNotifications] (src/contexts/notification-context.tsx:104:15)
+  102 |
+  103 |       if (!response.ok) {
+> 104 |         throw new Error(`Failed to fetch notifications: ${response.status}`);
+      |               ^
+  105 |       }
+  106 |
+  107 |       const data = await response.json(); (src/contexts/notification-context.tsx:114:15)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] 00:44:46.370 Ably: ConnectionManager.activateTransport(): error = [_ErrorInfo: Unable to resume connection from another site; statusCode=400; code=80023; see https://help.ably.io/error/80023 ] (<anonymous>)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+⚠ Fast Refresh had to perform a full reload when ./src/components/layout/app-shell.tsx changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+⚠ Fast Refresh had to perform a full reload when ./src/components/layout/app-shell.tsx changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+⚠ Fast Refresh had to perform a full reload when ./src/components/layout/app-shell.tsx changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+Failed to fetch emergency contacts: Error: Failed query: select "emergency_contact"."active", "emergency_contact"."address", "emergency_contact"."alternate_phone", "emergency_contact"."contact_name", "emergency_contact"."created_at", "emergency_contact"."email", "emergency_contact"."id", "emergency_contact"."notes", "emergency_contact"."phone", "emergency_contact"."priority", "emergency_contact"."relationship", "emergency_contact"."staff_id", "staff"."full_name", "emergency_contact"."updated_at" from "emergency_contact" left join "staff" on "emergency_contact"."staff_id" = "staff"."id" order by "emergency_contact"."active" desc, "staff"."full_name" asc, "emergency_contact"."contact_name" asc
+params: 
+    at async GET (src\app\api\emergency-contacts\route.ts:58:22)
+  56 | export async function GET() {
+  57 |   try {
+> 58 |     const contacts = await db.select({
+     |                      ^
+  59 |       active: emergencyContact.active,
+  60 |       address: emergencyContact.address,
+  61 |       alternatePhone: emergencyContact.alternatePhone, {
+  query: 'select "emergency_contact"."active", "emergency_contact"."address", "emergency_contact"."alternate_phone", "emergency_contact"."contact_name", "emergency_contact"."created_at", "emergency_contact"."email", "emergency_contact"."id", "emergency_contact"."notes", "emergency_contact"."phone", "emergency_contact"."priority", "emergency_contact"."relationship", "emergency_contact"."staff_id", "staff"."full_name", "emergency_contact"."updated_at" from "emergency_contact" left join "staff" on "emergency_contact"."staff_id" = "staff"."id" order by "emergency_contact"."active" desc, "staff"."full_name" asc, "emergency_contact"."contact_name" asc',
+  params: [],
+  [cause]: Error [NeonDbError]: relation "emergency_contact" does not exist
+      at async GET (src\app\api\emergency-contacts\route.ts:58:22)
+    56 | export async function GET() {
+    57 |   try {
+  > 58 |     const contacts = await db.select({
+       |                      ^
+    59 |       active: emergencyContact.active,
+    60 |       address: emergencyContact.address,
+    61 |       alternatePhone: emergencyContact.alternatePhone, {
+    severity: 'ERROR',
+    code: '42P01',
+    detail: undefined,
+    hint: undefined,
+    position: '450',
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: 'parse_relation.c',
+    line: '1449',
+    routine: 'parserOpenTable',
+    sourceError: undefined
+  }
+}
+Failed to fetch emergency contacts: Error: Failed query: select "emergency_contact"."active", "emergency_contact"."address", "emergency_contact"."alternate_phone", "emergency_contact"."contact_name", "emergency_contact"."created_at", "emergency_contact"."email", "emergency_contact"."id", "emergency_contact"."notes", "emergency_contact"."phone", "emergency_contact"."priority", "emergency_contact"."relationship", "emergency_contact"."staff_id", "staff"."full_name", "emergency_contact"."updated_at" from "emergency_contact" left join "staff" on "emergency_contact"."staff_id" = "staff"."id" order by "emergency_contact"."active" desc, "staff"."full_name" asc, "emergency_contact"."contact_name" asc
+params: 
+    at async GET (src\app\api\emergency-contacts\route.ts:58:22)
+  56 | export async function GET() {
+  57 |   try {
+> 58 |     const contacts = await db.select({
+     |                      ^
+  59 |       active: emergencyContact.active,
+  60 |       address: emergencyContact.address,
+  61 |       alternatePhone: emergencyContact.alternatePhone, {
+  query: 'select "emergency_contact"."active", "emergency_contact"."address", "emergency_contact"."alternate_phone", "emergency_contact"."contact_name", "emergency_contact"."created_at", "emergency_contact"."email", "emergency_contact"."id", "emergency_contact"."notes", "emergency_contact"."phone", "emergency_contact"."priority", "emergency_contact"."relationship", "emergency_contact"."staff_id", "staff"."full_name", "emergency_contact"."updated_at" from "emergency_contact" left join "staff" on "emergency_contact"."staff_id" = "staff"."id" order by "emergency_contact"."active" desc, "staff"."full_name" asc, "emergency_contact"."contact_name" asc',
+  params: [],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async GET (src\app\api\emergency-contacts\route.ts:58:22)
+    56 | export async function GET() {
+    57 |   try {
+  > 58 |     const contacts = await db.select({
+       |                      ^
+    59 |       active: emergencyContact.active,
+    60 |       address: emergencyContact.address,
+    61 |       alternatePhone: emergencyContact.alternatePhone, {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async GET (src\app\api\emergency-contacts\route.ts:58:22)
+      56 | export async function GET() {
+      57 |   try {
+    > 58 |     const contacts = await db.select({
+         |                      ^
+      59 |       active: emergencyContact.active,
+      60 |       address: emergencyContact.address,
+      61 |       alternatePhone: emergencyContact.alternatePhone, {
+      [cause]: [Error]
+    }
+  }
+}

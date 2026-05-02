@@ -38,6 +38,7 @@ const ENTITY_LABELS: Record<string, string> = {
   attendance: 'Attendance Check-In',
   attendance_attempt: 'Attendance Attempt',
   calendar: 'Holiday Calendar',
+  emergency_contact: 'Emergency Contact',
   entry: 'Lateness Entry',
   entry_submission: 'Daily Entry Submission',
   export: 'Report Export',

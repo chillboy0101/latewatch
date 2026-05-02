@@ -44,7 +44,12 @@ export function formatAuditFieldLabel(field: string) {
   if (field === 'active') return 'Status';
   if (field === 'archived') return 'Staff Status';
   if (field === 'allowedIp') return 'Office IP';
+  if (field === 'alternatePhone') return 'Family Phone';
+  if (field === 'contactName') return 'Contact Name';
   if (field === 'networkIp') return 'Network IP';
+  if (field === 'phone') return 'Staff Phone';
+  if (field === 'staffId') return 'Staff ID';
+  if (field === 'staffName') return 'Staff';
   if (field === 'updatedByEmail') return 'Updated By';
   if (field === 'updatedByUserId') return 'Updated By ID';
 
@@ -122,6 +127,16 @@ export function getAuditTargetName(record: Pick<AuditDisplayRecord, 'afterJson' 
 
   if (record.entityType === 'attendance_attempt') {
     return payload.userEmail ? `${formatAuditValue(payload.userEmail)} on ${formatAuditValue(payload.date)}` : record.entityId;
+  }
+
+  if (record.entityType === 'emergency_contact') {
+    if (payload.contactName) {
+      const staffName = formatAuditValue(payload.staffName);
+      return staffName && staffName !== '-'
+        ? `${formatAuditValue(payload.contactName)} for ${staffName}`
+        : formatAuditValue(payload.contactName);
+    }
+    return formatAuditValue(payload.phone) || record.entityId;
   }
 
   if (record.entityType === 'calendar') {

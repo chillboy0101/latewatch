@@ -106,6 +106,15 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
 }
 
+.dark .google-calendar-shell {
+  background: #0f0f0f;
+}
+
+.dark .google-calendar-frame {
+  background: #0f0f0f;
+  filter: invert(0.92) hue-rotate(180deg) saturate(0.82) contrast(0.95);
+}
+
 .font-mono {
   font-family: var(--font-jetbrains-mono), monospace;
 }

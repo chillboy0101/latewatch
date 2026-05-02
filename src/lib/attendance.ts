@@ -3,7 +3,7 @@ import 'server-only';
 import { and, desc, eq, ilike } from 'drizzle-orm';
 import { db } from '@/db';
 import { attendanceAttempt, officeNetwork, staff, workCalendar } from '@/db/schema';
-export { getClientIp } from '@/lib/request-ip';
+export { getClientIp, getClientIpInfo, resolveClientIp, resolveClientIpInfo } from '@/lib/request-ip';
 
 export type AccraClock = {
   dateKey: string;

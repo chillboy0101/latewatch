@@ -2,7 +2,7 @@ import { currentUser } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { officeNetwork } from '@/db/schema';
-import { getActiveOfficeNetwork, getClientIp, isOfficeIp } from '@/lib/attendance';
+import { getActiveOfficeNetwork, isOfficeIp, resolveClientIpInfo } from '@/lib/attendance';
 import { writeAuditEvent } from '@/lib/audit';
 import { publishRealtime } from '@/lib/realtime';
 
@@ -10,11 +10,13 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   const network = await getActiveOfficeNetwork();
-  const currentIp = getClientIp(request);
+  const currentIpInfo = await resolveClientIpInfo(request);
+  const currentIp = currentIpInfo.ip;
 
   return NextResponse.json({
     configured: Boolean(network),
     currentIp,
+    currentIpSource: currentIpInfo.source,
     isOfficeNetwork: network ? isOfficeIp(currentIp, network.allowedIp) : false,
     network: network
       ? {
@@ -41,7 +43,8 @@ export async function POST(request: NextRequest) {
     const name = typeof body?.name === 'string' && body.name.trim()
       ? body.name.trim()
       : 'Office WiFi';
-    const currentIp = getClientIp(request);
+    const currentIpInfo = await resolveClientIpInfo(request);
+    const currentIp = currentIpInfo.ip;
     const actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';
     const before = await getActiveOfficeNetwork();
 
@@ -64,6 +67,7 @@ export async function POST(request: NextRequest) {
       before,
       after: {
         ...network,
+        detectedIpSource: currentIpInfo.source,
       },
       actor: { email: actorEmail, id: user.id },
       reason: 'attendance-network',
@@ -74,6 +78,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       currentIp,
+      currentIpSource: currentIpInfo.source,
       network: {
         id: network.id,
         allowedIp: network.allowedIp,

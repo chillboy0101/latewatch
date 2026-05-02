@@ -18,6 +18,7 @@ export const staff = pgTable('staff', {
 
 export const staffRelations = relations(staff, ({ many }) => ({
   attendanceRecords: many(attendanceRecord),
+  emergencyContacts: many(emergencyContact),
   entries: many(latenessEntry),
 }));
 
@@ -111,6 +112,29 @@ export const attendanceAttempt = pgTable('attendance_attempt', {
   result: text('result').notNull(),
   createdAt: timestamp('created_at').defaultNow(),
 });
+
+export const emergencyContact = pgTable('emergency_contact', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  staffId: uuid('staff_id').references(() => staff.id, { onDelete: 'set null' }),
+  contactName: text('contact_name').notNull(),
+  relationship: text('relationship'),
+  phone: text('phone').notNull(),
+  alternatePhone: text('alternate_phone'),
+  email: text('email'),
+  address: text('address'),
+  notes: text('notes'),
+  priority: text('priority').default('primary').notNull(),
+  active: boolean('active').default(true),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export const emergencyContactRelations = relations(emergencyContact, ({ one }) => ({
+  staff: one(staff, {
+    fields: [emergencyContact.staffId],
+    references: [staff.id],
+  }),
+}));
 
 export const auditEvent = pgTable('audit_event', {
   id: uuid('id').primaryKey().defaultRandom(),

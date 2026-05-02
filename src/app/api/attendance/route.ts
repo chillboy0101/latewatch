@@ -2,7 +2,7 @@ import { and, asc, desc, eq } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { attendanceAttempt, attendanceRecord, staff } from '@/db/schema';
-import { getAccraClock, getActiveOfficeNetwork, getClientIp, isOfficeIp } from '@/lib/attendance';
+import { getAccraClock, getActiveOfficeNetwork, isOfficeIp, resolveClientIpInfo } from '@/lib/attendance';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,7 +57,8 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const currentIp = getClientIp(request);
+    const currentIpInfo = await resolveClientIpInfo(request);
+    const currentIp = currentIpInfo.ip;
     const totals = rows.reduce((acc, row) => {
       if (row.status === 'present') acc.present += 1;
       else if (row.status === 'late') acc.late += 1;
@@ -79,6 +80,7 @@ export async function GET(request: NextRequest) {
         configured: Boolean(network),
         allowedIp: network?.allowedIp || null,
         currentIp,
+        currentIpSource: currentIpInfo.source,
         isOfficeNetwork: network ? isOfficeIp(currentIp, network.allowedIp) : false,
         name: network?.name || null,
         updatedAt: network?.updatedAt || null,

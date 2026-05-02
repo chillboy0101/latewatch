@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 const isProtectedRoute = createRouteMatcher([
   '/dashboard(.*)',
   '/staff(.*)',
+  '/emergency-contacts(.*)',
   '/entries(.*)',
   '/attendance(.*)',
   '/exports(.*)',
@@ -22,6 +23,7 @@ const isStaffCheckInRoute = createRouteMatcher([
 const isAdminRoute = createRouteMatcher([
   '/dashboard(.*)',
   '/staff(.*)',
+  '/emergency-contacts(.*)',
   '/entries(.*)',
   '/attendance(.*)',
   '/exports(.*)',
@@ -33,6 +35,7 @@ const isAdminRoute = createRouteMatcher([
   '/api/calendar(.*)',
   '/api/dashboard(.*)',
   '/api/entries(.*)',
+  '/api/emergency-contacts(.*)',
   '/api/exports(.*)',
   '/api/seed(.*)',
   '/api/staff(.*)',
@@ -80,6 +83,7 @@ export const config = {
   matcher: [
     '/dashboard(.*)',
     '/staff(.*)',
+    '/emergency-contacts(.*)',
     '/entries(.*)',
     '/attendance(.*)',
     '/exports(.*)',

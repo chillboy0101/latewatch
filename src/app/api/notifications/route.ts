@@ -36,8 +36,13 @@ interface Notification {
 type AuditJson = Record<string, unknown> & {
   active?: boolean;
   computedAmount?: number | string;
+  contactName?: string;
   count?: number | string;
   date?: string;
+  phone?: string;
+  priority?: string;
+  relationship?: string;
+  staffName?: string;
   fullName?: string;
   holidayNote?: string;
   month?: number | string;
@@ -110,6 +115,8 @@ function getNotificationHref(entityType: string) {
   switch (entityType) {
     case 'staff':
       return '/staff';
+    case 'emergency_contact':
+      return '/emergency-contacts';
     case 'entry':
     case 'entry_submission':
       return '/entries';
@@ -132,6 +139,7 @@ function getNotificationHref(entityType: string) {
 function getCategory(entityType: string): NotificationCategory {
   switch (entityType) {
     case 'staff':
+    case 'emergency_contact':
       return 'staff';
     case 'entry':
     case 'entry_submission':
@@ -224,6 +232,21 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
           `${afterData?.fullName || 'A staff member'} was added by ${event.actorEmail || 'system'}.`,
           'success',
           'normal',
+        );
+      }
+
+      if (event.entityType === 'emergency_contact') {
+        const contactName = afterData?.contactName || 'Emergency contact';
+        const staffName = afterData?.staffName;
+
+        return makeNotification(
+          event,
+          read,
+          'Emergency contact added',
+          staffName ? `${contactName} was linked to ${staffName}.` : `${contactName} was added.`,
+          'success',
+          'normal',
+          { href: '/emergency-contacts' },
         );
       }
 
@@ -331,6 +354,19 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
         );
       }
 
+      if (event.entityType === 'emergency_contact') {
+        const name = afterData?.contactName || beforeData?.contactName || 'Emergency contact';
+        return makeNotification(
+          event,
+          read,
+          'Emergency contact updated',
+          `${name} was updated.`,
+          'info',
+          'normal',
+          { href: '/emergency-contacts' },
+        );
+      }
+
       if (event.entityType === 'entry') {
         const staffName = afterData?.staff?.fullName || afterData?.fullName || 'Staff member';
         return makeNotification(event, read, 'Attendance entry updated', `${staffName}'s entry was modified.`, 'info', 'normal');
@@ -350,6 +386,19 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
       return makeNotification(event, read, 'Record updated', `${getAuditEntityLabel(event.entityType)} was modified.`, 'info', 'normal');
 
     case 'DELETE':
+      if (event.entityType === 'emergency_contact') {
+        const name = beforeData?.contactName || afterData?.contactName || 'Emergency contact';
+        return makeNotification(
+          event,
+          read,
+          'Emergency contact removed',
+          `${name} was removed.`,
+          'warning',
+          'high',
+          { href: '/emergency-contacts' },
+        );
+      }
+
       return makeNotification(event, read, 'Record removed', `${getAuditEntityLabel(event.entityType)} was removed.`, 'warning', 'high');
 
     case 'GENERATE':

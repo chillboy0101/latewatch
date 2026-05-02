@@ -12,7 +12,7 @@ export default function CalendarPage() {
 
   return (
     <DashboardLayout title="Calendar">
-      <div className="relative h-[calc(100dvh-112px)] min-h-0 overflow-hidden rounded-md border border-border bg-background">
+      <div className="google-calendar-shell relative h-[calc(100dvh-112px)] min-h-0 overflow-hidden rounded-md border border-border bg-background">
         {!calendarLoaded && (
           <LoadingBuffer
             variant="section"
@@ -24,7 +24,7 @@ export default function CalendarPage() {
         <iframe
           title="Google Ghana public holidays calendar"
           src={GOOGLE_GHANA_HOLIDAYS_EMBED}
-          className={`h-full w-full border-0 bg-background transition-opacity duration-200 ${calendarLoaded ? 'opacity-100' : 'opacity-0'}`}
+          className={`google-calendar-frame h-full w-full border-0 bg-background transition-opacity duration-200 ${calendarLoaded ? 'opacity-100' : 'opacity-0'}`}
           loading="lazy"
           onLoad={() => setCalendarLoaded(true)}
           scrolling="no"

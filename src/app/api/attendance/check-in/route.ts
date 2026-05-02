@@ -6,12 +6,12 @@ import { attendanceRecord, latenessEntry } from '@/db/schema';
 import {
   getAccraClock,
   getActiveOfficeNetwork,
-  getClientIp,
   getHolidayForDate,
   getStaffByEmail,
   isOfficeIp,
   isWeekendDate,
   recordAttendanceAttempt,
+  resolveClientIpInfo,
 } from '@/lib/attendance';
 import { getAuditActor, writeAuditEvent } from '@/lib/audit';
 import { computePenalty } from '@/lib/penalty-calculator';
@@ -27,6 +27,7 @@ export const dynamic = 'force-dynamic';
 function responsePayload(input: {
   attendance?: typeof attendanceRecord.$inferSelect | null;
   currentIp: string;
+  currentIpSource?: string;
   date: string;
   holidayName?: string | null;
   isHoliday: boolean;
@@ -49,6 +50,7 @@ function responsePayload(input: {
         }
       : null,
     currentIp: input.currentIp,
+    currentIpSource: input.currentIpSource || null,
     date: input.date,
     holidayName: input.holidayName || null,
     isHoliday: input.isHoliday,
@@ -72,7 +74,8 @@ export async function GET(request: NextRequest) {
 
     const actorEmail = user.emailAddresses[0]?.emailAddress?.toLowerCase() || 'unknown';
     const clock = getAccraClock();
-    const currentIp = getClientIp(request);
+    const currentIpInfo = await resolveClientIpInfo(request);
+    const currentIp = currentIpInfo.ip;
     const [member, network, holiday] = await Promise.all([
       actorEmail === 'unknown' ? Promise.resolve(null) : getStaffByEmail(actorEmail),
       getActiveOfficeNetwork(),
@@ -90,6 +93,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(responsePayload({
       attendance: existingAttendance || null,
       currentIp,
+      currentIpSource: currentIpInfo.source,
       date: clock.dateKey,
       holidayName: holiday?.holidayNote || null,
       isHoliday: Boolean(holiday),
@@ -117,7 +121,8 @@ export async function POST(request: NextRequest) {
   const actorEmail = user.emailAddresses[0]?.emailAddress?.toLowerCase() || 'unknown';
   const userId = user.id;
   const userAgent = request.headers.get('user-agent');
-  const currentIp = getClientIp(request);
+  const currentIpInfo = await resolveClientIpInfo(request);
+  const currentIp = currentIpInfo.ip;
   const clock = getAccraClock();
   const checkInTime = clock.timeKey.slice(0, 5);
   const actor = await getAuditActor({ email: actorEmail, id: userId });
@@ -142,6 +147,7 @@ export async function POST(request: NextRequest) {
       after: {
         date: clock.dateKey,
         networkIp: currentIp,
+        networkIpSource: currentIpInfo.source,
         result,
         staffId: staffId || null,
         userEmail: actorEmail,
@@ -213,6 +219,7 @@ export async function POST(request: NextRequest) {
         ...responsePayload({
           attendance: existingAttendance,
           currentIp,
+          currentIpSource: currentIpInfo.source,
           date: clock.dateKey,
           isHoliday: false,
           isAfterWorkdayEnd: isAfterWorkdayEnd(clock.timeKey),
@@ -274,6 +281,7 @@ export async function POST(request: NextRequest) {
       before: null,
       after: {
         ...createdAttendance,
+        networkIpSource: currentIpInfo.source,
         staff: { fullName: member.fullName },
       },
       actor: { email: actor.actorEmail, id: actor.actorUserId },
@@ -331,6 +339,7 @@ export async function POST(request: NextRequest) {
       ...responsePayload({
         attendance: createdAttendance,
         currentIp,
+        currentIpSource: currentIpInfo.source,
         date: clock.dateKey,
         isHoliday: false,
         isAfterWorkdayEnd: false,

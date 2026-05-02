@@ -6,7 +6,7 @@ require('tsx/cjs');
 
 const { computePenalty } = require('../src/lib/penalty-calculator.ts');
 const { getAuditFieldChanges, getAuditTargetName } = require('../src/lib/audit-display.ts');
-const { getClientIp } = require('../src/lib/request-ip.ts');
+const { getClientIp, getClientIpInfo, isLoopbackIp } = require('../src/lib/request-ip.ts');
 const { isAfterWorkdayEnd } = require('../src/lib/work-hours.ts');
 
 function requestWithHeaders(headers) {
@@ -60,4 +60,14 @@ test('client IP detection prefers Vercel forwarded IP and normalizes IPv6 wrappe
     '203.0.113.10',
   );
   assert.equal(getClientIp(requestWithHeaders({ 'x-vercel-forwarded-for': '[2001:db8::1]' })), '2001:db8::1');
+  assert.equal(getClientIp(requestWithHeaders({ 'x-vercel-forwarded-for': '198.51.100.25:443' })), '198.51.100.25');
+  assert.deepEqual(
+    getClientIpInfo(requestWithHeaders({
+      'x-forwarded-for': 'unknown, 198.51.100.20',
+      'x-vercel-forwarded-for': 'bad-value',
+    })),
+    { ip: '198.51.100.20', isPublic: true, source: 'x-forwarded-for' },
+  );
+  assert.equal(isLoopbackIp('::1'), true);
+  assert.equal(isLoopbackIp('203.0.113.10'), false);
 });

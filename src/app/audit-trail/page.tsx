@@ -21,6 +21,7 @@ import {
   Bell,
   ChevronDown,
   ChevronUp,
+  PhoneCall,
   RefreshCw,
   Shield,
   UserCheck,
@@ -61,12 +62,17 @@ type AuditPayload = Record<string, unknown> & {
   allowedIp?: string;
   checkInTime?: string;
   computedAmount?: number | string;
+  contactName?: string;
   date?: string;
   department?: string | null;
   fullName?: string;
   holidayNote?: string;
+  phone?: string;
+  priority?: string;
+  relationship?: string;
   result?: string;
   staff?: { fullName?: string };
+  staffName?: string;
   unit?: string | null;
   userEmail?: string;
   weekEnd?: string;
@@ -275,6 +281,7 @@ export default function AuditTrailPage() {
       case 'staff': return <User className="h-3 w-3" />;
       case 'attendance': return <UserCheck className="h-3 w-3" />;
       case 'attendance_attempt': return <Bell className="h-3 w-3" />;
+      case 'emergency_contact': return <PhoneCall className="h-3 w-3" />;
       case 'entry': return <FileText className="h-3 w-3" />;
       case 'entry_submission': return <FileText className="h-3 w-3" />;
       case 'calendar': return <Calendar className="h-3 w-3" />;
@@ -315,6 +322,11 @@ export default function AuditTrailPage() {
         const name = afterData?.staff?.fullName || 'Staff member';
         return `${name} checked in at ${afterData?.checkInTime || 'the recorded time'}`;
       }
+      if (event.entityType === 'emergency_contact') {
+        const name = afterData?.contactName || 'Emergency contact';
+        const staffName = afterData?.staffName;
+        return staffName ? `${name} linked to ${staffName}` : `${name} saved`;
+      }
       if (event.entityType === 'calendar') {
         return `Holiday: "${afterData?.holidayNote || 'Unknown'}" on ${afterData?.date || 'date'}`;
       }
@@ -348,6 +360,9 @@ export default function AuditTrailPage() {
         const count = Number(afterData?.entryCount || 0);
         return `Entries updated for ${afterData?.date || 'date'} (${count} late record${count === 1 ? '' : 's'})`;
       }
+      if (event.entityType === 'emergency_contact') {
+        return `${afterData?.contactName || beforeData?.contactName || 'Emergency contact'} updated`;
+      }
       if (event.entityType === 'calendar') {
         return `Calendar entry for ${afterData?.date || 'date'} updated`;
       }
@@ -368,6 +383,9 @@ export default function AuditTrailPage() {
       if (event.entityType === 'entry') {
         const name = beforeData?.staff?.fullName;
         return name ? `Deleted entry for ${name}` : 'Entry deleted';
+      }
+      if (event.entityType === 'emergency_contact') {
+        return `Removed ${beforeData?.contactName || afterData?.contactName || 'emergency contact'}`;
       }
       return `Deleted ${getEntityLabel(event.entityType).toLowerCase()}`;
     }

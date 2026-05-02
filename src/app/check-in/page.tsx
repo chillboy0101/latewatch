@@ -2,11 +2,13 @@
 
 import { UserButton, useUser } from '@clerk/nextjs';
 import type { ReactNode } from 'react';
-import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Clock, Loader2, ShieldCheck, Wifi, XCircle } from 'lucide-react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { AlertTriangle, CheckCircle2, Clock, Loader2, Moon, ShieldCheck, Sun, Wifi, XCircle } from 'lucide-react';
+import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
+import { applyThemePreference, getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 
 interface CheckInStatus {
@@ -97,10 +99,15 @@ function statusTone(status: CheckInStatus | null) {
 
 export default function CheckInPage() {
   const { isLoaded, user } = useUser();
+  const isDark = useSyncExternalStore(subscribeThemeChange, getIsDarkTheme, () => true);
   const [status, setStatus] = useState<CheckInStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [checkingIn, setCheckingIn] = useState(false);
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDark);
+  }, [isDark]);
 
   const fetchStatus = useCallback(async () => {
     setLoading(true);
@@ -148,6 +155,10 @@ export default function CheckInPage() {
     }
   }
 
+  function toggleTheme() {
+    applyThemePreference(isDark ? 'light' : 'dark');
+  }
+
   const canCheckIn = Boolean(
     status?.networkConfigured &&
     status.staff &&
@@ -162,16 +173,21 @@ export default function CheckInPage() {
     <main className="h-dvh overflow-hidden bg-background px-3 py-3 text-foreground sm:px-6 sm:py-4">
       <div className="mx-auto flex h-full w-full max-w-xl flex-col">
         <header className="flex h-12 shrink-0 items-center justify-between sm:h-14">
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
-              <Clock className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="truncate text-lg font-semibold">LateWatch Check-In</h1>
-              <p className="text-xs text-muted-foreground">GRA Attendance</p>
-            </div>
+          <LateWatchLogo title="LateWatch Check-In" subtitle="GRA Attendance" />
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9"
+              onClick={toggleTheme}
+              aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </Button>
+            <UserButton />
           </div>
-          <UserButton />
         </header>
 
         <div className="flex min-h-0 flex-1 items-center py-3 sm:py-4">
@@ -205,7 +221,7 @@ export default function CheckInPage() {
                   <InfoTile
                     icon={<Wifi className="h-4 w-4" />}
                     label="Office Network"
-                    value={status?.isOfficeNetwork ? 'Verified' : 'Not verified'}
+                    value={status?.isOfficeNetwork ? 'Verified' : 'Unknown'}
                     good={status?.isOfficeNetwork}
                   />
                   <InfoTile
