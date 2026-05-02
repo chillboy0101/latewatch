@@ -3,7 +3,7 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { and, count, desc, eq, gte, ne } from 'drizzle-orm';
 import { format, subDays } from 'date-fns';
 import { db } from '@/db';
-import { attendancePermission, attendanceRecord, auditEvent, entrySubmission, latenessEntry, notificationRead, staff, workCalendar } from '@/db/schema';
+import { attendancePermission, attendanceRecord, auditEvent, latenessEntry, notificationRead, staff, workCalendar } from '@/db/schema';
 import { getAccraClock } from '@/lib/attendance';
 import { getPermissionWindowBounds, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
 import { getAuditActionLabel, getAuditEntityLabel, getAuditOperation } from '@/lib/audit-taxonomy';
@@ -134,7 +134,7 @@ function getNotificationHref(entityType: string) {
     case 'staff_device':
       return '/attendance';
     case 'office_network':
-      return '/attendance';
+      return '/wifi';
     case 'calendar':
       return '/calendar';
     case 'export':
@@ -727,36 +727,6 @@ async function getSystemNotifications(readIds: Set<string>): Promise<Notificatio
     }
 
     if (currentHour >= 10) {
-      const [submission] = await db.select({ id: entrySubmission.id })
-        .from(entrySubmission)
-        .where(eq(entrySubmission.date, todayStr))
-        .limit(1);
-
-      if (!submission) {
-        const alertId = `system-no-entries-${todayStr}`;
-        notifications.push(makeNotification(
-          {
-            id: alertId,
-            entityType: 'system',
-            entityId: 'today-entries',
-            action: 'ALERT',
-            beforeJson: null,
-            afterJson: { date: todayStr },
-            actorEmail: 'system',
-            timestamp: today,
-          },
-          readIds.has(alertId),
-          'Entries not recorded',
-          "Today's lateness entries have not been submitted yet.",
-          'alert',
-          'critical',
-          {
-            category: 'attendance',
-            href: '/entries',
-          },
-        ));
-      }
-
       if (checkedInCount < activeStaffCount) {
         const alertId = `system-attendance-missing-${todayStr}`;
         notifications.push(makeNotification(

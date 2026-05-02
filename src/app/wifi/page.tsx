@@ -1,10 +1,19 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, ShieldCheck, Wifi, X } from 'lucide-react';
+import { Loader2, RefreshCw, ShieldCheck, Wifi, X } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
@@ -38,8 +47,12 @@ function formatUpdatedAt(value: string | null | undefined) {
 export default function WifiPage() {
   const [networkData, setNetworkData] = useState<OfficeNetworkResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const fetchNetwork = useCallback(async () => {
     setError(null);
@@ -48,6 +61,7 @@ export default function WifiPage() {
       const response = await fetch('/api/attendance/network', { cache: 'no-store' });
       if (!response.ok) throw new Error(`WiFi request failed (${response.status})`);
       setNetworkData(await response.json());
+      setLastCheckedAt(new Date().toISOString());
     } catch (err) {
       console.error('Failed to load office WiFi:', err);
       setError(err instanceof Error ? err.message : 'Could not load office WiFi');
@@ -85,9 +99,21 @@ export default function WifiPage() {
     };
   }, [fetchNetwork]);
 
+  async function refreshNetwork() {
+    setRefreshing(true);
+    setSuccess(null);
+
+    try {
+      await fetchNetwork();
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   async function setCurrentNetwork() {
     setSaving(true);
     setError(null);
+    setSuccess(null);
 
     try {
       const response = await fetch('/api/attendance/network', {
@@ -98,6 +124,8 @@ export default function WifiPage() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || `Network update failed (${response.status})`);
       await fetchNetwork();
+      setSuccess('Office WiFi updated.');
+      setConfirmOpen(false);
     } catch (err) {
       console.error('Failed to update office WiFi:', err);
       setError(err instanceof Error ? err.message : 'Could not update office WiFi');
@@ -108,45 +136,115 @@ export default function WifiPage() {
 
   const isVerified = Boolean(networkData?.isOfficeNetwork);
   const savedIp = networkData?.network?.allowedIp || 'Not saved';
-  const currentIp = networkData?.currentIp || '-';
+  const currentIp = networkData?.currentIp || 'Not detected';
+  const lastUpdatedBy = networkData?.network?.updatedByEmail || 'Not set';
+  const canUpdateNetwork = Boolean(networkData?.currentIp) && !isVerified;
+  const statusLabel = !networkData?.configured
+    ? 'Not configured'
+    : isVerified
+      ? 'Verified'
+      : 'Not verified';
 
   return (
     <DashboardLayout title="Office WiFi">
       <div className="space-y-5">
-        <Card>
-          <div className="grid gap-5 p-5 xl:grid-cols-[minmax(13rem,16rem)_minmax(0,1fr)_auto] xl:items-end">
-            <div className="flex min-w-0 items-center gap-3 xl:self-center">
-              <div className={cn(
-                'flex h-10 w-10 shrink-0 items-center justify-center rounded-md border',
-                isVerified
-                  ? 'border-success/25 bg-success/10 text-success'
-                  : 'border-warning/25 bg-warning/10 text-warning',
-              )}>
-                <Wifi className="h-5 w-5" />
-              </div>
-              <div className="flex min-w-0 flex-wrap items-center gap-2.5">
-                <h2 className="text-lg font-semibold leading-none">Office WiFi</h2>
-                {isVerified ? <VerifiedBadge /> : <UnknownBadge />}
-              </div>
-            </div>
-
-            <div className="grid min-w-0 gap-3 md:grid-cols-3">
-              <NetworkMetaChip label="Saved IP" value={formatNetworkIp(savedIp)} />
-              <NetworkMetaChip label="Current IP" value={formatNetworkIp(currentIp)} />
-              <NetworkMetaChip label="Last Updated" value={formatUpdatedAt(networkData?.network?.updatedAt)} />
-            </div>
-
-            <Button className="h-10 gap-2 xl:self-end" onClick={setCurrentNetwork} disabled={saving || loading}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-              Set This Network
-            </Button>
-          </div>
-        </Card>
-
-        {loading && (
+        {loading && !networkData ? (
           <Card>
-            <LoadingBuffer variant="section" label="Loading WiFi" description="Checking office network." />
+            <LoadingBuffer variant="section" />
           </Card>
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-12">
+            <Card className="p-5 xl:col-span-4">
+              <div className="flex h-full min-h-40 flex-col justify-between gap-8">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className={cn(
+                    'flex h-11 w-11 shrink-0 items-center justify-center rounded-md border',
+                    isVerified
+                      ? 'border-success/25 bg-success/10 text-success'
+                      : 'border-warning/25 bg-warning/10 text-warning',
+                  )}>
+                    <Wifi className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <h2 className="truncate text-lg font-semibold leading-none">Office WiFi</h2>
+                      {isVerified ? <VerifiedBadge /> : <UnknownBadge />}
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">Attendance network</p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-medium uppercase text-muted-foreground">Status</p>
+                  <p className={cn(
+                    'mt-1 text-2xl font-semibold',
+                    isVerified ? 'text-success' : 'text-danger',
+                  )}>
+                    {statusLabel}
+                  </p>
+                </div>
+              </div>
+            </Card>
+
+            <NetworkInfoCard
+              className="xl:col-span-4"
+              label="Saved IP"
+              value={formatNetworkIp(savedIp)}
+              meta="Allowed attendance network"
+              tone="neutral"
+            />
+            <NetworkInfoCard
+              className="xl:col-span-4"
+              label="Current IP"
+              value={formatNetworkIp(currentIp)}
+              meta="Current connection"
+              tone={isVerified ? 'success' : 'warning'}
+            />
+
+            <Card className="p-5 xl:col-span-12">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <NetworkMetaChip label="Last Updated" value={formatUpdatedAt(networkData?.network?.updatedAt)} />
+                <NetworkMetaChip label="Updated By" value={lastUpdatedBy} />
+                <NetworkMetaChip label="Last Checked" value={formatUpdatedAt(lastCheckedAt)} />
+              </div>
+            </Card>
+
+            <Card className="p-5 xl:col-span-12">
+              <div className="flex h-full flex-col justify-between gap-5 sm:flex-row sm:items-center">
+                <div>
+                  <h3 className="text-base font-semibold">Network Control</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Save the detected IP as the office network.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    variant="outline"
+                    className="h-10 gap-2 sm:min-w-32"
+                    onClick={refreshNetwork}
+                    disabled={refreshing || loading || saving}
+                  >
+                    {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    Refresh
+                  </Button>
+                  <Button
+                    className="h-10 gap-2 sm:min-w-36"
+                    onClick={() => setConfirmOpen(true)}
+                    disabled={saving || loading || refreshing || !canUpdateNetwork}
+                  >
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                    {isVerified ? 'Network Set' : 'Set Network'}
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {success && !error && (
+          <div className="rounded-md border border-success/30 bg-success/10 px-4 py-3 text-sm font-medium text-success">
+            {success}
+          </div>
         )}
 
         {error && (
@@ -155,6 +253,32 @@ export default function WifiPage() {
           </div>
         )}
       </div>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set Office WiFi?</DialogTitle>
+            <DialogDescription>
+              This replaces the saved IP used to verify staff check-ins and check-outs.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <NetworkMetaChip label="Saved IP" value={formatNetworkIp(savedIp)} />
+            <NetworkMetaChip label="New IP" value={formatNetworkIp(currentIp)} />
+          </div>
+
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button type="button" className="gap-2" onClick={setCurrentNetwork} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+              Save Network
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
@@ -196,8 +320,40 @@ function NetworkMetaChip({ label, value }: { label: string; value: string }) {
     <div className="min-w-0" title={`${label}: ${value}`}>
       <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">{label}</label>
       <div className="flex min-h-10 items-center rounded-md border border-border bg-background px-3 py-2">
-        <span className="break-all font-mono text-xs font-semibold leading-5 text-foreground">{value}</span>
+        <span className="truncate font-mono text-xs font-semibold leading-5 text-foreground">{value}</span>
       </div>
     </div>
+  );
+}
+
+function NetworkInfoCard({
+  className,
+  label,
+  meta,
+  tone,
+  value,
+}: {
+  className?: string;
+  label: string;
+  meta: string;
+  tone: 'neutral' | 'success' | 'warning';
+  value: string;
+}) {
+  return (
+    <Card className={cn('p-5', className)} title={`${label}: ${value}`}>
+      <div className="flex h-full min-h-40 flex-col justify-between gap-8">
+        <div>
+          <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
+          <p className={cn(
+            'mt-3 break-all font-mono text-2xl font-semibold tracking-tight',
+            tone === 'success' && 'text-success',
+            tone === 'warning' && 'text-warning',
+          )}>
+            {value}
+          </p>
+        </div>
+        <p className="text-sm text-muted-foreground">{meta}</p>
+      </div>
+    </Card>
   );
 }

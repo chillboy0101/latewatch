@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { sql } from 'drizzle-orm';
+import { tryWriteAuditEvent } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -143,6 +144,28 @@ export async function POST() {
     `);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS staff_device_staff_id_idx ON staff_device(staff_id)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS staff_device_user_id_idx ON staff_device(user_id)`);
+
+    await tryWriteAuditEvent({
+      entityType: 'system',
+      entityId: 'schema-maintenance',
+      action: 'UPDATE',
+      before: null,
+      after: {
+        operation: 'schema repair',
+        result: 'schema is up to date',
+        tables: [
+          'staff',
+          'entry_submission',
+          'office_network',
+          'attendance_record',
+          'attendance_attempt',
+          'emergency_contact',
+          'attendance_permission',
+          'staff_device',
+        ],
+      },
+      reason: 'schema-maintenance',
+    });
 
     return NextResponse.json({ message: 'schema is up to date' });
   } catch (error) {

@@ -1,9 +1,10 @@
 'use client';
 
 import { UserButton, useUser } from '@clerk/nextjs';
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, CheckCircle2, Clock, Loader2, LogOut, Moon, ShieldCheck, Sun, Wifi, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, Clock, Loader2, LogOut, Moon, ShieldCheck, Sun, Wifi, XCircle } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -269,6 +270,19 @@ export default function CheckInPage() {
         <header className="flex h-12 shrink-0 items-center justify-between sm:h-14">
           <LateWatchLogo title="LateWatch" />
           <div className="flex items-center gap-2">
+            <Button
+              asChild
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 gap-2 px-2.5 sm:px-3"
+              title="Back to portal chooser"
+            >
+              <Link href="/">
+                <ArrowLeft className="h-4 w-4" />
+                <span className="hidden sm:inline">Portals</span>
+              </Link>
+            </Button>
             <Button
               type="button"
               variant="ghost"

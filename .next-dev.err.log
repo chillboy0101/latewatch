@@ -9731,3 +9731,2876 @@ params: 2026-05-02,true,1
 [browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
 [browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
 [browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] 17:43:01.434 Ably: Transport.onIdleTimerExpire(): No activity seen from realtime in 25994ms; assuming connection has dropped
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+Failed to fetch notifications: Error: Failed query: select "notification_id" from "notification_read" where "notification_read"."user_id" = $1
+params: user_3C550OqkCR5dIfAUnrnEP62iJKr
+    at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+    at async GET (src\app\api\notifications\route.ts:908:39)
+  574 |
+  575 | async function getNotificationState(userId: string) {
+> 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+      |                ^
+  577 |     .from(notificationRead)
+  578 |     .where(eq(notificationRead.userId, userId));
+  579 | {
+  query: 'select "notification_id" from "notification_read" where "notification_read"."user_id" = $1',
+  params: [ 'user_3C550OqkCR5dIfAUnrnEP62iJKr' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+      at async GET (src\app\api\notifications\route.ts:908:39)
+    574 |
+    575 | async function getNotificationState(userId: string) {
+  > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+        |                ^
+    577 |     .from(notificationRead)
+    578 |     .where(eq(notificationRead.userId, userId));
+    579 | {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+        at async GET (src\app\api\notifications\route.ts:908:39)
+      574 |
+      575 | async function getNotificationState(userId: string) {
+    > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+          |                ^
+      577 |     .from(notificationRead)
+      578 |     .where(eq(notificationRead.userId, userId));
+      579 | {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Failed to fetch notifications: Error: Failed to fetch notifications: 500
+    at NotificationProvider.useCallback[fetchNotifications] (src/contexts/notification-context.tsx:113:14)
+  111 |       setLastUpdatedAt(data?.generatedAt ? new Date(data.generatedAt) : new Date());
+  112 |       return nextNotifications;
+> 113 |     } catch (error) {
+      |              ^
+  114 |       console.error('Failed to fetch notifications:', error);
+  115 |       return notificationsRef.current;
+  116 |     } finally { (src/contexts/notification-context.tsx:119:17)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+Failed to fetch notifications: Error: Failed query: select "computed_amount" from "lateness_entry" where "lateness_entry"."date" >= $1
+params: 2026-04-27
+    at async getSystemNotifications (src\app\api\notifications\route.ts:819:23)
+    at async GET (src\app\api\notifications\route.ts:910:55)
+  817 |
+  818 |   const weekStart = format(subDays(today, dayOfWeek === 0 ? 6 : dayOfWeek - 1), 'yyyy-MM-...
+> 819 |   const weekEntries = await db.select({ computedAmount: latenessEntry.computedAmount })
+      |                       ^
+  820 |     .from(latenessEntry)
+  821 |     .where(gte(latenessEntry.date, weekStart));
+  822 |   const weekTotal = weekEntries.reduce((sum, entry) => sum + parseFloat(entry.computedAmo... {
+  query: 'select "computed_amount" from "lateness_entry" where "lateness_entry"."date" >= $1',
+  params: [ '2026-04-27' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getSystemNotifications (src\app\api\notifications\route.ts:819:23)
+      at async GET (src\app\api\notifications\route.ts:910:55)
+    817 |
+    818 |   const weekStart = format(subDays(today, dayOfWeek === 0 ? 6 : dayOfWeek - 1), 'yyyy-MM-...
+  > 819 |   const weekEntries = await db.select({ computedAmount: latenessEntry.computedAmount })
+        |                       ^
+    820 |     .from(latenessEntry)
+    821 |     .where(gte(latenessEntry.date, weekStart));
+    822 |   const weekTotal = weekEntries.reduce((sum, entry) => sum + parseFloat(entry.computedAmo... {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getSystemNotifications (src\app\api\notifications\route.ts:819:23)
+        at async GET (src\app\api\notifications\route.ts:910:55)
+      817 |
+      818 |   const weekStart = format(subDays(today, dayOfWeek === 0 ? 6 : dayOfWeek - 1), 'yyyy-MM-...
+    > 819 |   const weekEntries = await db.select({ computedAmount: latenessEntry.computedAmount })
+          |                       ^
+      820 |     .from(latenessEntry)
+      821 |     .where(gte(latenessEntry.date, weekStart));
+      822 |   const weekTotal = weekEntries.reduce((sum, entry) => sum + parseFloat(entry.computedAmo... {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Failed to fetch notifications: Error: Failed to fetch notifications: 500
+    at NotificationProvider.useCallback[fetchNotifications] (src/contexts/notification-context.tsx:104:15)
+  102 |
+  103 |       if (!response.ok) {
+> 104 |         throw new Error(`Failed to fetch notifications: ${response.status}`);
+      |               ^
+  105 |       }
+  106 |
+  107 |       const data = await response.json(); (src/contexts/notification-context.tsx:114:15)
+[browser] 18:07:18.312 Ably: Transport.onIdleTimerExpire(): No activity seen from realtime in 25108ms; assuming connection has dropped
+Failed to fetch notifications: Error: Failed query: select "notification_id" from "notification_read" where "notification_read"."user_id" = $1
+params: user_3C550OqkCR5dIfAUnrnEP62iJKr
+    at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+    at async GET (src\app\api\notifications\route.ts:908:39)
+  574 |
+  575 | async function getNotificationState(userId: string) {
+> 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+      |                ^
+  577 |     .from(notificationRead)
+  578 |     .where(eq(notificationRead.userId, userId));
+  579 | {
+  query: 'select "notification_id" from "notification_read" where "notification_read"."user_id" = $1',
+  params: [ 'user_3C550OqkCR5dIfAUnrnEP62iJKr' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+      at async GET (src\app\api\notifications\route.ts:908:39)
+    574 |
+    575 | async function getNotificationState(userId: string) {
+  > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+        |                ^
+    577 |     .from(notificationRead)
+    578 |     .where(eq(notificationRead.userId, userId));
+    579 | {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+        at async GET (src\app\api\notifications\route.ts:908:39)
+      574 |
+      575 | async function getNotificationState(userId: string) {
+    > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+          |                ^
+      577 |     .from(notificationRead)
+      578 |     .where(eq(notificationRead.userId, userId));
+      579 | {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Failed to fetch notifications: Error: Failed to fetch notifications: 500
+    at NotificationProvider.useCallback[fetchNotifications] (src/contexts/notification-context.tsx:104:15)
+  102 |
+  103 |       if (!response.ok) {
+> 104 |         throw new Error(`Failed to fetch notifications: ${response.status}`);
+      |               ^
+  105 |       }
+  106 |
+  107 |       const data = await response.json(); (src/contexts/notification-context.tsx:114:15)
+[browser] 18:07:32.439 Ably: Request.onabort(): Request aborted due to request timeout expiring (event type: abort)
+Failed to fetch notifications: Error: Failed query: select "notification_id" from "notification_read" where "notification_read"."user_id" = $1
+params: user_3C550OqkCR5dIfAUnrnEP62iJKr
+    at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+    at async GET (src\app\api\notifications\route.ts:908:39)
+  574 |
+  575 | async function getNotificationState(userId: string) {
+> 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+      |                ^
+  577 |     .from(notificationRead)
+  578 |     .where(eq(notificationRead.userId, userId));
+  579 | {
+  query: 'select "notification_id" from "notification_read" where "notification_read"."user_id" = $1',
+  params: [ 'user_3C550OqkCR5dIfAUnrnEP62iJKr' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+      at async GET (src\app\api\notifications\route.ts:908:39)
+    574 |
+    575 | async function getNotificationState(userId: string) {
+  > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+        |                ^
+    577 |     .from(notificationRead)
+    578 |     .where(eq(notificationRead.userId, userId));
+    579 | {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+        at async GET (src\app\api\notifications\route.ts:908:39)
+      574 |
+      575 | async function getNotificationState(userId: string) {
+    > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+          |                ^
+      577 |     .from(notificationRead)
+      578 |     .where(eq(notificationRead.userId, userId));
+      579 | {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Failed to fetch notifications: Error: Failed to fetch notifications: 500
+    at NotificationProvider.useCallback[fetchNotifications] (src/contexts/notification-context.tsx:104:15)
+  102 |
+  103 |       if (!response.ok) {
+> 104 |         throw new Error(`Failed to fetch notifications: ${response.status}`);
+      |               ^
+  105 |       }
+  106 |
+  107 |       const data = await response.json(); (src/contexts/notification-context.tsx:114:15)
+[browser] 18:08:05.025 Ably: Request.onabort(): Request aborted due to request timeout expiring (event type: abort)
+[browser] 18:08:41.612 Ably: Request.onabort(): Request aborted due to request timeout expiring (event type: abort)
+[browser] 18:09:06.788 Ably: ConnectionManager.activateTransport(): error = [_ErrorInfo: Unable to resume connection from another site; statusCode=400; code=80023; see https://help.ably.io/error/80023 ] (<anonymous>)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+Failed to fetch notifications: Error: Failed query: select count(*) from "staff" where ("staff"."active" = $1 and "staff"."archived" = $2)
+params: true,false
+    at async getSystemNotifications (src\app\api\notifications\route.ts:656:28)
+    at async GET (src\app\api\notifications\route.ts:910:55)
+  654 |   }
+  655 |
+> 656 |   const staffCountResult = await db.select({ count: count() })
+      |                            ^
+  657 |     .from(staff)
+  658 |     .where(and(eq(staff.active, true), eq(staff.archived, false)));
+  659 |   const activeStaffCount = Number(staffCountResult[0]?.count || 0); {
+  query: 'select count(*) from "staff" where ("staff"."active" = $1 and "staff"."archived" = $2)',
+  params: [ true, false ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getSystemNotifications (src\app\api\notifications\route.ts:656:28)
+      at async GET (src\app\api\notifications\route.ts:910:55)
+    654 |   }
+    655 |
+  > 656 |   const staffCountResult = await db.select({ count: count() })
+        |                            ^
+    657 |     .from(staff)
+    658 |     .where(and(eq(staff.active, true), eq(staff.archived, false)));
+    659 |   const activeStaffCount = Number(staffCountResult[0]?.count || 0); {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getSystemNotifications (src\app\api\notifications\route.ts:656:28)
+        at async GET (src\app\api\notifications\route.ts:910:55)
+      654 |   }
+      655 |
+    > 656 |   const staffCountResult = await db.select({ count: count() })
+          |                            ^
+      657 |     .from(staff)
+      658 |     .where(and(eq(staff.active, true), eq(staff.archived, false)));
+      659 |   const activeStaffCount = Number(staffCountResult[0]?.count || 0); {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Failed to fetch notifications: Error: Failed to fetch notifications: 500
+    at NotificationProvider.useCallback[fetchNotifications] (src/contexts/notification-context.tsx:104:15)
+  102 |
+  103 |       if (!response.ok) {
+> 104 |         throw new Error(`Failed to fetch notifications: ${response.status}`);
+      |               ^
+  105 |       }
+  106 |
+  107 |       const data = await response.json(); (src/contexts/notification-context.tsx:114:15)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+Failed to fetch notifications: Error: Failed query: select "notification_id" from "notification_read" where "notification_read"."user_id" = $1
+params: user_3C550OqkCR5dIfAUnrnEP62iJKr
+    at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+    at async GET (src\app\api\notifications\route.ts:908:39)
+  574 |
+  575 | async function getNotificationState(userId: string) {
+> 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+      |                ^
+  577 |     .from(notificationRead)
+  578 |     .where(eq(notificationRead.userId, userId));
+  579 | {
+  query: 'select "notification_id" from "notification_read" where "notification_read"."user_id" = $1',
+  params: [ 'user_3C550OqkCR5dIfAUnrnEP62iJKr' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+      at async GET (src\app\api\notifications\route.ts:908:39)
+    574 |
+    575 | async function getNotificationState(userId: string) {
+  > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+        |                ^
+    577 |     .from(notificationRead)
+    578 |     .where(eq(notificationRead.userId, userId));
+    579 | {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+        at async GET (src\app\api\notifications\route.ts:908:39)
+      574 |
+      575 | async function getNotificationState(userId: string) {
+    > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+          |                ^
+      577 |     .from(notificationRead)
+      578 |     .where(eq(notificationRead.userId, userId));
+      579 | {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Failed to fetch notifications: Error: Failed to fetch notifications: 500
+    at NotificationProvider.useCallback[fetchNotifications] (src/contexts/notification-context.tsx:104:15)
+  102 |
+  103 |       if (!response.ok) {
+> 104 |         throw new Error(`Failed to fetch notifications: ${response.status}`);
+      |               ^
+  105 |       }
+  106 |
+  107 |       const data = await response.json(); (src/contexts/notification-context.tsx:114:15)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+Failed to fetch attendance: Error: Failed query: select "id", "staff_id", "user_id", "user_email", "date", "network_ip", "user_agent", "successful", "result", "created_at" from "attendance_attempt" where "attendance_attempt"."date" = $1 order by "attendance_attempt"."created_at" desc limit $2
+params: 2026-05-02,25
+    at async GET (src\app\api\attendance\route.ts:20:91)
+  18 | ...
+  19 | ...
+> 20 | ...ws, permissionRows, deviceRows, network] = await Promise.all([
+     |                                               ^
+  21 | ...
+  22 | ...
+  23 | ... {
+  query: 'select "id", "staff_id", "user_id", "user_email", "date", "network_ip", "user_agent", "successful", "result", "created_at" from "attendance_attempt" where "attendance_attempt"."date" = $1 order by "attendance_attempt"."created_at" desc limit $2',
+  params: [ '2026-05-02', 25 ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async GET (src\app\api\attendance\route.ts:20:91)
+    18 | ...
+    19 | ...
+  > 20 | ...ws, permissionRows, deviceRows, network] = await Promise.all([
+       |                                               ^
+    21 | ...
+    22 | ...
+    23 | ... {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async GET (src\app\api\attendance\route.ts:20:91)
+      18 | ...
+      19 | ...
+    > 20 | ...ws, permissionRows, deviceRows, network] = await Promise.all([
+         |                                               ^
+      21 | ...
+      22 | ...
+      23 | ... {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch notifications: Error: Failed query: select count(*) from "staff" where ("staff"."active" = $1 and "staff"."archived" = $2)
+params: true,false
+    at async getSystemNotifications (src\app\api\notifications\route.ts:656:28)
+    at async GET (src\app\api\notifications\route.ts:910:55)
+  654 |   }
+  655 |
+> 656 |   const staffCountResult = await db.select({ count: count() })
+      |                            ^
+  657 |     .from(staff)
+  658 |     .where(and(eq(staff.active, true), eq(staff.archived, false)));
+  659 |   const activeStaffCount = Number(staffCountResult[0]?.count || 0); {
+  query: 'select count(*) from "staff" where ("staff"."active" = $1 and "staff"."archived" = $2)',
+  params: [ true, false ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getSystemNotifications (src\app\api\notifications\route.ts:656:28)
+      at async GET (src\app\api\notifications\route.ts:910:55)
+    654 |   }
+    655 |
+  > 656 |   const staffCountResult = await db.select({ count: count() })
+        |                            ^
+    657 |     .from(staff)
+    658 |     .where(and(eq(staff.active, true), eq(staff.archived, false)));
+    659 |   const activeStaffCount = Number(staffCountResult[0]?.count || 0); {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getSystemNotifications (src\app\api\notifications\route.ts:656:28)
+        at async GET (src\app\api\notifications\route.ts:910:55)
+      654 |   }
+      655 |
+    > 656 |   const staffCountResult = await db.select({ count: count() })
+          |                            ^
+      657 |     .from(staff)
+      658 |     .where(and(eq(staff.active, true), eq(staff.archived, false)));
+      659 |   const activeStaffCount = Number(staffCountResult[0]?.count || 0); {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Failed to load attendance: Error: Attendance request failed (500)
+    at AttendancePage.useCallback[fetchAttendance] (src/app/attendance/page.tsx:215:31)
+  213 |     try {
+  214 |       const response = await fetch(`/api/attendance?date=${attendanceDate}`, { cache: 'no...
+> 215 |       if (!response.ok) throw new Error(`Attendance request failed (${response.status})`);
+      |                               ^
+  216 |       setData(await response.json());
+  217 |     } catch (err) {
+  218 |       console.error('Failed to load attendance:', err); (src/app/attendance/page.tsx:218:15)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+Failed to fetch staff: Error: Failed query: select "id", "full_name", "email", "display_order", "active", "archived", "archived_at", "department", "unit", "created_at", "updated_at" from "staff" order by "staff"."display_order" asc, "staff"."full_name" asc
+params: 
+    at async GET (src\app\api\staff\route.ts:24:23)
+  22 |       : undefined;
+  23 |
+> 24 |     const staffList = await db.select({
+     |                       ^
+  25 |       id: staff.id,
+  26 |       fullName: staff.fullName,
+  27 |       email: staff.email, {
+  query: 'select "id", "full_name", "email", "display_order", "active", "archived", "archived_at", "department", "unit", "created_at", "updated_at" from "staff" order by "staff"."display_order" asc, "staff"."full_name" asc',
+  params: [],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async GET (src\app\api\staff\route.ts:24:23)
+    22 |       : undefined;
+    23 |
+  > 24 |     const staffList = await db.select({
+       |                       ^
+    25 |       id: staff.id,
+    26 |       fullName: staff.fullName,
+    27 |       email: staff.email, {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async GET (src\app\api\staff\route.ts:24:23)
+      22 |       : undefined;
+      23 |
+    > 24 |     const staffList = await db.select({
+         |                       ^
+      25 |       id: staff.id,
+      26 |       fullName: staff.fullName,
+      27 |       email: staff.email, {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch staff: Error: Failed query: select "id", "full_name", "email", "display_order", "active", "archived", "archived_at", "department", "unit", "created_at", "updated_at" from "staff" order by "staff"."display_order" asc, "staff"."full_name" asc
+params: 
+    at async GET (src\app\api\staff\route.ts:24:23)
+  22 |       : undefined;
+  23 |
+> 24 |     const staffList = await db.select({
+     |                       ^
+  25 |       id: staff.id,
+  26 |       fullName: staff.fullName,
+  27 |       email: staff.email, {
+  query: 'select "id", "full_name", "email", "display_order", "active", "archived", "archived_at", "department", "unit", "created_at", "updated_at" from "staff" order by "staff"."display_order" asc, "staff"."full_name" asc',
+  params: [],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async GET (src\app\api\staff\route.ts:24:23)
+    22 |       : undefined;
+    23 |
+  > 24 |     const staffList = await db.select({
+       |                       ^
+    25 |       id: staff.id,
+    26 |       fullName: staff.fullName,
+    27 |       email: staff.email, {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async GET (src\app\api\staff\route.ts:24:23)
+      22 |       : undefined;
+      23 |
+    > 24 |     const staffList = await db.select({
+         |                       ^
+      25 |       id: staff.id,
+      26 |       fullName: staff.fullName,
+      27 |       email: staff.email, {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch notifications: Error: Failed query: select "computed_amount" from "lateness_entry" where "lateness_entry"."date" >= $1
+params: 2026-04-27
+    at async getSystemNotifications (src\app\api\notifications\route.ts:819:23)
+    at async GET (src\app\api\notifications\route.ts:910:55)
+  817 |
+  818 |   const weekStart = format(subDays(today, dayOfWeek === 0 ? 6 : dayOfWeek - 1), 'yyyy-MM-...
+> 819 |   const weekEntries = await db.select({ computedAmount: latenessEntry.computedAmount })
+      |                       ^
+  820 |     .from(latenessEntry)
+  821 |     .where(gte(latenessEntry.date, weekStart));
+  822 |   const weekTotal = weekEntries.reduce((sum, entry) => sum + parseFloat(entry.computedAmo... {
+  query: 'select "computed_amount" from "lateness_entry" where "lateness_entry"."date" >= $1',
+  params: [ '2026-04-27' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getSystemNotifications (src\app\api\notifications\route.ts:819:23)
+      at async GET (src\app\api\notifications\route.ts:910:55)
+    817 |
+    818 |   const weekStart = format(subDays(today, dayOfWeek === 0 ? 6 : dayOfWeek - 1), 'yyyy-MM-...
+  > 819 |   const weekEntries = await db.select({ computedAmount: latenessEntry.computedAmount })
+        |                       ^
+    820 |     .from(latenessEntry)
+    821 |     .where(gte(latenessEntry.date, weekStart));
+    822 |   const weekTotal = weekEntries.reduce((sum, entry) => sum + parseFloat(entry.computedAmo... {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getSystemNotifications (src\app\api\notifications\route.ts:819:23)
+        at async GET (src\app\api\notifications\route.ts:910:55)
+      817 |
+      818 |   const weekStart = format(subDays(today, dayOfWeek === 0 ? 6 : dayOfWeek - 1), 'yyyy-MM-...
+    > 819 |   const weekEntries = await db.select({ computedAmount: latenessEntry.computedAmount })
+          |                       ^
+      820 |     .from(latenessEntry)
+      821 |     .where(gte(latenessEntry.date, weekStart));
+      822 |   const weekTotal = weekEntries.reduce((sum, entry) => sum + parseFloat(entry.computedAmo... {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Failed to fetch notifications: Error: Failed to fetch notifications: 500
+    at NotificationProvider.useCallback[fetchNotifications] (src/contexts/notification-context.tsx:104:15)
+  102 |
+  103 |       if (!response.ok) {
+> 104 |         throw new Error(`Failed to fetch notifications: ${response.status}`);
+      |               ^
+  105 |       }
+  106 |
+  107 |       const data = await response.json(); (src/contexts/notification-context.tsx:114:15)
+Failed to fetch emergency contacts: Error: Failed query: select "emergency_contact"."active", "emergency_contact"."address", "emergency_contact"."alternate_phone", "emergency_contact"."contact_name", "emergency_contact"."created_at", "emergency_contact"."email", "emergency_contact"."id", "emergency_contact"."notes", "emergency_contact"."phone", "emergency_contact"."relationship", "emergency_contact"."staff_id", "staff"."full_name", "emergency_contact"."updated_at" from "emergency_contact" left join "staff" on "emergency_contact"."staff_id" = "staff"."id" order by "staff"."full_name" asc, "emergency_contact"."contact_name" asc
+params: 
+    at async GET (src\app\api\emergency-contacts\route.ts:65:22)
+  63 | export async function GET() {
+  64 |   try {
+> 65 |     const contacts = await db.select({
+     |                      ^
+  66 |       active: emergencyContact.active,
+  67 |       address: emergencyContact.address,
+  68 |       alternatePhone: emergencyContact.alternatePhone, {
+  query: 'select "emergency_contact"."active", "emergency_contact"."address", "emergency_contact"."alternate_phone", "emergency_contact"."contact_name", "emergency_contact"."created_at", "emergency_contact"."email", "emergency_contact"."id", "emergency_contact"."notes", "emergency_contact"."phone", "emergency_contact"."relationship", "emergency_contact"."staff_id", "staff"."full_name", "emergency_contact"."updated_at" from "emergency_contact" left join "staff" on "emergency_contact"."staff_id" = "staff"."id" order by "staff"."full_name" asc, "emergency_contact"."contact_name" asc',
+  params: [],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async GET (src\app\api\emergency-contacts\route.ts:65:22)
+    63 | export async function GET() {
+    64 |   try {
+  > 65 |     const contacts = await db.select({
+       |                      ^
+    66 |       active: emergencyContact.active,
+    67 |       address: emergencyContact.address,
+    68 |       alternatePhone: emergencyContact.alternatePhone, {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async GET (src\app\api\emergency-contacts\route.ts:65:22)
+      63 | export async function GET() {
+      64 |   try {
+    > 65 |     const contacts = await db.select({
+         |                      ^
+      66 |       active: emergencyContact.active,
+      67 |       address: emergencyContact.address,
+      68 |       alternatePhone: emergencyContact.alternatePhone, {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch staff: Error: Failed query: select "id", "full_name", "email", "display_order", "active", "archived", "archived_at", "department", "unit", "created_at", "updated_at" from "staff" order by "staff"."display_order" asc, "staff"."full_name" asc
+params: 
+    at async GET (src\app\api\staff\route.ts:24:23)
+  22 |       : undefined;
+  23 |
+> 24 |     const staffList = await db.select({
+     |                       ^
+  25 |       id: staff.id,
+  26 |       fullName: staff.fullName,
+  27 |       email: staff.email, {
+  query: 'select "id", "full_name", "email", "display_order", "active", "archived", "archived_at", "department", "unit", "created_at", "updated_at" from "staff" order by "staff"."display_order" asc, "staff"."full_name" asc',
+  params: [],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async GET (src\app\api\staff\route.ts:24:23)
+    22 |       : undefined;
+    23 |
+  > 24 |     const staffList = await db.select({
+       |                       ^
+    25 |       id: staff.id,
+    26 |       fullName: staff.fullName,
+    27 |       email: staff.email, {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async GET (src\app\api\staff\route.ts:24:23)
+      22 |       : undefined;
+      23 |
+    > 24 |     const staffList = await db.select({
+         |                       ^
+      25 |       id: staff.id,
+      26 |       fullName: staff.fullName,
+      27 |       email: staff.email, {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch emergency contacts: Error: Failed query: select "emergency_contact"."active", "emergency_contact"."address", "emergency_contact"."alternate_phone", "emergency_contact"."contact_name", "emergency_contact"."created_at", "emergency_contact"."email", "emergency_contact"."id", "emergency_contact"."notes", "emergency_contact"."phone", "emergency_contact"."relationship", "emergency_contact"."staff_id", "staff"."full_name", "emergency_contact"."updated_at" from "emergency_contact" left join "staff" on "emergency_contact"."staff_id" = "staff"."id" order by "staff"."full_name" asc, "emergency_contact"."contact_name" asc
+params: 
+    at async GET (src\app\api\emergency-contacts\route.ts:65:22)
+  63 | export async function GET() {
+  64 |   try {
+> 65 |     const contacts = await db.select({
+     |                      ^
+  66 |       active: emergencyContact.active,
+  67 |       address: emergencyContact.address,
+  68 |       alternatePhone: emergencyContact.alternatePhone, {
+  query: 'select "emergency_contact"."active", "emergency_contact"."address", "emergency_contact"."alternate_phone", "emergency_contact"."contact_name", "emergency_contact"."created_at", "emergency_contact"."email", "emergency_contact"."id", "emergency_contact"."notes", "emergency_contact"."phone", "emergency_contact"."relationship", "emergency_contact"."staff_id", "staff"."full_name", "emergency_contact"."updated_at" from "emergency_contact" left join "staff" on "emergency_contact"."staff_id" = "staff"."id" order by "staff"."full_name" asc, "emergency_contact"."contact_name" asc',
+  params: [],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async GET (src\app\api\emergency-contacts\route.ts:65:22)
+    63 | export async function GET() {
+    64 |   try {
+  > 65 |     const contacts = await db.select({
+       |                      ^
+    66 |       active: emergencyContact.active,
+    67 |       address: emergencyContact.address,
+    68 |       alternatePhone: emergencyContact.alternatePhone, {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async GET (src\app\api\emergency-contacts\route.ts:65:22)
+      63 | export async function GET() {
+      64 |   try {
+    > 65 |     const contacts = await db.select({
+         |                      ^
+      66 |       active: emergencyContact.active,
+      67 |       address: emergencyContact.address,
+      68 |       alternatePhone: emergencyContact.alternatePhone, {
+      [cause]: [Error]
+    }
+  }
+}
+⨯ Error: Failed query: select "id", "name", "allowed_ip", "is_active", "updated_by_user_id", "updated_by_email", "created_at", "updated_at" from "office_network" where "office_network"."is_active" = $1 order by "office_network"."updated_at" desc limit $2
+params: true,1
+    at async getActiveOfficeNetwork (src\lib\attendance.ts:39:21)
+    at async GET (src\app\api\attendance\network\route.ts:12:19)
+  37 |
+  38 | export async function getActiveOfficeNetwork() {
+> 39 |   const [network] = await db.select()
+     |                     ^
+  40 |     .from(officeNetwork)
+  41 |     .where(eq(officeNetwork.isActive, true))
+  42 |     .orderBy(desc(officeNetwork.updatedAt)) {
+  query: 'select "id", "name", "allowed_ip", "is_active", "updated_by_user_id", "updated_by_email", "created_at", "updated_at" from "office_network" where "office_network"."is_active" = $1 order by "office_network"."updated_at" desc limit $2',
+  params: [ true, 1 ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getActiveOfficeNetwork (src\lib\attendance.ts:39:21)
+      at async GET (src\app\api\attendance\network\route.ts:12:19)
+    37 |
+    38 | export async function getActiveOfficeNetwork() {
+  > 39 |   const [network] = await db.select()
+       |                     ^
+    40 |     .from(officeNetwork)
+    41 |     .where(eq(officeNetwork.isActive, true))
+    42 |     .orderBy(desc(officeNetwork.updatedAt)) {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getActiveOfficeNetwork (src\lib\attendance.ts:39:21)
+        at async GET (src\app\api\attendance\network\route.ts:12:19)
+      37 |
+      38 | export async function getActiveOfficeNetwork() {
+    > 39 |   const [network] = await db.select()
+         |                     ^
+      40 |     .from(officeNetwork)
+      41 |     .where(eq(officeNetwork.isActive, true))
+      42 |     .orderBy(desc(officeNetwork.updatedAt)) {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch staff: Error: Failed query: select "id", "full_name", "email", "display_order", "active", "archived", "archived_at", "department", "unit", "created_at", "updated_at" from "staff" order by "staff"."display_order" asc, "staff"."full_name" asc
+params: 
+    at async GET (src\app\api\staff\route.ts:24:23)
+  22 |       : undefined;
+  23 |
+> 24 |     const staffList = await db.select({
+     |                       ^
+  25 |       id: staff.id,
+  26 |       fullName: staff.fullName,
+  27 |       email: staff.email, {
+  query: 'select "id", "full_name", "email", "display_order", "active", "archived", "archived_at", "department", "unit", "created_at", "updated_at" from "staff" order by "staff"."display_order" asc, "staff"."full_name" asc',
+  params: [],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async GET (src\app\api\staff\route.ts:24:23)
+    22 |       : undefined;
+    23 |
+  > 24 |     const staffList = await db.select({
+       |                       ^
+    25 |       id: staff.id,
+    26 |       fullName: staff.fullName,
+    27 |       email: staff.email, {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async GET (src\app\api\staff\route.ts:24:23)
+      22 |       : undefined;
+      23 |
+    > 24 |     const staffList = await db.select({
+         |                       ^
+      25 |       id: staff.id,
+      26 |       fullName: staff.fullName,
+      27 |       email: staff.email, {
+      [cause]: [Error]
+    }
+  }
+}
+⨯ Error: Failed query: select "id", "name", "allowed_ip", "is_active", "updated_by_user_id", "updated_by_email", "created_at", "updated_at" from "office_network" where "office_network"."is_active" = $1 order by "office_network"."updated_at" desc limit $2
+params: true,1
+    at async getActiveOfficeNetwork (src\lib\attendance.ts:39:21)
+    at async GET (src\app\api\attendance\network\route.ts:12:19)
+  37 |
+  38 | export async function getActiveOfficeNetwork() {
+> 39 |   const [network] = await db.select()
+     |                     ^
+  40 |     .from(officeNetwork)
+  41 |     .where(eq(officeNetwork.isActive, true))
+  42 |     .orderBy(desc(officeNetwork.updatedAt)) {
+  query: 'select "id", "name", "allowed_ip", "is_active", "updated_by_user_id", "updated_by_email", "created_at", "updated_at" from "office_network" where "office_network"."is_active" = $1 order by "office_network"."updated_at" desc limit $2',
+  params: [ true, 1 ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getActiveOfficeNetwork (src\lib\attendance.ts:39:21)
+      at async GET (src\app\api\attendance\network\route.ts:12:19)
+    37 |
+    38 | export async function getActiveOfficeNetwork() {
+  > 39 |   const [network] = await db.select()
+       |                     ^
+    40 |     .from(officeNetwork)
+    41 |     .where(eq(officeNetwork.isActive, true))
+    42 |     .orderBy(desc(officeNetwork.updatedAt)) {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getActiveOfficeNetwork (src\lib\attendance.ts:39:21)
+        at async GET (src\app\api\attendance\network\route.ts:12:19)
+      37 |
+      38 | export async function getActiveOfficeNetwork() {
+    > 39 |   const [network] = await db.select()
+         |                     ^
+      40 |     .from(officeNetwork)
+      41 |     .where(eq(officeNetwork.isActive, true))
+      42 |     .orderBy(desc(officeNetwork.updatedAt)) {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch dashboard data: Error: Failed query: select "id", "staff_id", "date", "arrival_time", "did_not_sign_out", "reason", "computed_amount", "created_at" from "lateness_entry" where ("lateness_entry"."date" >= $1 and "lateness_entry"."date" <= $2) order by "lateness_entry"."created_at" desc
+params: 2026-04-27,2026-05-01
+    at async GET (src\app\api\dashboard\route.ts:24:31)
+  22 |
+  23 |     // Fetch current week entries - use db.select with proper where clause
+> 24 |     const weekEntriesResult = await db.select({
+     |                               ^
+  25 |       id: latenessEntry.id,
+  26 |       staffId: latenessEntry.staffId,
+  27 |       date: latenessEntry.date, {
+  query: 'select "id", "staff_id", "date", "arrival_time", "did_not_sign_out", "reason", "computed_amount", "created_at" from "lateness_entry" where ("lateness_entry"."date" >= $1 and "lateness_entry"."date" <= $2) order by "lateness_entry"."created_at" desc',
+  params: [ '2026-04-27', '2026-05-01' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async GET (src\app\api\dashboard\route.ts:24:31)
+    22 |
+    23 |     // Fetch current week entries - use db.select with proper where clause
+  > 24 |     const weekEntriesResult = await db.select({
+       |                               ^
+    25 |       id: latenessEntry.id,
+    26 |       staffId: latenessEntry.staffId,
+    27 |       date: latenessEntry.date, {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async GET (src\app\api\dashboard\route.ts:24:31)
+      22 |
+      23 |     // Fetch current week entries - use db.select with proper where clause
+    > 24 |     const weekEntriesResult = await db.select({
+         |                               ^
+      25 |       id: latenessEntry.id,
+      26 |       staffId: latenessEntry.staffId,
+      27 |       date: latenessEntry.date, {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch dashboard data: Error: Failed query: select "id", "staff_id", "date", "arrival_time", "did_not_sign_out", "reason", "computed_amount", "created_at" from "lateness_entry" where ("lateness_entry"."date" >= $1 and "lateness_entry"."date" <= $2) order by "lateness_entry"."created_at" desc
+params: 2026-04-27,2026-05-01
+    at async GET (src\app\api\dashboard\route.ts:24:31)
+  22 |
+  23 |     // Fetch current week entries - use db.select with proper where clause
+> 24 |     const weekEntriesResult = await db.select({
+     |                               ^
+  25 |       id: latenessEntry.id,
+  26 |       staffId: latenessEntry.staffId,
+  27 |       date: latenessEntry.date, {
+  query: 'select "id", "staff_id", "date", "arrival_time", "did_not_sign_out", "reason", "computed_amount", "created_at" from "lateness_entry" where ("lateness_entry"."date" >= $1 and "lateness_entry"."date" <= $2) order by "lateness_entry"."created_at" desc',
+  params: [ '2026-04-27', '2026-05-01' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async GET (src\app\api\dashboard\route.ts:24:31)
+    22 |
+    23 |     // Fetch current week entries - use db.select with proper where clause
+  > 24 |     const weekEntriesResult = await db.select({
+       |                               ^
+    25 |       id: latenessEntry.id,
+    26 |       staffId: latenessEntry.staffId,
+    27 |       date: latenessEntry.date, {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async GET (src\app\api\dashboard\route.ts:24:31)
+      22 |
+      23 |     // Fetch current week entries - use db.select with proper where clause
+    > 24 |     const weekEntriesResult = await db.select({
+         |                               ^
+      25 |       id: latenessEntry.id,
+      26 |       staffId: latenessEntry.staffId,
+      27 |       date: latenessEntry.date, {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch notifications: Error: Failed query: select "notification_id" from "notification_read" where "notification_read"."user_id" = $1
+params: user_3C550OqkCR5dIfAUnrnEP62iJKr
+    at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+    at async GET (src\app\api\notifications\route.ts:908:39)
+  574 |
+  575 | async function getNotificationState(userId: string) {
+> 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+      |                ^
+  577 |     .from(notificationRead)
+  578 |     .where(eq(notificationRead.userId, userId));
+  579 | {
+  query: 'select "notification_id" from "notification_read" where "notification_read"."user_id" = $1',
+  params: [ 'user_3C550OqkCR5dIfAUnrnEP62iJKr' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+      at async GET (src\app\api\notifications\route.ts:908:39)
+    574 |
+    575 | async function getNotificationState(userId: string) {
+  > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+        |                ^
+    577 |     .from(notificationRead)
+    578 |     .where(eq(notificationRead.userId, userId));
+    579 | {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+        at async GET (src\app\api\notifications\route.ts:908:39)
+      574 |
+      575 | async function getNotificationState(userId: string) {
+    > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+          |                ^
+      577 |     .from(notificationRead)
+      578 |     .where(eq(notificationRead.userId, userId));
+      579 | {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Failed to load office WiFi: Error: WiFi request failed (500)
+    at WifiPage.useCallback[fetchNetwork] (src/app/wifi/page.tsx:60:31)
+  58 |     try {
+  59 |       const response = await fetch('/api/attendance/network', { cache: 'no-store' });
+> 60 |       if (!response.ok) throw new Error(`WiFi request failed (${response.status})`);
+     |                               ^
+  61 |       setNetworkData(await response.json());
+  62 |     } catch (err) {
+  63 |       console.error('Failed to load office WiFi:', err); (src/app/wifi/page.tsx:63:15)
+[browser] Failed to load office WiFi: Error: WiFi request failed (500)
+    at WifiPage.useCallback[fetchNetwork] (src/app/wifi/page.tsx:60:31)
+  58 |     try {
+  59 |       const response = await fetch('/api/attendance/network', { cache: 'no-store' });
+> 60 |       if (!response.ok) throw new Error(`WiFi request failed (${response.status})`);
+     |                               ^
+  61 |       setNetworkData(await response.json());
+  62 |     } catch (err) {
+  63 |       console.error('Failed to load office WiFi:', err); (src/app/wifi/page.tsx:63:15)
+[browser] Failed to fetch notifications: Error: Failed to fetch notifications: 500
+    at NotificationProvider.useCallback[fetchNotifications] (src/contexts/notification-context.tsx:104:15)
+  102 |
+  103 |       if (!response.ok) {
+> 104 |         throw new Error(`Failed to fetch notifications: ${response.status}`);
+      |               ^
+  105 |       }
+  106 |
+  107 |       const data = await response.json(); (src/contexts/notification-context.tsx:114:15)
+Failed to fetch notifications: Error: Failed query: select "notification_id" from "notification_read" where "notification_read"."user_id" = $1
+params: user_3C550OqkCR5dIfAUnrnEP62iJKr
+    at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+    at async GET (src\app\api\notifications\route.ts:908:39)
+  574 |
+  575 | async function getNotificationState(userId: string) {
+> 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+      |                ^
+  577 |     .from(notificationRead)
+  578 |     .where(eq(notificationRead.userId, userId));
+  579 | {
+  query: 'select "notification_id" from "notification_read" where "notification_read"."user_id" = $1',
+  params: [ 'user_3C550OqkCR5dIfAUnrnEP62iJKr' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+      at async GET (src\app\api\notifications\route.ts:908:39)
+    574 |
+    575 | async function getNotificationState(userId: string) {
+  > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+        |                ^
+    577 |     .from(notificationRead)
+    578 |     .where(eq(notificationRead.userId, userId));
+    579 | {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+        at async GET (src\app\api\notifications\route.ts:908:39)
+      574 |
+      575 | async function getNotificationState(userId: string) {
+    > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+          |                ^
+      577 |     .from(notificationRead)
+      578 |     .where(eq(notificationRead.userId, userId));
+      579 | {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Failed to fetch notifications: Error: Failed to fetch notifications: 500
+    at NotificationProvider.useCallback[fetchNotifications] (src/contexts/notification-context.tsx:104:15)
+  102 |
+  103 |       if (!response.ok) {
+> 104 |         throw new Error(`Failed to fetch notifications: ${response.status}`);
+      |               ^
+  105 |       }
+  106 |
+  107 |       const data = await response.json(); (src/contexts/notification-context.tsx:114:15)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+Attendance query failed (staff); retrying once: Error: Failed query: select "id", "full_name", "email", "department", "unit", "active", "archived" from "staff" where ("staff"."active" = $1 and "staff"."archived" = $2) order by "staff"."display_order" asc, "staff"."full_name" asc
+params: true,false
+    at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+    at async GET (src\app\api\attendance\route.ts:43:57)
+  15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+  16 |   try {
+> 17 |     return await query();
+     |            ^
+  18 |   } catch (error) {
+  19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+  20 |     await wait(250); {
+  query: 'select "id", "full_name", "email", "department", "unit", "active", "archived" from "staff" where ("staff"."active" = $1 and "staff"."archived" = $2) order by "staff"."display_order" asc, "staff"."full_name" asc',
+  params: [ true, false ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+      at async GET (src\app\api\attendance\route.ts:43:57)
+    15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+    16 |   try {
+  > 17 |     return await query();
+       |            ^
+    18 |   } catch (error) {
+    19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+    20 |     await wait(250); {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+        at async GET (src\app\api\attendance\route.ts:43:57)
+      15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+      16 |   try {
+    > 17 |     return await query();
+         |            ^
+      18 |   } catch (error) {
+      19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+      20 |     await wait(250); {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch staff: Error: Failed query: select "id", "full_name", "email", "display_order", "active", "archived", "archived_at", "department", "unit", "created_at", "updated_at" from "staff" order by "staff"."display_order" asc, "staff"."full_name" asc
+params: 
+    at async GET (src\app\api\staff\route.ts:24:23)
+  22 |       : undefined;
+  23 |
+> 24 |     const staffList = await db.select({
+     |                       ^
+  25 |       id: staff.id,
+  26 |       fullName: staff.fullName,
+  27 |       email: staff.email, {
+  query: 'select "id", "full_name", "email", "display_order", "active", "archived", "archived_at", "department", "unit", "created_at", "updated_at" from "staff" order by "staff"."display_order" asc, "staff"."full_name" asc',
+  params: [],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async GET (src\app\api\staff\route.ts:24:23)
+    22 |       : undefined;
+    23 |
+  > 24 |     const staffList = await db.select({
+       |                       ^
+    25 |       id: staff.id,
+    26 |       fullName: staff.fullName,
+    27 |       email: staff.email, {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async GET (src\app\api\staff\route.ts:24:23)
+      22 |       : undefined;
+      23 |
+    > 24 |     const staffList = await db.select({
+         |                       ^
+      25 |       id: staff.id,
+      26 |       fullName: staff.fullName,
+      27 |       email: staff.email, {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch staff: Error: Failed query: select "id", "full_name", "email", "display_order", "active", "archived", "archived_at", "department", "unit", "created_at", "updated_at" from "staff" order by "staff"."display_order" asc, "staff"."full_name" asc
+params: 
+    at async GET (src\app\api\staff\route.ts:24:23)
+  22 |       : undefined;
+  23 |
+> 24 |     const staffList = await db.select({
+     |                       ^
+  25 |       id: staff.id,
+  26 |       fullName: staff.fullName,
+  27 |       email: staff.email, {
+  query: 'select "id", "full_name", "email", "display_order", "active", "archived", "archived_at", "department", "unit", "created_at", "updated_at" from "staff" order by "staff"."display_order" asc, "staff"."full_name" asc',
+  params: [],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async GET (src\app\api\staff\route.ts:24:23)
+    22 |       : undefined;
+    23 |
+  > 24 |     const staffList = await db.select({
+       |                       ^
+    25 |       id: staff.id,
+    26 |       fullName: staff.fullName,
+    27 |       email: staff.email, {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async GET (src\app\api\staff\route.ts:24:23)
+      22 |       : undefined;
+      23 |
+    > 24 |     const staffList = await db.select({
+         |                       ^
+      25 |       id: staff.id,
+      26 |       fullName: staff.fullName,
+      27 |       email: staff.email, {
+      [cause]: [Error]
+    }
+  }
+}
+Attendance query failed (attendance-permissions); retrying once: Error: Failed query: select "approved_by_email", "arrival_window", "date", "expected_end_time", "expected_start_time", "id", "permission_type", "reason", "staff_id", "status" from "attendance_permission" where ("attendance_permission"."date" = $1 and "attendance_permission"."status" = $2)
+params: 2026-05-02,approved
+    at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+    at async GET (src\app\api\attendance\route.ts:43:57)
+  15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+  16 |   try {
+> 17 |     return await query();
+     |            ^
+  18 |   } catch (error) {
+  19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+  20 |     await wait(250); {
+  query: 'select "approved_by_email", "arrival_window", "date", "expected_end_time", "expected_start_time", "id", "permission_type", "reason", "staff_id", "status" from "attendance_permission" where ("attendance_permission"."date" = $1 and "attendance_permission"."status" = $2)',
+  params: [ '2026-05-02', 'approved' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+      at async GET (src\app\api\attendance\route.ts:43:57)
+    15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+    16 |   try {
+  > 17 |     return await query();
+       |            ^
+    18 |   } catch (error) {
+    19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+    20 |     await wait(250); {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+        at async GET (src\app\api\attendance\route.ts:43:57)
+      15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+      16 |   try {
+    > 17 |     return await query();
+         |            ^
+      18 |   } catch (error) {
+      19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+      20 |     await wait(250); {
+      [cause]: [Error]
+    }
+  }
+}
+Attendance query failed (staff); retrying once: Error: Failed query: select "id", "full_name", "email", "department", "unit", "active", "archived" from "staff" where ("staff"."active" = $1 and "staff"."archived" = $2) order by "staff"."display_order" asc, "staff"."full_name" asc
+params: true,false
+    at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+    at async GET (src\app\api\attendance\route.ts:43:57)
+  15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+  16 |   try {
+> 17 |     return await query();
+     |            ^
+  18 |   } catch (error) {
+  19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+  20 |     await wait(250); {
+  query: 'select "id", "full_name", "email", "department", "unit", "active", "archived" from "staff" where ("staff"."active" = $1 and "staff"."archived" = $2) order by "staff"."display_order" asc, "staff"."full_name" asc',
+  params: [ true, false ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+      at async GET (src\app\api\attendance\route.ts:43:57)
+    15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+    16 |   try {
+  > 17 |     return await query();
+       |            ^
+    18 |   } catch (error) {
+    19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+    20 |     await wait(250); {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+        at async GET (src\app\api\attendance\route.ts:43:57)
+      15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+      16 |   try {
+    > 17 |     return await query();
+         |            ^
+      18 |   } catch (error) {
+      19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+      20 |     await wait(250); {
+      [cause]: [Error]
+    }
+  }
+}
+Attendance query failed (attendance-records); retrying once: Error: Failed query: select "id", "staff_id", "date", "check_in_at", "check_in_time", "sign_out_at", "sign_out_time", "sign_out_network_ip", "sign_out_user_agent", "status", "source", "network_ip", "user_agent", "computed_amount", "reason", "created_at", "updated_at" from "attendance_record" where "attendance_record"."date" = $1
+params: 2026-05-02
+    at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+    at async GET (src\app\api\attendance\route.ts:43:57)
+  15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+  16 |   try {
+> 17 |     return await query();
+     |            ^
+  18 |   } catch (error) {
+  19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+  20 |     await wait(250); {
+  query: 'select "id", "staff_id", "date", "check_in_at", "check_in_time", "sign_out_at", "sign_out_time", "sign_out_network_ip", "sign_out_user_agent", "status", "source", "network_ip", "user_agent", "computed_amount", "reason", "created_at", "updated_at" from "attendance_record" where "attendance_record"."date" = $1',
+  params: [ '2026-05-02' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+      at async GET (src\app\api\attendance\route.ts:43:57)
+    15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+    16 |   try {
+  > 17 |     return await query();
+       |            ^
+    18 |   } catch (error) {
+    19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+    20 |     await wait(250); {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+        at async GET (src\app\api\attendance\route.ts:43:57)
+      15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+      16 |   try {
+    > 17 |     return await query();
+         |            ^
+      18 |   } catch (error) {
+      19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+      20 |     await wait(250); {
+      [cause]: [Error]
+    }
+  }
+}
+Attendance query failed (attendance-records); retrying once: Error: Failed query: select "id", "staff_id", "date", "check_in_at", "check_in_time", "sign_out_at", "sign_out_time", "sign_out_network_ip", "sign_out_user_agent", "status", "source", "network_ip", "user_agent", "computed_amount", "reason", "created_at", "updated_at" from "attendance_record" where "attendance_record"."date" = $1
+params: 2026-05-02
+    at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+    at async GET (src\app\api\attendance\route.ts:43:57)
+  15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+  16 |   try {
+> 17 |     return await query();
+     |            ^
+  18 |   } catch (error) {
+  19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+  20 |     await wait(250); {
+  query: 'select "id", "staff_id", "date", "check_in_at", "check_in_time", "sign_out_at", "sign_out_time", "sign_out_network_ip", "sign_out_user_agent", "status", "source", "network_ip", "user_agent", "computed_amount", "reason", "created_at", "updated_at" from "attendance_record" where "attendance_record"."date" = $1',
+  params: [ '2026-05-02' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+      at async GET (src\app\api\attendance\route.ts:43:57)
+    15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+    16 |   try {
+  > 17 |     return await query();
+       |            ^
+    18 |   } catch (error) {
+    19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+    20 |     await wait(250); {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+        at async GET (src\app\api\attendance\route.ts:43:57)
+      15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+      16 |   try {
+    > 17 |     return await query();
+         |            ^
+      18 |   } catch (error) {
+      19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+      20 |     await wait(250); {
+      [cause]: [Error]
+    }
+  }
+}
+Attendance query failed (staff); retrying once: Error: Failed query: select "id", "full_name", "email", "department", "unit", "active", "archived" from "staff" where ("staff"."active" = $1 and "staff"."archived" = $2) order by "staff"."display_order" asc, "staff"."full_name" asc
+params: true,false
+    at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+    at async GET (src\app\api\attendance\route.ts:43:57)
+  15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+  16 |   try {
+> 17 |     return await query();
+     |            ^
+  18 |   } catch (error) {
+  19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+  20 |     await wait(250); {
+  query: 'select "id", "full_name", "email", "department", "unit", "active", "archived" from "staff" where ("staff"."active" = $1 and "staff"."archived" = $2) order by "staff"."display_order" asc, "staff"."full_name" asc',
+  params: [ true, false ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+      at async GET (src\app\api\attendance\route.ts:43:57)
+    15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+    16 |   try {
+  > 17 |     return await query();
+       |            ^
+    18 |   } catch (error) {
+    19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+    20 |     await wait(250); {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+        at async GET (src\app\api\attendance\route.ts:43:57)
+      15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+      16 |   try {
+    > 17 |     return await query();
+         |            ^
+      18 |   } catch (error) {
+      19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+      20 |     await wait(250); {
+      [cause]: [Error]
+    }
+  }
+}
+Attendance query failed (attendance-permissions); retrying once: Error: Failed query: select "approved_by_email", "arrival_window", "date", "expected_end_time", "expected_start_time", "id", "permission_type", "reason", "staff_id", "status" from "attendance_permission" where ("attendance_permission"."date" = $1 and "attendance_permission"."status" = $2)
+params: 2026-05-02,approved
+    at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+    at async GET (src\app\api\attendance\route.ts:43:57)
+  15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+  16 |   try {
+> 17 |     return await query();
+     |            ^
+  18 |   } catch (error) {
+  19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+  20 |     await wait(250); {
+  query: 'select "approved_by_email", "arrival_window", "date", "expected_end_time", "expected_start_time", "id", "permission_type", "reason", "staff_id", "status" from "attendance_permission" where ("attendance_permission"."date" = $1 and "attendance_permission"."status" = $2)',
+  params: [ '2026-05-02', 'approved' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+      at async GET (src\app\api\attendance\route.ts:43:57)
+    15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+    16 |   try {
+  > 17 |     return await query();
+       |            ^
+    18 |   } catch (error) {
+    19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+    20 |     await wait(250); {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+        at async GET (src\app\api\attendance\route.ts:43:57)
+      15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+      16 |   try {
+    > 17 |     return await query();
+         |            ^
+      18 |   } catch (error) {
+      19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+      20 |     await wait(250); {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch notifications: Error: Failed query: select "id", "entity_type", "entity_id", "action", "before_json", "after_json", "actor_email", "timestamp" from "audit_event" where ("audit_event"."timestamp" >= $1 and "audit_event"."entity_type" <> $2) order by "audit_event"."timestamp" desc limit $3
+params: 2026-04-02T18:37:07.973Z,notification,50
+    at async getAuditNotifications (src\app\api\notifications\route.ts:597:18)
+    at async GET (src\app\api\notifications\route.ts:910:55)
+  595 |   const since = subDays(new Date(), 30);
+  596 |
+> 597 |   const events = await db.select({
+      |                  ^
+  598 |     id: auditEvent.id,
+  599 |     entityType: auditEvent.entityType,
+  600 |     entityId: auditEvent.entityId, {
+  query: 'select "id", "entity_type", "entity_id", "action", "before_json", "after_json", "actor_email", "timestamp" from "audit_event" where ("audit_event"."timestamp" >= $1 and "audit_event"."entity_type" <> $2) order by "audit_event"."timestamp" desc limit $3',
+  params: [ '2026-04-02T18:37:07.973Z', 'notification', 50 ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getAuditNotifications (src\app\api\notifications\route.ts:597:18)
+      at async GET (src\app\api\notifications\route.ts:910:55)
+    595 |   const since = subDays(new Date(), 30);
+    596 |
+  > 597 |   const events = await db.select({
+        |                  ^
+    598 |     id: auditEvent.id,
+    599 |     entityType: auditEvent.entityType,
+    600 |     entityId: auditEvent.entityId, {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getAuditNotifications (src\app\api\notifications\route.ts:597:18)
+        at async GET (src\app\api\notifications\route.ts:910:55)
+      595 |   const since = subDays(new Date(), 30);
+      596 |
+    > 597 |   const events = await db.select({
+          |                  ^
+      598 |     id: auditEvent.id,
+      599 |     entityType: auditEvent.entityType,
+      600 |     entityId: auditEvent.entityId, {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch attendance: Error: Failed query: select "id", "full_name", "email", "department", "unit", "active", "archived" from "staff" where ("staff"."active" = $1 and "staff"."archived" = $2) order by "staff"."display_order" asc, "staff"."full_name" asc
+params: true,false
+    at async GET (src\app\api\attendance\route.ts:43:57)
+  41 |     }
+  42 |
+> 43 |     const [staffRows, attendanceRows, permissionRows] = await Promise.all([
+     |                                                         ^
+  44 |       requiredAttendanceQuery('staff', () => db.select({
+  45 |         id: staff.id,
+  46 |         fullName: staff.fullName, {
+  query: 'select "id", "full_name", "email", "department", "unit", "active", "archived" from "staff" where ("staff"."active" = $1 and "staff"."archived" = $2) order by "staff"."display_order" asc, "staff"."full_name" asc',
+  params: [ true, false ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async GET (src\app\api\attendance\route.ts:43:57)
+    41 |     }
+    42 |
+  > 43 |     const [staffRows, attendanceRows, permissionRows] = await Promise.all([
+       |                                                         ^
+    44 |       requiredAttendanceQuery('staff', () => db.select({
+    45 |         id: staff.id,
+    46 |         fullName: staff.fullName, {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async GET (src\app\api\attendance\route.ts:43:57)
+      41 |     }
+      42 |
+    > 43 |     const [staffRows, attendanceRows, permissionRows] = await Promise.all([
+         |                                                         ^
+      44 |       requiredAttendanceQuery('staff', () => db.select({
+      45 |         id: staff.id,
+      46 |         fullName: staff.fullName, {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch attendance: Error: Failed query: select "id", "staff_id", "date", "check_in_at", "check_in_time", "sign_out_at", "sign_out_time", "sign_out_network_ip", "sign_out_user_agent", "status", "source", "network_ip", "user_agent", "computed_amount", "reason", "created_at", "updated_at" from "attendance_record" where "attendance_record"."date" = $1
+params: 2026-05-02
+    at async GET (src\app\api\attendance\route.ts:43:57)
+  41 |     }
+  42 |
+> 43 |     const [staffRows, attendanceRows, permissionRows] = await Promise.all([
+     |                                                         ^
+  44 |       requiredAttendanceQuery('staff', () => db.select({
+  45 |         id: staff.id,
+  46 |         fullName: staff.fullName, {
+  query: 'select "id", "staff_id", "date", "check_in_at", "check_in_time", "sign_out_at", "sign_out_time", "sign_out_network_ip", "sign_out_user_agent", "status", "source", "network_ip", "user_agent", "computed_amount", "reason", "created_at", "updated_at" from "attendance_record" where "attendance_record"."date" = $1',
+  params: [ '2026-05-02' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async GET (src\app\api\attendance\route.ts:43:57)
+    41 |     }
+    42 |
+  > 43 |     const [staffRows, attendanceRows, permissionRows] = await Promise.all([
+       |                                                         ^
+    44 |       requiredAttendanceQuery('staff', () => db.select({
+    45 |         id: staff.id,
+    46 |         fullName: staff.fullName, {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async GET (src\app\api\attendance\route.ts:43:57)
+      41 |     }
+      42 |
+    > 43 |     const [staffRows, attendanceRows, permissionRows] = await Promise.all([
+         |                                                         ^
+      44 |       requiredAttendanceQuery('staff', () => db.select({
+      45 |         id: staff.id,
+      46 |         fullName: staff.fullName, {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Failed to fetch notifications: Error: Failed to fetch notifications: 500
+    at NotificationProvider.useCallback[fetchNotifications] (src/contexts/notification-context.tsx:104:15)
+  102 |
+  103 |       if (!response.ok) {
+> 104 |         throw new Error(`Failed to fetch notifications: ${response.status}`);
+      |               ^
+  105 |       }
+  106 |
+  107 |       const data = await response.json(); (src/contexts/notification-context.tsx:114:15)
+[browser] Failed to load attendance: Error: Attendance request failed (500)
+    at AttendancePage.useCallback[fetchAttendance] (src/app/attendance/page.tsx:215:31)
+  213 |     try {
+  214 |       const response = await fetch(`/api/attendance?date=${attendanceDate}`, { cache: 'no...
+> 215 |       if (!response.ok) throw new Error(`Attendance request failed (${response.status})`);
+      |                               ^
+  216 |       setData(await response.json());
+  217 |     } catch (err) {
+  218 |       console.error('Failed to load attendance:', err); (src/app/attendance/page.tsx:218:15)
+[browser] Failed to load attendance: Error: Attendance request failed (500)
+    at AttendancePage.useCallback[fetchAttendance] (src/app/attendance/page.tsx:215:31)
+  213 |     try {
+  214 |       const response = await fetch(`/api/attendance?date=${attendanceDate}`, { cache: 'no...
+> 215 |       if (!response.ok) throw new Error(`Attendance request failed (${response.status})`);
+      |                               ^
+  216 |       setData(await response.json());
+  217 |     } catch (err) {
+  218 |       console.error('Failed to load attendance:', err); (src/app/attendance/page.tsx:218:15)
+Failed to fetch dashboard data: Error: Failed query: select "id", "staff_id", "date", "arrival_time", "did_not_sign_out", "reason", "computed_amount", "created_at" from "lateness_entry" where ("lateness_entry"."date" >= $1 and "lateness_entry"."date" <= $2) order by "lateness_entry"."created_at" desc
+params: 2026-04-27,2026-05-01
+    at async GET (src\app\api\dashboard\route.ts:24:31)
+  22 |
+  23 |     // Fetch current week entries - use db.select with proper where clause
+> 24 |     const weekEntriesResult = await db.select({
+     |                               ^
+  25 |       id: latenessEntry.id,
+  26 |       staffId: latenessEntry.staffId,
+  27 |       date: latenessEntry.date, {
+  query: 'select "id", "staff_id", "date", "arrival_time", "did_not_sign_out", "reason", "computed_amount", "created_at" from "lateness_entry" where ("lateness_entry"."date" >= $1 and "lateness_entry"."date" <= $2) order by "lateness_entry"."created_at" desc',
+  params: [ '2026-04-27', '2026-05-01' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async GET (src\app\api\dashboard\route.ts:24:31)
+    22 |
+    23 |     // Fetch current week entries - use db.select with proper where clause
+  > 24 |     const weekEntriesResult = await db.select({
+       |                               ^
+    25 |       id: latenessEntry.id,
+    26 |       staffId: latenessEntry.staffId,
+    27 |       date: latenessEntry.date, {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async GET (src\app\api\dashboard\route.ts:24:31)
+      22 |
+      23 |     // Fetch current week entries - use db.select with proper where clause
+    > 24 |     const weekEntriesResult = await db.select({
+         |                               ^
+      25 |       id: latenessEntry.id,
+      26 |       staffId: latenessEntry.staffId,
+      27 |       date: latenessEntry.date, {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch audit trail: Error: Failed query: select count(*) from "audit_event"
+params: 
+    at async GET (src\app\api\audit-trail\route.ts:168:25)
+  166 |
+  167 |     // Get filtered count
+> 168 |     const countResult = await db.select({ count: count() }).from(auditEvent).where(whereC...
+      |                         ^
+  169 |     const totalCount = Number(countResult[0]?.count || 0);
+  170 |
+  171 |     // Get paginated data {
+  query: 'select count(*) from "audit_event"',
+  params: [],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async GET (src\app\api\audit-trail\route.ts:168:25)
+    166 |
+    167 |     // Get filtered count
+  > 168 |     const countResult = await db.select({ count: count() }).from(auditEvent).where(whereC...
+        |                         ^
+    169 |     const totalCount = Number(countResult[0]?.count || 0);
+    170 |
+    171 |     // Get paginated data {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async GET (src\app\api\audit-trail\route.ts:168:25)
+      166 |
+      167 |     // Get filtered count
+    > 168 |     const countResult = await db.select({ count: count() }).from(auditEvent).where(whereC...
+          |                         ^
+      169 |     const totalCount = Number(countResult[0]?.count || 0);
+      170 |
+      171 |     // Get paginated data {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Failed to fetch audit trail: Error: Audit request failed: 500
+    at AuditTrailPage.useCallback[fetchAuditTrail] (src/app/audit-trail/page.tsx:199:15)
+  197 |       const response = await fetch(`/api/audit-trail?${params}`, { cache: 'no-store' });
+  198 |       if (!response.ok) {
+> 199 |         throw new Error(`Audit request failed: ${response.status}`);
+      |               ^
+  200 |       }
+  201 |
+  202 |       const data = await response.json(); (src/app/audit-trail/page.tsx:207:15)
+Failed to fetch audit trail: Error: Failed query: select "id", "entity_type", "entity_id", "action", "before_json", "after_json", "actor_user_id", "actor_email", "timestamp" from "audit_event" order by "audit_event"."timestamp" desc limit $1
+params: 20
+    at async GET (src\app\api\audit-trail\route.ts:172:18)
+  170 |
+  171 |     // Get paginated data
+> 172 |     const logs = await db.select({
+      |                  ^
+  173 |       id: auditEvent.id,
+  174 |       entityType: auditEvent.entityType,
+  175 |       entityId: auditEvent.entityId, {
+  query: 'select "id", "entity_type", "entity_id", "action", "before_json", "after_json", "actor_user_id", "actor_email", "timestamp" from "audit_event" order by "audit_event"."timestamp" desc limit $1',
+  params: [ 20 ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async GET (src\app\api\audit-trail\route.ts:172:18)
+    170 |
+    171 |     // Get paginated data
+  > 172 |     const logs = await db.select({
+        |                  ^
+    173 |       id: auditEvent.id,
+    174 |       entityType: auditEvent.entityType,
+    175 |       entityId: auditEvent.entityId, {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async GET (src\app\api\audit-trail\route.ts:172:18)
+      170 |
+      171 |     // Get paginated data
+    > 172 |     const logs = await db.select({
+          |                  ^
+      173 |       id: auditEvent.id,
+      174 |       entityType: auditEvent.entityType,
+      175 |       entityId: auditEvent.entityId, {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+Failed to fetch dashboard data: Error: Failed query: select "date" from "work_calendar" where ("work_calendar"."date" >= $1 and "work_calendar"."date" <= $2 and "work_calendar"."is_holiday" = $3)
+params: 2026-04-27,2026-05-01,true
+    at async GET (src\app\api\dashboard\route.ts:52:28)
+  50 |
+  51 |     // Fetch holidays for this week
+> 52 |     const holidaysResult = await db.select({ date: workCalendar.date })
+     |                            ^
+  53 |       .from(workCalendar)
+  54 |       .where(and(gte(workCalendar.date, weekStartStr), lte(workCalendar.date, weekEndStr),...
+  55 |     const holidayDates = new Set(holidaysResult.map(h => h.date)); {
+  query: 'select "date" from "work_calendar" where ("work_calendar"."date" >= $1 and "work_calendar"."date" <= $2 and "work_calendar"."is_holiday" = $3)',
+  params: [ '2026-04-27', '2026-05-01', true ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async GET (src\app\api\dashboard\route.ts:52:28)
+    50 |
+    51 |     // Fetch holidays for this week
+  > 52 |     const holidaysResult = await db.select({ date: workCalendar.date })
+       |                            ^
+    53 |       .from(workCalendar)
+    54 |       .where(and(gte(workCalendar.date, weekStartStr), lte(workCalendar.date, weekEndStr),...
+    55 |     const holidayDates = new Set(holidaysResult.map(h => h.date)); {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async GET (src\app\api\dashboard\route.ts:52:28)
+      50 |
+      51 |     // Fetch holidays for this week
+    > 52 |     const holidaysResult = await db.select({ date: workCalendar.date })
+         |                            ^
+      53 |       .from(workCalendar)
+      54 |       .where(and(gte(workCalendar.date, weekStartStr), lte(workCalendar.date, weekEndStr),...
+      55 |     const holidayDates = new Set(holidaysResult.map(h => h.date)); {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch notifications: Error: Failed query: select "id", "holiday_note" from "work_calendar" where ("work_calendar"."date" = $1 and "work_calendar"."is_holiday" = $2) limit $3
+params: 2026-05-02,true,1
+    at async getSystemNotifications (src\app\api\notifications\route.ts:624:26)
+    at async GET (src\app\api\notifications\route.ts:910:55)
+  622 |   const notifications: Notification[] = [];
+  623 |
+> 624 |   const [holidayCheck] = await db.select({
+      |                          ^
+  625 |     id: workCalendar.id,
+  626 |     holidayNote: workCalendar.holidayNote,
+  627 |   }) {
+  query: 'select "id", "holiday_note" from "work_calendar" where ("work_calendar"."date" = $1 and "work_calendar"."is_holiday" = $2) limit $3',
+  params: [ '2026-05-02', true, 1 ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getSystemNotifications (src\app\api\notifications\route.ts:624:26)
+      at async GET (src\app\api\notifications\route.ts:910:55)
+    622 |   const notifications: Notification[] = [];
+    623 |
+  > 624 |   const [holidayCheck] = await db.select({
+        |                          ^
+    625 |     id: workCalendar.id,
+    626 |     holidayNote: workCalendar.holidayNote,
+    627 |   }) {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getSystemNotifications (src\app\api\notifications\route.ts:624:26)
+        at async GET (src\app\api\notifications\route.ts:910:55)
+      622 |   const notifications: Notification[] = [];
+      623 |
+    > 624 |   const [holidayCheck] = await db.select({
+          |                          ^
+      625 |     id: workCalendar.id,
+      626 |     holidayNote: workCalendar.holidayNote,
+      627 |   }) {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+Failed to fetch notifications: Error: Failed query: select "notification_id" from "notification_read" where "notification_read"."user_id" = $1
+params: user_3C550OqkCR5dIfAUnrnEP62iJKr
+    at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+    at async GET (src\app\api\notifications\route.ts:908:39)
+  574 |
+  575 | async function getNotificationState(userId: string) {
+> 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+      |                ^
+  577 |     .from(notificationRead)
+  578 |     .where(eq(notificationRead.userId, userId));
+  579 | {
+  query: 'select "notification_id" from "notification_read" where "notification_read"."user_id" = $1',
+  params: [ 'user_3C550OqkCR5dIfAUnrnEP62iJKr' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+      at async GET (src\app\api\notifications\route.ts:908:39)
+    574 |
+    575 | async function getNotificationState(userId: string) {
+  > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+        |                ^
+    577 |     .from(notificationRead)
+    578 |     .where(eq(notificationRead.userId, userId));
+    579 | {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+        at async GET (src\app\api\notifications\route.ts:908:39)
+      574 |
+      575 | async function getNotificationState(userId: string) {
+    > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+          |                ^
+      577 |     .from(notificationRead)
+      578 |     .where(eq(notificationRead.userId, userId));
+      579 | {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Failed to fetch notifications: Error: Failed to fetch notifications: 500
+    at NotificationProvider.useCallback[fetchNotifications] (src/contexts/notification-context.tsx:104:15)
+  102 |
+  103 |       if (!response.ok) {
+> 104 |         throw new Error(`Failed to fetch notifications: ${response.status}`);
+      |               ^
+  105 |       }
+  106 |
+  107 |       const data = await response.json(); (src/contexts/notification-context.tsx:114:15)
+Failed to fetch notifications: Error: Failed query: select "notification_id" from "notification_read" where "notification_read"."user_id" = $1
+params: user_3C550OqkCR5dIfAUnrnEP62iJKr
+    at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+    at async GET (src\app\api\notifications\route.ts:908:39)
+  574 |
+  575 | async function getNotificationState(userId: string) {
+> 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+      |                ^
+  577 |     .from(notificationRead)
+  578 |     .where(eq(notificationRead.userId, userId));
+  579 | {
+  query: 'select "notification_id" from "notification_read" where "notification_read"."user_id" = $1',
+  params: [ 'user_3C550OqkCR5dIfAUnrnEP62iJKr' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+      at async GET (src\app\api\notifications\route.ts:908:39)
+    574 |
+    575 | async function getNotificationState(userId: string) {
+  > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+        |                ^
+    577 |     .from(notificationRead)
+    578 |     .where(eq(notificationRead.userId, userId));
+    579 | {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+        at async GET (src\app\api\notifications\route.ts:908:39)
+      574 |
+      575 | async function getNotificationState(userId: string) {
+    > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+          |                ^
+      577 |     .from(notificationRead)
+      578 |     .where(eq(notificationRead.userId, userId));
+      579 | {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Failed to fetch notifications: Error: Failed to fetch notifications: 500
+    at NotificationProvider.useCallback[fetchNotifications] (src/contexts/notification-context.tsx:104:15)
+  102 |
+  103 |       if (!response.ok) {
+> 104 |         throw new Error(`Failed to fetch notifications: ${response.status}`);
+      |               ^
+  105 |       }
+  106 |
+  107 |       const data = await response.json(); (src/contexts/notification-context.tsx:114:15)
+Attendance query failed (staff); retrying once: Error: Failed query: select "id", "full_name", "email", "department", "unit", "active", "archived" from "staff" where ("staff"."active" = $1 and "staff"."archived" = $2) order by "staff"."display_order" asc, "staff"."full_name" asc
+params: true,false
+    at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+    at async GET (src\app\api\attendance\route.ts:43:57)
+  15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+  16 |   try {
+> 17 |     return await query();
+     |            ^
+  18 |   } catch (error) {
+  19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+  20 |     await wait(250); {
+  query: 'select "id", "full_name", "email", "department", "unit", "active", "archived" from "staff" where ("staff"."active" = $1 and "staff"."archived" = $2) order by "staff"."display_order" asc, "staff"."full_name" asc',
+  params: [ true, false ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+      at async GET (src\app\api\attendance\route.ts:43:57)
+    15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+    16 |   try {
+  > 17 |     return await query();
+       |            ^
+    18 |   } catch (error) {
+    19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+    20 |     await wait(250); {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+        at async GET (src\app\api\attendance\route.ts:43:57)
+      15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+      16 |   try {
+    > 17 |     return await query();
+         |            ^
+      18 |   } catch (error) {
+      19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+      20 |     await wait(250); {
+      [cause]: [Error]
+    }
+  }
+}
+Attendance query failed (attendance-records); retrying once: Error: Failed query: select "id", "staff_id", "date", "check_in_at", "check_in_time", "sign_out_at", "sign_out_time", "sign_out_network_ip", "sign_out_user_agent", "status", "source", "network_ip", "user_agent", "computed_amount", "reason", "created_at", "updated_at" from "attendance_record" where "attendance_record"."date" = $1
+params: 2026-05-02
+    at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+    at async GET (src\app\api\attendance\route.ts:43:57)
+  15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+  16 |   try {
+> 17 |     return await query();
+     |            ^
+  18 |   } catch (error) {
+  19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+  20 |     await wait(250); {
+  query: 'select "id", "staff_id", "date", "check_in_at", "check_in_time", "sign_out_at", "sign_out_time", "sign_out_network_ip", "sign_out_user_agent", "status", "source", "network_ip", "user_agent", "computed_amount", "reason", "created_at", "updated_at" from "attendance_record" where "attendance_record"."date" = $1',
+  params: [ '2026-05-02' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+      at async GET (src\app\api\attendance\route.ts:43:57)
+    15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+    16 |   try {
+  > 17 |     return await query();
+       |            ^
+    18 |   } catch (error) {
+    19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+    20 |     await wait(250); {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+        at async GET (src\app\api\attendance\route.ts:43:57)
+      15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+      16 |   try {
+    > 17 |     return await query();
+         |            ^
+      18 |   } catch (error) {
+      19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+      20 |     await wait(250); {
+      [cause]: [Error]
+    }
+  }
+}
+Attendance query failed (attendance-permissions); retrying once: Error: Failed query: select "approved_by_email", "arrival_window", "date", "expected_end_time", "expected_start_time", "id", "permission_type", "reason", "staff_id", "status" from "attendance_permission" where ("attendance_permission"."date" = $1 and "attendance_permission"."status" = $2)
+params: 2026-05-02,approved
+    at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+    at async GET (src\app\api\attendance\route.ts:43:57)
+  15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+  16 |   try {
+> 17 |     return await query();
+     |            ^
+  18 |   } catch (error) {
+  19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+  20 |     await wait(250); {
+  query: 'select "approved_by_email", "arrival_window", "date", "expected_end_time", "expected_start_time", "id", "permission_type", "reason", "staff_id", "status" from "attendance_permission" where ("attendance_permission"."date" = $1 and "attendance_permission"."status" = $2)',
+  params: [ '2026-05-02', 'approved' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+      at async GET (src\app\api\attendance\route.ts:43:57)
+    15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+    16 |   try {
+  > 17 |     return await query();
+       |            ^
+    18 |   } catch (error) {
+    19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+    20 |     await wait(250); {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async requiredAttendanceQuery (src\app\api\attendance\route.ts:17:12)
+        at async GET (src\app\api\attendance\route.ts:43:57)
+      15 | async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise...
+      16 |   try {
+    > 17 |     return await query();
+         |            ^
+      18 |   } catch (error) {
+      19 |     console.error(`Attendance query failed (${label}); retrying once:`, error);
+      20 |     await wait(250); {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch notifications: Error: Failed query: select "id", "entity_type", "entity_id", "action", "before_json", "after_json", "actor_email", "timestamp" from "audit_event" where ("audit_event"."timestamp" >= $1 and "audit_event"."entity_type" <> $2) order by "audit_event"."timestamp" desc limit $3
+params: 2026-04-02T18:40:26.805Z,notification,50
+    at async getAuditNotifications (src\app\api\notifications\route.ts:597:18)
+    at async GET (src\app\api\notifications\route.ts:910:55)
+  595 |   const since = subDays(new Date(), 30);
+  596 |
+> 597 |   const events = await db.select({
+      |                  ^
+  598 |     id: auditEvent.id,
+  599 |     entityType: auditEvent.entityType,
+  600 |     entityId: auditEvent.entityId, {
+  query: 'select "id", "entity_type", "entity_id", "action", "before_json", "after_json", "actor_email", "timestamp" from "audit_event" where ("audit_event"."timestamp" >= $1 and "audit_event"."entity_type" <> $2) order by "audit_event"."timestamp" desc limit $3',
+  params: [ '2026-04-02T18:40:26.805Z', 'notification', 50 ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getAuditNotifications (src\app\api\notifications\route.ts:597:18)
+      at async GET (src\app\api\notifications\route.ts:910:55)
+    595 |   const since = subDays(new Date(), 30);
+    596 |
+  > 597 |   const events = await db.select({
+        |                  ^
+    598 |     id: auditEvent.id,
+    599 |     entityType: auditEvent.entityType,
+    600 |     entityId: auditEvent.entityId, {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getAuditNotifications (src\app\api\notifications\route.ts:597:18)
+        at async GET (src\app\api\notifications\route.ts:910:55)
+      595 |   const since = subDays(new Date(), 30);
+      596 |
+    > 597 |   const events = await db.select({
+          |                  ^
+      598 |     id: auditEvent.id,
+      599 |     entityType: auditEvent.entityType,
+      600 |     entityId: auditEvent.entityId, {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch notifications: Error: Failed query: select "id", "holiday_note" from "work_calendar" where ("work_calendar"."date" = $1 and "work_calendar"."is_holiday" = $2) limit $3
+params: 2026-05-02,true,1
+    at async getSystemNotifications (src\app\api\notifications\route.ts:624:26)
+    at async GET (src\app\api\notifications\route.ts:910:55)
+  622 |   const notifications: Notification[] = [];
+  623 |
+> 624 |   const [holidayCheck] = await db.select({
+      |                          ^
+  625 |     id: workCalendar.id,
+  626 |     holidayNote: workCalendar.holidayNote,
+  627 |   }) {
+  query: 'select "id", "holiday_note" from "work_calendar" where ("work_calendar"."date" = $1 and "work_calendar"."is_holiday" = $2) limit $3',
+  params: [ '2026-05-02', true, 1 ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getSystemNotifications (src\app\api\notifications\route.ts:624:26)
+      at async GET (src\app\api\notifications\route.ts:910:55)
+    622 |   const notifications: Notification[] = [];
+    623 |
+  > 624 |   const [holidayCheck] = await db.select({
+        |                          ^
+    625 |     id: workCalendar.id,
+    626 |     holidayNote: workCalendar.holidayNote,
+    627 |   }) {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getSystemNotifications (src\app\api\notifications\route.ts:624:26)
+        at async GET (src\app\api\notifications\route.ts:910:55)
+      622 |   const notifications: Notification[] = [];
+      623 |
+    > 624 |   const [holidayCheck] = await db.select({
+          |                          ^
+      625 |     id: workCalendar.id,
+      626 |     holidayNote: workCalendar.holidayNote,
+      627 |   }) {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Failed to fetch notifications: Error: Failed to fetch notifications: 500
+    at NotificationProvider.useCallback[fetchNotifications] (src/contexts/notification-context.tsx:104:15)
+  102 |
+  103 |       if (!response.ok) {
+> 104 |         throw new Error(`Failed to fetch notifications: ${response.status}`);
+      |               ^
+  105 |       }
+  106 |
+  107 |       const data = await response.json(); (src/contexts/notification-context.tsx:114:15)
+[browser] Failed to fetch notifications: Error: Failed to fetch notifications: 500
+    at NotificationProvider.useCallback[fetchNotifications] (src/contexts/notification-context.tsx:104:15)
+  102 |
+  103 |       if (!response.ok) {
+> 104 |         throw new Error(`Failed to fetch notifications: ${response.status}`);
+      |               ^
+  105 |       }
+  106 |
+  107 |       const data = await response.json(); (src/contexts/notification-context.tsx:114:15)
+Failed to fetch notifications: Error: Failed query: select "notification_id" from "notification_read" where "notification_read"."user_id" = $1
+params: user_3C550OqkCR5dIfAUnrnEP62iJKr
+    at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+    at async GET (src\app\api\notifications\route.ts:908:39)
+  574 |
+  575 | async function getNotificationState(userId: string) {
+> 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+      |                ^
+  577 |     .from(notificationRead)
+  578 |     .where(eq(notificationRead.userId, userId));
+  579 | {
+  query: 'select "notification_id" from "notification_read" where "notification_read"."user_id" = $1',
+  params: [ 'user_3C550OqkCR5dIfAUnrnEP62iJKr' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+      at async GET (src\app\api\notifications\route.ts:908:39)
+    574 |
+    575 | async function getNotificationState(userId: string) {
+  > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+        |                ^
+    577 |     .from(notificationRead)
+    578 |     .where(eq(notificationRead.userId, userId));
+    579 | {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+        at async GET (src\app\api\notifications\route.ts:908:39)
+      574 |
+      575 | async function getNotificationState(userId: string) {
+    > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+          |                ^
+      577 |     .from(notificationRead)
+      578 |     .where(eq(notificationRead.userId, userId));
+      579 | {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch notifications: Error: Failed query: select "notification_id" from "notification_read" where "notification_read"."user_id" = $1
+params: user_3C550OqkCR5dIfAUnrnEP62iJKr
+    at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+    at async GET (src\app\api\notifications\route.ts:908:39)
+  574 |
+  575 | async function getNotificationState(userId: string) {
+> 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+      |                ^
+  577 |     .from(notificationRead)
+  578 |     .where(eq(notificationRead.userId, userId));
+  579 | {
+  query: 'select "notification_id" from "notification_read" where "notification_read"."user_id" = $1',
+  params: [ 'user_3C550OqkCR5dIfAUnrnEP62iJKr' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+      at async GET (src\app\api\notifications\route.ts:908:39)
+    574 |
+    575 | async function getNotificationState(userId: string) {
+  > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+        |                ^
+    577 |     .from(notificationRead)
+    578 |     .where(eq(notificationRead.userId, userId));
+    579 | {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+        at async GET (src\app\api\notifications\route.ts:908:39)
+      574 |
+      575 | async function getNotificationState(userId: string) {
+    > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+          |                ^
+      577 |     .from(notificationRead)
+      578 |     .where(eq(notificationRead.userId, userId));
+      579 | {
+      [cause]: [Error]
+    }
+  }
+}
+[browser] Failed to fetch notifications: Error: Failed to fetch notifications: 500
+    at NotificationProvider.useCallback[fetchNotifications] (src/contexts/notification-context.tsx:104:15)
+  102 |
+  103 |       if (!response.ok) {
+> 104 |         throw new Error(`Failed to fetch notifications: ${response.status}`);
+      |               ^
+  105 |       }
+  106 |
+  107 |       const data = await response.json(); (src/contexts/notification-context.tsx:114:15)
+[browser] Failed to fetch notifications: Error: Failed to fetch notifications: 500
+    at NotificationProvider.useCallback[fetchNotifications] (src/contexts/notification-context.tsx:104:15)
+  102 |
+  103 |       if (!response.ok) {
+> 104 |         throw new Error(`Failed to fetch notifications: ${response.status}`);
+      |               ^
+  105 |       }
+  106 |
+  107 |       const data = await response.json(); (src/contexts/notification-context.tsx:114:15)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+[browser] Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview (https://legal-fish-61.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js:12:3216)
+Failed to fetch notifications: Error: Failed query: select "notification_id" from "notification_read" where "notification_read"."user_id" = $1
+params: user_3C550OqkCR5dIfAUnrnEP62iJKr
+    at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+    at async GET (src\app\api\notifications\route.ts:878:39)
+  574 |
+  575 | async function getNotificationState(userId: string) {
+> 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+      |                ^
+  577 |     .from(notificationRead)
+  578 |     .where(eq(notificationRead.userId, userId));
+  579 | {
+  query: 'select "notification_id" from "notification_read" where "notification_read"."user_id" = $1',
+  params: [ 'user_3C550OqkCR5dIfAUnrnEP62iJKr' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+      at async GET (src\app\api\notifications\route.ts:878:39)
+    574 |
+    575 | async function getNotificationState(userId: string) {
+  > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+        |                ^
+    577 |     .from(notificationRead)
+    578 |     .where(eq(notificationRead.userId, userId));
+    579 | {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+        at async GET (src\app\api\notifications\route.ts:878:39)
+      574 |
+      575 | async function getNotificationState(userId: string) {
+    > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+          |                ^
+      577 |     .from(notificationRead)
+      578 |     .where(eq(notificationRead.userId, userId));
+      579 | {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch notifications: Error: Failed query: select "id", "holiday_note" from "work_calendar" where ("work_calendar"."date" = $1 and "work_calendar"."is_holiday" = $2) limit $3
+params: 2026-05-02,true,1
+    at async getSystemNotifications (src\app\api\notifications\route.ts:624:26)
+    at async GET (src\app\api\notifications\route.ts:880:55)
+  622 |   const notifications: Notification[] = [];
+  623 |
+> 624 |   const [holidayCheck] = await db.select({
+      |                          ^
+  625 |     id: workCalendar.id,
+  626 |     holidayNote: workCalendar.holidayNote,
+  627 |   }) {
+  query: 'select "id", "holiday_note" from "work_calendar" where ("work_calendar"."date" = $1 and "work_calendar"."is_holiday" = $2) limit $3',
+  params: [ '2026-05-02', true, 1 ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getSystemNotifications (src\app\api\notifications\route.ts:624:26)
+      at async GET (src\app\api\notifications\route.ts:880:55)
+    622 |   const notifications: Notification[] = [];
+    623 |
+  > 624 |   const [holidayCheck] = await db.select({
+        |                          ^
+    625 |     id: workCalendar.id,
+    626 |     holidayNote: workCalendar.holidayNote,
+    627 |   }) {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getSystemNotifications (src\app\api\notifications\route.ts:624:26)
+        at async GET (src\app\api\notifications\route.ts:880:55)
+      622 |   const notifications: Notification[] = [];
+      623 |
+    > 624 |   const [holidayCheck] = await db.select({
+          |                          ^
+      625 |     id: workCalendar.id,
+      626 |     holidayNote: workCalendar.holidayNote,
+      627 |   }) {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch notifications: Error: Failed query: select "id", "entity_type", "entity_id", "action", "before_json", "after_json", "actor_email", "timestamp" from "audit_event" where ("audit_event"."timestamp" >= $1 and "audit_event"."entity_type" <> $2) order by "audit_event"."timestamp" desc limit $3
+params: 2026-04-02T19:36:17.016Z,notification,50
+    at async getAuditNotifications (src\app\api\notifications\route.ts:597:18)
+    at async GET (src\app\api\notifications\route.ts:880:55)
+  595 |   const since = subDays(new Date(), 30);
+  596 |
+> 597 |   const events = await db.select({
+      |                  ^
+  598 |     id: auditEvent.id,
+  599 |     entityType: auditEvent.entityType,
+  600 |     entityId: auditEvent.entityId, {
+  query: 'select "id", "entity_type", "entity_id", "action", "before_json", "after_json", "actor_email", "timestamp" from "audit_event" where ("audit_event"."timestamp" >= $1 and "audit_event"."entity_type" <> $2) order by "audit_event"."timestamp" desc limit $3',
+  params: [ '2026-04-02T19:36:17.016Z', 'notification', 50 ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getAuditNotifications (src\app\api\notifications\route.ts:597:18)
+      at async GET (src\app\api\notifications\route.ts:880:55)
+    595 |   const since = subDays(new Date(), 30);
+    596 |
+  > 597 |   const events = await db.select({
+        |                  ^
+    598 |     id: auditEvent.id,
+    599 |     entityType: auditEvent.entityType,
+    600 |     entityId: auditEvent.entityId, {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getAuditNotifications (src\app\api\notifications\route.ts:597:18)
+        at async GET (src\app\api\notifications\route.ts:880:55)
+      595 |   const since = subDays(new Date(), 30);
+      596 |
+    > 597 |   const events = await db.select({
+          |                  ^
+      598 |     id: auditEvent.id,
+      599 |     entityType: auditEvent.entityType,
+      600 |     entityId: auditEvent.entityId, {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch notifications: Error: Failed query: select count(*) from "staff" where ("staff"."active" = $1 and "staff"."archived" = $2)
+params: true,false
+    at async getSystemNotifications (src\app\api\notifications\route.ts:656:28)
+    at async GET (src\app\api\notifications\route.ts:880:55)
+  654 |   }
+  655 |
+> 656 |   const staffCountResult = await db.select({ count: count() })
+      |                            ^
+  657 |     .from(staff)
+  658 |     .where(and(eq(staff.active, true), eq(staff.archived, false)));
+  659 |   const activeStaffCount = Number(staffCountResult[0]?.count || 0); {
+  query: 'select count(*) from "staff" where ("staff"."active" = $1 and "staff"."archived" = $2)',
+  params: [ true, false ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getSystemNotifications (src\app\api\notifications\route.ts:656:28)
+      at async GET (src\app\api\notifications\route.ts:880:55)
+    654 |   }
+    655 |
+  > 656 |   const staffCountResult = await db.select({ count: count() })
+        |                            ^
+    657 |     .from(staff)
+    658 |     .where(and(eq(staff.active, true), eq(staff.archived, false)));
+    659 |   const activeStaffCount = Number(staffCountResult[0]?.count || 0); {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getSystemNotifications (src\app\api\notifications\route.ts:656:28)
+        at async GET (src\app\api\notifications\route.ts:880:55)
+      654 |   }
+      655 |
+    > 656 |   const staffCountResult = await db.select({ count: count() })
+          |                            ^
+      657 |     .from(staff)
+      658 |     .where(and(eq(staff.active, true), eq(staff.archived, false)));
+      659 |   const activeStaffCount = Number(staffCountResult[0]?.count || 0); {
+      [cause]: [Error]
+    }
+  }
+}

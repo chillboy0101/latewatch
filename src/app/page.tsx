@@ -9,13 +9,13 @@ import { applyThemePreference, getIsDarkTheme, subscribeThemeChange } from '@/li
 
 const portals = [
   {
-    description: 'Staff check-in',
+    description: 'Staff check-in and check-out',
     href: '/check-in',
     icon: LogIn,
     label: 'Attendance Portal',
   },
   {
-    description: 'Manage staff, entries, reports, and audits',
+    description: 'Manage staff, attendance, exports, and audits',
     href: '/dashboard',
     icon: LayoutDashboard,
     label: 'Admin Portal',
@@ -36,14 +36,18 @@ export default function Home() {
   return (
     <main className="relative flex min-h-dvh items-center justify-center bg-background px-4 py-8 text-foreground">
       <Button
-        variant="ghost"
-        size="icon"
-        className="absolute right-4 top-4 z-10 h-10 w-10 rounded-full border border-border bg-card text-foreground shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground sm:right-6 sm:top-6"
-        onClick={toggleTheme}
+        variant="outline"
+        size="sm"
+        className="fixed right-4 top-4 z-20 h-10 gap-2 rounded-full bg-card/95 px-4 text-foreground shadow-sm backdrop-blur transition-colors hover:bg-background hover:text-foreground focus-visible:ring-primary/30 sm:right-6 sm:top-6"
+        onClick={(event) => {
+          toggleTheme();
+          event.currentTarget.blur();
+        }}
         title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
         aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
       >
-        {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+        {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        <span>{isDark ? 'Light' : 'Dark'}</span>
       </Button>
 
       <div className="w-full max-w-3xl">

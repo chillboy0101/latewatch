@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { staff } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { tryWriteAuditEvent } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +39,20 @@ export async function POST() {
         results.push(`✗ not found: ${STAFF_ORDER[i]}`);
       }
     }
+
+    await tryWriteAuditEvent({
+      entityType: 'system',
+      entityId: 'staff-display-order',
+      action: 'UPDATE',
+      before: null,
+      after: {
+        operation: 'staff display order seed',
+        orderedStaffCount: STAFF_ORDER.length,
+        results,
+      },
+      reason: 'staff-order-seed',
+    });
+
     return NextResponse.json({ message: 'Done', results });
   } catch (error) {
     console.error('Seed failed:', error);

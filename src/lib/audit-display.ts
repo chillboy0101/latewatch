@@ -60,7 +60,10 @@ export function formatAuditFieldLabel(field: string) {
   if (field === 'officeNetworkStatus') return 'Office Network';
   if (field === 'permissionType') return 'Permission Type';
   if (field === 'phone') return 'Staff Phone';
+  if (field === 'orderedStaffCount') return 'Staff Ordered';
+  if (field === 'operation') return 'Operation';
   if (field === 'registeredIp') return 'Registered IP';
+  if (field === 'result') return 'Result';
   if (field === 'lastSeenIp') return 'Last Seen IP';
   if (field === 'registeredAt') return 'Registered At';
   if (field === 'lastSeenAt') return 'Last Seen At';
@@ -194,6 +197,10 @@ export function getAuditTargetName(record: Pick<AuditDisplayRecord, 'afterJson' 
 
   if (record.entityType === 'staff_device') {
     return formatAuditValue(payload.staffName) || record.entityId;
+  }
+
+  if (record.entityType === 'system') {
+    return formatAuditValue(payload.operation) || record.entityId;
   }
 
   return record.entityId;

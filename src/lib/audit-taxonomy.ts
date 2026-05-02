@@ -72,10 +72,6 @@ export function getAuditOperation(
   const afterPayload = toPayload(after);
 
   if (entityType === 'staff') {
-    if (normalizedAction === 'DELETE') {
-      return 'ARCHIVE';
-    }
-
     if (
       normalizedAction === 'UPDATE' &&
       typeof beforePayload?.archived === 'boolean' &&

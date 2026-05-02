@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { cn } from '@/lib/utils';
 import {
+  Home,
   LayoutDashboard,
   Users,
   Table2,
@@ -58,6 +59,15 @@ export function Sidebar() {
           );
         })}
       </nav>
+      <div className="border-t border-border px-3 py-3">
+        <Link
+          href="/"
+          className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-background hover:text-foreground"
+        >
+          <Home className="h-5 w-5" />
+          Main Portal
+        </Link>
+      </div>
     </div>
   );
 }

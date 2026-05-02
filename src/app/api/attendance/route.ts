@@ -8,6 +8,29 @@ import { shouldAlertNoSignOut } from '@/lib/work-hours';
 
 export const dynamic = 'force-dynamic';
 
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function requiredAttendanceQuery<T>(label: string, query: () => Promise<T>): Promise<T> {
+  try {
+    return await query();
+  } catch (error) {
+    console.error(`Attendance query failed (${label}); retrying once:`, error);
+    await wait(250);
+    return query();
+  }
+}
+
+async function optionalAttendanceQuery<T>(label: string, fallback: T, query: () => Promise<T>): Promise<T> {
+  try {
+    return await requiredAttendanceQuery(label, query);
+  } catch (error) {
+    console.error(`Optional attendance query failed (${label}); using fallback:`, error);
+    return fallback;
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url);
@@ -17,8 +40,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
     }
 
-    const [staffRows, attendanceRows, attemptRows, permissionRows, deviceRows, network] = await Promise.all([
-      db.select({
+    const [staffRows, attendanceRows, permissionRows] = await Promise.all([
+      requiredAttendanceQuery('staff', () => db.select({
         id: staff.id,
         fullName: staff.fullName,
         email: staff.email,
@@ -29,16 +52,11 @@ export async function GET(request: NextRequest) {
       })
         .from(staff)
         .where(and(eq(staff.active, true), eq(staff.archived, false)))
-        .orderBy(asc(staff.displayOrder), asc(staff.fullName)),
-      db.select()
+        .orderBy(asc(staff.displayOrder), asc(staff.fullName))),
+      requiredAttendanceQuery('attendance-records', () => db.select()
         .from(attendanceRecord)
-        .where(eq(attendanceRecord.date, date)),
-      db.select()
-        .from(attendanceAttempt)
-        .where(eq(attendanceAttempt.date, date))
-        .orderBy(desc(attendanceAttempt.createdAt))
-        .limit(25),
-      db.select({
+        .where(eq(attendanceRecord.date, date))),
+      requiredAttendanceQuery('attendance-permissions', () => db.select({
         approvedByEmail: attendancePermission.approvedByEmail,
         arrivalWindow: attendancePermission.arrivalWindow,
         date: attendancePermission.date,
@@ -51,15 +69,23 @@ export async function GET(request: NextRequest) {
         status: attendancePermission.status,
       })
         .from(attendancePermission)
-        .where(and(eq(attendancePermission.date, date), eq(attendancePermission.status, 'approved'))),
-      db.select({
+        .where(and(eq(attendancePermission.date, date), eq(attendancePermission.status, 'approved')))),
+    ]);
+
+    const [attemptRows, deviceRows, network] = await Promise.all([
+      optionalAttendanceQuery('attendance-attempts', [], () => db.select()
+        .from(attendanceAttempt)
+        .where(eq(attendanceAttempt.date, date))
+        .orderBy(desc(attendanceAttempt.createdAt))
+        .limit(25)),
+      optionalAttendanceQuery('staff-devices', [], () => db.select({
         id: staffDevice.id,
         lastSeenAt: staffDevice.lastSeenAt,
         registeredAt: staffDevice.registeredAt,
         staffId: staffDevice.staffId,
       })
-        .from(staffDevice),
-      getActiveOfficeNetwork(),
+        .from(staffDevice)),
+      optionalAttendanceQuery('office-network', null, getActiveOfficeNetwork),
     ]);
 
     const attendanceByStaffId = new Map(attendanceRows.map((row) => [row.staffId, row]));
@@ -114,7 +140,11 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const currentIpInfo = await resolveClientIpInfo(request);
+    const currentIpInfo = await optionalAttendanceQuery('current-ip', {
+      ip: 'unknown',
+      isPublic: false,
+      source: 'local' as const,
+    }, () => resolveClientIpInfo(request));
     const currentIp = currentIpInfo.ip;
     const totals = rows.reduce((acc, row) => {
       if (row.status === 'present') acc.present += 1;
