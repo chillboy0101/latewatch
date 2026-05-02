@@ -224,10 +224,10 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 @keyframes auth-watermark-mobile-float {
   0%,
   100% {
-    transform: translate3d(-0.4rem, 0.4rem, 0) scale(1);
+    transform: translate3d(-0.4rem, 0.4rem, 0) scale(2);
   }
   50% {
-    transform: translate3d(0.45rem, -0.45rem, 0) scale(1.02);
+    transform: translate3d(0.45rem, -0.45rem, 0) scale(2.04);
   }
 }
 
@@ -309,8 +309,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 
 @media (max-width: 640px), (max-height: 720px) and (max-width: 900px) {
   .auth-watermark-mark {
-    width: 44rem;
-    width: max(44rem, 142vh);
+    width: clamp(50rem, 235vw, 58rem);
     max-width: none;
     opacity: 0.72;
     animation-name: auth-watermark-mobile-float;
