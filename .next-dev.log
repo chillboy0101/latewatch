@@ -5603,3 +5603,5 @@
  GET /api/notifications?limit=50 200 in 2.4s (next.js: 6ms, proxy.ts: 20ms, application-code: 2.4s)
  GET /api/notifications?limit=50 200 in 2.2s (next.js: 4ms, proxy.ts: 14ms, application-code: 2.2s)
  GET /api/notifications?limit=50 200 in 3.2s (next.js: 4ms, proxy.ts: 13ms, application-code: 3.1s)
+ GET /api/notifications?limit=50 200 in 2.8s (next.js: 4ms, proxy.ts: 13ms, application-code: 2.7s)
+ GET /api/notifications?limit=50 200 in 2.4s (next.js: 4ms, proxy.ts: 14ms, application-code: 2.4s)
