@@ -1,4 +1,4 @@
-import { SignIn } from '@clerk/nextjs';
+import { ClerkAuthCard } from '@/components/auth/clerk-auth-card';
 
 export default function Page() {
   return (
@@ -16,32 +16,7 @@ export default function Page() {
 
       {/* Clerk SignIn Component - centered */}
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4">
-        <SignIn
-          routing="path"
-          path="/sign-in"
-          signUpUrl="/sign-up"
-          fallbackRedirectUrl="/"
-          appearance={{
-            layout: {
-              logoPlacement: 'none',
-              socialButtonsPlacement: 'bottom',
-              socialButtonsVariant: 'blockButton',
-            },
-            variables: {
-              borderRadius: '0.5rem',
-              fontFamily: 'inherit',
-            },
-            elements: {
-              rootBox: 'mx-auto w-full max-w-[400px]',
-              card: 'bg-card border border-border shadow-xl rounded-xl',
-              formButtonPrimary:
-                'bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg transition-colors',
-              socialButtonsBlockButton:
-                'bg-card hover:bg-accent border border-border text-foreground rounded-lg transition-colors',
-              socialButtonsProviderIcon: 'hidden',
-            },
-          }}
-        />
+        <ClerkAuthCard mode="sign-in" />
       </div>
     </div>
   );
