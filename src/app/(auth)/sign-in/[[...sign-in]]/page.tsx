@@ -1,8 +1,9 @@
+import { AuthWatermark } from '@/components/auth/auth-watermark';
 import { ClerkAuthCard } from '@/components/auth/clerk-auth-card';
 
 export default function Page() {
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-background">
+    <div className="relative min-h-dvh w-screen overflow-hidden bg-background">
       {/* Background gradient */}
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-primary/10" />
 
@@ -14,8 +15,10 @@ export default function Page() {
         }}
       />
 
+      <AuthWatermark />
+
       {/* Clerk SignIn Component - centered */}
-      <div className="relative z-10 flex min-h-screen items-center justify-center px-4">
+      <div className="relative z-10 flex min-h-dvh w-full items-center justify-center px-4 py-6">
         <ClerkAuthCard mode="sign-in" />
       </div>
     </div>

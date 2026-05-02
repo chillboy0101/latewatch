@@ -15,10 +15,10 @@ export default function manifest(): MetadataRoute.Manifest {
     lang: "en-GH",
     icons: [
       {
-        src: getSiteUrl("/icon"),
-        sizes: "192x192",
+        src: getSiteUrl("/latewatch-logo.png"),
+        sizes: "1024x1024",
         type: "image/png",
-        purpose: "maskable",
+        purpose: "any",
       },
       {
         src: getSiteUrl("/apple-icon"),

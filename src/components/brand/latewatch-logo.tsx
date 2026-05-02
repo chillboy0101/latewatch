@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import { cn } from '@/lib/utils';
 
 type LateWatchLogoProps = {
@@ -13,6 +14,12 @@ const markSizes = {
   sm: 'h-8 w-8',
 };
 
+const imageSizes = {
+  lg: '44px',
+  md: '36px',
+  sm: '32px',
+};
+
 export function LateWatchMark({
   className,
   size = 'md',
@@ -23,15 +30,16 @@ export function LateWatchMark({
   return (
     <span
       aria-hidden="true"
-      className={cn(
-        'relative grid shrink-0 place-items-center rounded-md bg-primary/10 text-primary ring-1 ring-primary/15',
-        markSizes[size],
-        className,
-      )}
+      className={cn('relative block shrink-0 overflow-hidden', markSizes[size], className)}
     >
-      <span className="absolute inset-[18%] rounded-full border-2 border-primary/20 border-r-primary/50 border-t-primary" />
-      <span className="h-[34%] w-[34%] rounded-full bg-primary shadow-[0_0_0_0.28rem_color-mix(in_srgb,var(--primary)_14%,transparent)]" />
-      <span className="absolute right-[18%] top-[18%] h-[18%] w-[18%] rounded-full border border-background bg-primary shadow-[0_0_0_2px_color-mix(in_srgb,var(--primary)_22%,transparent)]" />
+      <Image
+        src="/latewatch-logo.png"
+        alt=""
+        fill
+        sizes={imageSizes[size]}
+        className="object-contain"
+        draggable={false}
+      />
     </span>
   );
 }

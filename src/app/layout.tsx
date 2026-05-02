@@ -1,9 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
-import { ClerkProvider } from "@clerk/nextjs";
+import { ClerkThemeProvider } from "@/components/auth/clerk-theme-provider";
 import { AppShell } from "@/components/layout/app-shell";
 import { NotificationProvider } from "@/contexts/notification-context";
-import { createClerkAppearance } from "@/lib/clerk-appearance";
 import {
   SITE_DESCRIPTION,
   SITE_KEYWORDS,
@@ -46,7 +45,10 @@ export const metadata: Metadata = {
     telephone: false,
   },
   icons: {
-    icon: [{ url: "/icon", sizes: "192x192", type: "image/png" }],
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/latewatch-logo.png", sizes: "1024x1024", type: "image/png" },
+    ],
     apple: [{ url: "/apple-icon", sizes: "180x180", type: "image/png" }],
   },
   manifest: "/manifest.webmanifest",
@@ -99,21 +101,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider appearance={createClerkAppearance()}>
-      <html
-        lang="en"
-        className={`${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
-        suppressHydrationWarning
-      >
-        <head>
-          <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-        </head>
-        <body className="min-h-full flex flex-col font-sans">
+    <html
+      lang="en"
+      className={`${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
+      <body className="min-h-full flex flex-col font-sans">
+        <ClerkThemeProvider>
           <NotificationProvider>
             <AppShell>{children}</AppShell>
           </NotificationProvider>
-        </body>
-      </html>
-    </ClerkProvider>
+        </ClerkThemeProvider>
+      </body>
+    </html>
   );
 }

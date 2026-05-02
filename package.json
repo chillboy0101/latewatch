@@ -11,6 +11,7 @@
     "clerk:role": "node scripts/set-clerk-role.mjs"
   },
   "dependencies": {
+    "@clerk/themes": "^2.4.57",
     "@types/qrcode": "^1.5.6",
     "ably": "^2.10.1",
     "googleapis": "^171.4.0",

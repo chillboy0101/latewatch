@@ -13,7 +13,7 @@ export default function Icon() {
       <div
         style={{
           alignItems: "center",
-          background: "#0f172a",
+          background: "transparent",
           display: "flex",
           height: "100%",
           justifyContent: "center",
@@ -25,43 +25,45 @@ export default function Icon() {
             alignItems: "center",
             background: "#dbeafe",
             border: "1px solid #bfdbfe",
-            borderRadius: 32,
+            borderRadius: 20,
             display: "flex",
-            height: 152,
+            height: 160,
             justifyContent: "center",
             position: "relative",
-            width: 152,
+            width: 160,
           }}
         >
           <div
             style={{
-              border: "10px solid #93c5fd",
+              border: "9px solid #bfdbfe",
               borderRadius: 999,
               borderRightColor: "#60a5fa",
               borderTopColor: "#2563eb",
-              height: 94,
+              height: 102,
               position: "absolute",
-              width: 94,
+              width: 102,
             }}
           />
           <div
             style={{
               background: "#2563eb",
               borderRadius: 999,
-              height: 46,
-              width: 46,
+              boxShadow: "0 0 0 18px rgba(37, 99, 235, 0.14)",
+              height: 54,
+              width: 54,
             }}
           />
           <div
             style={{
               background: "#2563eb",
-              border: "4px solid #dbeafe",
+              border: "5px solid #ffffff",
               borderRadius: 999,
-              height: 28,
+              boxShadow: "0 0 0 9px rgba(37, 99, 235, 0.18)",
+              height: 29,
               position: "absolute",
-              right: 30,
-              top: 30,
-              width: 28,
+              right: 29,
+              top: 29,
+              width: 29,
             }}
           />
         </div>
