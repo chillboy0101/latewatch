@@ -1,6 +1,11 @@
+'use client';
+
 import Link from 'next/link';
-import { LayoutDashboard, LogIn } from 'lucide-react';
+import { LayoutDashboard, LogIn, Moon, Sun } from 'lucide-react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
+import { Button } from '@/components/ui/button';
+import { applyThemePreference, getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 
 const portals = [
   {
@@ -18,8 +23,29 @@ const portals = [
 ];
 
 export default function Home() {
+  const isDark = useSyncExternalStore(subscribeThemeChange, getIsDarkTheme, () => true);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDark);
+  }, [isDark]);
+
+  function toggleTheme() {
+    applyThemePreference(isDark ? 'light' : 'dark');
+  }
+
   return (
     <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-8 text-foreground">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="absolute right-6 top-6 h-10 w-10"
+        onClick={toggleTheme}
+        title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+        aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      >
+        {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+      </Button>
+
       <div className="w-full max-w-3xl">
         <LateWatchLogo
           className="mb-8 justify-center"

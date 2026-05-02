@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card } from '@/components/ui/card';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { addDays, format, isValid, parseISO } from 'date-fns';
-import { Save, CheckCircle, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Save, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { computePenalty } from '@/lib/penalty-calculator';
 
 interface StaffMember {
@@ -38,6 +38,10 @@ interface ExistingEntry {
   didNotSignOut: boolean | null;
   computedAmount: string | number | null;
   reason: string | null;
+}
+
+function normalizeTimeValue(value: string | null | undefined) {
+  return value ? value.slice(0, 5) : '';
 }
 
 export default function EntriesPage() {
@@ -87,7 +91,7 @@ export default function EntriesPage() {
         const existing = entriesList.find((e) => e.staffId === s.id);
         return {
           staffId: s.id,
-          arrivalTime: existing?.arrivalTime || '',
+          arrivalTime: normalizeTimeValue(existing?.arrivalTime),
           didNotSignOut: existing?.didNotSignOut || false,
           amount: existing ? parseFloat(String(existing.computedAmount || '0')) : 0,
           reason: existing?.reason || '',
@@ -315,7 +319,7 @@ export default function EntriesPage() {
                 <tr>
                   <th className="w-12 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">#</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</th>
-                  <th className="w-32 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Time</th>
+                  <th className="w-44 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Time</th>
                   <th className="w-28 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Amount</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Reason</th>
                   <th className="w-24 px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wide">No Sign Out</th>
@@ -340,15 +344,9 @@ export default function EntriesPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <Input
-                          type="time"
-                          placeholder="HH:MM"
+                        <TimeSelector
                           value={entry.arrivalTime}
-                          onChange={(e) =>
-                            updateEntry(entry.staffId, 'arrivalTime', e.target.value)
-                          }
-                          className="h-8 w-24 font-mono"
-                          maxLength={5}
+                          onChange={(value) => updateEntry(entry.staffId, 'arrivalTime', value)}
                           disabled={entriesDisabled}
                         />
                       </td>
@@ -405,5 +403,55 @@ export default function EntriesPage() {
         </Card>
       </div>
     </DashboardLayout>
+  );
+}
+
+function TimeSelector({
+  disabled,
+  onChange,
+  value,
+}: {
+  disabled?: boolean;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function openNativePicker() {
+    const input = inputRef.current;
+    if (!input || disabled) return;
+
+    try {
+      input.showPicker?.();
+    } catch {
+      input.focus();
+      input.click();
+    }
+  }
+
+  return (
+    <div className="relative w-36">
+      <Input
+        ref={inputRef}
+        aria-label="Arrival time"
+        className="latewatch-native-time-input h-9 w-full pr-9 font-mono text-sm font-medium [color-scheme:light] dark:[color-scheme:dark]"
+        disabled={disabled}
+        max="18:00"
+        min="06:00"
+        step={300}
+        type="time"
+        value={normalizeTimeValue(value)}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <button
+        aria-label="Open time picker"
+        className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/35 disabled:pointer-events-none disabled:opacity-50"
+        disabled={disabled}
+        type="button"
+        onClick={openNativePicker}
+      >
+        <Clock className="h-4 w-4" />
+      </button>
+    </div>
   );
 }

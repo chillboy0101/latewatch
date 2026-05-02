@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 
 const GOOGLE_GHANA_HOLIDAYS_EMBED =
-  'https://calendar.google.com/calendar/embed?src=en.gh%23holiday%40group.v.calendar.google.com&ctz=Africa%2FAccra&showTitle=0&showPrint=0&showCalendars=0&showTz=0&mode=MONTH';
+  'https://calendar.google.com/calendar/embed?src=en.gh%23holiday%40group.v.calendar.google.com&ctz=Africa%2FAccra&showTitle=0&showPrint=0&showCalendars=0&showTz=0&mode=MONTH&bgcolor=%23ffffff';
 
 function useDarkTheme() {
   const [isDark, setIsDark] = useState(false);
@@ -27,13 +27,7 @@ function useDarkTheme() {
 
 export default function CalendarPage() {
   const isDark = useDarkTheme();
-  const [loadedCalendarSrc, setLoadedCalendarSrc] = useState('');
-  const calendarSrc = useMemo(() => {
-    const background = isDark ? '111827' : 'ffffff';
-
-    return `${GOOGLE_GHANA_HOLIDAYS_EMBED}&bgcolor=%23${background}`;
-  }, [isDark]);
-  const calendarLoaded = loadedCalendarSrc === calendarSrc;
+  const [calendarLoaded, setCalendarLoaded] = useState(false);
 
   return (
     <DashboardLayout title="Calendar">
@@ -47,12 +41,11 @@ export default function CalendarPage() {
           />
         )}
         <iframe
-          key={calendarSrc}
           title="Google Ghana public holidays calendar"
-          src={calendarSrc}
+          src={GOOGLE_GHANA_HOLIDAYS_EMBED}
           className={`google-calendar-frame h-full w-full border-0 bg-background transition-opacity duration-200 ${isDark ? 'google-calendar-frame-dark' : ''} ${calendarLoaded ? 'opacity-100' : 'opacity-0'}`}
           loading="lazy"
-          onLoad={() => setLoadedCalendarSrc(calendarSrc)}
+          onLoad={() => setCalendarLoaded(true)}
           scrolling="no"
         />
       </div>

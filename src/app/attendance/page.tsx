@@ -1,8 +1,8 @@
 'use client';
 
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { AlertTriangle, CheckCircle2, ChevronDown, Clock, FileText, Loader2, Printer, QrCode, RotateCcw, ShieldCheck, Smartphone, Trash2, UserRound, Wifi, XCircle } from 'lucide-react';
+import { AlertTriangle, Calendar, CheckCircle2, ChevronDown, Clock, FileText, Loader2, Printer, RotateCcw, Search, ShieldCheck, Smartphone, Trash2, UserRound, XCircle } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 
 type AttendanceStatus = 'present' | 'late' | 'excused' | 'expected_late' | 'permission_overdue' | 'no_sign_out' | 'not_checked_in';
 type AttendanceFilter = 'all' | AttendanceStatus;
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 interface AttendancePermission {
   approvedByEmail: string;
@@ -105,6 +106,66 @@ function todayKey() {
   return format(new Date(), 'yyyy-MM-dd');
 }
 
+function getDaysInMonth(year: number, month: number) {
+  return new Date(year, month, 0).getDate();
+}
+
+function isValidCompleteDate(value: string) {
+  if (!ISO_DATE_PATTERN.test(value)) return false;
+
+  const [yearText, monthText, dayText] = value.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return false;
+  if (month < 1 || month > 12) return false;
+
+  return day >= 1 && day <= getDaysInMonth(year, month);
+}
+
+function formatDateInput(value: string, previousValue = '') {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+
+  if (digits.length <= 4) return digits;
+
+  const yearText = digits.slice(0, 4);
+  const year = Number(yearText);
+  const rest = digits.slice(4);
+  let monthText = '';
+  let dayText = '';
+
+  if (rest.length === 1) {
+    const monthDigit = Number(rest);
+    monthText = monthDigit > 1 ? `0${rest}` : rest;
+  } else {
+    const monthCandidate = Number(rest.slice(0, 2));
+
+    if (monthCandidate >= 1 && monthCandidate <= 12) {
+      monthText = rest.slice(0, 2);
+      dayText = rest.slice(2, 4);
+    } else {
+      const firstMonthDigit = Number(rest[0]);
+      if (firstMonthDigit < 2 || firstMonthDigit > 9) return previousValue;
+
+      monthText = `0${rest[0]}`;
+      dayText = rest.slice(1, 3);
+    }
+  }
+
+  if (monthText.length === 2) {
+    const month = Number(monthText);
+    if (month < 1 || month > 12) return previousValue;
+
+    if (dayText.length === 2) {
+      const day = Number(dayText);
+      if (day < 1 || day > getDaysInMonth(year, month)) return previousValue;
+    }
+  }
+
+  return `${yearText}-${monthText}${dayText ? `-${dayText}` : ''}`;
+}
+
 function statusLabel(status: AttendanceStatus) {
   if (status === 'present') return 'Present';
   if (status === 'late') return 'Late';
@@ -126,7 +187,7 @@ function statusClass(status: AttendanceStatus) {
 }
 
 export default function AttendancePage() {
-  const [selectedDate, setSelectedDate] = useState(todayKey());
+  const [dateInput, setDateInput] = useState(todayKey());
   const [activeFilter, setActiveFilter] = useState<AttendanceFilter>('all');
   const [data, setData] = useState<AttendanceResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -139,15 +200,18 @@ export default function AttendancePage() {
   const [savingPermission, setSavingPermission] = useState(false);
   const [deletingPermissionId, setDeletingPermissionId] = useState<string | null>(null);
   const [resettingDeviceStaffId, setResettingDeviceStaffId] = useState<string | null>(null);
-  const [savingNetwork, setSavingNetwork] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  const appliedDate = isValidCompleteDate(dateInput) ? dateInput : '';
+  const attendanceDate = appliedDate || todayKey();
 
   const fetchAttendance = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const response = await fetch(`/api/attendance?date=${selectedDate}`, { cache: 'no-store' });
+      const response = await fetch(`/api/attendance?date=${attendanceDate}`, { cache: 'no-store' });
       if (!response.ok) throw new Error(`Attendance request failed (${response.status})`);
       setData(await response.json());
     } catch (err) {
@@ -157,7 +221,7 @@ export default function AttendancePage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedDate]);
+  }, [attendanceDate]);
 
   useEffect(() => {
     fetchAttendance();
@@ -206,29 +270,6 @@ export default function AttendancePage() {
     };
   }, [fetchAttendance]);
 
-  async function setCurrentNetwork() {
-    setSavingNetwork(true);
-    setError(null);
-
-    try {
-      const response = await fetch('/api/attendance/network', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Office WiFi' }),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Network update failed (${response.status})`);
-      }
-      await fetchAttendance();
-    } catch (err) {
-      console.error('Failed to update office network:', err);
-      setError(err instanceof Error ? err.message : 'Could not update office network');
-    } finally {
-      setSavingNetwork(false);
-    }
-  }
-
   async function savePermission() {
     if (!permissionStaffId || !permissionReason.trim()) {
       setError('Select a staff member and enter the permission reason.');
@@ -242,7 +283,7 @@ export default function AttendancePage() {
       const response = await fetch('/api/attendance/permissions', {
         body: JSON.stringify({
           arrivalWindow: permissionWindow,
-          date: selectedDate,
+          date: attendanceDate,
           expectedEndTime: permissionWindow === 'specific_time' ? permissionExpectedTime : null,
           permissionType,
           reason: permissionReason,
@@ -376,12 +417,21 @@ export default function AttendancePage() {
       excused: 5,
       present: 6,
     };
+    const query = searchQuery.trim().toLowerCase();
     const rows = activeFilter === 'all'
       ? data?.rows || []
       : (data?.rows || []).filter((row) => row.status === activeFilter);
+    const filteredRows = query
+      ? rows.filter((row) => [
+          row.staff.fullName,
+          row.staff.email || '',
+          row.staff.department || '',
+          row.staff.unit || '',
+        ].join(' ').toLowerCase().includes(query))
+      : rows;
 
-    return [...rows].sort((a, b) => rank[a.status] - rank[b.status] || a.staff.fullName.localeCompare(b.staff.fullName));
-  }, [activeFilter, data?.rows]);
+    return [...filteredRows].sort((a, b) => rank[a.status] - rank[b.status] || a.staff.fullName.localeCompare(b.staff.fullName));
+  }, [activeFilter, data?.rows, searchQuery]);
 
   return (
     <DashboardLayout title="Attendance">
@@ -442,79 +492,8 @@ export default function AttendancePage() {
           />
         </div>
 
-        <Card>
-          <div className="grid gap-5 p-5 xl:grid-cols-[minmax(13rem,16rem)_minmax(0,1fr)] xl:items-end">
-            <div className="flex min-w-0 items-center gap-3 xl:self-center">
-              <div className={cn(
-                'flex h-10 w-10 shrink-0 items-center justify-center rounded-md border',
-                data?.network.isOfficeNetwork
-                  ? 'border-success/25 bg-success/10 text-success'
-                  : 'border-warning/25 bg-warning/10 text-warning',
-              )}>
-                <Wifi className="h-5 w-5" />
-              </div>
-              <div className="flex min-w-0 items-center">
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <h2
-                    className="text-lg font-semibold leading-none"
-                    title={data?.network.updatedAt
-                      ? `Updated ${new Date(data.network.updatedAt).toLocaleString()} by ${data.network.updatedByEmail || 'admin'}`
-                      : undefined}
-                  >
-                    Office WiFi
-                  </h2>
-                  {data?.network.isOfficeNetwork ? (
-                    <VerifiedBadge />
-                  ) : (
-                    <UnverifiedBadge />
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="grid min-w-0 gap-3 sm:grid-cols-2 sm:items-end lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_11rem_auto]">
-              <NetworkMetaChip label="Saved IP" value={formatNetworkIp(data?.network.allowedIp || 'Not saved')} />
-              <NetworkMetaChip label="Current IP" value={formatNetworkIp(data?.network.currentIp || '-')} />
-              <div>
-                <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Attendance Date</label>
-                <Input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(event) => setSelectedDate(event.target.value)}
-                  className="h-10 w-full"
-                />
-              </div>
-              <Button className="h-10 gap-2 md:self-end" onClick={setCurrentNetwork} disabled={savingNetwork}>
-                {savingNetwork ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                Set This Network
-              </Button>
-            </div>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
-            <div className="flex min-w-0 items-center gap-4">
-              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded bg-white" aria-label="Permanent attendance QR code">
-                {qrData?.qrSvg ? (
-                  <div className="h-full w-full [&_svg]:h-full [&_svg]:w-full" dangerouslySetInnerHTML={{ __html: qrData.qrSvg }} />
-                ) : (
-                  <QrCode className="h-8 w-8 text-muted-foreground" />
-                )}
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-base font-semibold">Attendance QR</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Scan to check in or check out.</p>
-              </div>
-            </div>
-            <Button className="h-10 gap-2 md:self-center" onClick={printOfficeQr} disabled={!qrData?.qrSvg}>
-              <Printer className="h-4 w-4" />
-              Print QR
-            </Button>
-          </div>
-        </Card>
-
         <Card className="overflow-hidden">
-          <div className="grid gap-3 p-5 lg:grid-cols-[minmax(15rem,1fr)_11rem_13rem_minmax(240px,1fr)_auto] lg:items-end">
+          <div className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-[minmax(13rem,1.1fr)_10.5rem_12rem_minmax(12rem,1fr)_7.5rem] xl:items-end">
             <SelectField
               icon={<UserRound className="h-3.5 w-3.5" />}
               label="Staff"
@@ -538,7 +517,7 @@ export default function AttendancePage() {
                 <option value="late_arrival">Late arrival</option>
                 <option value="absence">Excused absence</option>
             </SelectField>
-            <div className="space-y-2">
+            <div className="min-w-0 space-y-2">
               <SelectField
                 disabled={permissionType === 'absence'}
                 icon={<Clock className="h-3.5 w-3.5" />}
@@ -559,7 +538,7 @@ export default function AttendancePage() {
                 />
               )}
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase text-muted-foreground">
                 <FileText className="h-3.5 w-3.5" />
                 Reason
@@ -571,7 +550,7 @@ export default function AttendancePage() {
                 onChange={(event) => setPermissionReason(event.target.value)}
               />
             </div>
-            <Button className="h-11 gap-2 px-5" onClick={savePermission} disabled={savingPermission}>
+            <Button className="h-11 w-full gap-2 px-4" onClick={savePermission} disabled={savingPermission}>
               {savingPermission ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
               Approve
             </Button>
@@ -602,6 +581,31 @@ export default function AttendancePage() {
               ))}
             </div>
           )}
+        </Card>
+
+        <Card>
+          <div className="grid gap-4 p-5 xl:grid-cols-[minmax(18rem,1fr)_13rem_7.5rem] xl:items-end">
+            <div className="min-w-0">
+              <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Search</label>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search staff or email"
+                  className="h-10 pl-9"
+                />
+              </div>
+            </div>
+            <AttendanceDateField
+              value={dateInput}
+              onChange={(value) => setDateInput((current) => formatDateInput(value, current))}
+            />
+            <Button className="h-11 w-full gap-2 px-4 xl:self-end" onClick={printOfficeQr} disabled={!qrData?.qrSvg}>
+              <Printer className="h-4 w-4" />
+              Print QR
+            </Button>
+          </div>
         </Card>
 
         {error && (
@@ -758,13 +762,13 @@ function SummaryCard({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        'rounded-lg border border-border bg-card text-foreground shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary/35',
+        'min-h-24 rounded-lg border border-border bg-card text-foreground shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary/35',
         active && 'border-primary/60 bg-primary/5',
       )}
     >
-      <div className="p-5 text-center">
+      <div className="flex h-full min-h-24 flex-col items-center justify-center px-3 py-4 text-center">
         <p className={cn(
-          'font-mono text-2xl font-bold',
+          'font-mono text-2xl font-bold leading-none',
           tone === 'success' && 'text-success',
           tone === 'warning' && 'text-warning',
           tone === 'danger' && 'text-danger',
@@ -772,65 +776,61 @@ function SummaryCard({
         )}>
           {value}
         </p>
-        <p className="mt-1 text-xs text-muted-foreground">{label}</p>
+        <p className="mt-2 min-h-8 max-w-24 text-balance text-xs leading-4 text-muted-foreground">{label}</p>
       </div>
     </button>
   );
 }
 
-function formatNetworkIp(value: string) {
-  if (value === '::1') return 'Localhost (::1)';
-  if (value === '127.0.0.1') return 'Localhost (127.0.0.1)';
-  if (value === 'local') return 'Localhost';
-  return value;
-}
+function AttendanceDateField({
+  onChange,
+  value,
+}: {
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  const pickerRef = useRef<HTMLInputElement | null>(null);
 
-function VerifiedBadge() {
-  return (
-    <svg
-      aria-label="Verified office network"
-      className="h-5 w-5 shrink-0"
-      role="img"
-      viewBox="0 0 24 24"
-    >
-      <path
-        d="M12 1.6 14.1 3.4 16.8 2.9 18.1 5.3 20.8 6.1 20.9 8.9 23 10.7 21.8 13.2 22.6 15.9 20.1 17.2 19.3 19.9 16.5 20 14.7 22.1 12 21 9.3 22.1 7.5 20 4.7 19.9 3.9 17.2 1.4 15.9 2.2 13.2 1 10.7 3.1 8.9 3.2 6.1 5.9 5.3 7.2 2.9 9.9 3.4 12 1.6Z"
-        fill="#1d9bf0"
-      />
-      <path
-        d="m10.35 14.55 5.55-6.05 1.55 1.42-6.95 7.58-4.05-4.05 1.48-1.48 2.42 2.58Z"
-        fill="#ffffff"
-      />
-    </svg>
-  );
-}
+  function openPicker() {
+    const picker = pickerRef.current;
+    if (!picker) return;
 
-function UnverifiedBadge() {
-  return (
-    <svg
-      aria-label="Unverified office network"
-      className="h-5 w-5 shrink-0"
-      role="img"
-      viewBox="0 0 24 24"
-    >
-      <path
-        d="M12 1.6 14.1 3.4 16.8 2.9 18.1 5.3 20.8 6.1 20.9 8.9 23 10.7 21.8 13.2 22.6 15.9 20.1 17.2 19.3 19.9 16.5 20 14.7 22.1 12 21 9.3 22.1 7.5 20 4.7 19.9 3.9 17.2 1.4 15.9 2.2 13.2 1 10.7 3.1 8.9 3.2 6.1 5.9 5.3 7.2 2.9 9.9 3.4 12 1.6Z"
-        fill="#ef4444"
-      />
-      <path
-        d="m8.55 7.1 3.45 3.45 3.45-3.45 1.45 1.45L13.45 12l3.45 3.45-1.45 1.45L12 13.45 8.55 16.9 7.1 15.45 10.55 12 7.1 8.55 8.55 7.1Z"
-        fill="#ffffff"
-      />
-    </svg>
-  );
-}
+    if (typeof picker.showPicker === 'function') {
+      picker.showPicker();
+      return;
+    }
 
-function NetworkMetaChip({ label, value }: { label: string; value: string }) {
+    picker.click();
+  }
+
   return (
-    <div className="min-w-0" title={`${label}: ${value}`}>
-      <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">{label}</label>
-      <div className="flex min-h-10 items-center rounded-md border border-border bg-background px-3 py-2">
-        <span className="break-all font-mono text-xs font-semibold leading-5 text-foreground">{value}</span>
+    <div>
+      <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Attendance Date</label>
+      <div className="relative">
+        <Input
+          type="text"
+          inputMode="numeric"
+          placeholder="YYYY-MM-DD"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-10 pr-11 font-mono text-sm"
+        />
+        <button
+          type="button"
+          aria-label="Open attendance date picker"
+          onClick={openPicker}
+          className="absolute right-1.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+        >
+          <Calendar className="h-4 w-4" />
+        </button>
+        <input
+          ref={pickerRef}
+          type="date"
+          value={isValidCompleteDate(value) ? value : ''}
+          onChange={(event) => onChange(event.target.value)}
+          tabIndex={-1}
+          className="absolute right-1.5 top-1/2 h-7 w-7 -translate-y-1/2 opacity-0"
+        />
       </div>
     </div>
   );
