@@ -12604,3 +12604,162 @@ params: true,false
     }
   }
 }
+Failed to fetch notifications: Error: Failed query: select "notification_id" from "notification_read" where "notification_read"."user_id" = $1
+params: user_3C550OqkCR5dIfAUnrnEP62iJKr
+    at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+    at async GET (src\app\api\notifications\route.ts:878:39)
+  574 |
+  575 | async function getNotificationState(userId: string) {
+> 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+      |                ^
+  577 |     .from(notificationRead)
+  578 |     .where(eq(notificationRead.userId, userId));
+  579 | {
+  query: 'select "notification_id" from "notification_read" where "notification_read"."user_id" = $1',
+  params: [ 'user_3C550OqkCR5dIfAUnrnEP62iJKr' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+      at async GET (src\app\api\notifications\route.ts:878:39)
+    574 |
+    575 | async function getNotificationState(userId: string) {
+  > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+        |                ^
+    577 |     .from(notificationRead)
+    578 |     .where(eq(notificationRead.userId, userId));
+    579 | {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+        at async GET (src\app\api\notifications\route.ts:878:39)
+      574 |
+      575 | async function getNotificationState(userId: string) {
+    > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+          |                ^
+      577 |     .from(notificationRead)
+      578 |     .where(eq(notificationRead.userId, userId));
+      579 | {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch notifications: Error: Failed query: select "notification_id" from "notification_read" where "notification_read"."user_id" = $1
+params: user_3C550OqkCR5dIfAUnrnEP62iJKr
+    at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+    at async GET (src\app\api\notifications\route.ts:878:39)
+  574 |
+  575 | async function getNotificationState(userId: string) {
+> 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+      |                ^
+  577 |     .from(notificationRead)
+  578 |     .where(eq(notificationRead.userId, userId));
+  579 | {
+  query: 'select "notification_id" from "notification_read" where "notification_read"."user_id" = $1',
+  params: [ 'user_3C550OqkCR5dIfAUnrnEP62iJKr' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+      at async GET (src\app\api\notifications\route.ts:878:39)
+    574 |
+    575 | async function getNotificationState(userId: string) {
+  > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+        |                ^
+    577 |     .from(notificationRead)
+    578 |     .where(eq(notificationRead.userId, userId));
+    579 | {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+        at async GET (src\app\api\notifications\route.ts:878:39)
+      574 |
+      575 | async function getNotificationState(userId: string) {
+    > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+          |                ^
+      577 |     .from(notificationRead)
+      578 |     .where(eq(notificationRead.userId, userId));
+      579 | {
+      [cause]: [Error]
+    }
+  }
+}
+Failed to fetch notifications: Error: Failed query: select "notification_id" from "notification_read" where "notification_read"."user_id" = $1
+params: user_3C550OqkCR5dIfAUnrnEP62iJKr
+    at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+    at async GET (src\app\api\notifications\route.ts:878:39)
+  574 |
+  575 | async function getNotificationState(userId: string) {
+> 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+      |                ^
+  577 |     .from(notificationRead)
+  578 |     .where(eq(notificationRead.userId, userId));
+  579 | {
+  query: 'select "notification_id" from "notification_read" where "notification_read"."user_id" = $1',
+  params: [ 'user_3C550OqkCR5dIfAUnrnEP62iJKr' ],
+  [cause]: Error [NeonDbError]: Error connecting to database: TypeError: fetch failed
+      at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+      at async GET (src\app\api\notifications\route.ts:878:39)
+    574 |
+    575 | async function getNotificationState(userId: string) {
+  > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+        |                ^
+    577 |     .from(notificationRead)
+    578 |     .where(eq(notificationRead.userId, userId));
+    579 | {
+    severity: undefined,
+    code: undefined,
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: undefined,
+    line: undefined,
+    routine: undefined,
+    sourceError: TypeError: fetch failed
+        at async getNotificationState (src\app\api\notifications\route.ts:576:16)
+        at async GET (src\app\api\notifications\route.ts:878:39)
+      574 |
+      575 | async function getNotificationState(userId: string) {
+    > 576 |   const rows = await db.select({ notificationId: notificationRead.notificationId })
+          |                ^
+      577 |     .from(notificationRead)
+      578 |     .where(eq(notificationRead.userId, userId));
+      579 | {
+      [cause]: [Error]
+    }
+  }
+}

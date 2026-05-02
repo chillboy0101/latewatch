@@ -263,6 +263,7 @@ export default function CheckInPage() {
     !status.attendance.signOutTime &&
     canSignOut(status),
   );
+  const accessNotSetUp = Boolean(status && !status.staff);
 
   return (
     <main className="h-dvh overflow-hidden bg-background px-3 py-3 text-foreground sm:px-6 sm:py-4">
@@ -302,6 +303,10 @@ export default function CheckInPage() {
           <Card className="w-full overflow-hidden">
             {loading || !isLoaded ? (
               <LoadingBuffer variant="section" label="Loading check-in" description="Verifying your account and network." />
+            ) : accessNotSetUp ? (
+              <AccessNotSetUp
+                email={user?.primaryEmailAddress?.emailAddress || null}
+              />
             ) : (
               <div className="space-y-3 p-3 sm:space-y-4 sm:p-5">
                 <div className={cn('rounded-lg border p-3 text-center sm:p-4', statusTone(status))}>
@@ -392,6 +397,31 @@ export default function CheckInPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+function AccessNotSetUp({ email }: { email: string | null }) {
+  return (
+    <div className="space-y-4 p-4 text-center sm:p-6">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-warning/25 bg-warning/10 text-warning">
+        <AlertTriangle className="h-6 w-6" />
+      </div>
+      <div>
+        <h2 className="text-xl font-semibold">Access not set up</h2>
+        <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
+          This account is not linked to an active staff profile. Ask an admin to add or update your staff email before using attendance.
+        </p>
+      </div>
+      {email && (
+        <div className="mx-auto max-w-full rounded-md border border-border bg-background px-3 py-2 text-sm">
+          <span className="block text-xs font-medium uppercase text-muted-foreground">Signed in as</span>
+          <span className="mt-1 block truncate font-medium">{email}</span>
+        </div>
+      )}
+      <Button asChild variant="outline" className="w-full sm:w-auto">
+        <Link href="/">Back to portal</Link>
+      </Button>
+    </div>
   );
 }
 
