@@ -20,6 +20,7 @@ export default function Page() {
           routing="path"
           path="/sign-in"
           signUpUrl="/sign-up"
+          fallbackRedirectUrl="/"
           appearance={{
             layout: {
               logoPlacement: 'none',

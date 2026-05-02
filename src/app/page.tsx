@@ -34,11 +34,11 @@ export default function Home() {
   }
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-8 text-foreground">
+    <main className="relative flex min-h-dvh items-center justify-center bg-background px-4 py-8 text-foreground">
       <Button
         variant="ghost"
         size="icon"
-        className="absolute right-6 top-6 h-10 w-10"
+        className="absolute right-4 top-4 z-10 h-10 w-10 rounded-full border border-border bg-card text-foreground shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground sm:right-6 sm:top-6"
         onClick={toggleTheme}
         title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
         aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}

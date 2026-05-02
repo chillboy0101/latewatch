@@ -7405,3 +7405,7 @@
  GET /sign-in/SignIn_clerk_catchall_check_1777742377949 200 in 131ms (next.js: 6ms, application-code: 125ms)
  GET /sign-in?redirect_url=http%3A%2F%2Flocalhost%3A3000%2Fdashboard 200 in 50ms (next.js: 14ms, application-code: 36ms)
  GET /sign-in/SignIn_clerk_catchall_check_1777742394468 200 in 106ms (next.js: 6ms, application-code: 100ms)
+✓ Compiled in 310ms
+ GET / 200 in 558ms (next.js: 411ms, application-code: 147ms)
+✓ Compiled in 131ms
+ GET / 200 in 53ms (next.js: 7ms, application-code: 47ms)
