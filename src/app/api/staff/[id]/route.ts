@@ -1,11 +1,13 @@
 // app/api/staff/[id]/route.ts
+import { currentUser } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { latenessEntry, staff } from '@/db/schema';
+import { latenessEntry, staff, staffDevice } from '@/db/schema';
 import { and, count, eq, ilike, ne } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { normalizeStaffEmail } from '@/lib/attendance';
+import { syncStaffEmailIdentity, unlinkStaffEmailIdentity } from '@/lib/clerk-organization';
 
 type StaffUpdateBody = {
   active?: boolean;
@@ -40,6 +42,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const actor = await currentUser();
     const { id } = await params;
     const body = await request.json() as StaffUpdateBody;
     const { fullName, email, department, unit, active, archived } = body;
@@ -76,6 +79,12 @@ export async function PUT(
       }
     }
 
+    const previousEmail = normalizeStaffEmail(before.email);
+    const nextEmail = email !== undefined
+      ? normalizeStaffEmail(email)
+      : previousEmail;
+    const emailChanged = email !== undefined && previousEmail !== nextEmail;
+
     const updated = await db.update(staff)
       .set(updateData)
       .where(eq(staff.id, id))
@@ -99,6 +108,52 @@ export async function PUT(
       after: updated[0],
       reason: 'staff',
     });
+
+    if (emailChanged) {
+      const [registeredDevice] = await db.select()
+        .from(staffDevice)
+        .where(eq(staffDevice.staffId, id))
+        .limit(1);
+
+      if (registeredDevice) {
+        await db.delete(staffDevice).where(eq(staffDevice.staffId, id));
+
+        await writeAuditEvent({
+          entityType: 'staff_device',
+          entityId: id,
+          action: 'DELETE',
+          before: {
+            lastSeenAt: registeredDevice.lastSeenAt,
+            registeredAt: registeredDevice.registeredAt,
+            staffName: updated[0].fullName,
+          },
+          after: {
+            reason: 'staff-email-changed',
+            staffName: updated[0].fullName,
+          },
+          reason: 'staff-email-changed',
+        });
+      }
+
+      await unlinkStaffEmailIdentity({
+        email: previousEmail,
+        staffId: id,
+      });
+
+      await syncStaffEmailIdentity({
+        actorUserId: actor?.id,
+        email: nextEmail,
+        staffId: id,
+        staffName: updated[0].fullName,
+      });
+    } else if (nextEmail) {
+      await syncStaffEmailIdentity({
+        actorUserId: actor?.id,
+        email: nextEmail,
+        staffId: id,
+        staffName: updated[0].fullName,
+      });
+    }
 
     publishRealtime('dashboard', 'invalidate', { reason: 'staff' });
 

@@ -1,4 +1,5 @@
 // app/api/staff/route.ts
+import { currentUser } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { staff } from '@/db/schema';
@@ -6,6 +7,7 @@ import { and, asc, eq, ilike } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { normalizeStaffEmail } from '@/lib/attendance';
+import { syncStaffEmailIdentity } from '@/lib/clerk-organization';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +51,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: Request) {
   try {
+    const actor = await currentUser();
     const body = await request.json();
     const { fullName, email, department, unit } = body;
     const name = typeof fullName === 'string' ? fullName.trim() : '';
@@ -106,6 +109,15 @@ export async function POST(request: Request) {
 
         publishRealtime('dashboard', 'invalidate', { reason: 'staff' });
 
+        if (restored.email) {
+          await syncStaffEmailIdentity({
+            actorUserId: actor?.id,
+            email: restored.email,
+            staffId: restored.id,
+            staffName: restored.fullName,
+          });
+        }
+
         return NextResponse.json(restored);
       }
 
@@ -135,6 +147,15 @@ export async function POST(request: Request) {
     });
 
     publishRealtime('dashboard', 'invalidate', { reason: 'staff' });
+
+    if (newStaff[0].email) {
+      await syncStaffEmailIdentity({
+        actorUserId: actor?.id,
+        email: newStaff[0].email,
+        staffId: newStaff[0].id,
+        staffName: newStaff[0].fullName,
+      });
+    }
 
     return NextResponse.json(newStaff[0]);
   } catch (error) {

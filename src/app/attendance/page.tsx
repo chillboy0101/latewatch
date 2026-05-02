@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { AlertTriangle, CheckCircle2, Clock, Loader2, Printer, QrCode, RotateCcw, ShieldCheck, Smartphone, Trash2, Wifi, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, Clock, FileText, Loader2, Printer, QrCode, RotateCcw, ShieldCheck, Smartphone, Trash2, UserRound, Wifi, XCircle } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -513,50 +513,46 @@ export default function AttendancePage() {
           </div>
         </Card>
 
-        <Card>
-          <div className="grid gap-3 p-5 lg:grid-cols-[minmax(0,1fr)_10rem_12rem_minmax(220px,1fr)_auto] lg:items-end">
-            <div>
-              <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Staff</label>
-              <select
-                className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/35"
-                value={permissionStaffId}
-                onChange={(event) => setPermissionStaffId(event.target.value)}
-              >
+        <Card className="overflow-hidden">
+          <div className="grid gap-3 p-5 lg:grid-cols-[minmax(15rem,1fr)_11rem_13rem_minmax(240px,1fr)_auto] lg:items-end">
+            <SelectField
+              icon={<UserRound className="h-3.5 w-3.5" />}
+              label="Staff"
+              value={permissionStaffId}
+              onChange={setPermissionStaffId}
+            >
                 <option value="">Select staff</option>
                 {(data?.rows || []).map((row) => (
                   <option key={row.staff.id} value={row.staff.id}>{row.staff.fullName}</option>
                 ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Permission</label>
-              <select
-                className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/35"
-                value={permissionType}
-                onChange={(event) => {
-                  setPermissionType(event.target.value);
-                  if (event.target.value === 'absence') setPermissionWindow('any_time_today');
-                }}
-              >
+            </SelectField>
+            <SelectField
+              icon={<ShieldCheck className="h-3.5 w-3.5" />}
+              label="Permission"
+              value={permissionType}
+              onChange={(value) => {
+                setPermissionType(value);
+                if (value === 'absence') setPermissionWindow('any_time_today');
+              }}
+            >
                 <option value="late_arrival">Late arrival</option>
                 <option value="absence">Excused absence</option>
-              </select>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Arrival Window</label>
-              <select
-                className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/35 disabled:cursor-not-allowed disabled:opacity-60"
-                value={permissionWindow}
-                onChange={(event) => setPermissionWindow(event.target.value)}
+            </SelectField>
+            <div className="space-y-2">
+              <SelectField
                 disabled={permissionType === 'absence'}
+                icon={<Clock className="h-3.5 w-3.5" />}
+                label="Arrival"
+                value={permissionWindow}
+                onChange={setPermissionWindow}
               >
                 {ATTENDANCE_PERMISSION_WINDOWS.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
-              </select>
+              </SelectField>
               {permissionType === 'late_arrival' && permissionWindow === 'specific_time' && (
                 <Input
-                  className="mt-2 h-10"
+                  className="h-11 font-medium"
                   type="time"
                   value={permissionExpectedTime}
                   onChange={(event) => setPermissionExpectedTime(event.target.value)}
@@ -564,15 +560,18 @@ export default function AttendancePage() {
               )}
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Reason</label>
+              <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase text-muted-foreground">
+                <FileText className="h-3.5 w-3.5" />
+                Reason
+              </label>
               <Input
-                className="h-10"
+                className="h-11 font-medium"
                 placeholder="Approved reason"
                 value={permissionReason}
                 onChange={(event) => setPermissionReason(event.target.value)}
               />
             </div>
-            <Button className="h-10 gap-2" onClick={savePermission} disabled={savingPermission}>
+            <Button className="h-11 gap-2 px-5" onClick={savePermission} disabled={savingPermission}>
               {savingPermission ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
               Approve
             </Button>
@@ -832,6 +831,42 @@ function NetworkMetaChip({ label, value }: { label: string; value: string }) {
       <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">{label}</label>
       <div className="flex min-h-10 items-center rounded-md border border-border bg-background px-3 py-2">
         <span className="break-all font-mono text-xs font-semibold leading-5 text-foreground">{value}</span>
+      </div>
+    </div>
+  );
+}
+
+function SelectField({
+  children,
+  disabled,
+  icon,
+  label,
+  onChange,
+  value,
+}: {
+  children: ReactNode;
+  disabled?: boolean;
+  icon: ReactNode;
+  label: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase text-muted-foreground">
+        {icon}
+        {label}
+      </label>
+      <div className="relative">
+        <select
+          className="h-11 w-full appearance-none rounded-md border border-border bg-background px-3 pr-10 text-sm font-medium text-foreground outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/35 disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={disabled}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          {children}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
       </div>
     </div>
   );

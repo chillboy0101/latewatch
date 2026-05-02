@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test tests/*.test.cjs"
+    "test": "node --test tests/*.test.cjs",
+    "clerk:role": "node scripts/set-clerk-role.mjs"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",

@@ -17,6 +17,7 @@ import {
 import { getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/attendance-permissions';
 import { getAuditActor, writeAuditEvent } from '@/lib/audit';
 import { computePenalty } from '@/lib/penalty-calculator';
+import { syncStaffEmailIdentity } from '@/lib/clerk-organization';
 import { getDeviceTokenFromRequest, hashDeviceToken } from '@/lib/device-binding';
 import { publishRealtime } from '@/lib/realtime';
 import {
@@ -58,6 +59,13 @@ async function resolveMemberForAttendance(input: {
       },
       actor: { email: input.actorEmail, id: input.actorId },
       reason: 'attendance-auto-link',
+    });
+
+    await syncStaffEmailIdentity({
+      actorUserId: input.actorId,
+      email: input.actorEmail,
+      staffId: resolved.member.id,
+      staffName: resolved.member.fullName,
     });
   }
 

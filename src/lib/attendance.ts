@@ -3,7 +3,9 @@ import 'server-only';
 import { and, desc, eq, ilike, isNull, or } from 'drizzle-orm';
 import { db } from '@/db';
 import { attendanceAttempt, attendancePermission, officeNetwork, staff, workCalendar } from '@/db/schema';
+import { normalizeStaffEmail, normalizeStaffName } from '@/lib/staff-normalize';
 export { getClientIp, getClientIpInfo, resolveClientIp, resolveClientIpInfo } from '@/lib/request-ip';
+export { normalizeStaffEmail, normalizeStaffName } from '@/lib/staff-normalize';
 
 export type AccraClock = {
   dateKey: string;
@@ -31,24 +33,6 @@ export function getAccraClock(now = new Date()): AccraClock {
     timeKey: `${hour}:${valueFor('minute')}:${valueFor('second')}`,
     now,
   };
-}
-
-export function normalizeStaffEmail(value: unknown) {
-  return typeof value === 'string' && value.trim()
-    ? value.trim().toLowerCase()
-    : null;
-}
-
-export function normalizeStaffName(value: unknown) {
-  if (typeof value !== 'string' || !value.trim()) return '';
-
-  return value
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/gi, ' ')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .toLowerCase();
 }
 
 export async function getActiveOfficeNetwork() {

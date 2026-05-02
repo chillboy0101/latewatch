@@ -1,4 +1,4 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { clerkClient, clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 
 const isProtectedRoute = createRouteMatcher([
@@ -53,6 +53,74 @@ function getAdminUserIds() {
   );
 }
 
+function getAdminEmails() {
+  return new Set(
+    (process.env.ADMIN_EMAILS || '')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function roleFromMetadata(value: unknown) {
+  const metadata = asRecord(value);
+  const role = metadata?.role;
+
+  return typeof role === 'string' ? role.toLowerCase() : null;
+}
+
+function roleFromSessionClaims(sessionClaims: Record<string, unknown> | null | undefined) {
+  if (!sessionClaims) return null;
+
+  const directRole = sessionClaims.role;
+  if (typeof directRole === 'string') return directRole.toLowerCase();
+
+  return roleFromMetadata(sessionClaims.metadata)
+    || roleFromMetadata(sessionClaims.publicMetadata)
+    || roleFromMetadata(sessionClaims.privateMetadata);
+}
+
+async function getClerkUserAccess(userId: string) {
+  try {
+    const client = await clerkClient();
+    const user = await client.users.getUser(userId);
+    const email = user.primaryEmailAddress?.emailAddress
+      || user.emailAddresses[0]?.emailAddress
+      || null;
+
+    return {
+      email: email?.toLowerCase() || null,
+      role: roleFromMetadata(user.privateMetadata) || roleFromMetadata(user.publicMetadata),
+    };
+  } catch (error) {
+    console.error('Failed to resolve Clerk admin role:', error);
+    return { email: null, role: null };
+  }
+}
+
+async function isAdminSession(userId: string | null | undefined, sessionClaims: Record<string, unknown> | null | undefined) {
+  if (!userId) return false;
+
+  if (getAdminUserIds().has(userId)) {
+    return true;
+  }
+
+  if (roleFromSessionClaims(sessionClaims) === 'admin') {
+    return true;
+  }
+
+  const userAccess = await getClerkUserAccess(userId);
+
+  return userAccess.role === 'admin'
+    || Boolean(userAccess.email && getAdminEmails().has(userAccess.email));
+}
+
 function forbiddenResponse(req: Request) {
   const url = new URL(req.url);
   if (url.pathname.startsWith('/api/')) {
@@ -67,8 +135,7 @@ const handler = clerkConfigured
       if (isProtectedRoute(req)) {
         const session = await auth.protect();
         if (!isStaffCheckInRoute(req) && isAdminRoute(req)) {
-          const adminUserIds = getAdminUserIds();
-          if (!session.userId || !adminUserIds.has(session.userId)) {
+          if (!(await isAdminSession(session.userId, session.sessionClaims))) {
             return forbiddenResponse(req);
           }
         }
