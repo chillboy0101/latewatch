@@ -25,7 +25,7 @@ function normalizeContactBody(body: EmergencyContactBody) {
 
   if (body.contactName !== undefined) {
     const contactName = optionalText(body.contactName);
-    if (!contactName) return { error: 'Family or spouse contact name is required' };
+    if (!contactName) return { error: 'Emergency contact name is required' };
     updateData.contactName = contactName;
   }
 
@@ -37,9 +37,9 @@ function normalizeContactBody(body: EmergencyContactBody) {
 
   if (body.address !== undefined) updateData.address = optionalText(body.address);
   if (body.alternatePhone !== undefined) {
-    const familyPhone = optionalText(body.alternatePhone);
-    if (!familyPhone) return { error: 'Family or spouse phone number is required' };
-    updateData.alternatePhone = familyPhone;
+    const emergencyPhone = optionalText(body.alternatePhone);
+    if (!emergencyPhone) return { error: 'Emergency phone number is required' };
+    updateData.alternatePhone = emergencyPhone;
   }
   if (body.email !== undefined) updateData.email = optionalText(body.email)?.toLowerCase() || null;
   if (body.notes !== undefined) updateData.notes = optionalText(body.notes);

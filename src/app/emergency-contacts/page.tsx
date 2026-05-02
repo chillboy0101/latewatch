@@ -37,8 +37,8 @@ interface EmergencyContact {
 type ContactForm = {
   address: string;
   email: string;
-  familyContactName: string;
-  familyPhone: string;
+  emergencyContactName: string;
+  emergencyPhone: string;
   notes: string;
   relationship: string;
   staffId: string;
@@ -48,8 +48,8 @@ type ContactForm = {
 const emptyForm: ContactForm = {
   address: '',
   email: '',
-  familyContactName: '',
-  familyPhone: '',
+  emergencyContactName: '',
+  emergencyPhone: '',
   notes: '',
   relationship: '',
   staffId: '',
@@ -60,8 +60,8 @@ function formFromContact(contact: EmergencyContact): ContactForm {
   return {
     address: contact.address || '',
     email: contact.email || '',
-    familyContactName: contact.contactName,
-    familyPhone: contact.alternatePhone || '',
+    emergencyContactName: contact.contactName,
+    emergencyPhone: contact.alternatePhone || '',
     notes: contact.notes || '',
     relationship: contact.relationship || '',
     staffId: contact.staffId || '',
@@ -72,8 +72,8 @@ function formFromContact(contact: EmergencyContact): ContactForm {
 function payloadFromForm(form: ContactForm) {
   return {
     address: form.address.trim() || null,
-    alternatePhone: form.familyPhone.trim(),
-    contactName: form.familyContactName.trim(),
+    alternatePhone: form.emergencyPhone.trim(),
+    contactName: form.emergencyContactName.trim(),
     email: form.email.trim() || null,
     notes: form.notes.trim() || null,
     phone: form.staffPhone.trim(),
@@ -188,7 +188,7 @@ export default function EmergencyContactsPage() {
   async function saveContact() {
     const payload = payloadFromForm(form);
     if (!payload.staffId || !payload.phone || !payload.contactName || !payload.alternatePhone) {
-      setFormError('Staff, staff phone, family contact name, and family phone are required.');
+      setFormError('Staff, staff phone, emergency contact name, and emergency phone are required.');
       return;
     }
 
@@ -247,7 +247,7 @@ export default function EmergencyContactsPage() {
             <Input
               className="h-11 pl-10"
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search staff, family contact, phone..."
+              placeholder="Search staff, emergency contact, phone..."
               value={searchTerm}
             />
           </div>
@@ -271,7 +271,7 @@ export default function EmergencyContactsPage() {
               <DialogHeader>
                 <DialogTitle>{editingContact ? 'Edit Emergency Contact' : 'Add Emergency Contact'}</DialogTitle>
                 <DialogDescription className="sr-only">
-                  Save staff phone and family emergency contact details.
+                  Save staff phone and emergency contact details.
                 </DialogDescription>
               </DialogHeader>
               <ContactFormFields
@@ -307,8 +307,8 @@ export default function EmergencyContactsPage() {
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Staff</th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Staff Phone</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Family Contact</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Family Phone</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Emergency Contact</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Emergency Phone</th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Relationship</th>
                     <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">Actions</th>
                   </tr>
@@ -429,11 +429,11 @@ function ContactFormFields({
 
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="space-y-2 sm:col-span-1">
-          <Label htmlFor="family-contact-name">Family / Spouse Name *</Label>
+          <Label htmlFor="emergency-contact-name">Emergency Contact Name *</Label>
           <Input
-            id="family-contact-name"
-            onChange={(event) => onChange({ familyContactName: event.target.value })}
-            value={form.familyContactName}
+            id="emergency-contact-name"
+            onChange={(event) => onChange({ emergencyContactName: event.target.value })}
+            value={form.emergencyContactName}
           />
         </div>
         <div className="space-y-2">
@@ -441,16 +441,16 @@ function ContactFormFields({
           <Input
             id="relationship"
             onChange={(event) => onChange({ relationship: event.target.value })}
-            placeholder="Spouse, parent, sibling..."
+            placeholder="Spouse, parent, friend..."
             value={form.relationship}
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="family-phone">Family / Spouse Phone *</Label>
+          <Label htmlFor="emergency-phone">Emergency Phone *</Label>
           <Input
-            id="family-phone"
-            onChange={(event) => onChange({ familyPhone: event.target.value })}
-            value={form.familyPhone}
+            id="emergency-phone"
+            onChange={(event) => onChange({ emergencyPhone: event.target.value })}
+            value={form.emergencyPhone}
           />
         </div>
       </div>

@@ -68,6 +68,7 @@ type AuditPayload = Record<string, unknown> & {
   fullName?: string;
   holidayNote?: string;
   phone?: string;
+  permissionType?: string;
   priority?: string;
   relationship?: string;
   result?: string;
@@ -281,6 +282,7 @@ export default function AuditTrailPage() {
       case 'staff': return <User className="h-3 w-3" />;
       case 'attendance': return <UserCheck className="h-3 w-3" />;
       case 'attendance_attempt': return <Bell className="h-3 w-3" />;
+      case 'attendance_permission': return <Shield className="h-3 w-3" />;
       case 'emergency_contact': return <PhoneCall className="h-3 w-3" />;
       case 'entry': return <FileText className="h-3 w-3" />;
       case 'entry_submission': return <FileText className="h-3 w-3" />;
@@ -322,6 +324,10 @@ export default function AuditTrailPage() {
         const name = afterData?.staff?.fullName || 'Staff member';
         return `${name} checked in at ${afterData?.checkInTime || 'the recorded time'}`;
       }
+      if (event.entityType === 'attendance_permission') {
+        const name = afterData?.staffName || 'Staff member';
+        return `${name} approved for ${afterData?.permissionType === 'absence' ? 'excused absence' : 'late arrival'} on ${afterData?.date || 'date'}`;
+      }
       if (event.entityType === 'emergency_contact') {
         const name = afterData?.contactName || 'Emergency contact';
         const staffName = afterData?.staffName;
@@ -360,6 +366,9 @@ export default function AuditTrailPage() {
         const count = Number(afterData?.entryCount || 0);
         return `Entries updated for ${afterData?.date || 'date'} (${count} late record${count === 1 ? '' : 's'})`;
       }
+      if (event.entityType === 'attendance_permission') {
+        return `Permission updated for ${afterData?.staffName || beforeData?.staffName || 'staff member'}`;
+      }
       if (event.entityType === 'emergency_contact') {
         return `${afterData?.contactName || beforeData?.contactName || 'Emergency contact'} updated`;
       }
@@ -386,6 +395,9 @@ export default function AuditTrailPage() {
       }
       if (event.entityType === 'emergency_contact') {
         return `Removed ${beforeData?.contactName || afterData?.contactName || 'emergency contact'}`;
+      }
+      if (event.entityType === 'attendance_permission') {
+        return `Removed permission for ${beforeData?.staffName || afterData?.staffName || 'staff member'}`;
       }
       return `Deleted ${getEntityLabel(event.entityType).toLowerCase()}`;
     }

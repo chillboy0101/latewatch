@@ -1,8 +1,8 @@
 import 'server-only';
 
-import { and, desc, eq, ilike } from 'drizzle-orm';
+import { and, desc, eq, ilike, isNull, or } from 'drizzle-orm';
 import { db } from '@/db';
-import { attendanceAttempt, officeNetwork, staff, workCalendar } from '@/db/schema';
+import { attendanceAttempt, attendancePermission, officeNetwork, staff, workCalendar } from '@/db/schema';
 export { getClientIp, getClientIpInfo, resolveClientIp, resolveClientIpInfo } from '@/lib/request-ip';
 
 export type AccraClock = {
@@ -39,6 +39,18 @@ export function normalizeStaffEmail(value: unknown) {
     : null;
 }
 
+export function normalizeStaffName(value: unknown) {
+  if (typeof value !== 'string' || !value.trim()) return '';
+
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/gi, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
 export async function getActiveOfficeNetwork() {
   const [network] = await db.select()
     .from(officeNetwork)
@@ -67,6 +79,63 @@ export async function getStaffByEmail(email: string) {
   return member || null;
 }
 
+export async function getOrAutoLinkStaffByEmail(input: {
+  email: string;
+  fullName?: string | null;
+}) {
+  const normalizedEmail = normalizeStaffEmail(input.email);
+  if (!normalizedEmail) {
+    return { autoLinked: false, before: null, member: null };
+  }
+
+  const member = await getStaffByEmail(normalizedEmail);
+  if (member) {
+    return { autoLinked: false, before: null, member };
+  }
+
+  const normalizedName = normalizeStaffName(input.fullName);
+  if (!normalizedName) {
+    return { autoLinked: false, before: null, member: null };
+  }
+
+  const [existingEmailOwner] = await db.select()
+    .from(staff)
+    .where(ilike(staff.email, normalizedEmail))
+    .limit(1);
+
+  if (existingEmailOwner) {
+    return { autoLinked: false, before: null, member: null };
+  }
+
+  const candidates = await db.select()
+    .from(staff)
+    .where(and(
+      eq(staff.active, true),
+      eq(staff.archived, false),
+      or(isNull(staff.email), eq(staff.email, '')),
+    ));
+
+  const matches = candidates.filter((candidate) => normalizeStaffName(candidate.fullName) === normalizedName);
+  if (matches.length !== 1) {
+    return { autoLinked: false, before: null, member: null };
+  }
+
+  const before = matches[0];
+  const [linkedMember] = await db.update(staff)
+    .set({
+      email: normalizedEmail,
+      updatedAt: new Date(),
+    })
+    .where(eq(staff.id, before.id))
+    .returning();
+
+  return {
+    autoLinked: Boolean(linkedMember),
+    before,
+    member: linkedMember || null,
+  };
+}
+
 export async function getHolidayForDate(dateKey: string) {
   const [holiday] = await db.select({
     id: workCalendar.id,
@@ -81,6 +150,19 @@ export async function getHolidayForDate(dateKey: string) {
     .limit(1);
 
   return holiday || null;
+}
+
+export async function getApprovedAttendancePermission(staffId: string, dateKey: string) {
+  const [permission] = await db.select()
+    .from(attendancePermission)
+    .where(and(
+      eq(attendancePermission.staffId, staffId),
+      eq(attendancePermission.date, dateKey),
+      eq(attendancePermission.status, 'approved'),
+    ))
+    .limit(1);
+
+  return permission || null;
 }
 
 export function isWeekendDate(dateKey: string) {

@@ -18,6 +18,8 @@ export const staff = pgTable('staff', {
 
 export const staffRelations = relations(staff, ({ many }) => ({
   attendanceRecords: many(attendanceRecord),
+  attendancePermissions: many(attendancePermission),
+  devices: many(staffDevice),
   emergencyContacts: many(emergencyContact),
   entries: many(latenessEntry),
 }));
@@ -83,6 +85,10 @@ export const attendanceRecord = pgTable('attendance_record', {
   date: date('date').notNull(),
   checkInAt: timestamp('check_in_at').notNull(),
   checkInTime: time('check_in_time').notNull(),
+  signOutAt: timestamp('sign_out_at'),
+  signOutTime: time('sign_out_time'),
+  signOutNetworkIp: text('sign_out_network_ip'),
+  signOutUserAgent: text('sign_out_user_agent'),
   status: text('status').notNull(),
   source: text('source').notNull().default('staff_portal'),
   networkIp: text('network_ip').notNull(),
@@ -112,6 +118,51 @@ export const attendanceAttempt = pgTable('attendance_attempt', {
   result: text('result').notNull(),
   createdAt: timestamp('created_at').defaultNow(),
 });
+
+export const attendancePermission = pgTable('attendance_permission', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  staffId: uuid('staff_id').notNull().references(() => staff.id, { onDelete: 'cascade' }),
+  date: date('date').notNull(),
+  permissionType: text('permission_type').notNull().default('late_arrival'),
+  arrivalWindow: text('arrival_window').notNull().default('any_time_today'),
+  expectedStartTime: time('expected_start_time'),
+  expectedEndTime: time('expected_end_time'),
+  reason: text('reason').notNull(),
+  status: text('status').notNull().default('approved'),
+  approvedByUserId: text('approved_by_user_id'),
+  approvedByEmail: text('approved_by_email').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => [unique().on(table.staffId, table.date)]);
+
+export const attendancePermissionRelations = relations(attendancePermission, ({ one }) => ({
+  staff: one(staff, {
+    fields: [attendancePermission.staffId],
+    references: [staff.id],
+  }),
+}));
+
+export const staffDevice = pgTable('staff_device', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  staffId: uuid('staff_id').notNull().references(() => staff.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull(),
+  deviceHash: text('device_hash').notNull(),
+  userAgent: text('user_agent'),
+  registeredIp: text('registered_ip'),
+  lastSeenIp: text('last_seen_ip'),
+  registeredAt: timestamp('registered_at').defaultNow(),
+  lastSeenAt: timestamp('last_seen_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => [
+  unique().on(table.staffId),
+]);
+
+export const staffDeviceRelations = relations(staffDevice, ({ one }) => ({
+  staff: one(staff, {
+    fields: [staffDevice.staffId],
+    references: [staff.id],
+  }),
+}));
 
 export const emergencyContact = pgTable('emergency_contact', {
   id: uuid('id').primaryKey().defaultRandom(),

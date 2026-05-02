@@ -3,10 +3,13 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { and, count, desc, eq, gte, ne } from 'drizzle-orm';
 import { format, subDays } from 'date-fns';
 import { db } from '@/db';
-import { attendanceRecord, auditEvent, entrySubmission, latenessEntry, notificationRead, staff, workCalendar } from '@/db/schema';
+import { attendancePermission, attendanceRecord, auditEvent, entrySubmission, latenessEntry, notificationRead, staff, workCalendar } from '@/db/schema';
+import { getAccraClock } from '@/lib/attendance';
+import { getPermissionWindowBounds, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
 import { getAuditActionLabel, getAuditEntityLabel, getAuditOperation } from '@/lib/audit-taxonomy';
 import { tryWriteAuditEvent } from '@/lib/audit';
 import { publishRealtime } from '@/lib/realtime';
+import { NO_SIGN_OUT_ALERT_LABEL, shouldAlertNoSignOut } from '@/lib/work-hours';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,13 +38,18 @@ interface Notification {
 
 type AuditJson = Record<string, unknown> & {
   active?: boolean;
+  arrivalWindow?: string;
   computedAmount?: number | string;
   contactName?: string;
   count?: number | string;
   date?: string;
   phone?: string;
+  permissionType?: string;
+  expectedEndTime?: string;
+  expectedStartTime?: string;
   priority?: string;
   relationship?: string;
+  reason?: string;
   staffName?: string;
   fullName?: string;
   holidayNote?: string;
@@ -122,6 +130,8 @@ function getNotificationHref(entityType: string) {
       return '/entries';
     case 'attendance':
     case 'attendance_attempt':
+    case 'attendance_permission':
+    case 'staff_device':
       return '/attendance';
     case 'office_network':
       return '/attendance';
@@ -145,6 +155,8 @@ function getCategory(entityType: string): NotificationCategory {
     case 'entry_submission':
     case 'attendance':
     case 'attendance_attempt':
+    case 'attendance_permission':
+    case 'staff_device':
       return 'attendance';
     case 'calendar':
       return 'calendar';
@@ -280,6 +292,37 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
         );
       }
 
+      if (event.entityType === 'attendance_permission') {
+        const staffName = afterData?.staffName || 'Staff member';
+        const window = getPermissionWindowBounds({
+          arrivalWindow: typeof afterData?.arrivalWindow === 'string' ? afterData.arrivalWindow : null,
+          expectedEndTime: typeof afterData?.expectedEndTime === 'string' ? afterData.expectedEndTime : null,
+          expectedStartTime: typeof afterData?.expectedStartTime === 'string' ? afterData.expectedStartTime : null,
+          permissionType: typeof afterData?.permissionType === 'string' ? afterData.permissionType : null,
+        });
+        return makeNotification(
+          event,
+          read,
+          'Attendance permission approved',
+          `${staffName} was approved for ${afterData?.permissionType === 'absence' ? 'excused absence' : `late arrival (${window.label})`}.`,
+          'info',
+          'normal',
+          { href: '/attendance' },
+        );
+      }
+
+      if (event.entityType === 'staff_device') {
+        return makeNotification(
+          event,
+          read,
+          'Attendance device linked',
+          `${afterData?.staffName || 'Staff member'} linked a check-in device.`,
+          'success',
+          'normal',
+          { href: '/attendance' },
+        );
+      }
+
       if (event.entityType === 'calendar') {
         return makeNotification(
           event,
@@ -372,6 +415,19 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
         return makeNotification(event, read, 'Attendance entry updated', `${staffName}'s entry was modified.`, 'info', 'normal');
       }
 
+      if (event.entityType === 'attendance' && afterData?.signOutTime) {
+        const staffName = afterData?.staff?.fullName || afterData?.staffName || 'Staff member';
+        return makeNotification(
+          event,
+          read,
+          'Attendance sign-out recorded',
+          `${staffName} signed out at ${afterData.signOutTime}.`,
+          'success',
+          'normal',
+          { href: '/attendance' },
+        );
+      }
+
       if (event.entityType === 'calendar') {
         return makeNotification(
           event,
@@ -383,9 +439,45 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
         );
       }
 
+      if (event.entityType === 'attendance_permission') {
+        return makeNotification(
+          event,
+          read,
+          'Attendance permission updated',
+          `${afterData?.staffName || beforeData?.staffName || 'Staff member'} permission was updated.`,
+          'info',
+          'normal',
+          { href: '/attendance' },
+        );
+      }
+
+      if (event.entityType === 'staff_device') {
+        return makeNotification(
+          event,
+          read,
+          'Attendance device reset',
+          `${beforeData?.staffName || afterData?.staffName || 'Staff member'} can link a new check-in device.`,
+          'warning',
+          'high',
+          { href: '/attendance' },
+        );
+      }
+
       return makeNotification(event, read, 'Record updated', `${getAuditEntityLabel(event.entityType)} was modified.`, 'info', 'normal');
 
     case 'DELETE':
+      if (event.entityType === 'attendance_permission') {
+        return makeNotification(
+          event,
+          read,
+          'Attendance permission removed',
+          `${beforeData?.staffName || afterData?.staffName || 'Staff member'} permission was removed.`,
+          'warning',
+          'high',
+          { href: '/attendance' },
+        );
+      }
+
       if (event.entityType === 'emergency_contact') {
         const name = beforeData?.contactName || afterData?.contactName || 'Emergency contact';
         return makeNotification(
@@ -430,6 +522,18 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
           read,
           'Blocked attendance check-in',
           `${afterData?.userEmail || 'A user'} could not check in: ${String(afterData?.result || 'review required').replace(/_/g, ' ').toLowerCase()}.`,
+          'alert',
+          'high',
+          { href: '/attendance' },
+        );
+      }
+
+      if (operation === 'ALERT' && event.entityType === 'attendance') {
+        return makeNotification(
+          event,
+          read,
+          'Attendance needs review',
+          `${afterData?.staffName || 'Staff member'} has an attendance item that needs review.`,
           'alert',
           'high',
           { href: '/attendance' },
@@ -510,9 +614,10 @@ async function getAuditNotifications(limit: number, readIds: Set<string>) {
 
 async function getSystemNotifications(readIds: Set<string>): Promise<Notification[]> {
   const today = new Date();
-  const todayStr = format(today, 'yyyy-MM-dd');
-  const dayOfWeek = today.getDay();
-  const currentHour = today.getHours();
+  const clock = getAccraClock(today);
+  const todayStr = clock.dateKey;
+  const dayOfWeek = new Date(`${todayStr}T00:00:00Z`).getUTCDay();
+  const currentHour = Number(clock.timeKey.slice(0, 2));
   const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
   const notifications: Notification[] = [];
 
@@ -553,64 +658,160 @@ async function getSystemNotifications(readIds: Set<string>): Promise<Notificatio
     .where(and(eq(staff.active, true), eq(staff.archived, false)));
   const activeStaffCount = Number(staffCountResult[0]?.count || 0);
 
-  if (isWeekday && !holidayCheck && activeStaffCount > 0 && currentHour >= 10) {
-    const [submission] = await db.select({ id: entrySubmission.id })
-      .from(entrySubmission)
-      .where(eq(entrySubmission.date, todayStr))
-      .limit(1);
+  if (isWeekday && !holidayCheck && activeStaffCount > 0) {
+    const attendanceRows = await db.select({
+      id: attendanceRecord.id,
+      signOutTime: attendanceRecord.signOutTime,
+      staffId: attendanceRecord.staffId,
+      staffName: staff.fullName,
+    })
+      .from(attendanceRecord)
+      .leftJoin(staff, eq(attendanceRecord.staffId, staff.id))
+      .where(eq(attendanceRecord.date, todayStr));
+    const checkedInStaffIds = new Set(attendanceRows.map((row) => row.staffId));
+    const checkedInCount = attendanceRows.length;
 
-    if (!submission) {
-      const alertId = `system-no-entries-${todayStr}`;
+    const latePermissions = await db.select({
+      arrivalWindow: attendancePermission.arrivalWindow,
+      expectedEndTime: attendancePermission.expectedEndTime,
+      expectedStartTime: attendancePermission.expectedStartTime,
+      id: attendancePermission.id,
+      permissionType: attendancePermission.permissionType,
+      reason: attendancePermission.reason,
+      staffId: attendancePermission.staffId,
+      staffName: staff.fullName,
+    })
+      .from(attendancePermission)
+      .leftJoin(staff, eq(attendancePermission.staffId, staff.id))
+      .where(and(
+        eq(attendancePermission.date, todayStr),
+        eq(attendancePermission.status, 'approved'),
+        eq(attendancePermission.permissionType, 'late_arrival'),
+      ));
+
+    for (const permission of latePermissions) {
+      if (checkedInStaffIds.has(permission.staffId)) continue;
+      if (!isPermissionWindowOverdue(permission, todayStr, clock.dateKey, clock.timeKey)) continue;
+
+      const window = getPermissionWindowBounds(permission);
+      const alertId = `system-late-permission-overdue-${todayStr}-${permission.id}`;
       notifications.push(makeNotification(
         {
           id: alertId,
-          entityType: 'system',
-          entityId: 'today-entries',
+          entityType: 'attendance_permission',
+          entityId: permission.id,
           action: 'ALERT',
           beforeJson: null,
-          afterJson: { date: todayStr },
+          afterJson: {
+            arrivalWindow: permission.arrivalWindow,
+            date: todayStr,
+            expectedEndTime: permission.expectedEndTime,
+            expectedStartTime: permission.expectedStartTime,
+            permissionType: permission.permissionType,
+            reason: permission.reason,
+            staffName: permission.staffName,
+          },
           actorEmail: 'system',
           timestamp: today,
         },
         readIds.has(alertId),
-        'Entries not recorded',
-        "Today's lateness entries have not been submitted yet.",
+        'Late permission overdue',
+        `${permission.staffName || 'Staff member'} was approved for ${window.label.toLowerCase()} but has not checked in.`,
         'alert',
         'critical',
-        {
-          category: 'attendance',
-          href: '/entries',
-        },
-      ));
-    }
-
-    const attendanceRows = await db.select({ id: attendanceRecord.id })
-      .from(attendanceRecord)
-      .where(eq(attendanceRecord.date, todayStr));
-    const checkedInCount = attendanceRows.length;
-    if (checkedInCount < activeStaffCount) {
-      const alertId = `system-attendance-missing-${todayStr}`;
-      notifications.push(makeNotification(
-        {
-          id: alertId,
-          entityType: 'system',
-          entityId: 'today-attendance',
-          action: 'ALERT',
-          beforeJson: null,
-          afterJson: { date: todayStr, checkedInCount, activeStaffCount },
-          actorEmail: 'system',
-          timestamp: today,
-        },
-        readIds.has(alertId),
-        'Attendance check-ins incomplete',
-        `${activeStaffCount - checkedInCount} active staff member${activeStaffCount - checkedInCount === 1 ? '' : 's'} have not checked in today.`,
-        'alert',
-        'high',
         {
           category: 'attendance',
           href: '/attendance',
         },
       ));
+    }
+
+    if (currentHour >= 10) {
+      const [submission] = await db.select({ id: entrySubmission.id })
+        .from(entrySubmission)
+        .where(eq(entrySubmission.date, todayStr))
+        .limit(1);
+
+      if (!submission) {
+        const alertId = `system-no-entries-${todayStr}`;
+        notifications.push(makeNotification(
+          {
+            id: alertId,
+            entityType: 'system',
+            entityId: 'today-entries',
+            action: 'ALERT',
+            beforeJson: null,
+            afterJson: { date: todayStr },
+            actorEmail: 'system',
+            timestamp: today,
+          },
+          readIds.has(alertId),
+          'Entries not recorded',
+          "Today's lateness entries have not been submitted yet.",
+          'alert',
+          'critical',
+          {
+            category: 'attendance',
+            href: '/entries',
+          },
+        ));
+      }
+
+      if (checkedInCount < activeStaffCount) {
+        const alertId = `system-attendance-missing-${todayStr}`;
+        notifications.push(makeNotification(
+          {
+            id: alertId,
+            entityType: 'system',
+            entityId: 'today-attendance',
+            action: 'ALERT',
+            beforeJson: null,
+            afterJson: { date: todayStr, checkedInCount, activeStaffCount },
+            actorEmail: 'system',
+            timestamp: today,
+          },
+          readIds.has(alertId),
+          'Attendance check-ins incomplete',
+          `${activeStaffCount - checkedInCount} active staff member${activeStaffCount - checkedInCount === 1 ? '' : 's'} have not checked in today.`,
+          'alert',
+          'high',
+          {
+            category: 'attendance',
+            href: '/attendance',
+          },
+        ));
+      }
+
+      if (shouldAlertNoSignOut(clock.timeKey)) {
+        const noSignOutRows = attendanceRows.filter((row) => !row.signOutTime);
+        for (const row of noSignOutRows) {
+          const alertId = `system-no-sign-out-${todayStr}-${row.staffId}`;
+          notifications.push(makeNotification(
+            {
+              id: alertId,
+              entityType: 'attendance',
+              entityId: row.id,
+              action: 'ALERT',
+              beforeJson: null,
+              afterJson: {
+                date: todayStr,
+                staffName: row.staffName,
+              },
+              actorEmail: 'system',
+              timestamp: today,
+            },
+            readIds.has(alertId),
+            'Sign-out missing',
+            `${row.staffName || 'Staff member'} has not signed out by ${NO_SIGN_OUT_ALERT_LABEL}.`,
+            'alert',
+            'high',
+            {
+              category: 'attendance',
+              href: '/attendance',
+            },
+          ));
+        }
+      }
     }
   }
 

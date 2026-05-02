@@ -24,20 +24,20 @@ function optionalText(value: unknown) {
 
 function normalizeContactBody(body: EmergencyContactBody) {
   const contactName = optionalText(body.contactName);
-  const familyPhone = optionalText(body.alternatePhone);
+  const emergencyPhone = optionalText(body.alternatePhone);
   const staffId = optionalText(body.staffId);
   const staffPhone = optionalText(body.phone);
 
   if (!staffId) return { error: 'Linked staff member is required' };
   if (!staffPhone) return { error: 'Staff phone number is required' };
-  if (!contactName) return { error: 'Family or spouse contact name is required' };
-  if (!familyPhone) return { error: 'Family or spouse phone number is required' };
+  if (!contactName) return { error: 'Emergency contact name is required' };
+  if (!emergencyPhone) return { error: 'Emergency phone number is required' };
 
   return {
     data: {
       active: true,
       address: optionalText(body.address),
-      alternatePhone: familyPhone,
+      alternatePhone: emergencyPhone,
       contactName,
       email: optionalText(body.email)?.toLowerCase() || null,
       notes: optionalText(body.notes),

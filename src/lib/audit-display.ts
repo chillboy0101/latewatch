@@ -27,6 +27,13 @@ export interface AuditFieldChange {
 
 const LOW_VALUE_FIELDS = new Set(['id', 'createdAt', 'updatedAt', 'archived', 'archivedAt']);
 
+const ARRIVAL_WINDOW_LABELS: Record<string, string> = {
+  afternoon: 'Afternoon',
+  any_time_today: 'Any time today',
+  morning: 'Morning',
+  specific_time: 'Specific time',
+};
+
 function toPayload(value: unknown): AuditDisplayPayload {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -44,10 +51,23 @@ export function formatAuditFieldLabel(field: string) {
   if (field === 'active') return 'Status';
   if (field === 'archived') return 'Staff Status';
   if (field === 'allowedIp') return 'Office IP';
-  if (field === 'alternatePhone') return 'Family Phone';
+  if (field === 'arrivalWindow') return 'Arrival Window';
+  if (field === 'alternatePhone') return 'Emergency Phone';
   if (field === 'contactName') return 'Contact Name';
+  if (field === 'expectedEndTime') return 'Expected By';
+  if (field === 'expectedStartTime') return 'Window Starts';
   if (field === 'networkIp') return 'Network IP';
+  if (field === 'officeNetworkStatus') return 'Office Network';
+  if (field === 'permissionType') return 'Permission Type';
   if (field === 'phone') return 'Staff Phone';
+  if (field === 'registeredIp') return 'Registered IP';
+  if (field === 'lastSeenIp') return 'Last Seen IP';
+  if (field === 'registeredAt') return 'Registered At';
+  if (field === 'lastSeenAt') return 'Last Seen At';
+  if (field === 'signOutAt') return 'Signed Out At';
+  if (field === 'signOutTime') return 'Sign-Out Time';
+  if (field === 'signOutNetworkIp') return 'Sign-Out IP';
+  if (field === 'signOutUserAgent') return 'Sign-Out Device';
   if (field === 'staffId') return 'Staff ID';
   if (field === 'staffName') return 'Staff';
   if (field === 'updatedByEmail') return 'Updated By';
@@ -90,6 +110,10 @@ function formatAuditFieldValue(field: string, value: unknown): string {
     if (value === false) return 'Current';
   }
 
+  if (field === 'arrivalWindow' && typeof value === 'string') {
+    return ARRIVAL_WINDOW_LABELS[value] || formatAuditValue(value);
+  }
+
   return formatAuditValue(value);
 }
 
@@ -129,6 +153,13 @@ export function getAuditTargetName(record: Pick<AuditDisplayRecord, 'afterJson' 
     return payload.userEmail ? `${formatAuditValue(payload.userEmail)} on ${formatAuditValue(payload.date)}` : record.entityId;
   }
 
+  if (record.entityType === 'attendance_permission') {
+    const staffName = formatAuditValue(payload.staffName);
+    const date = formatAuditValue(payload.date);
+    if (staffName && staffName !== '-') return date && date !== '-' ? `${staffName} on ${date}` : staffName;
+    return record.entityId;
+  }
+
   if (record.entityType === 'emergency_contact') {
     if (payload.contactName) {
       const staffName = formatAuditValue(payload.staffName);
@@ -159,6 +190,10 @@ export function getAuditTargetName(record: Pick<AuditDisplayRecord, 'afterJson' 
     const name = formatAuditValue(payload.name) || 'Office WiFi';
     const ip = formatAuditValue(payload.allowedIp);
     return ip && ip !== '-' ? `${name} (${ip})` : name;
+  }
+
+  if (record.entityType === 'staff_device') {
+    return formatAuditValue(payload.staffName) || record.entityId;
   }
 
   return record.entityId;
