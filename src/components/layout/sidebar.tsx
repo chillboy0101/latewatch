@@ -24,8 +24,8 @@ const navigation = [
   { name: 'Emergency', href: '/emergency-contacts', icon: PhoneCall },
   { name: 'Attendance', href: '/attendance', icon: ClipboardCheck },
   { name: 'WiFi', href: '/wifi', icon: Wifi },
-  { name: 'Entries', href: '/entries', icon: Table2 },
-  { name: 'Exports', href: '/exports', icon: Download },
+  { name: 'Lateness Entries', href: '/entries', icon: Table2 },
+  { name: 'Lateness Exports', href: '/exports', icon: Download },
   { name: 'Calendar', href: '/calendar', icon: Calendar },
   { name: 'Audit Trail', href: '/audit-trail', icon: Shield },
 ];

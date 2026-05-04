@@ -1,5 +1,5 @@
 import { currentUser } from '@clerk/nextjs/server';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { attendanceRecord, latenessEntry, staffDevice } from '@/db/schema';
@@ -37,39 +37,63 @@ function getUserFullName(user: NonNullable<Awaited<ReturnType<typeof currentUser
     || null;
 }
 
+function getUserEmailAddresses(user: NonNullable<Awaited<ReturnType<typeof currentUser>>>) {
+  const emails = [
+    user.primaryEmailAddress?.emailAddress,
+    ...user.emailAddresses.map((emailAddress) => emailAddress.emailAddress),
+  ]
+    .map((email) => email?.trim().toLowerCase())
+    .filter((email): email is string => Boolean(email));
+
+  return Array.from(new Set(emails));
+}
+
 async function resolveMemberForAttendance(input: {
   actorEmail: string;
   actorId: string;
+  candidateEmails?: string[];
   fullName: string | null;
 }) {
-  const resolved = await getOrAutoLinkStaffByEmail({
-    email: input.actorEmail,
-    fullName: input.fullName,
-  });
+  const candidateEmails = Array.from(new Set([
+    input.actorEmail,
+    ...(input.candidateEmails || []),
+  ].filter((email) => email && email !== 'unknown')));
 
-  if (resolved.autoLinked && resolved.before && resolved.member) {
-    await writeAuditEvent({
-      entityType: 'staff',
-      entityId: resolved.member.id,
-      action: 'UPDATE',
-      before: resolved.before,
-      after: {
-        ...resolved.member,
-        autoLinkedFromAttendance: true,
-      },
-      actor: { email: input.actorEmail, id: input.actorId },
-      reason: 'attendance-auto-link',
+  for (const email of candidateEmails) {
+    const resolved = await getOrAutoLinkStaffByEmail({
+      email,
+      fullName: input.fullName,
     });
 
-    await syncStaffEmailIdentity({
-      actorUserId: input.actorId,
-      email: input.actorEmail,
-      staffId: resolved.member.id,
-      staffName: resolved.member.fullName,
-    });
+    if (!resolved.member) continue;
+
+    if (resolved.autoLinked && resolved.before) {
+      await writeAuditEvent({
+        entityType: 'staff',
+        entityId: resolved.member.id,
+        action: 'UPDATE',
+        before: resolved.before,
+        after: {
+          ...resolved.member,
+          autoLinkedFromAttendance: true,
+          matchedLoginEmail: email,
+        },
+        actor: { email: input.actorEmail, id: input.actorId },
+        reason: 'attendance-auto-link',
+      });
+
+      await syncStaffEmailIdentity({
+        actorUserId: input.actorId,
+        email,
+        staffId: resolved.member.id,
+        staffName: resolved.member.fullName,
+      });
+    }
+
+    return resolved.member;
   }
 
-  return resolved.member;
+  return null;
 }
 
 function responsePayload(input: {
@@ -181,7 +205,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const actorEmail = user.emailAddresses[0]?.emailAddress?.toLowerCase() || 'unknown';
+    const actorEmails = getUserEmailAddresses(user);
+    const actorEmail = actorEmails[0] || 'unknown';
     const actorFullName = getUserFullName(user);
     const clock = getAccraClock();
     const currentIpInfo = await resolveClientIpInfo(request);
@@ -194,6 +219,7 @@ export async function GET(request: NextRequest) {
         : resolveMemberForAttendance({
           actorEmail,
           actorId: user.id,
+          candidateEmails: actorEmails,
           fullName: actorFullName,
         }),
       getActiveOfficeNetwork(),
@@ -251,7 +277,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const actorEmail = user.emailAddresses[0]?.emailAddress?.toLowerCase() || 'unknown';
+  const actorEmails = getUserEmailAddresses(user);
+  const actorEmail = actorEmails[0] || 'unknown';
   const userId = user.id;
   const actorFullName = getUserFullName(user);
   const userAgent = request.headers.get('user-agent');
@@ -305,6 +332,7 @@ export async function POST(request: NextRequest) {
     const member = await resolveMemberForAttendance({
       actorEmail,
       actorId: userId,
+      candidateEmails: actorEmails,
       fullName: actorFullName,
     });
     if (!member) {
@@ -384,10 +412,10 @@ export async function POST(request: NextRequest) {
             userId,
           })
           .where(eq(staffDevice.id, registeredDevice.id));
-        return;
+        return true;
       }
 
-      await db.insert(staffDevice)
+      const [createdDevice] = await db.insert(staffDevice)
         .values({
           deviceHash: trustedDeviceHash,
           lastSeenAt: clock.now,
@@ -398,7 +426,30 @@ export async function POST(request: NextRequest) {
           userAgent,
           userId,
         })
-        .onConflictDoNothing();
+        .onConflictDoNothing({ target: staffDevice.staffId })
+        .returning();
+
+      if (!createdDevice) {
+        const [currentDevice] = await db.select()
+          .from(staffDevice)
+          .where(eq(staffDevice.staffId, staffMember.id))
+          .limit(1);
+
+        if (!currentDevice || currentDevice.deviceHash !== trustedDeviceHash) {
+          return false;
+        }
+
+        await db.update(staffDevice)
+          .set({
+            lastSeenAt: clock.now,
+            lastSeenIp: currentIp,
+            updatedAt: clock.now,
+            userAgent,
+            userId,
+          })
+          .where(eq(staffDevice.id, currentDevice.id));
+        return true;
+      }
 
       await writeAuditEvent({
         entityType: 'staff_device',
@@ -414,6 +465,7 @@ export async function POST(request: NextRequest) {
         actor: { email: actor.actorEmail, id: actor.actorUserId },
         reason: 'attendance-device-binding',
       });
+      return true;
     }
 
     if (existingAttendance) {
@@ -449,7 +501,14 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        await syncTrustedDevice();
+        if (!(await syncTrustedDevice())) {
+          return block(
+            'REGISTERED_DEVICE_REQUIRED',
+            'This account is already linked to another device. Ask an admin to reset your attendance device.',
+            403,
+            staffMember.id,
+          );
+        }
 
         const [updatedAttendance] = await db.update(attendanceRecord)
           .set({
@@ -459,8 +518,39 @@ export async function POST(request: NextRequest) {
             signOutUserAgent: userAgent,
             updatedAt: clock.now,
           })
-          .where(eq(attendanceRecord.id, existingAttendance.id))
+          .where(and(eq(attendanceRecord.id, existingAttendance.id), isNull(attendanceRecord.signOutTime)))
           .returning();
+
+        if (!updatedAttendance) {
+          const [alreadySignedOutAttendance] = await db.select()
+            .from(attendanceRecord)
+            .where(eq(attendanceRecord.id, existingAttendance.id))
+            .limit(1);
+
+          return NextResponse.json({
+            success: true,
+            alreadySignedOut: true,
+            ...responsePayload({
+              attendance: alreadySignedOutAttendance || existingAttendance,
+              currentIp,
+              currentIpSource: currentIpInfo.source,
+              date: clock.dateKey,
+              device: serializeDevice(registeredDevice || {
+                deviceHash: trustedDeviceHash,
+                lastSeenAt: clock.now,
+                registeredAt: clock.now,
+              }, trustedDeviceHash),
+              isHoliday: false,
+              isAfterWorkdayEnd: isAfterWorkdayEnd(clock.timeKey),
+              isOfficeNetwork: true,
+              isWeekend: false,
+              networkConfigured: true,
+              permission: serializePermission(permission),
+              staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
+              time: clock.timeKey,
+            }),
+          });
+        }
 
         await recordAttendanceAttempt({
           date: clock.dateKey,
@@ -488,6 +578,7 @@ export async function POST(request: NextRequest) {
         });
 
         publishRealtime('dashboard', 'invalidate', { reason: 'attendance-sign-out' });
+        publishRealtime('attendance', 'invalidate', { reason: 'attendance-sign-out' });
         publishRealtime('audit-trail', 'invalidate', { reason: 'attendance-sign-out' });
         publishRealtime('notifications', 'invalidate', { reason: 'attendance-sign-out' });
 
@@ -561,7 +652,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await syncTrustedDevice();
+    if (!(await syncTrustedDevice())) {
+      return block(
+        'REGISTERED_DEVICE_REQUIRED',
+        'This account is already linked to another device. Ask an admin to reset your attendance device.',
+        403,
+        staffMember.id,
+      );
+    }
 
     const rawPenalty = computePenalty({
       arrivalTime: checkInTime,
@@ -591,7 +689,51 @@ export async function POST(request: NextRequest) {
       computedAmount: penalty.amount.toString(),
       reason: penalty.reason || null,
       updatedAt: now,
-    }).returning();
+    })
+      .onConflictDoNothing({ target: [attendanceRecord.staffId, attendanceRecord.date] })
+      .returning();
+
+    if (!createdAttendance) {
+      const [racedAttendance] = await db.select()
+        .from(attendanceRecord)
+        .where(and(eq(attendanceRecord.staffId, staffMember.id), eq(attendanceRecord.date, clock.dateKey)))
+        .limit(1);
+
+      await recordAttendanceAttempt({
+        date: clock.dateKey,
+        networkIp: currentIp,
+        result: 'ALREADY_CHECKED_IN',
+        staffId: staffMember.id,
+        successful: true,
+        userAgent,
+        userEmail: actorEmail,
+        userId,
+      });
+
+      return NextResponse.json({
+        success: true,
+        alreadyCheckedIn: true,
+        ...responsePayload({
+          attendance: racedAttendance || null,
+          currentIp,
+          currentIpSource: currentIpInfo.source,
+          date: clock.dateKey,
+          device: serializeDevice(registeredDevice || {
+            deviceHash: trustedDeviceHash,
+            lastSeenAt: now,
+            registeredAt: now,
+          }, trustedDeviceHash),
+          isHoliday: false,
+          isAfterWorkdayEnd: false,
+          isOfficeNetwork: true,
+          isWeekend: false,
+          networkConfigured: true,
+          permission: serializePermission(permission),
+          staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
+          time: clock.timeKey,
+        }),
+      });
+    }
 
     await recordAttendanceAttempt({
       date: clock.dateKey,
@@ -662,6 +804,10 @@ export async function POST(request: NextRequest) {
     }
 
     publishRealtime('dashboard', 'invalidate', { reason: 'attendance-check-in' });
+    publishRealtime('attendance', 'invalidate', { reason: 'attendance-check-in' });
+    if (penalty.amount > 0) {
+      publishRealtime('entries', 'invalidate', { reason: 'attendance-check-in' });
+    }
     publishRealtime('audit-trail', 'invalidate', { reason: 'attendance-check-in' });
     publishRealtime('notifications', 'invalidate', { reason: 'attendance-check-in' });
 

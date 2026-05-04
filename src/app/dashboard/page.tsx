@@ -127,7 +127,7 @@ export default function DashboardPage() {
             fallback={null}
           />
           <StatCard
-            title="Entries Recorded"
+            title="Lateness Entries"
             value={(stats?.weekEntryCount || 0).toString()}
             change={entryChange}
             icon="entries"
@@ -151,7 +151,7 @@ export default function DashboardPage() {
               <Link href="/entries">
                 <Button className="w-full justify-start gap-2">
                   <Plus className="h-4 w-4" />
-                  Record Today&apos;s Entries
+                  Record Lateness Entries
                 </Button>
               </Link>
               <Link href="/exports">
@@ -210,7 +210,7 @@ export default function DashboardPage() {
             ) : (
               <div className="py-8 text-center text-muted-foreground">
                 <p>No recent system activity yet</p>
-                <p className="text-sm mt-1">Staff, entries, exports, notifications, and calendar changes will appear here.</p>
+              <p className="text-sm mt-1">Staff, lateness entries, exports, notifications, and calendar changes will appear here.</p>
               </div>
             )}
           </CardContent>

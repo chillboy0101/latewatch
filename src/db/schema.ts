@@ -1,5 +1,5 @@
 // db/schema.ts
-import { pgTable, uuid, text, boolean, date, time, decimal, timestamp, jsonb, unique, integer } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, boolean, date, time, decimal, timestamp, jsonb, unique, integer, index } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const staff = pgTable('staff', {
@@ -14,7 +14,10 @@ export const staff = pgTable('staff', {
   unit: text('unit'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
-});
+}, (table) => [
+  index('staff_active_archived_idx').on(table.active, table.archived),
+  index('staff_email_idx').on(table.email),
+]);
 
 export const staffRelations = relations(staff, ({ many }) => ({
   attendanceRecords: many(attendanceRecord),
@@ -37,7 +40,10 @@ export const latenessEntry = pgTable('lateness_entry', {
   overriddenBy: uuid('overridden_by'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
-}, (table) => [unique().on(table.staffId, table.date)]);
+}, (table) => [
+  index('lateness_entry_date_idx').on(table.date),
+  unique().on(table.staffId, table.date),
+]);
 
 export const latenessEntryRelations = relations(latenessEntry, ({ one }) => ({
   staff: one(staff, {
@@ -97,7 +103,10 @@ export const attendanceRecord = pgTable('attendance_record', {
   reason: text('reason'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
-}, (table) => [unique().on(table.staffId, table.date)]);
+}, (table) => [
+  index('attendance_record_date_idx').on(table.date),
+  unique().on(table.staffId, table.date),
+]);
 
 export const attendanceRecordRelations = relations(attendanceRecord, ({ one }) => ({
   staff: one(staff, {
@@ -117,7 +126,10 @@ export const attendanceAttempt = pgTable('attendance_attempt', {
   successful: boolean('successful').default(false).notNull(),
   result: text('result').notNull(),
   createdAt: timestamp('created_at').defaultNow(),
-});
+}, (table) => [
+  index('attendance_attempt_date_idx').on(table.date),
+  index('attendance_attempt_staff_date_idx').on(table.staffId, table.date),
+]);
 
 export const attendancePermission = pgTable('attendance_permission', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -133,7 +145,11 @@ export const attendancePermission = pgTable('attendance_permission', {
   approvedByEmail: text('approved_by_email').notNull(),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
-}, (table) => [unique().on(table.staffId, table.date)]);
+}, (table) => [
+  index('attendance_permission_date_idx').on(table.date),
+  index('attendance_permission_staff_id_idx').on(table.staffId),
+  unique().on(table.staffId, table.date),
+]);
 
 export const attendancePermissionRelations = relations(attendancePermission, ({ one }) => ({
   staff: one(staff, {
@@ -154,6 +170,7 @@ export const staffDevice = pgTable('staff_device', {
   lastSeenAt: timestamp('last_seen_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => [
+  index('staff_device_user_id_idx').on(table.userId),
   unique().on(table.staffId),
 ]);
 
@@ -178,7 +195,10 @@ export const emergencyContact = pgTable('emergency_contact', {
   active: boolean('active').default(true),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
-});
+}, (table) => [
+  index('emergency_contact_active_idx').on(table.active),
+  index('emergency_contact_staff_id_idx').on(table.staffId),
+]);
 
 export const emergencyContactRelations = relations(emergencyContact, ({ one }) => ({
   staff: one(staff, {
@@ -197,7 +217,10 @@ export const auditEvent = pgTable('audit_event', {
   actorUserId: uuid('actor_user_id'),
   actorEmail: text('actor_email').notNull(),
   timestamp: timestamp('timestamp').defaultNow(),
-});
+}, (table) => [
+  index('audit_event_entity_idx').on(table.entityType, table.entityId),
+  index('audit_event_timestamp_idx').on(table.timestamp),
+]);
 
 export const templateVersion = pgTable('template_version', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -216,5 +239,6 @@ export const notificationRead = pgTable('notification_read', {
   userId: text('user_id').notNull(),
   readAt: timestamp('read_at').defaultNow(),
 }, (table) => [
+  index('notification_read_user_id_idx').on(table.userId),
   unique().on(table.notificationId, table.userId),
 ]);

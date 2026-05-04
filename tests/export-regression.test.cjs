@@ -121,6 +121,11 @@ Module._load = function patchedLoad(request, ...args) {
       tryWriteAuditEvent: async () => null,
     };
   }
+  if (request === '@/lib/attendance-lateness-sync') {
+    return {
+      syncLatenessEntriesFromAttendanceForRange: async () => ({ inserted: 0, updated: 0 }),
+    };
+  }
 
   return originalLoad.call(this, request, ...args);
 };

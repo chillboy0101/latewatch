@@ -230,7 +230,7 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
           'Entries submitted',
           entryCount > 0
             ? `${entryCount} lateness record${entryCount === 1 ? '' : 's'} saved for ${dateLabel}.`
-            : `Daily entries for ${dateLabel} were submitted with no late arrivals.`,
+            : `Lateness entries for ${dateLabel} were submitted with no late arrivals.`,
           'success',
           'normal',
         );
@@ -374,7 +374,7 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
           'Entries updated',
           entryCount > 0
             ? `${entryCount} lateness record${entryCount === 1 ? '' : 's'} saved for ${dateLabel}.`
-            : `Daily entries for ${dateLabel} were updated with no late arrivals.`,
+            : `Lateness entries for ${dateLabel} were updated with no late arrivals.`,
           'success',
           'normal',
         );
@@ -384,6 +384,7 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
         const name = afterData?.fullName || beforeData?.fullName || 'Staff member';
         const changes: string[] = [];
         if (beforeData?.fullName !== afterData?.fullName) changes.push('name');
+        if (beforeData?.email !== afterData?.email) changes.push('login email');
         if (beforeData?.department !== afterData?.department) changes.push('department');
         if (beforeData?.unit !== afterData?.unit) changes.push('unit');
 
@@ -488,6 +489,18 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
           'warning',
           'high',
           { href: '/emergency-contacts' },
+        );
+      }
+
+      if (event.entityType === 'staff_device') {
+        return makeNotification(
+          event,
+          read,
+          'Attendance device reset',
+          `${beforeData?.staffName || afterData?.staffName || 'Staff member'} can link a new check-in device.`,
+          'warning',
+          'high',
+          { href: '/attendance' },
         );
       }
 

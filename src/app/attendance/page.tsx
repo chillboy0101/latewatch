@@ -1,7 +1,6 @@
 'use client';
 
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { format } from 'date-fns';
 import { AlertTriangle, Calendar, CheckCircle2, ChevronDown, Clock, FileText, Loader2, Printer, RotateCcw, Search, ShieldCheck, Smartphone, Trash2, UserRound, XCircle } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
@@ -12,6 +11,7 @@ import {
   ATTENDANCE_PERMISSION_WINDOWS,
   getPermissionWindowBounds,
 } from '@/lib/attendance-permissions';
+import { getAccraDateKey } from '@/lib/date-key';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 
@@ -103,7 +103,7 @@ interface AttendanceQrResponse {
 }
 
 function todayKey() {
-  return format(new Date(), 'yyyy-MM-dd');
+  return getAccraDateKey();
 }
 
 function getDaysInMonth(year: number, month: number) {
@@ -247,26 +247,30 @@ export default function AttendancePage() {
   }, []);
 
   useEffect(() => {
-    let cleanup: (() => void) | undefined;
+    let cleanups: Array<() => void> = [];
     let mounted = true;
 
     (async () => {
-      const unsubscribe = await subscribeRealtimeChannel({
-        channel: 'dashboard',
-        events: ['invalidate'],
-        onEvent: fetchAttendance,
-      });
+      const unsubscribers = await Promise.all(
+        ['attendance', 'dashboard'].map((channel) =>
+          subscribeRealtimeChannel({
+            channel,
+            events: ['invalidate'],
+            onEvent: fetchAttendance,
+          }),
+        ),
+      );
 
       if (mounted) {
-        cleanup = unsubscribe;
+        cleanups = unsubscribers;
       } else {
-        unsubscribe();
+        unsubscribers.forEach((unsubscribe) => unsubscribe());
       }
     })();
 
     return () => {
       mounted = false;
-      cleanup?.();
+      cleanups.forEach((unsubscribe) => unsubscribe());
     };
   }, [fetchAttendance]);
 

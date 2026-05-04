@@ -8,6 +8,7 @@ import { format, parseISO } from 'date-fns';
 import path from 'path';
 import { getAuditActor, tryWriteAuditEvent } from '@/lib/audit';
 import { getMonthWorkingWeeks } from '@/lib/export-weeks';
+import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 
 // ── Staff order: fetched from DB ordered by displayOrder then fullName ──
 
@@ -194,6 +195,8 @@ export async function buildWeeklyWorkbook(
   weekNumber?: number,
 ): Promise<ExcelJS.Workbook> {
   const templatePath = path.join(process.cwd(), 'src', 'lateness-book.xlsx');
+
+  await syncLatenessEntriesFromAttendanceForRange(weekStart, weekEnd);
 
   // Fetch entries for the week
   const entries = await db.select({

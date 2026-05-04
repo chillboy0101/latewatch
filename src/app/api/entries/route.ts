@@ -6,6 +6,10 @@ import { eq, and, gte, lte } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 import { getAuditActor, writeAuditEvent } from '@/lib/audit';
 import { computePenalty } from '@/lib/penalty-calculator';
+import {
+  syncLatenessEntriesFromAttendanceForDate,
+  syncLatenessEntriesFromAttendanceForRange,
+} from '@/lib/attendance-lateness-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +22,7 @@ export async function GET(request: NextRequest) {
 
     // Single date query
     if (date) {
+      await syncLatenessEntriesFromAttendanceForDate(date);
       const entries = await db.select({
         id: latenessEntry.id,
         staffId: latenessEntry.staffId,
@@ -39,6 +44,7 @@ export async function GET(request: NextRequest) {
 
     // Date range query (for exports/performance)
     if (start && end) {
+      await syncLatenessEntriesFromAttendanceForRange(start, end);
       const entries = await db.select({
         id: latenessEntry.id,
         staffId: latenessEntry.staffId,

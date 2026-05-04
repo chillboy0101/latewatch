@@ -10,6 +10,8 @@ import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { addDays, format, isValid, parseISO } from 'date-fns';
 import { Save, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { computePenalty } from '@/lib/penalty-calculator';
+import { getAccraDateKey } from '@/lib/date-key';
+import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 
 interface StaffMember {
   id: string;
@@ -46,7 +48,7 @@ function normalizeTimeValue(value: string | null | undefined) {
 
 export default function EntriesPage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
-  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [selectedDate, setSelectedDate] = useState(() => parseISO(getAccraDateKey()));
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -110,6 +112,34 @@ export default function EntriesPage() {
     fetchStaffAndEntries();
   }, [fetchStaffAndEntries]);
 
+  useEffect(() => {
+    let cleanups: Array<() => void> = [];
+    let mounted = true;
+
+    (async () => {
+      const unsubscribers = await Promise.all(
+        ['entries', 'dashboard'].map((channel) =>
+          subscribeRealtimeChannel({
+            channel,
+            events: ['invalidate'],
+            onEvent: fetchStaffAndEntries,
+          }),
+        ),
+      );
+
+      if (mounted) {
+        cleanups = unsubscribers;
+      } else {
+        unsubscribers.forEach((unsubscribe) => unsubscribe());
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      cleanups.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [fetchStaffAndEntries]);
+
   
   const updateEntry = <K extends keyof Entry>(staffId: string, field: K, value: Entry[K]) => {
     setEntries((prev) =>
@@ -161,11 +191,11 @@ export default function EntriesPage() {
         setTimeout(() => fetchStaffAndEntries(), 50);
       } else {
         const errorData = await response.json();
-        setMessage({ type: 'error', text: errorData.error || 'Failed to save entries' });
+        setMessage({ type: 'error', text: errorData.error || 'Failed to save lateness entries' });
       }
     } catch (error) {
-      console.error('Failed to save entries:', error);
-      setMessage({ type: 'error', text: 'Failed to save entries' });
+      console.error('Failed to save lateness entries:', error);
+      setMessage({ type: 'error', text: 'Failed to save lateness entries' });
     } finally {
       setSaving(false);
       // Auto-dismiss message after 5 seconds
@@ -201,10 +231,10 @@ export default function EntriesPage() {
 
   if (loading) {
     return (
-      <DashboardLayout title="Daily Entry">
+      <DashboardLayout title="Lateness Entries">
         <LoadingBuffer
           variant="page"
-          label="Loading entries"
+          label="Loading lateness entries"
           description="Checking staff, holidays, and saved lateness records."
         />
       </DashboardLayout>
@@ -213,12 +243,12 @@ export default function EntriesPage() {
 
   if (staff.length === 0) {
     return (
-      <DashboardLayout title="Daily Entry">
+      <DashboardLayout title="Lateness Entries">
         <div className="space-y-6">
           <Card>
             <div className="p-8 text-center">
               <p className="text-lg mb-2">No staff members found</p>
-              <p className="text-sm text-muted-foreground mb-4">Please add staff members first before recording entries</p>
+              <p className="text-sm text-muted-foreground mb-4">Please add staff members first before recording lateness entries</p>
               <Button onClick={() => window.location.href = '/staff'}>
                 Go to Staff Management
               </Button>
@@ -230,7 +260,7 @@ export default function EntriesPage() {
   }
 
   return (
-    <DashboardLayout title="Daily Entry">
+    <DashboardLayout title="Lateness Entries">
       <div className="space-y-6">
         {/* Success/Error Message */}
         {message && (
@@ -296,7 +326,7 @@ export default function EntriesPage() {
             </div>
             <Button
               variant="outline"
-              onClick={() => changeSelectedDate(new Date())}
+              onClick={() => changeSelectedDate(parseISO(getAccraDateKey()))}
               className="self-start"
             >
               Today
@@ -307,7 +337,7 @@ export default function EntriesPage() {
           </div>
           <Button onClick={handleSaveAll} disabled={saving || entriesDisabled} className="self-start sm:self-auto">
             <Save className="mr-2 h-4 w-4" />
-            {saving ? 'Saving...' : entriesDisabled ? 'Closed - No Entries' : 'Save Entries'}
+            {saving ? 'Saving...' : entriesDisabled ? 'Closed - No Entries' : 'Save Lateness Entries'}
           </Button>
         </div>
 

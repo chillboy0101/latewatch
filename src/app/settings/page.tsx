@@ -1,6 +1,7 @@
 'use client';
 
 import { UserButton, useUser } from '@clerk/nextjs';
+import Link from 'next/link';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,9 +37,9 @@ export default function SettingsPage() {
             </div>
             <p className="mt-4 text-sm text-muted-foreground">
               To change your name, email, or password, visit the{' '}
-              <a href="/account" className="text-primary hover:underline">
-                Clerk Account Settings
-              </a>
+              <Link href="/account" className="text-primary hover:underline">
+                Account Settings
+              </Link>
             </p>
           </div>
         </Card>
@@ -67,9 +68,9 @@ export default function SettingsPage() {
             <h2 className="mb-4 text-lg font-semibold">Quick Links</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <QuickLink href="/dashboard" label="Dashboard" desc="View overview and stats" />
-              <QuickLink href="/entries" label="Daily Entries" desc="Record lateness data" />
+              <QuickLink href="/entries" label="Lateness Entries" desc="Record lateness data" />
               <QuickLink href="/staff" label="Staff Management" desc="Manage staff members" />
-              <QuickLink href="/exports" label="Export Center" desc="Generate reports" />
+              <QuickLink href="/exports" label="Lateness Exports" desc="Generate reports" />
               <QuickLink href="/calendar" label="Calendar" desc="View holidays" />
             </div>
           </div>
@@ -114,7 +115,7 @@ function ThemeButton({ variant, active, onApply }: { variant: ThemePreference; a
 
 function QuickLink({ href, label, desc }: { href: string; label: string; desc: string }) {
   return (
-    <a
+    <Link
       href={href}
       className="flex items-start gap-3 rounded-md border border-border p-3 hover:bg-card transition-colors"
     >
@@ -123,6 +124,6 @@ function QuickLink({ href, label, desc }: { href: string; label: string; desc: s
         <p className="text-sm font-medium">{label}</p>
         <p className="text-xs text-muted-foreground">{desc}</p>
       </div>
-    </a>
+    </Link>
   );
 }

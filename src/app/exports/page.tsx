@@ -196,7 +196,7 @@ export default function ExportsPage() {
   }
 
   return (
-    <DashboardLayout title="Export Center">
+    <DashboardLayout title="Lateness Exports">
       <div className="space-y-5">
         <Card className="overflow-hidden">
           <div className="border-b border-border px-6 py-5">
@@ -205,7 +205,7 @@ export default function ExportsPage() {
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-background text-primary">
                   <FileSpreadsheet className="h-5 w-5" />
                 </div>
-                <h2 className="text-lg font-semibold leading-none">Working-Day Exports</h2>
+                <h2 className="text-lg font-semibold leading-none">Lateness Exports</h2>
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
