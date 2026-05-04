@@ -54,7 +54,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
         didNotSignOut: false,
         isHoliday: false,
       });
-      const isLate = row.status === 'late' || amount > 0 || penalty.amount > 0;
+      const isLate = row.status === 'late' || amount > 0;
 
       return {
         amount: amount > 0 ? amount : penalty.amount,

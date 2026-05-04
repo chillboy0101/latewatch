@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { attendancePermission, staff } from '@/db/schema';
+import { reconcileAttendanceForPermission } from '@/lib/attendance-permission-reconciliation';
 import { writeAuditEvent } from '@/lib/audit';
 import { publishRealtime } from '@/lib/realtime';
 
@@ -26,7 +27,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Permission record not found' }, { status: 404 });
     }
 
-    const [member] = await db.select({ fullName: staff.fullName })
+    const [member] = await db.select({ fullName: staff.fullName, id: staff.id })
       .from(staff)
       .where(eq(staff.id, before.staffId))
       .limit(1);
@@ -53,6 +54,16 @@ export async function DELETE(
       actor: { email: actorEmail, id: user.id },
       reason: 'attendance-permission',
     });
+
+    if (member) {
+      await reconcileAttendanceForPermission({
+        activePermission: null,
+        actor: { email: actorEmail, id: user.id },
+        date: before.date,
+        reason: 'attendance-permission-deleted',
+        staffMember: { fullName: member.fullName, id: member.id },
+      });
+    }
 
     publishRealtime('dashboard', 'invalidate', { reason: 'attendance-permission' });
     publishRealtime('notifications', 'invalidate', { reason: 'attendance-permission' });

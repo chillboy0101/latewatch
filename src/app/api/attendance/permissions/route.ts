@@ -8,6 +8,7 @@ import {
   normalizeMinuteTime,
   normalizePermissionWindow,
 } from '@/lib/attendance-permissions';
+import { reconcileAttendanceForPermission } from '@/lib/attendance-permission-reconciliation';
 import { writeAuditEvent } from '@/lib/audit';
 import { publishRealtime } from '@/lib/realtime';
 
@@ -144,11 +145,20 @@ export async function POST(request: NextRequest) {
       reason: 'attendance-permission',
     });
 
+    const reconciliation = await reconcileAttendanceForPermission({
+      activePermission: permission,
+      actor: { email: actorEmail, id: user.id },
+      date,
+      reason: 'attendance-permission',
+      staffMember: { fullName: member.fullName, id: member.id },
+    });
+
     publishRealtime('dashboard', 'invalidate', { reason: 'attendance-permission' });
     publishRealtime('notifications', 'invalidate', { reason: 'attendance-permission' });
 
     return NextResponse.json({
       ...permission,
+      reconciliation,
       staffEmail: member.email,
       staffName: member.fullName,
     });
