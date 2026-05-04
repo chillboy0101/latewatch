@@ -1,5 +1,5 @@
 const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
-const cookie = process.env.LATEWATCH_LOAD_TEST_COOKIE || '';
+const cookie = (process.env.LATEWATCH_LOAD_TEST_COOKIE || '').trim();
 const concurrency = Number.parseInt(process.env.CONCURRENCY || '20', 10);
 const requests = Number.parseInt(process.env.REQUESTS || '100', 10);
 const date = process.env.ATTENDANCE_DATE || new Date().toISOString().slice(0, 10);
@@ -36,9 +36,12 @@ async function hit(path, index) {
     await response.arrayBuffer().catch(() => null);
 
     return {
+      clerkAuthReason: response.headers.get('x-clerk-auth-reason'),
+      clerkAuthStatus: response.headers.get('x-clerk-auth-status'),
       duration: performance.now() - startedAt,
       endpoint: path,
       index,
+      matchedPath: response.headers.get('x-matched-path'),
       ok: response.ok,
       status: response.status,
     };
@@ -108,7 +111,11 @@ async function main() {
     console.log('');
     console.log(`Failures: ${failures.length}`);
     for (const failure of failures.slice(0, 8)) {
-      console.log(`- ${failure.endpoint}: ${failure.status}${failure.error ? ` (${failure.error})` : ''}`);
+      const authNote = failure.clerkAuthReason
+        ? ` Clerk=${failure.clerkAuthStatus || 'unknown'}:${failure.clerkAuthReason}`
+        : '';
+      const matchedPath = failure.matchedPath ? ` matched=${failure.matchedPath}` : '';
+      console.log(`- ${failure.endpoint}: ${failure.status}${failure.error ? ` (${failure.error})` : ''}${authNote}${matchedPath}`);
     }
 
     process.exitCode = 1;

@@ -519,6 +519,19 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
       );
 
     case 'SYNC':
+      if (event.entityType === 'staff') {
+        const status = String(afterData?.identityStatus || '').replace(/_/g, ' ');
+        return makeNotification(
+          event,
+          read,
+          'Staff login access synced',
+          `${afterData?.staffName || afterData?.fullName || 'Staff member'} login access was synced${status ? ` (${status})` : ''}.`,
+          'success',
+          'normal',
+          { href: '/staff' },
+        );
+      }
+
       return makeNotification(
         event,
         read,

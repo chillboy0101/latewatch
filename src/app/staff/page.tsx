@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
-import { Archive, Loader2, Pencil, Plus, RotateCcw, Search, Trash2, UserCheck, UserX } from 'lucide-react';
+import { Archive, Loader2, Pencil, Plus, RotateCcw, Search, ShieldCheck, Trash2, UserCheck, UserX } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Dialog,
@@ -41,6 +41,8 @@ export default function StaffPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actioningId, setActioningId] = useState<string | null>(null);
+  const [identityActioningId, setIdentityActioningId] = useState<string | null>(null);
+  const [identityNotice, setIdentityNotice] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [submitMessage, setSubmitMessage] = useState('');
   const [archiveTarget, setArchiveTarget] = useState<StaffMember | null>(null);
@@ -261,6 +263,41 @@ export default function StaffPage() {
     }
   };
 
+  const handleSyncIdentity = async (member: StaffMember) => {
+    if (!member.email) {
+      setIdentityNotice({ tone: 'error', text: 'Add a login email before syncing account access.' });
+      return;
+    }
+
+    setIdentityActioningId(member.id);
+    setIdentityNotice(null);
+
+    try {
+      const response = await fetch(`/api/staff/${member.id}/identity`, {
+        method: 'POST',
+      });
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setIdentityNotice({
+          tone: 'error',
+          text: result.error || result.message || 'Could not sync login access.',
+        });
+        return;
+      }
+
+      setIdentityNotice({
+        tone: 'success',
+        text: `${member.fullName}: ${result.message || 'Login access synced.'}`,
+      });
+    } catch (error) {
+      console.error('Failed to sync staff login access:', error);
+      setIdentityNotice({ tone: 'error', text: 'Could not sync login access.' });
+    } finally {
+      setIdentityActioningId(null);
+    }
+  };
+
   const openEdit = (member: StaffMember) => {
     setEditingId(member.id);
     setEditName(member.fullName);
@@ -353,15 +390,15 @@ export default function StaffPage() {
         </div>
 
         {/* Search & Add */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="relative">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="relative w-full sm:w-72">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search staff..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 w-64"
+                className="w-full pl-10"
               />
             </div>
           </div>
@@ -441,6 +478,17 @@ export default function StaffPage() {
           </Dialog>
         </div>
 
+        {identityNotice && (
+          <div className={cn(
+            'rounded-md border px-4 py-3 text-sm',
+            identityNotice.tone === 'success'
+              ? 'border-success/30 bg-success/10 text-success'
+              : 'border-danger/30 bg-danger/10 text-danger',
+          )}>
+            {identityNotice.text}
+          </div>
+        )}
+
         {/* Staff Table */}
         <Card>
           {loading ? (
@@ -451,142 +499,179 @@ export default function StaffPage() {
             />
           ) : (
             <>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="border-b border-border bg-card">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Login Email</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Department</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Unit</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wide">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {filteredStaff.map((member) => (
-                      <tr key={member.id} className="hover:bg-card/50 transition-colors">
-                        {editingId === member.id ? (
-                          <>
-                            <td className="px-4 py-2">
-                              <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="h-8 text-sm" />
-                            </td>
-                            <td className="px-4 py-2">
-                              <Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="h-8 text-sm" />
-                            </td>
-                            <td className="px-4 py-2">
-                              <Input value={editDepartment} onChange={(e) => setEditDepartment(e.target.value)} className="h-8 text-sm" />
-                            </td>
-                            <td className="px-4 py-2">
-                              <Input value={editUnit} onChange={(e) => setEditUnit(e.target.value)} className="h-8 text-sm" />
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getStaffStatusClass(member)}`}>
-                                {getStaffStatusLabel(member)}
-                              </span>
-                            </td>
-                            <td className="px-4 py-2 text-right">
-                              <div className="flex justify-end gap-2">
-                                <Button size="sm" onClick={handleEdit} className="h-8 gap-2 text-xs" disabled={savingEdit}>
-                                  {savingEdit && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                                  Save
-                                </Button>
-                                <Button variant="outline" size="sm" onClick={() => setEditingId(null)} className="h-8 text-xs" disabled={savingEdit}>Cancel</Button>
-                              </div>
-                            </td>
-                          </>
-                        ) : (
-                          <>
-                            <td className="px-4 py-3 text-sm font-medium">{member.fullName}</td>
-                            <td className="px-4 py-3 text-sm text-muted-foreground">{member.email || 'Not linked'}</td>
-                            <td className="px-4 py-3 text-sm">{member.department || '-'}</td>
-                            <td className="px-4 py-3 text-sm">{member.unit || '-'}</td>
-                            <td className="px-4 py-3 text-sm">
-                              <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getStaffStatusClass(member)}`}>
-                                {getStaffStatusLabel(member)}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              <div className="flex justify-end gap-2">
-                                <Button variant="outline" size="sm" className="h-8 gap-2" onClick={() => openEdit(member)}>
-                                  <Pencil className="h-3.5 w-3.5" />
-                                  Edit
-                                </Button>
-                                {member.archived ? (
-                                  <>
-                                    <Button
-                                      variant="default"
-                                      size="sm"
-                                      className="h-8 gap-2"
-                                      onClick={() => handleToggleArchived(member, false)}
-                                      disabled={actioningId === member.id}
-                                    >
-                                      {actioningId === member.id ? (
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                      ) : (
-                                        <RotateCcw className="h-3.5 w-3.5" />
-                                      )}
-                                      Restore
-                                    </Button>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      className="h-8 gap-2 border-danger/40 text-danger hover:bg-danger/10"
-                                      onClick={() => {
-                                        setDeleteError('');
-                                        setDeleteTarget(member);
-                                      }}
-                                      disabled={actioningId === member.id}
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                      Delete
-                                    </Button>
-                                  </>
+              <div>
+                <div className="hidden grid-cols-[1.15fr_1.2fr_.8fr_.7fr_.65fr_1.6fr] gap-4 border-b border-border bg-card px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground xl:grid">
+                  <div>Name</div>
+                  <div>Login Email</div>
+                  <div>Department</div>
+                  <div>Unit</div>
+                  <div>Status</div>
+                  <div className="text-right">Actions</div>
+                </div>
+
+                <div className="divide-y divide-border">
+                  {filteredStaff.map((member) => (
+                    <div key={member.id} className="transition-colors hover:bg-card/50">
+                      {editingId === member.id ? (
+                        <div className="space-y-4 px-4 py-4">
+                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                            <div className="space-y-1.5">
+                              <Label htmlFor={`edit-name-${member.id}`}>Full Name</Label>
+                              <Input
+                                id={`edit-name-${member.id}`}
+                                value={editName}
+                                onChange={(e) => setEditName(e.target.value)}
+                                className="h-10 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label htmlFor={`edit-email-${member.id}`}>Login Email</Label>
+                              <Input
+                                id={`edit-email-${member.id}`}
+                                type="email"
+                                value={editEmail}
+                                onChange={(e) => setEditEmail(e.target.value)}
+                                className="h-10 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label htmlFor={`edit-department-${member.id}`}>Department</Label>
+                              <Input
+                                id={`edit-department-${member.id}`}
+                                value={editDepartment}
+                                onChange={(e) => setEditDepartment(e.target.value)}
+                                className="h-10 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label htmlFor={`edit-unit-${member.id}`}>Unit</Label>
+                              <Input
+                                id={`edit-unit-${member.id}`}
+                                value={editUnit}
+                                onChange={(e) => setEditUnit(e.target.value)}
+                                className="h-10 text-sm"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <span className={`inline-flex w-fit items-center rounded-full px-2 py-1 text-xs font-medium ${getStaffStatusClass(member)}`}>
+                              {getStaffStatusLabel(member)}
+                            </span>
+                            <div className="flex flex-wrap gap-2 sm:justify-end">
+                              <Button size="sm" onClick={handleEdit} className="h-9 gap-2" disabled={savingEdit}>
+                                {savingEdit && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                Save
+                              </Button>
+                              <Button variant="outline" size="sm" onClick={() => setEditingId(null)} className="h-9" disabled={savingEdit}>
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid gap-3 px-4 py-4 xl:grid-cols-[1.15fr_1.2fr_.8fr_.7fr_.65fr_1.6fr] xl:items-center">
+                          <StaffField label="Name" value={member.fullName} strong />
+                          <StaffField label="Login Email" value={member.email || 'Not linked'} muted={!member.email} />
+                          <StaffField label="Department" value={member.department || '-'} />
+                          <StaffField label="Unit" value={member.unit || '-'} />
+                          <div className="min-w-0">
+                            <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground xl:hidden">Status</p>
+                            <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getStaffStatusClass(member)}`}>
+                              {getStaffStatusLabel(member)}
+                            </span>
+                          </div>
+                          <div className="flex min-w-0 flex-wrap gap-2 xl:justify-end">
+                            <Button variant="outline" size="sm" className="h-8 gap-2" onClick={() => openEdit(member)}>
+                              <Pencil className="h-3.5 w-3.5" />
+                              Edit
+                            </Button>
+                            {!member.archived && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 gap-2"
+                                onClick={() => handleSyncIdentity(member)}
+                                disabled={!member.email || identityActioningId === member.id}
+                              >
+                                {identityActioningId === member.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                 ) : (
-                                  <>
-                                    <Button
-                                      variant={member.active ? 'outline' : 'default'}
-                                      size="sm"
-                                      className="h-8 gap-2"
-                                      onClick={() => handleToggleActive(member.id, !!member.active)}
-                                      disabled={actioningId === member.id}
-                                    >
-                                      {actioningId === member.id ? (
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                      ) : member.active ? (
-                                        <UserX className="h-3.5 w-3.5" />
-                                      ) : (
-                                        <UserCheck className="h-3.5 w-3.5" />
-                                      )}
-                                      {member.active ? 'Deactivate' : 'Activate'}
-                                    </Button>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      className="h-8 gap-2 border-warning/40 text-warning hover:bg-warning/10"
-                                      onClick={() => setArchiveTarget(member)}
-                                      disabled={actioningId === member.id}
-                                    >
-                                      <Archive className="h-3.5 w-3.5" />
-                                      Archive
-                                    </Button>
-                                  </>
+                                  <ShieldCheck className="h-3.5 w-3.5" />
                                 )}
-                              </div>
-                            </td>
-                          </>
-                        )}
-                      </tr>
-                    ))}
-                    {filteredStaff.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="py-8 text-center text-muted-foreground">
-                          {searchTerm ? 'No staff members match your search' : 'No staff members found'}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                                Sync Login
+                              </Button>
+                            )}
+                            {member.archived ? (
+                              <>
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  className="h-8 gap-2"
+                                  onClick={() => handleToggleArchived(member, false)}
+                                  disabled={actioningId === member.id}
+                                >
+                                  {actioningId === member.id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                  )}
+                                  Restore
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 gap-2 border-danger/40 text-danger hover:bg-danger/10"
+                                  onClick={() => {
+                                    setDeleteError('');
+                                    setDeleteTarget(member);
+                                  }}
+                                  disabled={actioningId === member.id}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Delete
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <Button
+                                  variant={member.active ? 'outline' : 'default'}
+                                  size="sm"
+                                  className="h-8 gap-2"
+                                  onClick={() => handleToggleActive(member.id, !!member.active)}
+                                  disabled={actioningId === member.id}
+                                >
+                                  {actioningId === member.id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : member.active ? (
+                                    <UserX className="h-3.5 w-3.5" />
+                                  ) : (
+                                    <UserCheck className="h-3.5 w-3.5" />
+                                  )}
+                                  {member.active ? 'Deactivate' : 'Activate'}
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 gap-2 border-warning/40 text-warning hover:bg-warning/10"
+                                  onClick={() => setArchiveTarget(member)}
+                                  disabled={actioningId === member.id}
+                                >
+                                  <Archive className="h-3.5 w-3.5" />
+                                  Archive
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {filteredStaff.length === 0 && (
+                    <div className="py-8 text-center text-muted-foreground">
+                      {searchTerm ? 'No staff members match your search' : 'No staff members found'}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex items-center justify-between border-t border-border px-4 py-3">
                 <p className="text-sm text-muted-foreground">
@@ -710,4 +795,31 @@ function getStaffStatusLabel(member: StaffMember) {
 function getStaffStatusClass(member: StaffMember) {
   if (member.archived) return 'bg-warning/10 text-warning';
   return member.active ? 'bg-success/10 text-success' : 'bg-muted/10 text-muted-foreground';
+}
+
+function StaffField({
+  label,
+  muted,
+  strong,
+  value,
+}: {
+  label: string;
+  muted?: boolean;
+  strong?: boolean;
+  value: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground xl:hidden">
+        {label}
+      </p>
+      <p className={cn(
+        'break-words text-sm',
+        strong && 'font-medium',
+        muted && 'text-muted-foreground',
+      )}>
+        {value}
+      </p>
+    </div>
+  );
 }
