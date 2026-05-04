@@ -187,6 +187,7 @@ function serializePermission(permission: {
 
 function serializeDevice(device: {
   deviceHash?: string;
+  id?: string;
   lastSeenAt?: Date | string | null;
   registeredAt?: Date | string | null;
 } | null | undefined, deviceHash: string | null) {
@@ -196,6 +197,100 @@ function serializeDevice(device: {
     registeredAt: device?.registeredAt || null,
     trusted: Boolean(!device || (deviceHash && device.deviceHash === deviceHash)),
   };
+}
+
+async function syncDeviceBinding(input: {
+  actorEmail: string;
+  actorUserId: string;
+  currentIp: string;
+  deviceHash: string;
+  existingDevice?: typeof staffDevice.$inferSelect | null;
+  now: Date;
+  reason: string;
+  staffMember: { fullName: string; id: string };
+  userAgent: string | null;
+}) {
+  const device = input.existingDevice || await db.select()
+    .from(staffDevice)
+    .where(eq(staffDevice.staffId, input.staffMember.id))
+    .limit(1)
+    .then((rows) => rows[0] || null);
+
+  if (device) {
+    if (device.deviceHash !== input.deviceHash) {
+      return { device, trusted: false };
+    }
+
+    const [updatedDevice] = await db.update(staffDevice)
+      .set({
+        lastSeenAt: input.now,
+        lastSeenIp: input.currentIp,
+        updatedAt: input.now,
+        userAgent: input.userAgent,
+        userId: input.actorUserId,
+      })
+      .where(eq(staffDevice.id, device.id))
+      .returning();
+
+    return { device: updatedDevice || device, trusted: true };
+  }
+
+  const [createdDevice] = await db.insert(staffDevice)
+    .values({
+      deviceHash: input.deviceHash,
+      lastSeenAt: input.now,
+      lastSeenIp: input.currentIp,
+      registeredIp: input.currentIp,
+      staffId: input.staffMember.id,
+      updatedAt: input.now,
+      userAgent: input.userAgent,
+      userId: input.actorUserId,
+    })
+    .onConflictDoNothing({ target: staffDevice.staffId })
+    .returning();
+
+  if (createdDevice) {
+    await writeAuditEvent({
+      entityType: 'staff_device',
+      entityId: input.staffMember.id,
+      action: 'CREATE',
+      before: null,
+      after: {
+        lastSeenIp: input.currentIp,
+        registeredIp: input.currentIp,
+        staffName: input.staffMember.fullName,
+        userEmail: input.actorEmail,
+      },
+      actor: { email: input.actorEmail, id: input.actorUserId },
+      reason: input.reason,
+    });
+
+    publishRealtime('attendance', 'invalidate', { reason: input.reason });
+
+    return { device: createdDevice, trusted: true };
+  }
+
+  const [currentDevice] = await db.select()
+    .from(staffDevice)
+    .where(eq(staffDevice.staffId, input.staffMember.id))
+    .limit(1);
+
+  if (!currentDevice || currentDevice.deviceHash !== input.deviceHash) {
+    return { device: currentDevice || null, trusted: false };
+  }
+
+  const [updatedDevice] = await db.update(staffDevice)
+    .set({
+      lastSeenAt: input.now,
+      lastSeenIp: input.currentIp,
+      updatedAt: input.now,
+      userAgent: input.userAgent,
+      userId: input.actorUserId,
+    })
+    .where(eq(staffDevice.id, currentDevice.id))
+    .returning();
+
+  return { device: updatedDevice || currentDevice, trusted: true };
 }
 
 export async function GET(request: NextRequest) {
@@ -211,6 +306,7 @@ export async function GET(request: NextRequest) {
     const clock = getAccraClock();
     const currentIpInfo = await resolveClientIpInfo(request);
     const currentIp = currentIpInfo.ip;
+    const userAgent = request.headers.get('user-agent');
     const deviceToken = getDeviceTokenFromRequest(request);
     const deviceHash = deviceToken ? hashDeviceToken(deviceToken) : null;
     const [member, network, holiday] = await Promise.all([
@@ -237,22 +333,37 @@ export async function GET(request: NextRequest) {
         .limit(1)
       : [];
     const [registeredDevice] = member
-      ? await db.select({
-        deviceHash: staffDevice.deviceHash,
-        lastSeenAt: staffDevice.lastSeenAt,
-        registeredAt: staffDevice.registeredAt,
-      })
+      ? await db.select()
         .from(staffDevice)
         .where(eq(staffDevice.staffId, member.id))
         .limit(1)
       : [];
+    let resolvedDevice = registeredDevice || null;
+
+    if (member && existingAttendance && !resolvedDevice && deviceHash && isOfficeNetwork) {
+      const syncResult = await syncDeviceBinding({
+        actorEmail,
+        actorUserId: user.id,
+        currentIp,
+        deviceHash,
+        existingDevice: null,
+        now: clock.now,
+        reason: 'attendance-device-binding-repair',
+        staffMember: { fullName: member.fullName, id: member.id },
+        userAgent,
+      });
+
+      if (syncResult.trusted) {
+        resolvedDevice = syncResult.device;
+      }
+    }
 
     return NextResponse.json(responsePayload({
       attendance: existingAttendance || null,
       currentIp,
       currentIpSource: currentIpInfo.source,
       date: clock.dateKey,
-      device: serializeDevice(registeredDevice || null, deviceHash),
+      device: serializeDevice(resolvedDevice, deviceHash),
       holidayName: holiday?.holidayNote || null,
       isHoliday: Boolean(holiday),
       isAfterWorkdayEnd: isAfterWorkdayEnd(clock.timeKey),
@@ -353,6 +464,7 @@ export async function POST(request: NextRequest) {
       .from(staffDevice)
       .where(eq(staffDevice.staffId, staffMember.id))
       .limit(1);
+    let resolvedDevice = registeredDevice || null;
 
     if (registeredDevice && registeredDevice.deviceHash !== trustedDeviceHash) {
       return block(
@@ -402,75 +514,34 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     async function syncTrustedDevice() {
-      if (registeredDevice) {
-        await db.update(staffDevice)
-          .set({
-            lastSeenAt: clock.now,
-            lastSeenIp: currentIp,
-            updatedAt: clock.now,
-            userAgent,
-            userId,
-          })
-          .where(eq(staffDevice.id, registeredDevice.id));
-        return true;
-      }
-
-      const [createdDevice] = await db.insert(staffDevice)
-        .values({
-          deviceHash: trustedDeviceHash,
-          lastSeenAt: clock.now,
-          lastSeenIp: currentIp,
-          registeredIp: currentIp,
-          staffId: staffMember.id,
-          updatedAt: clock.now,
-          userAgent,
-          userId,
-        })
-        .onConflictDoNothing({ target: staffDevice.staffId })
-        .returning();
-
-      if (!createdDevice) {
-        const [currentDevice] = await db.select()
-          .from(staffDevice)
-          .where(eq(staffDevice.staffId, staffMember.id))
-          .limit(1);
-
-        if (!currentDevice || currentDevice.deviceHash !== trustedDeviceHash) {
-          return false;
-        }
-
-        await db.update(staffDevice)
-          .set({
-            lastSeenAt: clock.now,
-            lastSeenIp: currentIp,
-            updatedAt: clock.now,
-            userAgent,
-            userId,
-          })
-          .where(eq(staffDevice.id, currentDevice.id));
-        return true;
-      }
-
-      await writeAuditEvent({
-        entityType: 'staff_device',
-        entityId: staffMember.id,
-        action: 'CREATE',
-        before: null,
-        after: {
-          lastSeenIp: currentIp,
-          registeredIp: currentIp,
-          staffName: staffMember.fullName,
-          userEmail: actorEmail,
-        },
-        actor: { email: actor.actorEmail, id: actor.actorUserId },
+      const syncResult = await syncDeviceBinding({
+        actorEmail: actor.actorEmail,
+        actorUserId: userId,
+        currentIp,
+        deviceHash: trustedDeviceHash,
+        existingDevice: resolvedDevice,
+        now: clock.now,
         reason: 'attendance-device-binding',
+        staffMember: { fullName: staffMember.fullName, id: staffMember.id },
+        userAgent,
       });
-      return true;
+
+      resolvedDevice = syncResult.device;
+      return syncResult.trusted;
     }
 
     if (existingAttendance) {
       if (action === 'sign_out') {
         if (existingAttendance.signOutTime) {
+          if (!(await syncTrustedDevice())) {
+            return block(
+              'REGISTERED_DEVICE_REQUIRED',
+              'This account is already linked to another device. Ask an admin to reset your attendance device.',
+              403,
+              staffMember.id,
+            );
+          }
+
           return NextResponse.json({
             success: true,
             alreadySignedOut: true,
@@ -479,7 +550,7 @@ export async function POST(request: NextRequest) {
               currentIp,
               currentIpSource: currentIpInfo.source,
               date: clock.dateKey,
-              device: serializeDevice(registeredDevice || null, trustedDeviceHash),
+              device: serializeDevice(resolvedDevice, trustedDeviceHash),
               isHoliday: false,
               isAfterWorkdayEnd: isAfterWorkdayEnd(clock.timeKey),
               isOfficeNetwork: true,
@@ -535,7 +606,7 @@ export async function POST(request: NextRequest) {
               currentIp,
               currentIpSource: currentIpInfo.source,
               date: clock.dateKey,
-              device: serializeDevice(registeredDevice || {
+              device: serializeDevice(resolvedDevice || {
                 deviceHash: trustedDeviceHash,
                 lastSeenAt: clock.now,
                 registeredAt: clock.now,
@@ -590,7 +661,7 @@ export async function POST(request: NextRequest) {
             currentIp,
             currentIpSource: currentIpInfo.source,
             date: clock.dateKey,
-            device: serializeDevice(registeredDevice || {
+            device: serializeDevice(resolvedDevice || {
               deviceHash: trustedDeviceHash,
               lastSeenAt: clock.now,
               registeredAt: clock.now,
@@ -605,6 +676,15 @@ export async function POST(request: NextRequest) {
             time: clock.timeKey,
           }),
         });
+      }
+
+      if (!(await syncTrustedDevice())) {
+        return block(
+          'REGISTERED_DEVICE_REQUIRED',
+          'This account is already linked to another device. Ask an admin to reset your attendance device.',
+          403,
+          staffMember.id,
+        );
       }
 
       await recordAttendanceAttempt({
@@ -626,7 +706,7 @@ export async function POST(request: NextRequest) {
           currentIp,
           currentIpSource: currentIpInfo.source,
           date: clock.dateKey,
-          device: serializeDevice(registeredDevice || null, trustedDeviceHash),
+          device: serializeDevice(resolvedDevice, trustedDeviceHash),
           isHoliday: false,
           isAfterWorkdayEnd: isAfterWorkdayEnd(clock.timeKey),
           isOfficeNetwork: true,
@@ -718,7 +798,7 @@ export async function POST(request: NextRequest) {
           currentIp,
           currentIpSource: currentIpInfo.source,
           date: clock.dateKey,
-          device: serializeDevice(registeredDevice || {
+          device: serializeDevice(resolvedDevice || {
             deviceHash: trustedDeviceHash,
             lastSeenAt: now,
             registeredAt: now,
@@ -819,7 +899,7 @@ export async function POST(request: NextRequest) {
         currentIp,
         currentIpSource: currentIpInfo.source,
         date: clock.dateKey,
-        device: serializeDevice(registeredDevice || {
+        device: serializeDevice(resolvedDevice || {
           deviceHash: trustedDeviceHash,
           lastSeenAt: now,
           registeredAt: now,

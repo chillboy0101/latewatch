@@ -1,7 +1,26 @@
 import { AuthWatermark } from '@/components/auth/auth-watermark';
 import { ClerkAuthCard } from '@/components/auth/clerk-auth-card';
+import { InviteOnlySignUpCard } from '@/components/auth/invite-only-sign-up-card';
 
-export default function Page() {
+type SignUpPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+const INVITATION_PARAM_NAMES = [
+  '__clerk_ticket',
+  '__clerk_invitation_token',
+  'ticket',
+  'invitation_token',
+];
+
+function hasInvitationParam(searchParams: Record<string, string | string[] | undefined>) {
+  return INVITATION_PARAM_NAMES.some((paramName) => Boolean(searchParams[paramName]));
+}
+
+export default async function Page({ searchParams }: SignUpPageProps) {
+  const resolvedSearchParams = await searchParams;
+  const canSignUp = resolvedSearchParams ? hasInvitationParam(resolvedSearchParams) : false;
+
   return (
     <div className="relative min-h-dvh w-screen overflow-hidden bg-background">
       {/* Background gradient */}
@@ -19,7 +38,7 @@ export default function Page() {
 
       {/* Clerk SignUp Component - centered */}
       <div className="relative z-10 flex min-h-dvh w-full items-center justify-center px-4 py-6">
-        <ClerkAuthCard mode="sign-up" />
+        {canSignUp ? <ClerkAuthCard mode="sign-up" /> : <InviteOnlySignUpCard />}
       </div>
     </div>
   );

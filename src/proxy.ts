@@ -17,6 +17,21 @@ const isProtectedRoute = createRouteMatcher([
   '/api/(.*)',
 ]);
 
+const isOrgRequiredRoute = createRouteMatcher([
+  '/dashboard(.*)',
+  '/staff(.*)',
+  '/emergency-contacts(.*)',
+  '/entries(.*)',
+  '/attendance(.*)',
+  '/wifi(.*)',
+  '/exports(.*)',
+  '/calendar(.*)',
+  '/audit-trail(.*)',
+  '/check-in(.*)',
+  '/settings(.*)',
+  '/api/(.*)',
+]);
+
 const isStaffCheckInRoute = createRouteMatcher([
   '/check-in(.*)',
   '/api/attendance/check-in(.*)',
@@ -89,6 +104,39 @@ function roleFromSessionClaims(sessionClaims: Record<string, unknown> | null | u
     || roleFromMetadata(sessionClaims.privateMetadata);
 }
 
+function orgIdFromSessionClaims(sessionClaims: Record<string, unknown> | null | undefined) {
+  if (!sessionClaims) return null;
+
+  const org = asRecord(sessionClaims.o);
+  const orgId = org?.id || sessionClaims.org_id || sessionClaims.orgId;
+
+  return typeof orgId === 'string' && orgId.trim() ? orgId : null;
+}
+
+function requiredOrganizationId() {
+  return process.env.CLERK_ORGANIZATION_ID?.trim() || null;
+}
+
+function hasRequiredOrganization(sessionClaims: Record<string, unknown> | null | undefined) {
+  const activeOrgId = orgIdFromSessionClaims(sessionClaims);
+  if (!activeOrgId) return false;
+
+  const requiredOrgId = requiredOrganizationId();
+  return !requiredOrgId || activeOrgId === requiredOrgId;
+}
+
+function organizationRequiredResponse(req: Request) {
+  const url = new URL(req.url);
+  if (url.pathname.startsWith('/api/')) {
+    return NextResponse.json(
+      { error: 'LateWatch organization access required. Ask an admin to invite this account.' },
+      { status: 403 },
+    );
+  }
+
+  return NextResponse.redirect(new URL('/access-required', req.url));
+}
+
 async function getClerkUserAccess(userId: string) {
   try {
     const client = await clerkClient();
@@ -137,6 +185,9 @@ const handler = clerkConfigured
   ? clerkMiddleware(async (auth, req) => {
       if (isProtectedRoute(req)) {
         const session = await auth.protect();
+        if (isOrgRequiredRoute(req) && !hasRequiredOrganization(session.sessionClaims)) {
+          return organizationRequiredResponse(req);
+        }
         if (!isStaffCheckInRoute(req) && isAdminRoute(req)) {
           if (!(await isAdminSession(session.userId, session.sessionClaims))) {
             return forbiddenResponse(req);
@@ -160,9 +211,9 @@ export const config = {
     '/exports(.*)',
     '/calendar(.*)',
     '/audit-trail(.*)',
-  '/check-in(.*)',
-  '/account(.*)',
-  '/settings(.*)',
+    '/check-in(.*)',
+    '/account(.*)',
+    '/settings(.*)',
     '/api/(.*)',
     '/trpc/(.*)',
   ],
