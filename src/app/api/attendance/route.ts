@@ -1,9 +1,10 @@
 import { and, asc, desc, eq } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { attendanceAttempt, attendancePermission, attendanceRecord, deviceTransferRequest, officeLocation, staff, staffDevice } from '@/db/schema';
-import { getAccraClock, getActiveOfficeNetwork, isOfficeIp, resolveClientIpInfo } from '@/lib/attendance';
+import { attendanceAttempt, attendancePermission, attendanceRecord, deviceTransferRequest, staff, staffDevice } from '@/db/schema';
+import { getAccraClock, getActiveOfficeNetwork, getOfficeLocationsForAttendance, isOfficeIp, resolveClientIpInfo } from '@/lib/attendance';
 import { isPermissionWindowOverdue } from '@/lib/attendance-permissions';
+import { resolveOfficeLocationForDate } from '@/lib/office-location-policy';
 import { shouldAlertNoSignOut } from '@/lib/work-hours';
 
 export const dynamic = 'force-dynamic';
@@ -72,7 +73,7 @@ export async function GET(request: NextRequest) {
         .where(and(eq(attendancePermission.date, date), eq(attendancePermission.status, 'approved')))),
     ]);
 
-    const [attemptRows, deviceRows, network, location, transferRows] = await Promise.all([
+    const [attemptRows, deviceRows, network, locationRows, transferRows] = await Promise.all([
       optionalAttendanceQuery('attendance-attempts', [], () => db.select()
         .from(attendanceAttempt)
         .where(eq(attendanceAttempt.date, date))
@@ -90,12 +91,7 @@ export async function GET(request: NextRequest) {
       })
         .from(staffDevice)),
       optionalAttendanceQuery('office-network', null, getActiveOfficeNetwork),
-      optionalAttendanceQuery('office-location', null, () => db.select()
-        .from(officeLocation)
-        .where(eq(officeLocation.isActive, true))
-        .orderBy(desc(officeLocation.updatedAt))
-        .limit(1)
-        .then((rows) => rows[0] || null)),
+      optionalAttendanceQuery('office-location', [], getOfficeLocationsForAttendance),
       optionalAttendanceQuery('device-transfer-requests', [], () => db.select({
         accuracyMeters: deviceTransferRequest.accuracyMeters,
         deviceLabel: deviceTransferRequest.deviceLabel,
@@ -118,6 +114,7 @@ export async function GET(request: NextRequest) {
         .limit(20)),
     ]);
 
+    const location = resolveOfficeLocationForDate(locationRows, date);
     const attendanceByStaffId = new Map(attendanceRows.map((row) => [row.staffId, row]));
     const permissionByStaffId = new Map(permissionRows.map((row) => [row.staffId, row]));
     const deviceByStaffId = new Map(deviceRows.map((row) => [row.staffId, row]));
@@ -218,7 +215,9 @@ export async function GET(request: NextRequest) {
       },
       location: {
         configured: Boolean(location),
+        formattedAddress: location?.formattedAddress || null,
         latitude: location?.latitude || null,
+        locationKind: location?.locationKind || null,
         longitude: location?.longitude || null,
         maxAccuracyMeters: location?.maxAccuracyMeters || null,
         name: location?.name || null,

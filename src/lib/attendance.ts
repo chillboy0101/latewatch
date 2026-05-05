@@ -3,6 +3,7 @@ import 'server-only';
 import { and, desc, eq, ilike, isNull, or } from 'drizzle-orm';
 import { db } from '@/db';
 import { attendanceAttempt, attendancePermission, officeLocation, officeNetwork, staff, workCalendar } from '@/db/schema';
+import { resolveOfficeLocationForDate } from '@/lib/office-location-policy';
 import { normalizeStaffEmail, normalizeStaffName } from '@/lib/staff-normalize';
 export { getClientIp, getClientIpInfo, resolveClientIp, resolveClientIpInfo } from '@/lib/request-ip';
 export { normalizeStaffEmail, normalizeStaffName } from '@/lib/staff-normalize';
@@ -46,11 +47,22 @@ export async function getActiveOfficeNetwork() {
 }
 
 export async function getActiveOfficeLocation() {
-  const [location] = await db.select()
+  return getResolvedOfficeLocation(getAccraClock().dateKey);
+}
+
+export async function getOfficeLocationsForAttendance() {
+  return db.select()
     .from(officeLocation)
-    .where(eq(officeLocation.isActive, true))
-    .orderBy(desc(officeLocation.updatedAt))
-    .limit(1);
+    .where(and(
+      eq(officeLocation.isActive, true),
+      isNull(officeLocation.archivedAt),
+    ))
+    .orderBy(desc(officeLocation.updatedAt));
+}
+
+export async function getResolvedOfficeLocation(dateKey: string) {
+  const locations = await getOfficeLocationsForAttendance();
+  const location = resolveOfficeLocationForDate(locations, dateKey);
 
   return location || null;
 }
@@ -175,6 +187,7 @@ export async function recordAttendanceAttempt(input: {
     verificationResult?: string | null;
   } | null;
   networkIp: string;
+  officeLocationId?: string | null;
   result: string;
   staffId?: string | null;
   successful: boolean;
@@ -190,6 +203,7 @@ export async function recordAttendanceAttempt(input: {
     locationAt: input.location?.locationAt || null,
     longitude: input.location?.longitude == null ? null : input.location.longitude.toString(),
     networkIp: input.networkIp,
+    officeLocationId: input.officeLocationId || null,
     result: input.result,
     staffId: input.staffId || null,
     successful: input.successful,

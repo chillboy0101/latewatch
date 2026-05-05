@@ -1,8 +1,18 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { CheckCircle2, LocateFixed, Loader2, MapPin, RefreshCw, ShieldCheck } from 'lucide-react';
+import {
+  AlertCircle,
+  CalendarDays,
+  CheckCircle2,
+  Crosshair,
+  ListChecks,
+  Loader2,
+  MapPin,
+  RefreshCw,
+  Save,
+} from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -11,38 +21,50 @@ import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 
+type SavedOfficeLocation = {
+  archivedAt: string | null;
+  formattedAddress: string | null;
+  googlePlaceId: string | null;
+  id: string;
+  isActive: boolean | null;
+  latitude: string;
+  locationKind: 'default' | 'scheduled' | string;
+  longitude: string;
+  maxAccuracyMeters: number;
+  name: string;
+  radiusMeters: number;
+  scheduleEndDate: string | null;
+  scheduleStartDate: string | null;
+  source: string;
+  updatedAt: string | null;
+  updatedByEmail: string | null;
+};
+
 type OfficeLocationResponse = {
   configured: boolean;
   currentIp: string;
   currentIpSource: string | null;
-  location: {
-    id: string;
-    isActive: boolean | null;
-    latitude: string;
-    longitude: string;
-    maxAccuracyMeters: number;
-    name: string;
-    radiusMeters: number;
-    updatedAt: string | null;
-    updatedByEmail: string | null;
-  } | null;
+  date: string | null;
+  defaultLocation: SavedOfficeLocation | null;
+  location: SavedOfficeLocation | null;
   message?: string;
+  scheduledLocations: SavedOfficeLocation[];
   storageAvailable?: boolean;
 };
 
-type DetectedLocation = {
-  accuracy: number;
+type DraftLocation = {
+  formattedAddress: string | null;
+  googlePlaceId: string | null;
   latitude: number;
   longitude: number;
-  timestamp: string;
+  name: string;
+  source: string;
 };
 
-function formatUpdatedAt(value: string | null | undefined) {
-  if (!value) return 'Not saved yet';
-  return new Date(value).toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
+type SaveMode = 'default' | 'scheduled';
+
+function dateKey(value = new Date()) {
+  return value.toISOString().slice(0, 10);
 }
 
 function meters(value: number | string | null | undefined) {
@@ -51,12 +73,28 @@ function meters(value: number | string | null | undefined) {
   return Number.isFinite(number) ? `${Math.round(number)}m` : '-';
 }
 
-function savedPoint(location: OfficeLocationResponse['location']) {
+function coordinateLabel(location: DraftLocation | SavedOfficeLocation | null | undefined) {
   if (!location) return 'Not set';
   const latitude = Number(location.latitude);
   const longitude = Number(location.longitude);
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return 'Set';
   return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+}
+
+function savedToDraft(location: SavedOfficeLocation | null | undefined): DraftLocation | null {
+  if (!location) return null;
+  const latitude = Number(location.latitude);
+  const longitude = Number(location.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+  return {
+    formattedAddress: location.formattedAddress,
+    googlePlaceId: location.googlePlaceId,
+    latitude,
+    longitude,
+    name: location.name,
+    source: location.source || 'detected',
+  };
 }
 
 function locationErrorMessage(error: unknown) {
@@ -70,7 +108,7 @@ function locationErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Could not detect location.';
 }
 
-async function getCurrentBrowserLocation(): Promise<DetectedLocation> {
+async function getCurrentBrowserLocation(): Promise<DraftLocation> {
   if (!navigator.geolocation) {
     throw new Error('This browser does not support location detection.');
   }
@@ -84,37 +122,55 @@ async function getCurrentBrowserLocation(): Promise<DetectedLocation> {
   });
 
   return {
-    accuracy: position.coords.accuracy,
+    formattedAddress: null,
+    googlePlaceId: null,
     latitude: position.coords.latitude,
     longitude: position.coords.longitude,
-    timestamp: new Date(position.timestamp).toISOString(),
+    name: 'Detected location',
+    source: 'detected',
   };
 }
 
 export default function WifiPage() {
   const [data, setData] = useState<OfficeLocationResponse | null>(null);
+  const [draft, setDraft] = useState<DraftLocation | null>(null);
+  const [mode, setMode] = useState<SaveMode>('default');
   const [radiusMeters, setRadiusMeters] = useState('100');
   const [maxAccuracyMeters, setMaxAccuracyMeters] = useState('75');
-  const [lastDetected, setLastDetected] = useState<DetectedLocation | null>(null);
+  const [scheduleStartDate, setScheduleStartDate] = useState(dateKey());
+  const [scheduleEndDate, setScheduleEndDate] = useState(dateKey());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [detecting, setDetecting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const resolvedLocation = data?.location || null;
+  const defaultLocation = data?.defaultLocation || null;
+  const scheduledLocations = data?.scheduledLocations || [];
+  const configured = Boolean(data?.configured);
+  const setupUnavailable = data?.storageAvailable === false;
+  const savedDefaultDraft = useMemo(() => savedToDraft(defaultLocation), [defaultLocation]);
+  const activeDraft = useMemo(
+    () => draft || (mode === 'default' ? savedDefaultDraft : null),
+    [draft, mode, savedDefaultDraft],
+  );
 
   const fetchLocation = useCallback(async () => {
     setError(null);
 
     try {
-      const response = await fetch('/api/attendance/location', { cache: 'no-store' });
+      const response = await fetch(`/api/attendance/location?date=${dateKey()}`, { cache: 'no-store' });
       const body = await response.json().catch(() => ({})) as Partial<OfficeLocationResponse> & { error?: string };
       if (!response.ok) throw new Error(body.error || `Location request failed (${response.status})`);
 
       setData(body as OfficeLocationResponse);
 
-      if (body.location) {
-        setRadiusMeters(String(body.location.radiusMeters || 100));
-        setMaxAccuracyMeters(String(body.location.maxAccuracyMeters || 75));
+      const incomingDefault = body.defaultLocation || null;
+      if (incomingDefault) {
+        setRadiusMeters(String(incomingDefault.radiusMeters || 100));
+        setMaxAccuracyMeters(String(incomingDefault.maxAccuracyMeters || 75));
       }
 
       if (body.storageAvailable === false && body.message) {
@@ -164,48 +220,78 @@ export default function WifiPage() {
     }
   }
 
-  async function saveDetectedLocation(location: DetectedLocation) {
-    const response = await fetch('/api/attendance/location', {
-      body: JSON.stringify({
-        latitude: location.latitude,
-        longitude: location.longitude,
-        maxAccuracyMeters,
-        name: 'Office Location',
-        radiusMeters,
-      }),
-      headers: { 'Content-Type': 'application/json' },
-      method: 'POST',
-    });
-    const body = await response.json().catch(() => ({})) as { error?: string };
-    if (!response.ok) throw new Error(body.error || `Location update failed (${response.status})`);
-  }
-
-  async function detectAndSaveLocation() {
-    setSaving(true);
+  async function detectCurrentLocation() {
+    setDetecting(true);
     setError(null);
     setSuccess(null);
 
     try {
       const location = await getCurrentBrowserLocation();
-      setLastDetected(location);
-      await saveDetectedLocation(location);
-      await fetchLocation();
-      setSuccess('Office location saved. Staff check-ins will now use this office point.');
+      setDraft({
+        ...location,
+        name: mode === 'scheduled' ? 'Program Location' : 'Office Location',
+      });
+      setSuccess('Location detected. Review the details, then save.');
     } catch (err) {
-      console.error('Failed to detect and save office location:', err);
+      console.error('Failed to detect office location:', err);
       setError(locationErrorMessage(err));
+    } finally {
+      setDetecting(false);
+    }
+  }
+
+  async function saveLocation() {
+    if (!activeDraft) {
+      setError('Detect this device location first, then save it.');
+      return;
+    }
+
+    if (mode === 'scheduled' && (!scheduleStartDate || !scheduleEndDate)) {
+      setError('Choose the start and end dates for this program location.');
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await fetch('/api/attendance/location', {
+        body: JSON.stringify({
+          formattedAddress: null,
+          googlePlaceId: null,
+          latitude: activeDraft.latitude,
+          longitude: activeDraft.longitude,
+          maxAccuracyMeters,
+          mode,
+          name: activeDraft.name || (mode === 'scheduled' ? 'Program Location' : 'Office Location'),
+          radiusMeters,
+          scheduleEndDate: mode === 'scheduled' ? scheduleEndDate : null,
+          scheduleStartDate: mode === 'scheduled' ? scheduleStartDate : null,
+          source: 'detected',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      });
+      const body = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(body.error || `Location update failed (${response.status})`);
+
+      await fetchLocation();
+      setDraft(null);
+      setSuccess(mode === 'scheduled'
+        ? 'Program location saved. It will override the office on the scheduled dates.'
+        : 'Default office location saved.');
+    } catch (err) {
+      console.error('Failed to save office location:', err);
+      setError(err instanceof Error ? err.message : 'Could not save location.');
     } finally {
       setSaving(false);
     }
   }
 
-  const configured = Boolean(data?.configured);
-  const location = data?.location || null;
-  const setupUnavailable = data?.storageAvailable === false;
-
   return (
     <DashboardLayout title="Office Location">
-      <div className="mx-auto max-w-4xl space-y-4">
+      <div className="space-y-4">
         {loading && !data ? (
           <Card>
             <LoadingBuffer variant="section" />
@@ -213,115 +299,187 @@ export default function WifiPage() {
         ) : (
           <>
             <Card className="overflow-hidden">
-              <div className="flex flex-col gap-5 p-5 sm:p-6 lg:flex-row lg:items-start lg:justify-between">
-                <div className="flex min-w-0 gap-4">
+              <div className="flex flex-col gap-4 border-b border-border p-5 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
                   <div className={cn(
-                    'flex h-12 w-12 shrink-0 items-center justify-center rounded-md border',
+                    'flex h-11 w-11 shrink-0 items-center justify-center rounded-md border',
                     setupUnavailable
                       ? 'border-danger/25 bg-danger/10 text-danger'
                       : configured
                       ? 'border-success/25 bg-success/10 text-success'
                       : 'border-warning/25 bg-warning/10 text-warning',
                   )}>
-                    <MapPin className="h-6 w-6" />
+                    <MapPin className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-xl font-semibold">Office check-in location</h2>
+                      <h2 className="text-xl font-semibold">Office location setup</h2>
                       <StatusBadge configured={configured} unavailable={setupUnavailable} />
                     </div>
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                      Stand inside the office, allow location access, then save. LateWatch will use this point to confirm staff are at the office before check-in or check-out.
+                    <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+                      Stand at the office or program venue, detect this device location, then save it for attendance checks.
                     </p>
                   </div>
                 </div>
-                <Button
-                  className="h-10 gap-2"
-                  variant="outline"
-                  onClick={refreshLocation}
-                  disabled={refreshing || saving}
-                >
+                <Button className="h-10 gap-2" variant="outline" onClick={refreshLocation} disabled={refreshing || saving || detecting}>
                   {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                   Refresh
                 </Button>
               </div>
 
-              <div className="border-t border-border p-5 sm:p-6">
-                <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-end">
-                  <div className="space-y-4">
-                    <div className="rounded-md border border-border bg-background px-4 py-3">
-                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="font-medium">{configured ? 'Saved office point is active' : 'No office location saved yet'}</p>
-                        {lastDetected && (
-                          <p className="text-sm text-muted-foreground">Last detection: {meters(lastDetected.accuracy)} accuracy</p>
-                        )}
+              <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_24rem]">
+                <section className="border-b border-border p-5 lg:border-b-0 lg:border-r">
+                  <div className="flex min-h-[22rem] flex-col justify-between rounded-lg border border-border bg-background p-5">
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
+                          <Crosshair className="h-6 w-6" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium uppercase text-muted-foreground">Current method</p>
+                          <h3 className="text-lg font-semibold">Detect and save</h3>
+                        </div>
                       </div>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {configured
-                          ? `Last saved ${formatUpdatedAt(location?.updatedAt)}.`
-                          : 'Use the button below while you are physically in the office.'}
+                      <p className="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground">
+                        This uses the browser location permission on the admin device. For the most accurate office point, run Detect while you are physically at the exact attendance location.
                       </p>
                     </div>
 
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <Field label="Allowed area">
-                        <div className="relative">
-                          <Input
-                            className="h-11 pr-12 font-mono"
-                            inputMode="numeric"
-                            value={radiusMeters}
-                            onChange={(event) => setRadiusMeters(event.target.value.replace(/\D/g, '').slice(0, 4))}
-                            placeholder="100"
-                          />
-                          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-muted-foreground">m</span>
-                        </div>
-                      </Field>
+                    <div className="mt-8 grid gap-3 md:grid-cols-3">
+                      <LocationMetric label="Selected point" value={coordinateLabel(activeDraft)} />
+                      <LocationMetric label="Allowed area" value={meters(radiusMeters)} />
+                      <LocationMetric label="Quality limit" value={meters(maxAccuracyMeters)} />
+                    </div>
 
-                      <Field label="Location quality">
-                        <select
-                          className="flex h-11 w-full rounded-md border border-border bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-                          value={maxAccuracyMeters}
-                          onChange={(event) => setMaxAccuracyMeters(event.target.value)}
-                        >
-                          <option value="50">Strict</option>
-                          <option value="75">Standard</option>
-                          <option value="100">Flexible</option>
-                        </select>
-                      </Field>
+                    <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                      <Button className="h-11 gap-2 sm:w-auto" onClick={detectCurrentLocation} disabled={detecting || saving}>
+                        {detecting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Crosshair className="h-5 w-5" />}
+                        Detect Current Location
+                      </Button>
+                      {activeDraft && (
+                        <div className="rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
+                          <span className="font-medium text-foreground">{activeDraft.name || 'Detected location'}</span>
+                          <span className="block font-mono">{coordinateLabel(activeDraft)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </section>
+
+                <aside className="space-y-5 p-5">
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium uppercase text-muted-foreground">Save as</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <ModeButton active={mode === 'default'} icon={<MapPin className="h-4 w-4" />} onClick={() => setMode('default')}>
+                        Default office
+                      </ModeButton>
+                      <ModeButton active={mode === 'scheduled'} icon={<CalendarDays className="h-4 w-4" />} onClick={() => setMode('scheduled')}>
+                        Program
+                      </ModeButton>
                     </div>
                   </div>
 
-                  <Button
-                    className="h-11 min-w-full gap-2 px-5 text-base sm:min-w-64"
-                    onClick={detectAndSaveLocation}
-                    disabled={saving}
-                  >
-                    {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <LocateFixed className="h-5 w-5" />}
-                    {configured ? 'Detect & Update Location' : 'Detect & Save Location'}
+                  <Field label="Location name">
+                    <Input
+                      className="h-11"
+                      disabled={!activeDraft || saving}
+                      value={activeDraft?.name || ''}
+                      onChange={(event) => setDraft((current) => {
+                        const base = current || activeDraft;
+                        if (!base) return current;
+                        return { ...base, name: event.target.value };
+                      })}
+                      placeholder={mode === 'scheduled' ? 'Program Location' : 'Office Location'}
+                    />
+                  </Field>
+
+                  {mode === 'scheduled' && (
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                      <Field label="Start date">
+                        <Input className="h-11" type="date" value={scheduleStartDate} onChange={(event) => setScheduleStartDate(event.target.value)} />
+                      </Field>
+                      <Field label="End date">
+                        <Input className="h-11" type="date" value={scheduleEndDate} onChange={(event) => setScheduleEndDate(event.target.value)} />
+                      </Field>
+                    </div>
+                  )}
+
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                    <Field label="Allowed area">
+                      <div className="relative">
+                        <Input
+                          className="h-11 pr-12 font-mono"
+                          inputMode="numeric"
+                          value={radiusMeters}
+                          onChange={(event) => setRadiusMeters(event.target.value.replace(/\D/g, '').slice(0, 4))}
+                          placeholder="100"
+                        />
+                        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-muted-foreground">m</span>
+                      </div>
+                    </Field>
+
+                    <Field label="Location quality">
+                      <select
+                        className="flex h-11 w-full rounded-md border border-border bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                        value={maxAccuracyMeters}
+                        onChange={(event) => setMaxAccuracyMeters(event.target.value)}
+                      >
+                        <option value="50">Strict</option>
+                        <option value="75">Standard</option>
+                        <option value="100">Flexible</option>
+                      </select>
+                    </Field>
+                  </div>
+
+                  <Button className="h-11 w-full gap-2 text-base" onClick={saveLocation} disabled={saving || detecting || !activeDraft}>
+                    {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
+                    Save Location
                   </Button>
-                </div>
+                </aside>
               </div>
             </Card>
 
-            <div className="grid gap-4 md:grid-cols-3">
-              <SummaryCard
-                icon={<ShieldCheck className="h-5 w-5" />}
-                label="Coverage"
-                value={configured ? meters(location?.radiusMeters) : '-'}
-                meta="Staff must be inside this area."
-              />
+            <div className="grid gap-4 xl:grid-cols-[1fr_1fr_1.4fr]">
               <SummaryCard
                 icon={<CheckCircle2 className="h-5 w-5" />}
-                label="Saved point"
-                value={configured ? 'Set' : 'Not set'}
-                meta={configured ? savedPoint(location) : 'Detect while standing in the office.'}
+                label="Default office"
+                value={defaultLocation?.name || 'Not set'}
+                meta={defaultLocation ? `${coordinateLabel(defaultLocation)} - ${meters(defaultLocation.radiusMeters)}` : 'Save the main office point.'}
               />
               <SummaryCard
-                icon={<RefreshCw className="h-5 w-5" />}
-                label="Last updated"
-                value={formatUpdatedAt(location?.updatedAt)}
-                meta={location?.updatedByEmail || 'Not saved yet'}
+                icon={<Crosshair className="h-5 w-5" />}
+                label="Active today"
+                value={resolvedLocation?.name || 'Not set'}
+                meta={resolvedLocation ? `${coordinateLabel(resolvedLocation)} - ${meters(resolvedLocation.radiusMeters)}` : 'No active location configured.'}
               />
+              <Card className="p-5">
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
+                    <ListChecks className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium uppercase text-muted-foreground">Program schedules</p>
+                    <h3 className="text-lg font-semibold">{scheduledLocations.length} saved</h3>
+                  </div>
+                </div>
+                <div className="max-h-44 space-y-2 overflow-auto pr-1">
+                  {scheduledLocations.length ? scheduledLocations.map((location) => (
+                    <div key={location.id} className="rounded-md border border-border bg-background px-3 py-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="truncate text-sm font-semibold">{location.name}</p>
+                        <span className="shrink-0 text-xs text-muted-foreground">{meters(location.radiusMeters)}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {location.scheduleStartDate} to {location.scheduleEndDate}
+                      </p>
+                    </div>
+                  )) : (
+                    <p className="rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
+                      No program locations scheduled yet.
+                    </p>
+                  )}
+                </div>
+              </Card>
             </div>
           </>
         )}
@@ -334,7 +492,10 @@ export default function WifiPage() {
 
         {error && (
           <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-            {error}
+            <div className="flex items-start gap-2">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{error}</span>
+            </div>
           </div>
         )}
       </div>
@@ -348,6 +509,43 @@ function Field({ children, label }: { children: ReactNode; label: string }) {
       <span className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">{label}</span>
       {children}
     </label>
+  );
+}
+
+function LocationMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border bg-card px-3 py-3">
+      <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
+      <p className="mt-1 break-words font-mono text-sm font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function ModeButton({
+  active,
+  children,
+  icon,
+  onClick,
+}: {
+  active: boolean;
+  children: ReactNode;
+  icon: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={cn(
+        'flex h-11 items-center justify-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors',
+        active
+          ? 'border-primary bg-primary text-primary-foreground'
+          : 'border-border bg-background text-foreground hover:bg-card',
+      )}
+      onClick={onClick}
+      type="button"
+    >
+      {icon}
+      {children}
+    </button>
   );
 }
 

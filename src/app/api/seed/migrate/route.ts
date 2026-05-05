@@ -50,13 +50,31 @@ export async function POST() {
         longitude numeric(10, 7) NOT NULL,
         radius_meters integer DEFAULT 100 NOT NULL,
         max_accuracy_meters integer DEFAULT 75 NOT NULL,
+        location_kind text DEFAULT 'default' NOT NULL,
+        google_place_id text,
+        formatted_address text,
+        source text DEFAULT 'manual' NOT NULL,
+        schedule_start_date date,
+        schedule_end_date date,
         is_active boolean DEFAULT true,
+        archived_at timestamp,
         updated_by_user_id text,
         updated_by_email text NOT NULL,
         created_at timestamp DEFAULT now(),
         updated_at timestamp DEFAULT now()
       )
     `);
+    await db.execute(sql`ALTER TABLE office_location ADD COLUMN IF NOT EXISTS location_kind text DEFAULT 'default' NOT NULL`);
+    await db.execute(sql`ALTER TABLE office_location ADD COLUMN IF NOT EXISTS google_place_id text`);
+    await db.execute(sql`ALTER TABLE office_location ADD COLUMN IF NOT EXISTS formatted_address text`);
+    await db.execute(sql`ALTER TABLE office_location ADD COLUMN IF NOT EXISTS source text DEFAULT 'manual' NOT NULL`);
+    await db.execute(sql`ALTER TABLE office_location ADD COLUMN IF NOT EXISTS schedule_start_date date`);
+    await db.execute(sql`ALTER TABLE office_location ADD COLUMN IF NOT EXISTS schedule_end_date date`);
+    await db.execute(sql`ALTER TABLE office_location ADD COLUMN IF NOT EXISTS archived_at timestamp`);
+    await db.execute(sql`UPDATE office_location SET location_kind = 'default' WHERE location_kind IS NULL`);
+    await db.execute(sql`UPDATE office_location SET source = 'manual' WHERE source IS NULL`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS office_location_kind_active_idx ON office_location(location_kind, is_active)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS office_location_schedule_idx ON office_location(schedule_start_date, schedule_end_date)`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS attendance_record (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -85,6 +103,7 @@ export async function POST() {
     await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS sign_out_user_agent text`);
     await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS check_in_latitude numeric(10, 7)`);
     await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS check_in_longitude numeric(10, 7)`);
+    await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS check_in_office_location_id uuid REFERENCES office_location(id)`);
     await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS check_in_accuracy_meters numeric(10, 2)`);
     await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS check_in_distance_meters numeric(10, 2)`);
     await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS check_in_location_at timestamp`);
@@ -92,6 +111,7 @@ export async function POST() {
     await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS check_in_verification_result text`);
     await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS sign_out_latitude numeric(10, 7)`);
     await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS sign_out_longitude numeric(10, 7)`);
+    await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS sign_out_office_location_id uuid REFERENCES office_location(id)`);
     await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS sign_out_accuracy_meters numeric(10, 2)`);
     await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS sign_out_distance_meters numeric(10, 2)`);
     await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS sign_out_location_at timestamp`);
@@ -115,6 +135,7 @@ export async function POST() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS attendance_attempt_date_idx ON attendance_attempt(date)`);
     await db.execute(sql`ALTER TABLE attendance_attempt ADD COLUMN IF NOT EXISTS latitude numeric(10, 7)`);
     await db.execute(sql`ALTER TABLE attendance_attempt ADD COLUMN IF NOT EXISTS longitude numeric(10, 7)`);
+    await db.execute(sql`ALTER TABLE attendance_attempt ADD COLUMN IF NOT EXISTS office_location_id uuid REFERENCES office_location(id)`);
     await db.execute(sql`ALTER TABLE attendance_attempt ADD COLUMN IF NOT EXISTS accuracy_meters numeric(10, 2)`);
     await db.execute(sql`ALTER TABLE attendance_attempt ADD COLUMN IF NOT EXISTS distance_meters numeric(10, 2)`);
     await db.execute(sql`ALTER TABLE attendance_attempt ADD COLUMN IF NOT EXISTS location_at timestamp`);

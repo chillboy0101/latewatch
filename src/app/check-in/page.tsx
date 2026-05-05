@@ -33,10 +33,16 @@ interface CheckInStatus {
   isWeekend: boolean;
   locationConfigured: boolean;
   locationPolicy: {
+    formattedAddress?: string | null;
+    id?: string;
     latitude: string;
+    locationKind?: string | null;
     longitude: string;
     maxAccuracyMeters: number;
+    name?: string;
     radiusMeters: number;
+    scheduleEndDate?: string | null;
+    scheduleStartDate?: string | null;
   } | null;
   networkConfigured: boolean;
   officeCodeRequired: boolean;
@@ -120,7 +126,12 @@ function statusDetail(status: CheckInStatus | null, fallbackName: string | null 
 
 function locationValue(status: CheckInStatus | null) {
   if (!status?.locationConfigured) return 'Not set';
-  return <VerifiedLocationBadge />;
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5">
+      <VerifiedLocationBadge />
+      <span className="max-w-36 truncate">{status.locationPolicy?.name || 'Set'}</span>
+    </span>
+  );
 }
 
 function attendanceButtonLabel(status: CheckInStatus | null, submitting: boolean) {

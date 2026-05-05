@@ -93,12 +93,22 @@ export const officeLocation = pgTable('office_location', {
   longitude: decimal('longitude', { precision: 10, scale: 7 }).notNull(),
   radiusMeters: integer('radius_meters').notNull().default(100),
   maxAccuracyMeters: integer('max_accuracy_meters').notNull().default(75),
+  locationKind: text('location_kind').notNull().default('default'),
+  googlePlaceId: text('google_place_id'),
+  formattedAddress: text('formatted_address'),
+  source: text('source').notNull().default('manual'),
+  scheduleStartDate: date('schedule_start_date'),
+  scheduleEndDate: date('schedule_end_date'),
   isActive: boolean('is_active').default(true),
+  archivedAt: timestamp('archived_at'),
   updatedByUserId: text('updated_by_user_id'),
   updatedByEmail: text('updated_by_email').notNull(),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
-});
+}, (table) => [
+  index('office_location_kind_active_idx').on(table.locationKind, table.isActive),
+  index('office_location_schedule_idx').on(table.scheduleStartDate, table.scheduleEndDate),
+]);
 
 export const attendanceRecord = pgTable('attendance_record', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -112,6 +122,7 @@ export const attendanceRecord = pgTable('attendance_record', {
   signOutUserAgent: text('sign_out_user_agent'),
   checkInLatitude: decimal('check_in_latitude', { precision: 10, scale: 7 }),
   checkInLongitude: decimal('check_in_longitude', { precision: 10, scale: 7 }),
+  checkInOfficeLocationId: uuid('check_in_office_location_id').references(() => officeLocation.id),
   checkInAccuracyMeters: decimal('check_in_accuracy_meters', { precision: 10, scale: 2 }),
   checkInDistanceMeters: decimal('check_in_distance_meters', { precision: 10, scale: 2 }),
   checkInLocationAt: timestamp('check_in_location_at'),
@@ -119,6 +130,7 @@ export const attendanceRecord = pgTable('attendance_record', {
   checkInVerificationResult: text('check_in_verification_result'),
   signOutLatitude: decimal('sign_out_latitude', { precision: 10, scale: 7 }),
   signOutLongitude: decimal('sign_out_longitude', { precision: 10, scale: 7 }),
+  signOutOfficeLocationId: uuid('sign_out_office_location_id').references(() => officeLocation.id),
   signOutAccuracyMeters: decimal('sign_out_accuracy_meters', { precision: 10, scale: 2 }),
   signOutDistanceMeters: decimal('sign_out_distance_meters', { precision: 10, scale: 2 }),
   signOutLocationAt: timestamp('sign_out_location_at'),
@@ -154,6 +166,7 @@ export const attendanceAttempt = pgTable('attendance_attempt', {
   userAgent: text('user_agent'),
   latitude: decimal('latitude', { precision: 10, scale: 7 }),
   longitude: decimal('longitude', { precision: 10, scale: 7 }),
+  officeLocationId: uuid('office_location_id').references(() => officeLocation.id),
   accuracyMeters: decimal('accuracy_meters', { precision: 10, scale: 2 }),
   distanceMeters: decimal('distance_meters', { precision: 10, scale: 2 }),
   locationAt: timestamp('location_at'),

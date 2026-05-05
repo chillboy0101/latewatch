@@ -2,7 +2,7 @@ import { currentUser } from '@clerk/nextjs/server';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { attendanceRecord, deviceTransferRequest, latenessEntry, staffDevice } from '@/db/schema';
+import { attendanceRecord, deviceTransferRequest, latenessEntry, officeLocation as officeLocationTable, staffDevice } from '@/db/schema';
 import {
   getAccraClock,
   getActiveOfficeLocation,
@@ -86,7 +86,7 @@ function locationForAudit(location: LocationValidationResult | null | undefined)
   };
 }
 
-function checkInLocationValues(location: LocationValidationResult) {
+function checkInLocationValues(location: LocationValidationResult, officeLocationId?: string | null) {
   return {
     checkInAccuracyMeters: location.accuracy == null ? null : location.accuracy.toString(),
     checkInDistanceMeters: location.distanceMeters == null ? null : location.distanceMeters.toString(),
@@ -94,11 +94,12 @@ function checkInLocationValues(location: LocationValidationResult) {
     checkInLocationAt: location.locationAt,
     checkInLocationVerified: location.ok,
     checkInLongitude: location.longitude == null ? null : location.longitude.toString(),
+    checkInOfficeLocationId: officeLocationId || null,
     checkInVerificationResult: location.result,
   };
 }
 
-function signOutLocationValues(location: LocationValidationResult) {
+function signOutLocationValues(location: LocationValidationResult, officeLocationId?: string | null) {
   return {
     signOutAccuracyMeters: location.accuracy == null ? null : location.accuracy.toString(),
     signOutDistanceMeters: location.distanceMeters == null ? null : location.distanceMeters.toString(),
@@ -106,8 +107,26 @@ function signOutLocationValues(location: LocationValidationResult) {
     signOutLocationAt: location.locationAt,
     signOutLocationVerified: location.ok,
     signOutLongitude: location.longitude == null ? null : location.longitude.toString(),
+    signOutOfficeLocationId: officeLocationId || null,
     signOutVerificationResult: location.result,
   };
+}
+
+function serializeLocationPolicy(location: typeof officeLocationTable.$inferSelect | null | undefined) {
+  return location
+    ? {
+        formattedAddress: location.formattedAddress,
+        id: location.id,
+        latitude: location.latitude,
+        locationKind: location.locationKind,
+        longitude: location.longitude,
+        maxAccuracyMeters: location.maxAccuracyMeters,
+        name: location.name,
+        radiusMeters: location.radiusMeters,
+        scheduleEndDate: location.scheduleEndDate,
+        scheduleStartDate: location.scheduleStartDate,
+      }
+    : null;
 }
 
 async function resolveMemberForAttendance(input: {
@@ -169,10 +188,16 @@ function responsePayload(input: {
   isWeekend: boolean;
   locationConfigured: boolean;
   locationPolicy?: {
+    formattedAddress?: string | null;
+    id?: string;
     latitude: string;
+    locationKind?: string | null;
     longitude: string;
     maxAccuracyMeters: number;
+    name?: string;
     radiusMeters: number;
+    scheduleEndDate?: string | null;
+    scheduleStartDate?: string | null;
   } | null;
   networkConfigured: boolean;
   device?: {
@@ -481,14 +506,7 @@ export async function GET(request: NextRequest) {
       isAfterWorkdayEnd: isAfterWorkdayEnd(clock.timeKey),
       isWeekend,
       locationConfigured: Boolean(office),
-      locationPolicy: office
-        ? {
-            latitude: office.latitude,
-            longitude: office.longitude,
-            maxAccuracyMeters: office.maxAccuracyMeters,
-            radiusMeters: office.radiusMeters,
-          }
-        : null,
+      locationPolicy: serializeLocationPolicy(office),
       networkConfigured: Boolean(office),
       permission: serializePermission(permission),
       staff: member ? { id: member.id, fullName: member.fullName, email: member.email } : null,
@@ -542,8 +560,10 @@ export async function POST(request: NextRequest) {
     status = 400,
     staffId?: string | null,
     location?: LocationValidationResult | null,
-    extra?: Record<string, unknown>,
+    extra?: Record<string, unknown> & { officeLocationId?: string | null },
   ) {
+    const { officeLocationId = null, ...responseExtra } = extra || {};
+
     await recordAttendanceAttempt({
       date: clock.dateKey,
       location: location
@@ -557,6 +577,7 @@ export async function POST(request: NextRequest) {
           }
         : null,
       networkIp: currentIp,
+      officeLocationId,
       result,
       staffId,
       successful: false,
@@ -575,16 +596,17 @@ export async function POST(request: NextRequest) {
         location: locationForAudit(location),
         networkIp: currentIp,
         networkIpSource: currentIpInfo.source,
+        officeLocationId,
         result,
         staffId: staffId || null,
         userEmail: actorEmail,
-        ...extra,
+        ...responseExtra,
       },
       actor: { email: actor.actorEmail, id: actor.actorUserId },
       reason: 'attendance-check-in',
     });
 
-    return NextResponse.json({ error: message, result, ...extra }, { status });
+    return NextResponse.json({ error: message, result, ...responseExtra }, { status });
   }
 
   try {
@@ -663,16 +685,11 @@ export async function POST(request: NextRequest) {
         locationValidation.result === 'OFFICE_LOCATION_NOT_CONFIGURED' ? 403 : 400,
         staffMember.id,
         locationValidation,
+        { officeLocationId: officeLocation?.id },
       );
     }
-    const responseLocationPolicy = officeLocation
-      ? {
-          latitude: officeLocation.latitude,
-          longitude: officeLocation.longitude,
-          maxAccuracyMeters: officeLocation.maxAccuracyMeters,
-          radiusMeters: officeLocation.radiusMeters,
-        }
-      : null;
+    const responseLocationPolicy = serializeLocationPolicy(officeLocation);
+    const officeLocationExtra = { officeLocationId: officeLocation?.id };
 
     if (action === 'request_device_transfer') {
       if (!registeredDevice) {
@@ -682,6 +699,7 @@ export async function POST(request: NextRequest) {
           400,
           staffMember.id,
           locationValidation,
+          officeLocationExtra,
         );
       }
 
@@ -692,6 +710,7 @@ export async function POST(request: NextRequest) {
           400,
           staffMember.id,
           locationValidation,
+          officeLocationExtra,
         );
       }
 
@@ -755,14 +774,7 @@ export async function POST(request: NextRequest) {
           isAfterWorkdayEnd: isAfterWorkdayEnd(clock.timeKey),
           isWeekend: false,
           locationConfigured: true,
-          locationPolicy: officeLocation
-            ? {
-                latitude: officeLocation.latitude,
-                longitude: officeLocation.longitude,
-                maxAccuracyMeters: officeLocation.maxAccuracyMeters,
-                radiusMeters: officeLocation.radiusMeters,
-              }
-            : null,
+          locationPolicy: responseLocationPolicy,
           networkConfigured: true,
           permission: serializePermission(permission),
           staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
@@ -783,7 +795,7 @@ export async function POST(request: NextRequest) {
         403,
         staffMember.id,
         locationValidation,
-        { canRequestTransfer: true },
+        { ...officeLocationExtra, canRequestTransfer: true },
       );
     }
 
@@ -821,6 +833,7 @@ export async function POST(request: NextRequest) {
               403,
               staffMember.id,
               locationValidation,
+              officeLocationExtra,
             );
           }
 
@@ -854,6 +867,7 @@ export async function POST(request: NextRequest) {
             400,
             staffMember.id,
             locationValidation,
+            officeLocationExtra,
           );
         }
 
@@ -864,12 +878,13 @@ export async function POST(request: NextRequest) {
             403,
             staffMember.id,
             locationValidation,
+            officeLocationExtra,
           );
         }
 
         const [updatedAttendance] = await db.update(attendanceRecord)
           .set({
-            ...signOutLocationValues(locationValidation),
+            ...signOutLocationValues(locationValidation, officeLocation?.id),
             signOutAt: clock.now,
             signOutNetworkIp: currentIp,
             signOutTime: checkInTime,
@@ -923,6 +938,7 @@ export async function POST(request: NextRequest) {
             verificationResult: locationValidation.result,
           },
           networkIp: currentIp,
+          officeLocationId: officeLocation?.id,
           result: 'SIGNED_OUT',
           staffId: staffMember.id,
           successful: true,
@@ -985,6 +1001,7 @@ export async function POST(request: NextRequest) {
         403,
         staffMember.id,
         locationValidation,
+        officeLocationExtra,
       );
     }
 
@@ -999,6 +1016,7 @@ export async function POST(request: NextRequest) {
         verificationResult: locationValidation.result,
       },
       networkIp: currentIp,
+      officeLocationId: officeLocation?.id,
         result: 'ALREADY_CHECKED_IN',
         staffId: staffMember.id,
         successful: true,
@@ -1031,7 +1049,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'sign_out') {
-      return block('CHECK_IN_REQUIRED', 'You need to check in before signing out.', 400, staffMember.id, locationValidation);
+      return block('CHECK_IN_REQUIRED', 'You need to check in before signing out.', 400, staffMember.id, locationValidation, officeLocationExtra);
     }
 
     if (isAfterWorkdayEnd(clock.timeKey)) {
@@ -1041,6 +1059,7 @@ export async function POST(request: NextRequest) {
         400,
         staffMember.id,
         locationValidation,
+        officeLocationExtra,
       );
     }
 
@@ -1051,6 +1070,7 @@ export async function POST(request: NextRequest) {
         403,
         staffMember.id,
         locationValidation,
+        officeLocationExtra,
       );
     }
 
@@ -1071,7 +1091,7 @@ export async function POST(request: NextRequest) {
     const now = clock.now;
 
     const [createdAttendance] = await db.insert(attendanceRecord).values({
-      ...checkInLocationValues(locationValidation),
+      ...checkInLocationValues(locationValidation, officeLocation?.id),
       staffId: staffMember.id,
       date: clock.dateKey,
       checkInAt: now,
@@ -1104,6 +1124,7 @@ export async function POST(request: NextRequest) {
           verificationResult: locationValidation.result,
         },
         networkIp: currentIp,
+        officeLocationId: officeLocation?.id,
         result: 'ALREADY_CHECKED_IN',
         staffId: staffMember.id,
         successful: true,
@@ -1150,6 +1171,7 @@ export async function POST(request: NextRequest) {
         verificationResult: locationValidation.result,
       },
       networkIp: currentIp,
+      officeLocationId: officeLocation?.id,
       result: status.toUpperCase(),
       staffId: staffMember.id,
       successful: true,
