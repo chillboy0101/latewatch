@@ -5,9 +5,8 @@ import type { ReactNode } from 'react';
 import {
   AlertCircle,
   CalendarDays,
-  CheckCircle2,
+  ChevronDown,
   Crosshair,
-  ListChecks,
   Loader2,
   MapPin,
   RefreshCw,
@@ -65,12 +64,6 @@ type SaveMode = 'default' | 'scheduled';
 
 function dateKey(value = new Date()) {
   return value.toISOString().slice(0, 10);
-}
-
-function meters(value: number | string | null | undefined) {
-  if (value === null || value === undefined || value === '') return '-';
-  const number = Number(value);
-  return Number.isFinite(number) ? `${Math.round(number)}m` : '-';
 }
 
 function coordinateLabel(location: DraftLocation | SavedOfficeLocation | null | undefined) {
@@ -156,6 +149,12 @@ export default function WifiPage() {
     () => draft || (mode === 'default' ? savedDefaultDraft : null),
     [draft, mode, savedDefaultDraft],
   );
+  const currentLocationLabel = resolvedLocation?.name || defaultLocation?.name || 'No location saved';
+  const currentLocationMeta = resolvedLocation
+    ? `Active today: ${resolvedLocation.name}`
+    : defaultLocation
+    ? 'Default office saved'
+    : 'Detect and save the office location.';
 
   const fetchLocation = useCallback(async () => {
     setError(null);
@@ -289,101 +288,116 @@ export default function WifiPage() {
     }
   }
 
+  function selectMode(nextMode: SaveMode) {
+    setMode(nextMode);
+    setDraft((current) => {
+      if (!current) return current;
+      if (current.name !== 'Office Location' && current.name !== 'Program Location') return current;
+      return {
+        ...current,
+        name: nextMode === 'scheduled' ? 'Program Location' : 'Office Location',
+      };
+    });
+  }
+
   return (
     <DashboardLayout title="Office Location">
-      <div className="space-y-4">
+      <div className="mx-auto max-w-3xl space-y-4">
         {loading && !data ? (
           <Card>
             <LoadingBuffer variant="section" />
           </Card>
         ) : (
-          <>
-            <Card className="overflow-hidden">
-              <div className="flex flex-col gap-4 border-b border-border p-5 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex min-w-0 items-start gap-3">
-                  <div className={cn(
-                    'flex h-11 w-11 shrink-0 items-center justify-center rounded-md border',
-                    setupUnavailable
-                      ? 'border-danger/25 bg-danger/10 text-danger'
-                      : configured
-                      ? 'border-success/25 bg-success/10 text-success'
-                      : 'border-warning/25 bg-warning/10 text-warning',
-                  )}>
-                    <MapPin className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-xl font-semibold">Office location setup</h2>
-                      <StatusBadge configured={configured} unavailable={setupUnavailable} />
-                    </div>
-                    <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-                      Stand at the office or program venue, detect this device location, then save it for attendance checks.
-                    </p>
-                  </div>
+          <Card className="overflow-hidden">
+            <div className="flex items-start justify-between gap-4 border-b border-border p-5">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className={cn(
+                  'flex h-11 w-11 shrink-0 items-center justify-center rounded-md border',
+                  setupUnavailable
+                    ? 'border-danger/25 bg-danger/10 text-danger'
+                    : configured
+                    ? 'border-success/25 bg-success/10 text-success'
+                    : 'border-warning/25 bg-warning/10 text-warning',
+                )}>
+                  <MapPin className="h-5 w-5" />
                 </div>
-                <Button className="h-10 gap-2" variant="outline" onClick={refreshLocation} disabled={refreshing || saving || detecting}>
-                  {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                  Refresh
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-xl font-semibold">Office location</h2>
+                    <StatusBadge configured={configured} unavailable={setupUnavailable} />
+                  </div>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    Stand at the location, detect it, then save.
+                  </p>
+                </div>
+              </div>
+              <Button className="h-10 shrink-0 gap-2" variant="outline" onClick={refreshLocation} disabled={refreshing || saving || detecting}>
+                {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                Refresh
+              </Button>
+            </div>
+
+            <div className="space-y-5 p-5">
+              <div className="rounded-md border border-border bg-background p-4">
+                <p className="text-xs font-medium uppercase text-muted-foreground">Current setting</p>
+                <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold" title={currentLocationLabel}>{currentLocationLabel}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{currentLocationMeta}</p>
+                  </div>
+                  {scheduledLocations.length > 0 && (
+                    <p className="shrink-0 text-sm text-muted-foreground">
+                      {scheduledLocations.length} program {scheduledLocations.length === 1 ? 'schedule' : 'schedules'}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <ModeButton active={mode === 'default'} icon={<MapPin className="h-4 w-4" />} onClick={() => selectMode('default')}>
+                  Default office
+                </ModeButton>
+                <ModeButton active={mode === 'scheduled'} icon={<CalendarDays className="h-4 w-4" />} onClick={() => selectMode('scheduled')}>
+                  Program
+                </ModeButton>
+              </div>
+
+              {mode === 'scheduled' && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Program starts">
+                    <Input className="h-11" type="date" value={scheduleStartDate} onChange={(event) => setScheduleStartDate(event.target.value)} />
+                  </Field>
+                  <Field label="Program ends">
+                    <Input className="h-11" type="date" value={scheduleEndDate} onChange={(event) => setScheduleEndDate(event.target.value)} />
+                  </Field>
+                </div>
+              )}
+
+              <div className="rounded-md border border-dashed border-border bg-background p-5 text-center">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
+                  <Crosshair className="h-6 w-6" />
+                </div>
+                <h3 className="mt-4 text-lg font-semibold">
+                  {activeDraft ? 'Location ready' : 'Detect this location'}
+                </h3>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+                  {activeDraft
+                    ? 'Review the name below, then save it for attendance checks.'
+                    : 'Allow location access when the browser asks. Run this while standing at the exact place staff should check in.'}
+                </p>
+                <Button className="mt-5 h-11 gap-2" onClick={detectCurrentLocation} disabled={detecting || saving}>
+                  {detecting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Crosshair className="h-5 w-5" />}
+                  Detect Current Location
                 </Button>
               </div>
 
-              <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_24rem]">
-                <section className="border-b border-border p-5 lg:border-b-0 lg:border-r">
-                  <div className="flex min-h-[22rem] flex-col justify-between rounded-lg border border-border bg-background p-5">
-                    <div>
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
-                          <Crosshair className="h-6 w-6" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-medium uppercase text-muted-foreground">Current method</p>
-                          <h3 className="text-lg font-semibold">Detect and save</h3>
-                        </div>
-                      </div>
-                      <p className="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground">
-                        This uses the browser location permission on the admin device. For the most accurate office point, run Detect while you are physically at the exact attendance location.
-                      </p>
-                    </div>
-
-                    <div className="mt-8 grid gap-3 md:grid-cols-3">
-                      <LocationMetric label="Selected point" value={coordinateLabel(activeDraft)} />
-                      <LocationMetric label="Allowed area" value={meters(radiusMeters)} />
-                      <LocationMetric label="Quality limit" value={meters(maxAccuracyMeters)} />
-                    </div>
-
-                    <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                      <Button className="h-11 gap-2 sm:w-auto" onClick={detectCurrentLocation} disabled={detecting || saving}>
-                        {detecting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Crosshair className="h-5 w-5" />}
-                        Detect Current Location
-                      </Button>
-                      {activeDraft && (
-                        <div className="rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
-                          <span className="font-medium text-foreground">{activeDraft.name || 'Detected location'}</span>
-                          <span className="block font-mono">{coordinateLabel(activeDraft)}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </section>
-
-                <aside className="space-y-5 p-5">
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium uppercase text-muted-foreground">Save as</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <ModeButton active={mode === 'default'} icon={<MapPin className="h-4 w-4" />} onClick={() => setMode('default')}>
-                        Default office
-                      </ModeButton>
-                      <ModeButton active={mode === 'scheduled'} icon={<CalendarDays className="h-4 w-4" />} onClick={() => setMode('scheduled')}>
-                        Program
-                      </ModeButton>
-                    </div>
-                  </div>
-
+              {activeDraft && (
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_14rem]">
                   <Field label="Location name">
                     <Input
                       className="h-11"
-                      disabled={!activeDraft || saving}
-                      value={activeDraft?.name || ''}
+                      disabled={saving}
+                      value={activeDraft.name || ''}
                       onChange={(event) => setDraft((current) => {
                         const base = current || activeDraft;
                         if (!base) return current;
@@ -392,96 +406,52 @@ export default function WifiPage() {
                       placeholder={mode === 'scheduled' ? 'Program Location' : 'Office Location'}
                     />
                   </Field>
-
-                  {mode === 'scheduled' && (
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                      <Field label="Start date">
-                        <Input className="h-11" type="date" value={scheduleStartDate} onChange={(event) => setScheduleStartDate(event.target.value)} />
-                      </Field>
-                      <Field label="End date">
-                        <Input className="h-11" type="date" value={scheduleEndDate} onChange={(event) => setScheduleEndDate(event.target.value)} />
-                      </Field>
-                    </div>
-                  )}
-
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                    <Field label="Allowed area">
-                      <div className="relative">
-                        <Input
-                          className="h-11 pr-12 font-mono"
-                          inputMode="numeric"
-                          value={radiusMeters}
-                          onChange={(event) => setRadiusMeters(event.target.value.replace(/\D/g, '').slice(0, 4))}
-                          placeholder="100"
-                        />
-                        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-muted-foreground">m</span>
-                      </div>
-                    </Field>
-
-                    <Field label="Location quality">
-                      <select
-                        className="flex h-11 w-full rounded-md border border-border bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-                        value={maxAccuracyMeters}
-                        onChange={(event) => setMaxAccuracyMeters(event.target.value)}
-                      >
-                        <option value="50">Strict</option>
-                        <option value="75">Standard</option>
-                        <option value="100">Flexible</option>
-                      </select>
-                    </Field>
-                  </div>
-
-                  <Button className="h-11 w-full gap-2 text-base" onClick={saveLocation} disabled={saving || detecting || !activeDraft}>
-                    {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
-                    Save Location
-                  </Button>
-                </aside>
-              </div>
-            </Card>
-
-            <div className="grid gap-4 xl:grid-cols-[1fr_1fr_1.4fr]">
-              <SummaryCard
-                icon={<CheckCircle2 className="h-5 w-5" />}
-                label="Default office"
-                value={defaultLocation?.name || 'Not set'}
-                meta={defaultLocation ? `${coordinateLabel(defaultLocation)} - ${meters(defaultLocation.radiusMeters)}` : 'Save the main office point.'}
-              />
-              <SummaryCard
-                icon={<Crosshair className="h-5 w-5" />}
-                label="Active today"
-                value={resolvedLocation?.name || 'Not set'}
-                meta={resolvedLocation ? `${coordinateLabel(resolvedLocation)} - ${meters(resolvedLocation.radiusMeters)}` : 'No active location configured.'}
-              />
-              <Card className="p-5">
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
-                    <ListChecks className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium uppercase text-muted-foreground">Program schedules</p>
-                    <h3 className="text-lg font-semibold">{scheduledLocations.length} saved</h3>
+                  <div className="rounded-md border border-border bg-background px-3 py-2">
+                    <p className="text-xs font-medium uppercase text-muted-foreground">Point</p>
+                    <p className="mt-1 break-words font-mono text-sm font-semibold">{coordinateLabel(activeDraft)}</p>
                   </div>
                 </div>
-                <div className="max-h-44 space-y-2 overflow-auto pr-1">
-                  {scheduledLocations.length ? scheduledLocations.map((location) => (
-                    <div key={location.id} className="rounded-md border border-border bg-background px-3 py-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="truncate text-sm font-semibold">{location.name}</p>
-                        <span className="shrink-0 text-xs text-muted-foreground">{meters(location.radiusMeters)}</span>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {location.scheduleStartDate} to {location.scheduleEndDate}
-                      </p>
+              )}
+
+              <details className="group rounded-md border border-border bg-background">
+                <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold">
+                  Optional settings
+                  <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="grid gap-3 border-t border-border p-4 sm:grid-cols-2">
+                  <Field label="Attendance area">
+                    <div className="relative">
+                      <Input
+                        className="h-11 pr-12 font-mono"
+                        inputMode="numeric"
+                        value={radiusMeters}
+                        onChange={(event) => setRadiusMeters(event.target.value.replace(/\D/g, '').slice(0, 4))}
+                        placeholder="100"
+                      />
+                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-muted-foreground">m</span>
                     </div>
-                  )) : (
-                    <p className="rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
-                      No program locations scheduled yet.
-                    </p>
-                  )}
+                  </Field>
+
+                  <Field label="Location quality">
+                    <select
+                      className="flex h-11 w-full rounded-md border border-border bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                      value={maxAccuracyMeters}
+                      onChange={(event) => setMaxAccuracyMeters(event.target.value)}
+                    >
+                      <option value="50">Strict</option>
+                      <option value="75">Standard</option>
+                      <option value="100">Flexible</option>
+                    </select>
+                  </Field>
                 </div>
-              </Card>
+              </details>
+
+              <Button className="h-11 w-full gap-2 text-base" onClick={saveLocation} disabled={saving || detecting || !activeDraft}>
+                {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
+                Save Location
+              </Button>
             </div>
-          </>
+          </Card>
         )}
 
         {success && !error && (
@@ -509,15 +479,6 @@ function Field({ children, label }: { children: ReactNode; label: string }) {
       <span className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">{label}</span>
       {children}
     </label>
-  );
-}
-
-function LocationMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-border bg-card px-3 py-3">
-      <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
-      <p className="mt-1 break-words font-mono text-sm font-semibold">{value}</p>
-    </div>
   );
 }
 
@@ -561,32 +522,5 @@ function StatusBadge({ configured, unavailable }: { configured: boolean; unavail
     )}>
       {unavailable ? 'Setup unavailable' : configured ? 'Ready' : 'Needs setup'}
     </span>
-  );
-}
-
-function SummaryCard({
-  icon,
-  label,
-  meta,
-  value,
-}: {
-  icon: ReactNode;
-  label: string;
-  meta: string;
-  value: string;
-}) {
-  return (
-    <Card className="p-5">
-      <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
-          {icon}
-        </div>
-        <div className="min-w-0">
-          <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
-          <p className="mt-1 truncate text-lg font-semibold" title={value}>{value}</p>
-          <p className="mt-1 truncate text-sm text-muted-foreground" title={meta}>{meta}</p>
-        </div>
-      </div>
-    </Card>
   );
 }
