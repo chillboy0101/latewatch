@@ -15,10 +15,11 @@ import {
   ScrollView,
   Text,
   useColorScheme,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import type { RefreshControlProps } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getAttendanceStatus, requestDeviceTransfer, submitAttendanceAction } from './src/api';
 import { CLERK_PUBLISHABLE_KEY } from './src/config';
@@ -33,88 +34,96 @@ type GetToken = (options?: { organizationId?: string; skipCache?: boolean }) => 
 
 const palettes = {
   dark: {
-    background: '#05070b',
-    border: '#1f2937',
-    card: '#111827',
-    danger: '#ef4444',
-    dangerSoft: '#3a1118',
-    foreground: '#f8fafc',
-    muted: '#94a3b8',
-    primary: '#2f6df6',
-    primarySoft: '#102246',
+    background: '#09090b',
+    border: '#27272a',
+    card: '#0f1117',
+    danger: '#f87171',
+    dangerSoft: '#2f1116',
+    foreground: '#fafafa',
+    muted: '#a1a1aa',
+    primary: '#8fa9f4',
+    primarySoft: '#15234a',
     success: '#10b981',
-    successSoft: '#062b22',
+    successSoft: '#062c24',
     warning: '#f59e0b',
     warningSoft: '#35230a',
   },
   light: {
-    background: '#f6f9ff',
-    border: '#dbe4f0',
+    background: '#ffffff',
+    border: '#e5e7eb',
     card: '#ffffff',
     danger: '#dc2626',
-    dangerSoft: '#fee2e2',
-    foreground: '#0f172a',
-    muted: '#64748b',
-    primary: '#2563eb',
-    primarySoft: '#dbeafe',
-    success: '#059669',
-    successSoft: '#d1fae5',
+    dangerSoft: '#fef2f2',
+    foreground: '#020617',
+    muted: '#94a3b8',
+    primary: '#89a8f3',
+    primarySoft: '#edf3ff',
+    success: '#00b981',
+    successSoft: '#e3f7ef',
     warning: '#d97706',
-    warningSoft: '#fef3c7',
+    warningSoft: '#fff7ed',
   },
 };
+
+type Palette = typeof palettes.light;
+type MessageTone = 'danger' | 'success' | 'warning';
+type StatusTone = 'neutral' | 'primary' | 'success' | 'warning';
 
 function canSignOut(status: AttendanceStatus | null) {
   return Boolean(status?.attendance && !status.attendance.signOutTime && status.time.slice(0, 5) >= '16:30');
 }
 
 function statusTitle(status: AttendanceStatus | null) {
-  if (!status) return 'Checking status';
-  if (!status.locationConfigured) return 'Office location missing';
-  if (!status.staff) return 'Access not set up';
-  if (status.device?.registered && !status.device.trusted) return 'Device not recognized';
-  if (status.permission?.permissionType === 'absence') return 'Excused today';
+  if (!status) return 'Checking your attendance status';
+  if (!status.locationConfigured) return 'Office location not configured';
+  if (!status.staff) return 'Profile not matched';
+  if (status.device?.registered && !status.device.trusted) return 'Registered device required';
+  if (status.permission?.permissionType === 'absence') return 'Permission recorded';
   if (status.isHoliday) return status.holidayName || 'Public holiday';
   if (status.isWeekend) return 'Weekend';
   if (status.attendance?.signOutTime) return 'Checked out';
   if (status.attendance?.status === 'late') return 'Late check-in recorded';
   if (status.attendance?.status === 'present') return 'Checked in';
-  if (status.isAfterWorkdayEnd) return 'Check-in closed';
+  if (status.isAfterWorkdayEnd) return 'Check-ins closed';
   return 'Ready to check in';
 }
 
-function statusDetail(status: AttendanceStatus | null) {
-  if (!status) return 'Loading your LateWatch attendance profile.';
-  if (!status.locationConfigured) return 'Ask an admin to save the office location first.';
-  if (!status.staff) return 'Ask an admin to link your staff email to your LateWatch profile.';
+function statusDetail(status: AttendanceStatus | null, fallbackName: string | null | undefined) {
+  const person = status?.staff?.fullName || fallbackName || 'Signed-in user';
+  if (!status) return 'Verifying your account, location, and today\'s work calendar.';
+  if (!status.locationConfigured) return 'Ask an admin to save the office location before staff check in.';
+  if (!status.staff) {
+    return 'Your login could not be matched to a staff profile yet. Ask an admin to confirm your staff email or staff name.';
+  }
   if (status.device?.registered && !status.device.trusted) {
     return status.transferRequest
-      ? 'Your transfer request is waiting for admin approval.'
-      : 'This account is linked to another phone or browser. Request a device transfer here.';
+      ? 'Your device transfer request is waiting for admin approval.'
+      : 'This account is linked to another device. Ask an admin to reset the attendance device.';
   }
-  if (status.permission?.permissionType === 'absence') return 'You have approved absence today.';
+  if (status.permission?.permissionType === 'absence') return 'You have an approved absence for today. No check-in is required.';
   if (status.isHoliday) return 'Check-ins are disabled today in observance of the public holiday.';
-  if (status.isWeekend) return 'Attendance is closed on weekends.';
-  if (status.attendance?.signOutTime) return 'Your attendance for today is complete.';
+  if (status.isWeekend) return 'You cannot check in today because attendance check-in is closed on weekends.';
+  if (status.attendance?.signOutTime) return `${person}, you have checked out for today.`;
   if (status.attendance && !canSignOut(status)) return `You can check out from ${status.signOutStartLabel}.`;
-  if (status.attendance?.status === 'late') return 'Your lateness and penalty have been recorded.';
-  if (status.attendance?.status === 'present') return 'You are marked present for today.';
-  if (status.isAfterWorkdayEnd) return `Check-ins close after ${status.workdayEndLabel}.`;
-  return 'Confirm with biometrics or phone passcode when you are at the office.';
+  if (status.attendance?.status === 'late') return `${person}, your late check-in has been recorded.`;
+  if (status.attendance?.status === 'present') return `${person}, you are checked in for today.`;
+  if (status.isAfterWorkdayEnd) return `Check-ins are closed after ${status.workdayEndLabel}. Ask an admin to correct attendance if needed.`;
+  if (status.permission?.permissionType === 'late_arrival') return 'Your late arrival has been approved for today.';
+  return `${person}, you can check in now.`;
 }
 
 function actionLabel(status: AttendanceStatus | null, busy: boolean) {
   if (busy) return status?.attendance && !status.attendance.signOutTime ? 'Checking out' : 'Checking in';
-  if (status?.attendance?.signOutTime) return 'Already checked out';
-  if (status?.attendance) return canSignOut(status) ? 'Check out' : `Check-out opens ${status.signOutStartLabel}`;
-  if (status?.isHoliday) return 'Closed - holiday';
-  if (status?.isWeekend) return 'Closed - weekend';
-  if (status?.isAfterWorkdayEnd) return 'Closed - after hours';
-  if (status && !status.locationConfigured) return 'Location not configured';
-  if (status && !status.staff) return 'Access not set up';
-  if (status?.device?.registered && !status.device.trusted) return 'Device not recognized';
-  if (status?.permission?.permissionType === 'absence') return 'Excused - no check-in';
-  return 'Check in';
+  if (status?.attendance?.signOutTime) return 'Already Checked Out';
+  if (status?.attendance) return canSignOut(status) ? 'Check Out' : `Check Out Opens ${status.signOutStartLabel}`;
+  if (status?.isHoliday) return 'Closed - Holiday';
+  if (status?.isWeekend) return 'Closed - Weekend';
+  if (status?.isAfterWorkdayEnd) return 'Closed - After Hours';
+  if (status && !status.locationConfigured) return 'Location Not Configured';
+  if (status && !status.staff) return 'Profile Not Matched';
+  if (status?.device?.registered && !status.device.trusted) return 'Registered Device Required';
+  if (status?.permission?.permissionType === 'absence') return 'Excused - No Check-In';
+  return 'Check In';
 }
 
 function canSubmit(status: AttendanceStatus | null) {
@@ -125,6 +134,54 @@ function canSubmit(status: AttendanceStatus | null) {
   if (status.attendance && !status.attendance.signOutTime) return canSignOut(status);
   if (status.attendance?.signOutTime) return false;
   return !status.isAfterWorkdayEnd;
+}
+
+function statusTone(status: AttendanceStatus | null): StatusTone {
+  if (!status) return 'neutral';
+  if (status.attendance?.signOutTime || status.attendance?.status === 'present') return 'success';
+  if (status.device?.registered && !status.device.trusted) return 'success';
+  if (status.permission?.permissionType === 'absence') return 'primary';
+  if (status.attendance?.status === 'late') return 'warning';
+  if (!status.locationConfigured || !status.staff || status.isHoliday || status.isWeekend || status.isAfterWorkdayEnd) {
+    return 'warning';
+  }
+  return 'primary';
+}
+
+function toneColors(palette: Palette, tone: StatusTone) {
+  if (tone === 'success') {
+    return {
+      backgroundColor: palette.successSoft,
+      borderColor: '#9debd5',
+      color: palette.success,
+    };
+  }
+
+  if (tone === 'warning') {
+    return {
+      backgroundColor: palette.warningSoft,
+      borderColor: '#fed7aa',
+      color: palette.warning,
+    };
+  }
+
+  if (tone === 'primary') {
+    return {
+      backgroundColor: palette.primarySoft,
+      borderColor: '#bfdbfe',
+      color: palette.primary,
+    };
+  }
+
+  return {
+    backgroundColor: palette.card,
+    borderColor: palette.border,
+    color: palette.muted,
+  };
+}
+
+function shouldShowCheckIcon(status: AttendanceStatus | null) {
+  return Boolean(status?.attendance || (status?.device?.registered && !status.device.trusted));
 }
 
 async function confirmPresence() {
@@ -146,33 +203,43 @@ export default function App() {
 
   if (!CLERK_PUBLISHABLE_KEY) {
     return (
-      <Shell palette={palette}>
-        <MessageCard
-          detail="Add EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY to apps/attendance-mobile/.env before running the app."
-          palette={palette}
-          title="Clerk key missing"
-          tone="warning"
-        />
-      </Shell>
+      <SafeAreaProvider>
+        <Shell palette={palette}>
+          <PortalHeader palette={palette} />
+          <PortalCard palette={palette}>
+            <MessageCard
+              detail="Add EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY to apps/attendance-mobile/.env before running the app."
+              palette={palette}
+              title="Clerk key missing"
+              tone="warning"
+            />
+          </PortalCard>
+        </Shell>
+      </SafeAreaProvider>
     );
   }
 
   return (
-    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
-      <ClerkLoaded>
-        <AuthGate palette={palette} />
-      </ClerkLoaded>
-    </ClerkProvider>
+    <SafeAreaProvider>
+      <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
+        <ClerkLoaded>
+          <AuthGate palette={palette} />
+        </ClerkLoaded>
+      </ClerkProvider>
+    </SafeAreaProvider>
   );
 }
 
-function AuthGate({ palette }: { palette: typeof palettes.light }) {
+function AuthGate({ palette }: { palette: Palette }) {
   const auth = useAuth();
 
   if (!auth.isLoaded) {
     return (
       <Shell palette={palette}>
-        <LoadingCard palette={palette} title="Starting LateWatch" />
+        <PortalHeader palette={palette} />
+        <PortalCard palette={palette}>
+          <LoadingCard palette={palette} title="Loading check-in" />
+        </PortalCard>
       </Shell>
     );
   }
@@ -184,7 +251,7 @@ function AuthGate({ palette }: { palette: typeof palettes.light }) {
   return <AttendanceScreen getToken={auth.getToken} palette={palette} />;
 }
 
-function SignInScreen({ palette }: { palette: typeof palettes.light }) {
+function SignInScreen({ palette }: { palette: Palette }) {
   const { startSSOFlow } = useSSO();
   const [busyProvider, setBusyProvider] = useState<'apple' | 'google' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -213,23 +280,17 @@ function SignInScreen({ palette }: { palette: typeof palettes.light }) {
 
   return (
     <Shell palette={palette}>
-      <View style={{ alignItems: 'center', gap: 16 }}>
-        <BrandHeader palette={palette} subtitle="Staff attendance" />
-        <View style={{
-          backgroundColor: palette.card,
-          borderColor: palette.border,
-          borderRadius: 26,
-          borderWidth: 1,
-          gap: 14,
-          padding: 18,
-          width: '100%',
-        }}>
-          <Text selectable style={{ color: palette.foreground, fontSize: 22, fontWeight: '800', textAlign: 'center' }}>
-            Sign in to LateWatch
-          </Text>
-          <Text selectable style={{ color: palette.muted, fontSize: 14, lineHeight: 20, textAlign: 'center' }}>
-            Use your invited staff account to check in and check out.
-          </Text>
+      <PortalHeader palette={palette} />
+      <PortalCard palette={palette}>
+        <View style={{ gap: 14, padding: 14 }}>
+          <StatusPanel
+            detail="Use your invited staff account to continue."
+            palette={palette}
+            showCheck
+            showMeta={false}
+            title="Sign in to LateWatch"
+            tone="primary"
+          />
           <PrimaryButton
             label="Continue with Google"
             loading={busyProvider === 'google'}
@@ -246,7 +307,7 @@ function SignInScreen({ palette }: { palette: typeof palettes.light }) {
           />
           {error && <InlineMessage message={error} palette={palette} tone="danger" />}
         </View>
-      </View>
+      </PortalCard>
     </Shell>
   );
 }
@@ -256,7 +317,7 @@ function AttendanceScreen({
   palette,
 }: {
   getToken: GetToken;
-  palette: typeof palettes.light;
+  palette: Palette;
 }) {
   const { signOut } = useClerk();
   const { user } = useUser();
@@ -266,7 +327,7 @@ function AttendanceScreen({
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [requestingTransfer, setRequestingTransfer] = useState(false);
-  const [message, setMessage] = useState<{ text: string; tone: 'danger' | 'success' | 'warning' } | null>(null);
+  const [message, setMessage] = useState<{ text: string; tone: MessageTone } | null>(null);
 
   const loadStatus = useCallback(async (token: string, silent = false) => {
     if (!silent) setLoading(true);
@@ -313,6 +374,7 @@ function AttendanceScreen({
   const displayName = status?.staff?.fullName || user?.fullName || user?.primaryEmailAddress?.emailAddress || 'Staff member';
   const blockedDevice = Boolean(status?.device?.registered && !status.device.trusted);
   const action = status?.attendance && !status.attendance.signOutTime ? 'sign_out' : 'check_in';
+  const tone = useMemo(() => statusTone(status), [status]);
 
   const refresh = useCallback(async () => {
     if (!deviceToken) return;
@@ -339,8 +401,8 @@ function AttendanceScreen({
       setStatus(nextStatus);
       setMessage({
         text: action === 'sign_out'
-          ? 'You have checked out successfully.'
-          : 'You have checked in successfully.',
+          ? 'You have checked out for today.'
+          : 'You have checked in for today.',
         tone: 'success',
       });
     } catch (err) {
@@ -371,7 +433,7 @@ function AttendanceScreen({
 
       setStatus(nextStatus);
       setMessage({
-        text: 'Device transfer request sent for admin approval.',
+        text: 'Device transfer request sent. Approve it from the attendance portal.',
         tone: 'success',
       });
     } catch (err) {
@@ -385,13 +447,6 @@ function AttendanceScreen({
     }
   }
 
-  const tone = useMemo(() => {
-    if (!status) return 'neutral';
-    if (status.attendance?.status === 'present' || status.attendance?.signOutTime) return 'success';
-    if (status.attendance?.status === 'late' || blockedDevice || status.isHoliday || status.isWeekend || !status.locationConfigured) return 'warning';
-    return 'neutral';
-  }, [blockedDevice, status]);
-
   return (
     <Shell
       palette={palette}
@@ -403,140 +458,52 @@ function AttendanceScreen({
         />
       )}
     >
-      <View style={{ gap: 16 }}>
-        <View style={{ alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' }}>
-          <BrandHeader palette={palette} subtitle="Attendance" />
-          <Pressable
-            onPress={() => signOut()}
-            style={{
-              borderColor: palette.border,
-              borderRadius: 999,
-              borderWidth: 1,
-              paddingHorizontal: 14,
-              paddingVertical: 9,
-            }}
-          >
-            <Text selectable style={{ color: palette.foreground, fontSize: 13, fontWeight: '700' }}>Sign out</Text>
-          </Pressable>
-        </View>
-
+      <PortalHeader
+        avatarLabel={displayName}
+        onSignOut={() => signOut()}
+        palette={palette}
+        showAccount
+      />
+      <PortalCard palette={palette}>
         {loading ? (
-          <LoadingCard palette={palette} title="Checking attendance" />
+          <LoadingCard palette={palette} title="Loading check-in" />
         ) : (
-          <>
-            <View style={{
-              backgroundColor: palette.card,
-              borderColor: palette.border,
-              borderRadius: 28,
-              borderWidth: 1,
-              gap: 18,
-              padding: 18,
-            }}>
-              <View style={{
-                alignItems: 'center',
-                backgroundColor: tone === 'success'
-                  ? palette.successSoft
-                  : tone === 'warning'
-                    ? palette.warningSoft
-                    : palette.primarySoft,
-                borderColor: tone === 'success'
-                  ? palette.success
-                  : tone === 'warning'
-                    ? palette.warning
-                    : palette.primary,
-                borderRadius: 24,
-                borderWidth: 1,
-                gap: 10,
-                padding: 18,
-              }}>
-                <Text selectable style={{
-                  color: tone === 'success'
-                    ? palette.success
-                    : tone === 'warning'
-                      ? palette.warning
-                      : palette.primary,
-                  fontSize: 22,
-                  fontWeight: '900',
-                  textAlign: 'center',
-                }}>
-                  {statusTitle(status)}
-                </Text>
-                <Text selectable style={{
-                  color: palette.muted,
-                  fontSize: 14,
-                  lineHeight: 20,
-                  textAlign: 'center',
-                }}>
-                  {statusDetail(status)}
-                </Text>
-                <Text selectable style={{
-                  backgroundColor: palette.background,
-                  borderRadius: 999,
-                  color: palette.foreground,
-                  fontSize: 12,
-                  fontWeight: '800',
-                  overflow: 'hidden',
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                  textAlign: 'center',
-                }}>
-                  {displayName.toUpperCase()}
-                </Text>
-              </View>
+          <View style={{ gap: 14, padding: 14 }}>
+            <StatusPanel
+              detail={statusDetail(status, user?.primaryEmailAddress?.emailAddress)}
+              name={displayName}
+              palette={palette}
+              showCheck={shouldShowCheckIcon(status)}
+              status={status}
+              title={statusTitle(status)}
+              tone={tone}
+            />
 
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                <InfoPill label="Time" palette={palette} value={status?.time.slice(0, 5) || '-'} />
-                <InfoPill
-                  label="Location"
-                  palette={palette}
-                  value={status?.locationConfigured ? 'Configured' : 'Not set'}
-                />
-                <InfoPill
-                  label="Device"
-                  palette={palette}
-                  value={status?.device?.registered
-                    ? status.device.trusted ? 'Trusted' : 'Blocked'
-                    : 'First use'}
-                />
-              </View>
+            <AttendanceDetails palette={palette} status={status} />
 
-              {status?.attendance && (
-                <View style={{ borderColor: palette.border, borderRadius: 18, borderWidth: 1, overflow: 'hidden' }}>
-                  <DataRow label="Check-in" palette={palette} value={status.attendance.checkInTime.slice(0, 5)} />
-                  <DataRow label="Check-out" palette={palette} value={status.attendance.signOutTime?.slice(0, 5) || '-'} />
-                  <DataRow
-                    label="Penalty"
-                    palette={palette}
-                    tone={Number(status.attendance.computedAmount || 0) > 0 ? 'warning' : 'neutral'}
-                    value={`GHC ${Number(status.attendance.computedAmount || 0).toFixed(2)}`}
-                  />
-                </View>
-              )}
+            {message && <InlineMessage message={message.text} palette={palette} tone={message.tone} />}
 
-              {message && <InlineMessage message={message.text} palette={palette} tone={message.tone} />}
+            <PrimaryButton
+              disabled={!canSubmit(status)}
+              label={actionLabel(status, submitting)}
+              loading={submitting}
+              onPress={submit}
+              palette={palette}
+            />
 
+            {blockedDevice && (
               <PrimaryButton
-                disabled={!canSubmit(status)}
-                label={actionLabel(status, submitting)}
-                loading={submitting}
-                onPress={submit}
+                disabled={Boolean(status?.transferRequest)}
+                label={status?.transferRequest ? 'Transfer Request Pending' : 'Request Device Transfer'}
+                loading={requestingTransfer}
+                onPress={transferDevice}
                 palette={palette}
+                variant="outline"
               />
-
-              {blockedDevice && (
-                <PrimaryButton
-                  disabled={Boolean(status?.transferRequest)}
-                  label={status?.transferRequest ? 'Transfer request pending' : 'Request device transfer'}
-                  loading={requestingTransfer}
-                  onPress={transferDevice}
-                  palette={palette}
-                  variant="outline"
-                />
-              )}
-            </View>
-          </>
+            )}
+          </View>
         )}
-      </View>
+      </PortalCard>
     </Shell>
   );
 }
@@ -547,10 +514,12 @@ function Shell({
   refreshControl,
 }: {
   children: ReactNode;
-  palette: typeof palettes.light;
+  palette: Palette;
   refreshControl?: ReactElement<RefreshControlProps>;
 }) {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const horizontalPadding = width < 390 ? 16 : 24;
 
   return (
     <View style={{ backgroundColor: palette.background, flex: 1 }}>
@@ -558,15 +527,14 @@ function Shell({
       <ScrollView
         contentContainerStyle={{
           flexGrow: 1,
-          justifyContent: 'center',
-          paddingBottom: Math.max(insets.bottom + 24, 32),
-          paddingHorizontal: 18,
-          paddingTop: Math.max(insets.top + 24, 44),
+          paddingBottom: Math.max(insets.bottom + 18, 28),
+          paddingHorizontal: horizontalPadding,
+          paddingTop: Math.max(insets.top + 14, 26),
         }}
         contentInsetAdjustmentBehavior="automatic"
         refreshControl={refreshControl}
       >
-        <View style={{ alignSelf: 'center', maxWidth: 520, width: '100%' }}>
+        <View style={{ alignSelf: 'center', gap: 20, maxWidth: 576, width: '100%' }}>
           {children}
         </View>
       </ScrollView>
@@ -574,20 +542,206 @@ function Shell({
   );
 }
 
-function BrandHeader({
+function PortalHeader({
+  avatarLabel,
+  onSignOut,
   palette,
-  subtitle,
+  showAccount,
 }: {
-  palette: typeof palettes.light;
-  subtitle: string;
+  avatarLabel?: string;
+  onSignOut?: () => void;
+  palette: Palette;
+  showAccount?: boolean;
+}) {
+  const initial = (avatarLabel || 'L').trim().slice(0, 1).toUpperCase() || 'L';
+
+  return (
+    <View style={{ alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 44 }}>
+      <View style={{ alignItems: 'center', flexDirection: 'row', gap: 10 }}>
+        <Image source={logo} style={{ borderRadius: 6, height: 28, width: 28 }} />
+        <Text selectable style={{ color: palette.foreground, fontSize: 18, fontWeight: '800' }}>
+          LateWatch
+        </Text>
+      </View>
+
+      {showAccount && (
+        <View style={{ alignItems: 'center', flexDirection: 'row', gap: 8 }}>
+          <Pressable
+            onPress={onSignOut}
+            style={{
+              alignItems: 'center',
+              borderColor: palette.border,
+              borderRadius: 6,
+              borderWidth: 1,
+              height: 36,
+              justifyContent: 'center',
+              paddingHorizontal: 12,
+            }}
+          >
+            <Text selectable style={{ color: palette.foreground, fontSize: 13, fontWeight: '600' }}>
+              Sign out
+            </Text>
+          </Pressable>
+          <View style={{
+            alignItems: 'center',
+            backgroundColor: '#f59e0b',
+            borderRadius: 999,
+            height: 28,
+            justifyContent: 'center',
+            width: 28,
+          }}>
+            <Text selectable style={{ color: '#ffffff', fontSize: 13, fontWeight: '800' }}>
+              {initial}
+            </Text>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
+function PortalCard({
+  children,
+  palette,
+}: {
+  children: ReactNode;
+  palette: Palette;
 }) {
   return (
-    <View style={{ alignItems: 'center', flexDirection: 'row', gap: 10 }}>
-      <Image source={logo} style={{ borderRadius: 12, height: 44, width: 44 }} />
-      <View>
-        <Text selectable style={{ color: palette.foreground, fontSize: 20, fontWeight: '900' }}>LateWatch</Text>
-        <Text selectable style={{ color: palette.muted, fontSize: 13 }}>{subtitle}</Text>
+    <View style={{
+      backgroundColor: palette.card,
+      borderColor: palette.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      overflow: 'hidden',
+      width: '100%',
+    }}>
+      {children}
+    </View>
+  );
+}
+
+function StatusPanel({
+  detail,
+  name,
+  palette,
+  showCheck,
+  showMeta = true,
+  status,
+  title,
+  tone,
+}: {
+  detail: string;
+  name?: string;
+  palette: Palette;
+  showCheck?: boolean;
+  showMeta?: boolean;
+  status?: AttendanceStatus | null;
+  title: string;
+  tone: StatusTone;
+}) {
+  const colors = toneColors(palette, tone);
+
+  return (
+    <View style={{
+      alignItems: 'center',
+      backgroundColor: colors.backgroundColor,
+      borderColor: colors.borderColor,
+      borderRadius: 8,
+      borderWidth: 1,
+      paddingHorizontal: 16,
+      paddingVertical: 18,
+    }}>
+      <View style={{
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.74)',
+        borderRadius: 999,
+        height: 48,
+        justifyContent: 'center',
+        width: 48,
+      }}>
+        <StatusIcon color={colors.color} showCheck={showCheck} />
       </View>
+      <Text selectable style={{ color: colors.color, fontSize: 20, fontWeight: '800', marginTop: 12, textAlign: 'center' }}>
+        {title}
+      </Text>
+      <Text selectable style={{
+        color: palette.muted,
+        fontSize: 14,
+        lineHeight: 20,
+        marginTop: 8,
+        maxWidth: 390,
+        textAlign: 'center',
+      }}>
+        {detail}
+      </Text>
+
+      {showMeta && (
+      <View style={{ alignItems: 'center', gap: 10, marginTop: 14 }}>
+        {name && (
+          <View style={{
+            backgroundColor: 'rgba(255,255,255,0.72)',
+            borderColor: 'rgba(229,231,235,0.8)',
+            borderRadius: 999,
+            borderWidth: 1,
+            maxWidth: 310,
+            paddingHorizontal: 15,
+            paddingVertical: 8,
+          }}>
+            <Text selectable numberOfLines={1} style={{ color: palette.foreground, fontSize: 13, fontWeight: '600' }}>
+              {name.toUpperCase()}
+            </Text>
+          </View>
+        )}
+
+        <StatusChip
+          icon={<ClockIcon color={palette.foreground} />}
+          label="Time"
+          palette={palette}
+          value={status?.time?.slice(0, 5) || '-'}
+        />
+        <StatusChip
+          icon={<WifiIcon color={palette.foreground} />}
+          label="WiFi"
+          palette={palette}
+          value={status?.locationConfigured ? <VerifiedBadge /> : 'Not set'}
+        />
+      </View>
+      )}
+    </View>
+  );
+}
+
+function AttendanceDetails({
+  palette,
+  status,
+}: {
+  palette: Palette;
+  status: AttendanceStatus | null;
+}) {
+  if (!status?.attendance) return null;
+
+  const amount = Number(status.attendance.computedAmount || 0);
+
+  return (
+    <View style={{
+      backgroundColor: palette.card,
+      borderColor: palette.border,
+      borderRadius: 6,
+      borderWidth: 1,
+      overflow: 'hidden',
+    }}>
+      <DataRow label="Checked in at" palette={palette} value={status.attendance.checkInTime.slice(0, 5)} />
+      <DataRow label="Checked out at" palette={palette} value={status.attendance.signOutTime?.slice(0, 5) || '-'} />
+      {amount > 0 ? (
+        <DataRow label="Penalty" palette={palette} tone="warning" value={`GHC ${amount.toFixed(2)}`} />
+      ) : status.attendance.reason ? (
+        <View style={{ borderTopColor: palette.border, borderTopWidth: 1, paddingHorizontal: 12, paddingVertical: 13 }}>
+          <Text selectable style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>
+            {status.attendance.reason}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -596,21 +750,18 @@ function LoadingCard({
   palette,
   title,
 }: {
-  palette: typeof palettes.light;
+  palette: Palette;
   title: string;
 }) {
   return (
-    <View style={{
-      alignItems: 'center',
-      backgroundColor: palette.card,
-      borderColor: palette.border,
-      borderRadius: 24,
-      borderWidth: 1,
-      gap: 12,
-      padding: 28,
-    }}>
+    <View style={{ alignItems: 'center', gap: 12, padding: 28 }}>
       <ActivityIndicator color={palette.primary} size="large" />
-      <Text selectable style={{ color: palette.foreground, fontSize: 16, fontWeight: '800' }}>{title}</Text>
+      <Text selectable style={{ color: palette.foreground, fontSize: 16, fontWeight: '700' }}>
+        {title}
+      </Text>
+      <Text selectable style={{ color: palette.muted, fontSize: 13, textAlign: 'center' }}>
+        Verifying your account and location.
+      </Text>
     </View>
   );
 }
@@ -622,20 +773,15 @@ function MessageCard({
   tone,
 }: {
   detail: string;
-  palette: typeof palettes.light;
+  palette: Palette;
   title: string;
-  tone: 'danger' | 'success' | 'warning';
+  tone: MessageTone;
 }) {
   return (
-    <View style={{
-      backgroundColor: palette.card,
-      borderColor: palette.border,
-      borderRadius: 24,
-      borderWidth: 1,
-      gap: 10,
-      padding: 20,
-    }}>
-      <Text selectable style={{ color: palette.foreground, fontSize: 20, fontWeight: '900' }}>{title}</Text>
+    <View style={{ gap: 10, padding: 16 }}>
+      <Text selectable style={{ color: palette.foreground, fontSize: 18, fontWeight: '800' }}>
+        {title}
+      </Text>
       <InlineMessage message={detail} palette={palette} tone={tone} />
     </View>
   );
@@ -653,7 +799,7 @@ function PrimaryButton({
   label: string;
   loading?: boolean;
   onPress: () => void;
-  palette: typeof palettes.light;
+  palette: Palette;
   variant?: 'outline' | 'solid';
 }) {
   const isDisabled = Boolean(disabled || loading);
@@ -667,25 +813,30 @@ function PrimaryButton({
         alignItems: 'center',
         backgroundColor: solid ? palette.primary : 'transparent',
         borderColor: solid ? palette.primary : palette.border,
-        borderRadius: 16,
+        borderRadius: 6,
         borderWidth: 1,
-        minHeight: 52,
+        flexDirection: 'row',
+        gap: 8,
+        minHeight: 44,
         justifyContent: 'center',
-        opacity: isDisabled ? 0.55 : 1,
-        paddingHorizontal: 16,
+        opacity: isDisabled ? 0.58 : 1,
+        paddingHorizontal: 14,
       }}
     >
       {loading ? (
         <ActivityIndicator color={solid ? '#ffffff' : palette.primary} />
       ) : (
-        <Text selectable style={{
-          color: solid ? '#ffffff' : palette.foreground,
-          fontSize: 16,
-          fontWeight: '800',
-          textAlign: 'center',
-        }}>
-          {label}
-        </Text>
+        <>
+          <ButtonIcon color={solid ? '#ffffff' : palette.foreground} />
+          <Text selectable style={{
+            color: solid ? '#ffffff' : palette.foreground,
+            fontSize: 15,
+            fontWeight: '800',
+            textAlign: 'center',
+          }}>
+            {label}
+          </Text>
+        </>
       )}
     </Pressable>
   );
@@ -697,41 +848,64 @@ function InlineMessage({
   tone,
 }: {
   message: string;
-  palette: typeof palettes.light;
-  tone: 'danger' | 'success' | 'warning';
+  palette: Palette;
+  tone: MessageTone;
 }) {
   const color = tone === 'success' ? palette.success : tone === 'warning' ? palette.warning : palette.danger;
   const backgroundColor = tone === 'success' ? palette.successSoft : tone === 'warning' ? palette.warningSoft : palette.dangerSoft;
 
   return (
-    <View style={{ backgroundColor, borderColor: color, borderRadius: 16, borderWidth: 1, padding: 12 }}>
-      <Text selectable style={{ color, fontSize: 13, fontWeight: '700', lineHeight: 18 }}>{message}</Text>
+    <View style={{
+      alignItems: 'center',
+      backgroundColor,
+      borderColor: color,
+      borderRadius: 6,
+      borderWidth: 1,
+      flexDirection: 'row',
+      gap: 8,
+      paddingHorizontal: 11,
+      paddingVertical: 10,
+    }}>
+      <StatusIcon color={color} compact showCheck={tone === 'success'} />
+      <Text selectable style={{ color, flex: 1, fontSize: 13, fontWeight: '600', lineHeight: 18 }}>
+        {message}
+      </Text>
     </View>
   );
 }
 
-function InfoPill({
+function StatusChip({
+  icon,
   label,
   palette,
   value,
 }: {
+  icon: ReactNode;
   label: string;
-  palette: typeof palettes.light;
-  value: string;
+  palette: Palette;
+  value: ReactNode;
 }) {
   return (
     <View style={{
-      backgroundColor: palette.background,
-      borderColor: palette.border,
+      alignItems: 'center',
+      backgroundColor: 'rgba(255,255,255,0.72)',
+      borderColor: 'rgba(229,231,235,0.86)',
       borderRadius: 999,
       borderWidth: 1,
-      flexGrow: 1,
-      minWidth: 140,
-      paddingHorizontal: 14,
-      paddingVertical: 11,
+      flexDirection: 'row',
+      gap: 7,
+      minHeight: 34,
+      paddingHorizontal: 13,
     }}>
-      <Text selectable style={{ color: palette.muted, fontSize: 12, fontWeight: '700' }}>{label}</Text>
-      <Text selectable style={{ color: palette.foreground, fontSize: 16, fontWeight: '900', marginTop: 2 }}>{value}</Text>
+      {icon}
+      <Text selectable style={{ color: palette.foreground, fontSize: 13, fontWeight: '600' }}>
+        {label}
+      </Text>
+      {typeof value === 'string' ? (
+        <Text selectable style={{ color: palette.foreground, fontSize: 14, fontVariant: ['tabular-nums'], fontWeight: '800' }}>
+          {value}
+        </Text>
+      ) : value}
     </View>
   );
 }
@@ -743,29 +917,157 @@ function DataRow({
   value,
 }: {
   label: string;
-  palette: typeof palettes.light;
+  palette: Palette;
   tone?: 'neutral' | 'warning';
   value: string;
 }) {
   return (
     <View style={{
       alignItems: 'center',
-      borderBottomColor: palette.border,
-      borderBottomWidth: label === 'Penalty' ? 0 : 1,
+      borderBottomColor: label === 'Checked out at' ? 'transparent' : palette.border,
+      borderBottomWidth: label === 'Checked out at' ? 0 : 1,
       flexDirection: 'row',
       justifyContent: 'space-between',
-      paddingHorizontal: 14,
+      paddingHorizontal: 12,
       paddingVertical: 13,
     }}>
-      <Text selectable style={{ color: palette.muted, fontSize: 13, fontWeight: '700' }}>{label}</Text>
+      <Text selectable style={{ color: palette.muted, fontSize: 14 }}>
+        {label}
+      </Text>
       <Text selectable style={{
         color: tone === 'warning' ? palette.warning : palette.foreground,
-        fontSize: 16,
+        fontSize: 18,
         fontVariant: ['tabular-nums'],
-        fontWeight: '900',
+        fontWeight: '800',
+        letterSpacing: 0,
       }}>
         {value}
       </Text>
+    </View>
+  );
+}
+
+function StatusIcon({
+  color,
+  compact,
+  showCheck,
+}: {
+  color: string;
+  compact?: boolean;
+  showCheck?: boolean;
+}) {
+  const size = compact ? 18 : 24;
+
+  return (
+    <View style={{
+      alignItems: 'center',
+      borderColor: color,
+      borderRadius: 999,
+      borderWidth: 2,
+      height: size,
+      justifyContent: 'center',
+      width: size,
+    }}>
+      <Text selectable style={{
+        color,
+        fontSize: compact ? 10 : 14,
+        fontWeight: '900',
+        lineHeight: compact ? 12 : 16,
+      }}>
+        {showCheck ? '✓' : '!'}
+      </Text>
+    </View>
+  );
+}
+
+function ClockIcon({ color }: { color: string }) {
+  return (
+    <View style={{
+      borderColor: color,
+      borderRadius: 999,
+      borderWidth: 1.5,
+      height: 14,
+      width: 14,
+    }}>
+      <View style={{ backgroundColor: color, height: 4.5, left: 6, position: 'absolute', top: 2.5, width: 1.5 }} />
+      <View style={{ backgroundColor: color, height: 1.5, left: 6, position: 'absolute', top: 7, width: 4 }} />
+    </View>
+  );
+}
+
+function WifiIcon({ color }: { color: string }) {
+  return (
+    <View style={{ alignItems: 'center', height: 14, justifyContent: 'center', width: 15 }}>
+      <View style={{
+        borderColor: color,
+        borderLeftWidth: 1.5,
+        borderRadius: 999,
+        borderRightWidth: 1.5,
+        borderTopWidth: 1.5,
+        height: 8,
+        opacity: 0.8,
+        position: 'absolute',
+        top: 1,
+        width: 14,
+      }} />
+      <View style={{
+        borderColor: color,
+        borderLeftWidth: 1.5,
+        borderRadius: 999,
+        borderRightWidth: 1.5,
+        borderTopWidth: 1.5,
+        height: 5,
+        opacity: 0.85,
+        position: 'absolute',
+        top: 5,
+        width: 9,
+      }} />
+      <View style={{ backgroundColor: color, borderRadius: 999, bottom: 1, height: 2.5, position: 'absolute', width: 2.5 }} />
+    </View>
+  );
+}
+
+function VerifiedBadge() {
+  return (
+    <View style={{
+      alignItems: 'center',
+      backgroundColor: '#1d9bf0',
+      borderRadius: 999,
+      height: 15,
+      justifyContent: 'center',
+      width: 15,
+    }}>
+      <Text selectable style={{ color: '#ffffff', fontSize: 10, fontWeight: '900', lineHeight: 12 }}>
+        ✓
+      </Text>
+    </View>
+  );
+}
+
+function ButtonIcon({ color }: { color: string }) {
+  return (
+    <View style={{ height: 16, justifyContent: 'center', width: 16 }}>
+      <View style={{
+        borderColor: color,
+        borderRightWidth: 1.8,
+        borderTopWidth: 1.8,
+        height: 7,
+        position: 'absolute',
+        right: 1,
+        transform: [{ rotate: '45deg' }],
+        width: 7,
+      }} />
+      <View style={{ backgroundColor: color, height: 1.8, position: 'absolute', right: 2, width: 10 }} />
+      <View style={{
+        borderBottomWidth: 1.8,
+        borderColor: color,
+        borderLeftWidth: 1.8,
+        borderTopWidth: 1.8,
+        height: 12,
+        left: 0,
+        position: 'absolute',
+        width: 9,
+      }} />
     </View>
   );
 }
