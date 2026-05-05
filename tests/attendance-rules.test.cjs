@@ -6,6 +6,7 @@ require('tsx/cjs');
 
 const { computePenalty } = require('../src/lib/penalty-calculator.ts');
 const { getAuditFieldChanges, getAuditTargetName } = require('../src/lib/audit-display.ts');
+const { validateAttendanceLocation } = require('../src/lib/geo-location.ts');
 const { getClientIp, getClientIpInfo, isLoopbackIp } = require('../src/lib/request-ip.ts');
 const { isAfterWorkdayEnd } = require('../src/lib/work-hours.ts');
 
@@ -70,4 +71,74 @@ test('client IP detection prefers Vercel forwarded IP and normalizes IPv6 wrappe
   );
   assert.equal(isLoopbackIp('::1'), true);
   assert.equal(isLoopbackIp('203.0.113.10'), false);
+});
+
+test('attendance geofence validates fresh accurate office location', () => {
+  const office = {
+    latitude: 5.6037168,
+    longitude: -0.1869644,
+    maxAccuracyMeters: 75,
+    radiusMeters: 100,
+  };
+  const now = new Date('2026-05-05T08:45:00.000Z');
+
+  const inside = validateAttendanceLocation({
+    evidence: {
+      accuracy: 20,
+      latitude: 5.60375,
+      longitude: -0.18695,
+      timestamp: '2026-05-05T08:44:45.000Z',
+    },
+    now,
+    office,
+  });
+
+  assert.equal(inside.ok, true);
+  assert.equal(inside.result, 'LOCATION_VERIFIED');
+  assert.ok(inside.distanceMeters < 10);
+
+  assert.equal(validateAttendanceLocation({
+    evidence: {
+      accuracy: 150,
+      latitude: 5.60375,
+      longitude: -0.18695,
+      timestamp: '2026-05-05T08:44:45.000Z',
+    },
+    now,
+    office,
+  }).result, 'LOCATION_ACCURACY_WEAK');
+
+  assert.equal(validateAttendanceLocation({
+    evidence: {
+      accuracy: 20,
+      latitude: 5.606,
+      longitude: -0.18695,
+      timestamp: '2026-05-05T08:44:45.000Z',
+    },
+    now,
+    office,
+  }).result, 'OUTSIDE_OFFICE_LOCATION');
+
+  assert.equal(validateAttendanceLocation({
+    evidence: {
+      accuracy: 20,
+      latitude: 5.60375,
+      longitude: -0.18695,
+      mocked: true,
+      timestamp: '2026-05-05T08:44:45.000Z',
+    },
+    now,
+    office,
+  }).result, 'LOCATION_MOCKED');
+
+  assert.equal(validateAttendanceLocation({
+    evidence: {
+      accuracy: 20,
+      latitude: 5.60375,
+      longitude: -0.18695,
+      timestamp: '2026-05-05T08:42:00.000Z',
+    },
+    now,
+    office,
+  }).result, 'LOCATION_STALE');
 });

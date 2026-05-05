@@ -15,7 +15,7 @@ import {
   ClipboardCheck,
   PhoneCall,
   Shield,
-  Wifi,
+  MapPin,
 } from 'lucide-react';
 
 const navigation = [
@@ -23,7 +23,7 @@ const navigation = [
   { name: 'Staff', href: '/staff', icon: Users },
   { name: 'Emergency', href: '/emergency-contacts', icon: PhoneCall },
   { name: 'Attendance', href: '/attendance', icon: ClipboardCheck },
-  { name: 'WiFi', href: '/wifi', icon: Wifi },
+  { name: 'Location', href: '/wifi', icon: MapPin },
   { name: 'Lateness Entries', href: '/entries', icon: Table2 },
   { name: 'Lateness Exports', href: '/exports', icon: Download },
   { name: 'Calendar', href: '/calendar', icon: Calendar },

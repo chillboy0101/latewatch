@@ -43,6 +43,21 @@ export async function POST() {
       )
     `);
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS office_location (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        name text DEFAULT 'Office Location' NOT NULL,
+        latitude numeric(10, 7) NOT NULL,
+        longitude numeric(10, 7) NOT NULL,
+        radius_meters integer DEFAULT 100 NOT NULL,
+        max_accuracy_meters integer DEFAULT 75 NOT NULL,
+        is_active boolean DEFAULT true,
+        updated_by_user_id text,
+        updated_by_email text NOT NULL,
+        created_at timestamp DEFAULT now(),
+        updated_at timestamp DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS attendance_record (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
         staff_id uuid NOT NULL REFERENCES staff(id),
@@ -68,6 +83,20 @@ export async function POST() {
     await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS sign_out_time time`);
     await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS sign_out_network_ip text`);
     await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS sign_out_user_agent text`);
+    await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS check_in_latitude numeric(10, 7)`);
+    await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS check_in_longitude numeric(10, 7)`);
+    await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS check_in_accuracy_meters numeric(10, 2)`);
+    await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS check_in_distance_meters numeric(10, 2)`);
+    await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS check_in_location_at timestamp`);
+    await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS check_in_location_verified boolean DEFAULT false`);
+    await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS check_in_verification_result text`);
+    await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS sign_out_latitude numeric(10, 7)`);
+    await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS sign_out_longitude numeric(10, 7)`);
+    await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS sign_out_accuracy_meters numeric(10, 2)`);
+    await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS sign_out_distance_meters numeric(10, 2)`);
+    await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS sign_out_location_at timestamp`);
+    await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS sign_out_location_verified boolean DEFAULT false`);
+    await db.execute(sql`ALTER TABLE attendance_record ADD COLUMN IF NOT EXISTS sign_out_verification_result text`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS attendance_attempt (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -84,6 +113,12 @@ export async function POST() {
     `);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS attendance_record_date_idx ON attendance_record(date)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS attendance_attempt_date_idx ON attendance_attempt(date)`);
+    await db.execute(sql`ALTER TABLE attendance_attempt ADD COLUMN IF NOT EXISTS latitude numeric(10, 7)`);
+    await db.execute(sql`ALTER TABLE attendance_attempt ADD COLUMN IF NOT EXISTS longitude numeric(10, 7)`);
+    await db.execute(sql`ALTER TABLE attendance_attempt ADD COLUMN IF NOT EXISTS accuracy_meters numeric(10, 2)`);
+    await db.execute(sql`ALTER TABLE attendance_attempt ADD COLUMN IF NOT EXISTS distance_meters numeric(10, 2)`);
+    await db.execute(sql`ALTER TABLE attendance_attempt ADD COLUMN IF NOT EXISTS location_at timestamp`);
+    await db.execute(sql`ALTER TABLE attendance_attempt ADD COLUMN IF NOT EXISTS verification_result text`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS emergency_contact (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -144,6 +179,36 @@ export async function POST() {
     `);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS staff_device_staff_id_idx ON staff_device(staff_id)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS staff_device_user_id_idx ON staff_device(user_id)`);
+    await db.execute(sql`ALTER TABLE staff_device ADD COLUMN IF NOT EXISTS device_label text`);
+    await db.execute(sql`ALTER TABLE staff_device ADD COLUMN IF NOT EXISTS last_verified_at timestamp`);
+    await db.execute(sql`ALTER TABLE staff_device ADD COLUMN IF NOT EXISTS last_verification_method text`);
+    await db.execute(sql`ALTER TABLE staff_device ADD COLUMN IF NOT EXISTS last_distance_meters numeric(10, 2)`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS device_transfer_request (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        staff_id uuid NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
+        user_id text NOT NULL,
+        user_email text NOT NULL,
+        device_hash text NOT NULL,
+        device_label text,
+        user_agent text,
+        network_ip text,
+        latitude numeric(10, 7),
+        longitude numeric(10, 7),
+        accuracy_meters numeric(10, 2),
+        distance_meters numeric(10, 2),
+        location_at timestamp,
+        verification_result text,
+        status text DEFAULT 'pending' NOT NULL,
+        reviewed_by_user_id text,
+        reviewed_by_email text,
+        reviewed_at timestamp,
+        requested_at timestamp DEFAULT now(),
+        updated_at timestamp DEFAULT now()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS device_transfer_request_staff_status_idx ON device_transfer_request(staff_id, status)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS device_transfer_request_status_idx ON device_transfer_request(status)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS staff_active_archived_idx ON staff(active, archived)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS staff_email_idx ON staff(email)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS lateness_entry_date_idx ON lateness_entry(date)`);
@@ -170,11 +235,13 @@ export async function POST() {
           'staff',
           'entry_submission',
           'office_network',
+          'office_location',
           'attendance_record',
           'attendance_attempt',
           'emergency_contact',
           'attendance_permission',
           'staff_device',
+          'device_transfer_request',
         ],
       },
       reason: 'schema-maintenance',

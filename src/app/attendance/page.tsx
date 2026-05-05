@@ -53,8 +53,12 @@ interface AttendanceRow {
     status: AttendanceStatus;
   } | null;
   device: {
+    deviceLabel: string | null;
     id: string | null;
+    lastDistanceMeters: string | null;
     lastSeenAt: string | null;
+    lastVerificationMethod: string | null;
+    lastVerifiedAt: string | null;
     registered: boolean;
     registeredAt: string | null;
   };
@@ -68,6 +72,22 @@ interface AttendanceAttempt {
   result: string;
   successful: boolean;
   userEmail: string;
+}
+
+interface DeviceTransferRequest {
+  accuracyMeters: string | null;
+  deviceLabel: string | null;
+  distanceMeters: string | null;
+  id: string;
+  locationAt: string | null;
+  networkIp: string | null;
+  requestedAt: string | null;
+  staffEmail: string | null;
+  staffId: string;
+  staffName: string | null;
+  status: string;
+  userEmail: string;
+  verificationResult: string | null;
 }
 
 interface AttendanceResponse {
@@ -84,6 +104,7 @@ interface AttendanceResponse {
   };
   rows: AttendanceRow[];
   permissions: AttendancePermission[];
+  transferRequests: DeviceTransferRequest[];
   totals: {
     excused: number;
     expectedLate: number;
@@ -200,6 +221,7 @@ export default function AttendancePage() {
   const [savingPermission, setSavingPermission] = useState(false);
   const [deletingPermissionId, setDeletingPermissionId] = useState<string | null>(null);
   const [resettingDeviceStaffId, setResettingDeviceStaffId] = useState<string | null>(null);
+  const [reviewingTransferId, setReviewingTransferId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -345,6 +367,27 @@ export default function AttendancePage() {
       setError(err instanceof Error ? err.message : 'Could not reset device');
     } finally {
       setResettingDeviceStaffId(null);
+    }
+  }
+
+  async function reviewDeviceTransfer(transferId: string, action: 'approve' | 'reject') {
+    setReviewingTransferId(transferId);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/attendance/device-transfers/${transferId}`, {
+        body: JSON.stringify({ action }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH',
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || 'Could not review device transfer');
+      await fetchAttendance();
+    } catch (err) {
+      console.error('Failed to review device transfer:', err);
+      setError(err instanceof Error ? err.message : 'Could not review device transfer');
+    } finally {
+      setReviewingTransferId(null);
     }
   }
 
@@ -616,6 +659,59 @@ export default function AttendancePage() {
           <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
             {error}
           </div>
+        )}
+
+        {(data?.transferRequests || []).length > 0 && (
+          <Card>
+            <div className="border-b border-border px-5 py-4">
+              <h2 className="text-lg font-semibold">Device Transfer Requests</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Approve only when you have confirmed the staff member is physically present.
+              </p>
+            </div>
+            <div className="divide-y divide-border">
+              {data?.transferRequests.map((request) => (
+                <div key={request.id} className="grid gap-3 px-5 py-4 xl:grid-cols-[minmax(14rem,1fr)_minmax(12rem,1fr)_minmax(10rem,0.8fr)_12rem] xl:items-center">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{request.staffName || request.userEmail}</p>
+                    <p className="truncate text-xs text-muted-foreground">{request.staffEmail || request.userEmail}</p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{request.deviceLabel || 'New attendance device'}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {request.requestedAt ? new Date(request.requestedAt).toLocaleString() : 'Pending review'}
+                    </p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {request.distanceMeters ? `${Math.round(Number(request.distanceMeters))}m from office` : 'Location captured'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {request.accuracyMeters ? `${Math.round(Number(request.accuracyMeters))}m accuracy` : request.verificationResult || 'Verified location'}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 xl:justify-end">
+                    <Button
+                      className="h-9 gap-2"
+                      onClick={() => reviewDeviceTransfer(request.id, 'approve')}
+                      disabled={reviewingTransferId === request.id}
+                    >
+                      {reviewingTransferId === request.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                      Approve
+                    </Button>
+                    <Button
+                      className="h-9 gap-2 border-danger/40 text-danger hover:bg-danger/10"
+                      variant="outline"
+                      onClick={() => reviewDeviceTransfer(request.id, 'reject')}
+                      disabled={reviewingTransferId === request.id}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
         )}
 
         <Card>

@@ -22,6 +22,7 @@ export const staff = pgTable('staff', {
 export const staffRelations = relations(staff, ({ many }) => ({
   attendanceRecords: many(attendanceRecord),
   attendancePermissions: many(attendancePermission),
+  deviceTransferRequests: many(deviceTransferRequest),
   devices: many(staffDevice),
   emergencyContacts: many(emergencyContact),
   entries: many(latenessEntry),
@@ -85,6 +86,20 @@ export const officeNetwork = pgTable('office_network', {
   updatedAt: timestamp('updated_at').defaultNow(),
 });
 
+export const officeLocation = pgTable('office_location', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull().default('Office Location'),
+  latitude: decimal('latitude', { precision: 10, scale: 7 }).notNull(),
+  longitude: decimal('longitude', { precision: 10, scale: 7 }).notNull(),
+  radiusMeters: integer('radius_meters').notNull().default(100),
+  maxAccuracyMeters: integer('max_accuracy_meters').notNull().default(75),
+  isActive: boolean('is_active').default(true),
+  updatedByUserId: text('updated_by_user_id'),
+  updatedByEmail: text('updated_by_email').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
 export const attendanceRecord = pgTable('attendance_record', {
   id: uuid('id').primaryKey().defaultRandom(),
   staffId: uuid('staff_id').notNull().references(() => staff.id),
@@ -95,6 +110,20 @@ export const attendanceRecord = pgTable('attendance_record', {
   signOutTime: time('sign_out_time'),
   signOutNetworkIp: text('sign_out_network_ip'),
   signOutUserAgent: text('sign_out_user_agent'),
+  checkInLatitude: decimal('check_in_latitude', { precision: 10, scale: 7 }),
+  checkInLongitude: decimal('check_in_longitude', { precision: 10, scale: 7 }),
+  checkInAccuracyMeters: decimal('check_in_accuracy_meters', { precision: 10, scale: 2 }),
+  checkInDistanceMeters: decimal('check_in_distance_meters', { precision: 10, scale: 2 }),
+  checkInLocationAt: timestamp('check_in_location_at'),
+  checkInLocationVerified: boolean('check_in_location_verified').default(false),
+  checkInVerificationResult: text('check_in_verification_result'),
+  signOutLatitude: decimal('sign_out_latitude', { precision: 10, scale: 7 }),
+  signOutLongitude: decimal('sign_out_longitude', { precision: 10, scale: 7 }),
+  signOutAccuracyMeters: decimal('sign_out_accuracy_meters', { precision: 10, scale: 2 }),
+  signOutDistanceMeters: decimal('sign_out_distance_meters', { precision: 10, scale: 2 }),
+  signOutLocationAt: timestamp('sign_out_location_at'),
+  signOutLocationVerified: boolean('sign_out_location_verified').default(false),
+  signOutVerificationResult: text('sign_out_verification_result'),
   status: text('status').notNull(),
   source: text('source').notNull().default('staff_portal'),
   networkIp: text('network_ip').notNull(),
@@ -123,6 +152,12 @@ export const attendanceAttempt = pgTable('attendance_attempt', {
   date: date('date').notNull(),
   networkIp: text('network_ip').notNull(),
   userAgent: text('user_agent'),
+  latitude: decimal('latitude', { precision: 10, scale: 7 }),
+  longitude: decimal('longitude', { precision: 10, scale: 7 }),
+  accuracyMeters: decimal('accuracy_meters', { precision: 10, scale: 2 }),
+  distanceMeters: decimal('distance_meters', { precision: 10, scale: 2 }),
+  locationAt: timestamp('location_at'),
+  verificationResult: text('verification_result'),
   successful: boolean('successful').default(false).notNull(),
   result: text('result').notNull(),
   createdAt: timestamp('created_at').defaultNow(),
@@ -163,9 +198,13 @@ export const staffDevice = pgTable('staff_device', {
   staffId: uuid('staff_id').notNull().references(() => staff.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull(),
   deviceHash: text('device_hash').notNull(),
+  deviceLabel: text('device_label'),
   userAgent: text('user_agent'),
   registeredIp: text('registered_ip'),
   lastSeenIp: text('last_seen_ip'),
+  lastVerifiedAt: timestamp('last_verified_at'),
+  lastVerificationMethod: text('last_verification_method'),
+  lastDistanceMeters: decimal('last_distance_meters', { precision: 10, scale: 2 }),
   registeredAt: timestamp('registered_at').defaultNow(),
   lastSeenAt: timestamp('last_seen_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
@@ -177,6 +216,39 @@ export const staffDevice = pgTable('staff_device', {
 export const staffDeviceRelations = relations(staffDevice, ({ one }) => ({
   staff: one(staff, {
     fields: [staffDevice.staffId],
+    references: [staff.id],
+  }),
+}));
+
+export const deviceTransferRequest = pgTable('device_transfer_request', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  staffId: uuid('staff_id').notNull().references(() => staff.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull(),
+  userEmail: text('user_email').notNull(),
+  deviceHash: text('device_hash').notNull(),
+  deviceLabel: text('device_label'),
+  userAgent: text('user_agent'),
+  networkIp: text('network_ip'),
+  latitude: decimal('latitude', { precision: 10, scale: 7 }),
+  longitude: decimal('longitude', { precision: 10, scale: 7 }),
+  accuracyMeters: decimal('accuracy_meters', { precision: 10, scale: 2 }),
+  distanceMeters: decimal('distance_meters', { precision: 10, scale: 2 }),
+  locationAt: timestamp('location_at'),
+  verificationResult: text('verification_result'),
+  status: text('status').notNull().default('pending'),
+  reviewedByUserId: text('reviewed_by_user_id'),
+  reviewedByEmail: text('reviewed_by_email'),
+  reviewedAt: timestamp('reviewed_at'),
+  requestedAt: timestamp('requested_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => [
+  index('device_transfer_request_staff_status_idx').on(table.staffId, table.status),
+  index('device_transfer_request_status_idx').on(table.status),
+]);
+
+export const deviceTransferRequestRelations = relations(deviceTransferRequest, ({ one }) => ({
+  staff: one(staff, {
+    fields: [deviceTransferRequest.staffId],
     references: [staff.id],
   }),
 }));

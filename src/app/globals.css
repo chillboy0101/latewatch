@@ -3,6 +3,8 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --font-inter: "Aptos", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-jetbrains-mono: "Aptos Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   --card: #f9fafb;
   --card-foreground: #171717;
   --border: #e5e7eb;

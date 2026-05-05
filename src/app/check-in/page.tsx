@@ -4,7 +4,7 @@ import { UserButton, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, CheckCircle2, Clock, Loader2, LogOut, Moon, ShieldCheck, Sun, Wifi, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, Clock, Loader2, LogOut, MapPin, Moon, ShieldCheck, Sun, XCircle } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -31,6 +31,13 @@ interface CheckInStatus {
   isAfterWorkdayEnd: boolean;
   isOfficeNetwork: boolean;
   isWeekend: boolean;
+  locationConfigured: boolean;
+  locationPolicy: {
+    latitude: string;
+    longitude: string;
+    maxAccuracyMeters: number;
+    radiusMeters: number;
+  } | null;
   networkConfigured: boolean;
   officeCodeRequired: boolean;
   device: {
@@ -54,6 +61,11 @@ interface CheckInStatus {
     fullName: string;
     email: string | null;
   } | null;
+  transferRequest: {
+    id: string;
+    requestedAt: string | null;
+    status: string;
+  } | null;
   time: string;
   noSignOutAlertLabel: string;
   signOutStartLabel: string;
@@ -67,13 +79,12 @@ function canSignOut(status: CheckInStatus | null) {
 
 function statusCopy(status: CheckInStatus | null) {
   if (!status) return 'Checking your attendance status';
-  if (!status.networkConfigured) return 'Office network not configured';
+  if (!status.locationConfigured) return 'Office location not configured';
   if (!status.staff) return 'Profile not matched';
   if (status.device?.registered && !status.device.trusted) return 'Registered device required';
   if (status.permission?.permissionType === 'absence') return 'Permission recorded';
   if (status.isHoliday) return status.holidayName || 'Public holiday';
   if (status.isWeekend) return 'Weekend';
-  if (!status.isOfficeNetwork) return 'Office WiFi required';
   if (status.attendance?.signOutTime) return 'Checked out';
   if (status.attendance?.status === 'late') return 'Late check-in recorded';
   if (status.attendance?.status === 'present') return 'Checked in';
@@ -83,14 +94,15 @@ function statusCopy(status: CheckInStatus | null) {
 
 function statusDetail(status: CheckInStatus | null, fallbackName: string | null | undefined) {
   const person = status?.staff?.fullName || fallbackName || 'Signed-in user';
-  if (!status) return 'Verifying your account, network, and today\'s work calendar.';
-  if (!status.networkConfigured) return 'Ask an admin to save the office WiFi network before staff check in.';
+  if (!status) return 'Verifying your account, location, and today\'s work calendar.';
+  if (!status.locationConfigured) return 'Ask an admin to save the office location before staff check in.';
   if (!status.staff) return 'Your login could not be matched to a staff profile yet. Ask an admin to confirm your staff email or staff name.';
-  if (status.device?.registered && !status.device.trusted) return 'This account is linked to another device. Ask an admin to reset the attendance device.';
+  if (status.device?.registered && !status.device.trusted) return status.transferRequest
+    ? 'Your device transfer request is waiting for admin approval.'
+    : 'This account is linked to another device. Request a device transfer from this browser.';
   if (status.permission?.permissionType === 'absence') return 'You have an approved absence for today. No check-in is required.';
   if (status.isHoliday) return 'Check-ins are disabled today in observance of the public holiday.';
   if (status.isWeekend) return 'You cannot check in today because attendance check-in is closed on weekends.';
-  if (!status.isOfficeNetwork) return 'Connect to the office WiFi and refresh this page before checking in.';
   if (status.attendance?.signOutTime) return `${person}, you have checked out for today.`;
   if (status.attendance && !canSignOut(status)) return `You can check out from ${status.signOutStartLabel}.`;
   if (status.attendance?.status === 'late') return `${person}, your late check-in has been recorded.`;
@@ -106,9 +118,9 @@ function statusDetail(status: CheckInStatus | null, fallbackName: string | null 
   return `${person}, you can check in now.`;
 }
 
-function wifiValue(status: CheckInStatus | null) {
-  if (!status?.networkConfigured) return 'Not set';
-  return status.isOfficeNetwork ? <VerifiedWifiBadge /> : <UnverifiedWifiBadge />;
+function locationValue(status: CheckInStatus | null) {
+  if (!status?.locationConfigured) return 'Not set';
+  return <VerifiedLocationBadge />;
 }
 
 function attendanceButtonLabel(status: CheckInStatus | null, submitting: boolean) {
@@ -118,11 +130,10 @@ function attendanceButtonLabel(status: CheckInStatus | null, submitting: boolean
   if (status?.isHoliday) return 'Closed - Holiday';
   if (status?.isWeekend) return 'Closed - Weekend';
   if (status?.isAfterWorkdayEnd) return 'Closed - After Hours';
-  if (status && !status.networkConfigured) return 'Network Not Configured';
+  if (status && !status.locationConfigured) return 'Location Not Configured';
   if (status && !status.staff) return 'Profile Not Matched';
   if (status?.device?.registered && !status.device.trusted) return 'Registered Device Required';
   if (status?.permission?.permissionType === 'absence') return 'Excused - No Check-In';
-  if (status && !status.isOfficeNetwork) return 'Office WiFi Required';
   return 'Check In';
 }
 
@@ -132,7 +143,7 @@ function statusTone(status: CheckInStatus | null) {
   if (status.attendance?.status === 'present') return 'border-success/25 bg-success/10 text-success';
   if (status.attendance?.status === 'late') return 'border-warning/25 bg-warning/10 text-warning';
   if (status.permission?.permissionType === 'absence') return 'border-primary/25 bg-primary/10 text-primary';
-  if (!status.networkConfigured || !status.staff || (status.device?.registered && !status.device.trusted) || !status.isOfficeNetwork || status.isHoliday || status.isWeekend) {
+  if (!status.locationConfigured || !status.staff || (status.device?.registered && !status.device.trusted) || status.isHoliday || status.isWeekend) {
     return 'border-warning/25 bg-warning/10 text-warning';
   }
   if (status.isAfterWorkdayEnd) return 'border-warning/25 bg-warning/10 text-warning';
@@ -155,12 +166,34 @@ function getOrCreateDeviceToken() {
   return token;
 }
 
+async function getCurrentLocationEvidence() {
+  if (!navigator.geolocation) {
+    throw new Error('This device does not support location access.');
+  }
+
+  const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 20000,
+    });
+  });
+
+  return {
+    accuracy: position.coords.accuracy,
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude,
+    timestamp: new Date(position.timestamp).toISOString(),
+  };
+}
+
 export default function CheckInPage() {
   const { isLoaded, user } = useUser();
   const isDark = useSyncExternalStore(subscribeThemeChange, getIsDarkTheme, () => true);
   const [status, setStatus] = useState<CheckInStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [checkingIn, setCheckingIn] = useState(false);
+  const [requestingTransfer, setRequestingTransfer] = useState(false);
   const [deviceToken, setDeviceToken] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
 
@@ -205,8 +238,15 @@ export default function CheckInPage() {
     const action = status?.attendance && !status.attendance.signOutTime ? 'sign_out' : 'check_in';
 
     try {
+      const location = await getCurrentLocationEvidence();
       const response = await fetch('/api/attendance/check-in', {
-        body: JSON.stringify({ action, deviceToken }),
+        body: JSON.stringify({
+          action,
+          deviceLabel: navigator.userAgent,
+          deviceToken,
+          location,
+          source: 'staff_portal',
+        }),
         headers: {
           'Content-Type': 'application/json',
           ...(deviceToken ? { 'x-latewatch-device': deviceToken } : {}),
@@ -237,15 +277,51 @@ export default function CheckInPage() {
     }
   }
 
+  async function requestDeviceTransfer() {
+    if (!deviceToken) return;
+
+    setRequestingTransfer(true);
+    setMessage(null);
+
+    try {
+      const location = await getCurrentLocationEvidence();
+      const response = await fetch('/api/attendance/check-in', {
+        body: JSON.stringify({
+          action: 'request_device_transfer',
+          deviceLabel: navigator.userAgent,
+          deviceToken,
+          location,
+          source: 'staff_portal',
+        }),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-latewatch-device': deviceToken,
+        },
+        method: 'POST',
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || 'Could not request device transfer');
+
+      setStatus(body);
+      setMessage({ type: 'success', text: 'Device transfer request sent. Ask an admin to approve it.' });
+    } catch (error) {
+      console.error('Device transfer request failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Device transfer request failed';
+      await fetchStatus();
+      setMessage({ type: 'error', text: errorMessage });
+    } finally {
+      setRequestingTransfer(false);
+    }
+  }
+
   function toggleTheme() {
     applyThemePreference(isDark ? 'light' : 'dark');
   }
 
   const canCheckIn = Boolean(
-    status?.networkConfigured &&
+    status?.locationConfigured &&
     status.staff &&
     (!status.device?.registered || status.device.trusted) &&
-    status.isOfficeNetwork &&
     !status.isHoliday &&
     !status.isWeekend &&
     !status.isAfterWorkdayEnd &&
@@ -253,10 +329,9 @@ export default function CheckInPage() {
     !status.attendance,
   );
   const canSubmitSignOut = Boolean(
-    status?.networkConfigured &&
+    status?.locationConfigured &&
     status.staff &&
     (!status.device?.registered || status.device.trusted) &&
-    status.isOfficeNetwork &&
     !status.isHoliday &&
     !status.isWeekend &&
     status.attendance &&
@@ -302,7 +377,7 @@ export default function CheckInPage() {
         <div className="flex min-h-0 flex-1 items-center py-3 sm:py-4">
           <Card className="w-full overflow-hidden">
             {loading || !isLoaded ? (
-              <LoadingBuffer variant="section" label="Loading check-in" description="Verifying your account and network." />
+              <LoadingBuffer variant="section" label="Loading check-in" description="Verifying your account and location." />
             ) : accessNotSetUp ? (
               <AccessNotSetUp
                 email={user?.primaryEmailAddress?.emailAddress || null}
@@ -337,10 +412,10 @@ export default function CheckInPage() {
                       valueClassName="font-bold text-foreground"
                     />
                     <StatusChip
-                      icon={<Wifi className="h-3.5 w-3.5" />}
-                      label="WiFi"
+                      icon={<MapPin className="h-3.5 w-3.5" />}
+                      label="Location"
                       labelClassName="font-medium text-foreground/85"
-                      value={wifiValue(status)}
+                      value={locationValue(status)}
                     />
                   </div>
                 </div>
@@ -391,6 +466,19 @@ export default function CheckInPage() {
                   )}
                   {attendanceButtonLabel(status, checkingIn)}
                 </Button>
+
+                {status?.device?.registered && !status.device.trusted && (
+                  <Button
+                    className="h-10 w-full gap-2 text-sm sm:h-11 sm:text-base"
+                    disabled={requestingTransfer || Boolean(status.transferRequest)}
+                    onClick={requestDeviceTransfer}
+                    type="button"
+                    variant="outline"
+                  >
+                    {requestingTransfer ? <Loader2 className="h-5 w-5 animate-spin" /> : <ShieldCheck className="h-5 w-5" />}
+                    {status.transferRequest ? 'Transfer Request Pending' : 'Request Device Transfer'}
+                  </Button>
+                )}
               </div>
             )}
           </Card>
@@ -454,10 +542,10 @@ function StatusChip({
   );
 }
 
-function VerifiedWifiBadge() {
+function VerifiedLocationBadge() {
   return (
     <svg
-      aria-label="Verified office network"
+      aria-label="Office location configured"
       className="h-4 w-4 shrink-0"
       role="img"
       viewBox="0 0 24 24"
@@ -468,26 +556,6 @@ function VerifiedWifiBadge() {
       />
       <path
         d="m10.35 14.55 5.55-6.05 1.55 1.42-6.95 7.58-4.05-4.05 1.48-1.48 2.42 2.58Z"
-        fill="#ffffff"
-      />
-    </svg>
-  );
-}
-
-function UnverifiedWifiBadge() {
-  return (
-    <svg
-      aria-label="Unverified office network"
-      className="h-4 w-4 shrink-0"
-      role="img"
-      viewBox="0 0 24 24"
-    >
-      <path
-        d="M12 1.6 14.1 3.4 16.8 2.9 18.1 5.3 20.8 6.1 20.9 8.9 23 10.7 21.8 13.2 22.6 15.9 20.1 17.2 19.3 19.9 16.5 20 14.7 22.1 12 21 9.3 22.1 7.5 20 4.7 19.9 3.9 17.2 1.4 15.9 2.2 13.2 1 10.7 3.1 8.9 3.2 6.1 5.9 5.3 7.2 2.9 9.9 3.4 12 1.6Z"
-        fill="#ef4444"
-      />
-      <path
-        d="m8.55 7.1 3.45 3.45 3.45-3.45 1.45 1.45L13.45 12l3.45 3.45-1.45 1.45L12 13.45 8.55 16.9 7.1 15.45 10.55 12 7.1 8.55 8.55 7.1Z"
         fill="#ffffff"
       />
     </svg>

@@ -2,7 +2,7 @@ import 'server-only';
 
 import { and, desc, eq, ilike, isNull, or } from 'drizzle-orm';
 import { db } from '@/db';
-import { attendanceAttempt, attendancePermission, officeNetwork, staff, workCalendar } from '@/db/schema';
+import { attendanceAttempt, attendancePermission, officeLocation, officeNetwork, staff, workCalendar } from '@/db/schema';
 import { normalizeStaffEmail, normalizeStaffName } from '@/lib/staff-normalize';
 export { getClientIp, getClientIpInfo, resolveClientIp, resolveClientIpInfo } from '@/lib/request-ip';
 export { normalizeStaffEmail, normalizeStaffName } from '@/lib/staff-normalize';
@@ -43,6 +43,16 @@ export async function getActiveOfficeNetwork() {
     .limit(1);
 
   return network || null;
+}
+
+export async function getActiveOfficeLocation() {
+  const [location] = await db.select()
+    .from(officeLocation)
+    .where(eq(officeLocation.isActive, true))
+    .orderBy(desc(officeLocation.updatedAt))
+    .limit(1);
+
+  return location || null;
 }
 
 export function isOfficeIp(clientIp: string, allowedIp: string | null | undefined) {
@@ -156,6 +166,14 @@ export function isWeekendDate(dateKey: string) {
 
 export async function recordAttendanceAttempt(input: {
   date: string;
+  location?: {
+    accuracy?: number | null;
+    distanceMeters?: number | null;
+    latitude?: number | null;
+    locationAt?: Date | null;
+    longitude?: number | null;
+    verificationResult?: string | null;
+  } | null;
   networkIp: string;
   result: string;
   staffId?: string | null;
@@ -166,6 +184,11 @@ export async function recordAttendanceAttempt(input: {
 }) {
   await db.insert(attendanceAttempt).values({
     date: input.date,
+    accuracyMeters: input.location?.accuracy == null ? null : input.location.accuracy.toString(),
+    distanceMeters: input.location?.distanceMeters == null ? null : input.location.distanceMeters.toString(),
+    latitude: input.location?.latitude == null ? null : input.location.latitude.toString(),
+    locationAt: input.location?.locationAt || null,
+    longitude: input.location?.longitude == null ? null : input.location.longitude.toString(),
     networkIp: input.networkIp,
     result: input.result,
     staffId: input.staffId || null,
@@ -173,5 +196,6 @@ export async function recordAttendanceAttempt(input: {
     userAgent: input.userAgent || null,
     userEmail: input.userEmail,
     userId: input.userId || null,
+    verificationResult: input.location?.verificationResult || null,
   });
 }

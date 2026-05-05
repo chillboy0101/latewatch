@@ -1,15 +1,14 @@
 import { currentUser } from '@clerk/nextjs/server';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { attendanceRecord, latenessEntry, staffDevice } from '@/db/schema';
+import { attendanceRecord, deviceTransferRequest, latenessEntry, staffDevice } from '@/db/schema';
 import {
   getAccraClock,
-  getActiveOfficeNetwork,
+  getActiveOfficeLocation,
   getApprovedAttendancePermission,
   getHolidayForDate,
   getOrAutoLinkStaffByEmail,
-  isOfficeIp,
   isWeekendDate,
   recordAttendanceAttempt,
   resolveClientIpInfo,
@@ -19,6 +18,7 @@ import { getAuditActor, writeAuditEvent } from '@/lib/audit';
 import { computePenalty } from '@/lib/penalty-calculator';
 import { syncStaffEmailIdentity } from '@/lib/clerk-organization';
 import { getDeviceTokenFromRequest, hashDeviceToken } from '@/lib/device-binding';
+import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
 import { publishRealtime } from '@/lib/realtime';
 import {
   canSignOutNow,
@@ -46,6 +46,68 @@ function getUserEmailAddresses(user: NonNullable<Awaited<ReturnType<typeof curre
     .filter((email): email is string => Boolean(email));
 
   return Array.from(new Set(emails));
+}
+
+function getDeviceLabel(value: unknown, userAgent: string | null) {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim().slice(0, 120);
+  }
+
+  if (!userAgent) return 'Attendance browser';
+  if (/iphone|ipad/i.test(userAgent)) return 'iPhone or iPad browser';
+  if (/android/i.test(userAgent)) return 'Android browser';
+  if (/edg/i.test(userAgent)) return 'Microsoft Edge browser';
+  if (/chrome/i.test(userAgent)) return 'Chrome browser';
+  if (/safari/i.test(userAgent)) return 'Safari browser';
+  if (/firefox/i.test(userAgent)) return 'Firefox browser';
+  return 'Attendance browser';
+}
+
+function locationForDb(location: LocationValidationResult | null | undefined) {
+  return {
+    accuracyMeters: location?.accuracy == null ? null : location.accuracy.toString(),
+    distanceMeters: location?.distanceMeters == null ? null : location.distanceMeters.toString(),
+    latitude: location?.latitude == null ? null : location.latitude.toString(),
+    locationAt: location?.locationAt || null,
+    longitude: location?.longitude == null ? null : location.longitude.toString(),
+    verificationResult: location?.result || null,
+  };
+}
+
+function locationForAudit(location: LocationValidationResult | null | undefined) {
+  return {
+    accuracyMeters: location?.accuracy == null ? null : Number(location.accuracy.toFixed(2)),
+    distanceMeters: location?.distanceMeters == null ? null : Number(location.distanceMeters.toFixed(2)),
+    latitude: location?.latitude == null ? null : Number(location.latitude.toFixed(7)),
+    locationAt: location?.locationAt?.toISOString() || null,
+    longitude: location?.longitude == null ? null : Number(location.longitude.toFixed(7)),
+    result: location?.result || null,
+    verified: Boolean(location?.ok),
+  };
+}
+
+function checkInLocationValues(location: LocationValidationResult) {
+  return {
+    checkInAccuracyMeters: location.accuracy == null ? null : location.accuracy.toString(),
+    checkInDistanceMeters: location.distanceMeters == null ? null : location.distanceMeters.toString(),
+    checkInLatitude: location.latitude == null ? null : location.latitude.toString(),
+    checkInLocationAt: location.locationAt,
+    checkInLocationVerified: location.ok,
+    checkInLongitude: location.longitude == null ? null : location.longitude.toString(),
+    checkInVerificationResult: location.result,
+  };
+}
+
+function signOutLocationValues(location: LocationValidationResult) {
+  return {
+    signOutAccuracyMeters: location.accuracy == null ? null : location.accuracy.toString(),
+    signOutDistanceMeters: location.distanceMeters == null ? null : location.distanceMeters.toString(),
+    signOutLatitude: location.latitude == null ? null : location.latitude.toString(),
+    signOutLocationAt: location.locationAt,
+    signOutLocationVerified: location.ok,
+    signOutLongitude: location.longitude == null ? null : location.longitude.toString(),
+    signOutVerificationResult: location.result,
+  };
 }
 
 async function resolveMemberForAttendance(input: {
@@ -104,8 +166,14 @@ function responsePayload(input: {
   holidayName?: string | null;
   isHoliday: boolean;
   isAfterWorkdayEnd: boolean;
-  isOfficeNetwork: boolean;
   isWeekend: boolean;
+  locationConfigured: boolean;
+  locationPolicy?: {
+    latitude: string;
+    longitude: string;
+    maxAccuracyMeters: number;
+    radiusMeters: number;
+  } | null;
   networkConfigured: boolean;
   device?: {
     registered: boolean;
@@ -121,6 +189,11 @@ function responsePayload(input: {
     id: string;
     permissionType: string;
     reason: string;
+    status: string;
+  } | null;
+  transferRequest?: {
+    id: string;
+    requestedAt?: Date | string | null;
     status: string;
   } | null;
   staff?: { id: string; fullName: string; email: string | null } | null;
@@ -147,11 +220,14 @@ function responsePayload(input: {
     isHoliday: input.isHoliday,
     isAfterWorkdayEnd: input.isAfterWorkdayEnd,
     device: input.device || null,
-    isOfficeNetwork: input.isOfficeNetwork,
+    isOfficeNetwork: false,
     isWeekend: input.isWeekend,
+    locationConfigured: input.locationConfigured,
+    locationPolicy: input.locationPolicy || null,
     networkConfigured: input.networkConfigured,
     officeCodeRequired: false,
     permission: input.permission || null,
+    transferRequest: input.transferRequest || null,
     staff: input.staff || null,
     time: input.time,
     noSignOutAlertLabel: NO_SIGN_OUT_ALERT_LABEL,
@@ -204,7 +280,9 @@ async function syncDeviceBinding(input: {
   actorUserId: string;
   currentIp: string;
   deviceHash: string;
+  deviceLabel: string;
   existingDevice?: typeof staffDevice.$inferSelect | null;
+  location?: LocationValidationResult | null;
   now: Date;
   reason: string;
   staffMember: { fullName: string; id: string };
@@ -223,8 +301,12 @@ async function syncDeviceBinding(input: {
 
     const [updatedDevice] = await db.update(staffDevice)
       .set({
+        deviceLabel: input.deviceLabel,
+        lastDistanceMeters: input.location?.distanceMeters == null ? null : input.location.distanceMeters.toString(),
         lastSeenAt: input.now,
         lastSeenIp: input.currentIp,
+        lastVerifiedAt: input.location?.ok ? input.now : device.lastVerifiedAt,
+        lastVerificationMethod: input.location?.ok ? 'office_location' : device.lastVerificationMethod,
         updatedAt: input.now,
         userAgent: input.userAgent,
         userId: input.actorUserId,
@@ -238,8 +320,12 @@ async function syncDeviceBinding(input: {
   const [createdDevice] = await db.insert(staffDevice)
     .values({
       deviceHash: input.deviceHash,
+      deviceLabel: input.deviceLabel,
+      lastDistanceMeters: input.location?.distanceMeters == null ? null : input.location.distanceMeters.toString(),
       lastSeenAt: input.now,
       lastSeenIp: input.currentIp,
+      lastVerifiedAt: input.location?.ok ? input.now : null,
+      lastVerificationMethod: input.location?.ok ? 'office_location' : null,
       registeredIp: input.currentIp,
       staffId: input.staffMember.id,
       updatedAt: input.now,
@@ -257,7 +343,9 @@ async function syncDeviceBinding(input: {
       before: null,
       after: {
         lastSeenIp: input.currentIp,
+        location: locationForAudit(input.location),
         registeredIp: input.currentIp,
+        deviceLabel: input.deviceLabel,
         staffName: input.staffMember.fullName,
         userEmail: input.actorEmail,
       },
@@ -281,8 +369,12 @@ async function syncDeviceBinding(input: {
 
   const [updatedDevice] = await db.update(staffDevice)
     .set({
+      deviceLabel: input.deviceLabel,
+      lastDistanceMeters: input.location?.distanceMeters == null ? null : input.location.distanceMeters.toString(),
       lastSeenAt: input.now,
       lastSeenIp: input.currentIp,
+      lastVerifiedAt: input.location?.ok ? input.now : currentDevice.lastVerifiedAt,
+      lastVerificationMethod: input.location?.ok ? 'office_location' : currentDevice.lastVerificationMethod,
       updatedAt: input.now,
       userAgent: input.userAgent,
       userId: input.actorUserId,
@@ -309,7 +401,7 @@ export async function GET(request: NextRequest) {
     const userAgent = request.headers.get('user-agent');
     const deviceToken = getDeviceTokenFromRequest(request);
     const deviceHash = deviceToken ? hashDeviceToken(deviceToken) : null;
-    const [member, network, holiday] = await Promise.all([
+    const [member, office, holiday] = await Promise.all([
       actorEmail === 'unknown'
         ? Promise.resolve(null)
         : resolveMemberForAttendance({
@@ -318,11 +410,10 @@ export async function GET(request: NextRequest) {
           candidateEmails: actorEmails,
           fullName: actorFullName,
         }),
-      getActiveOfficeNetwork(),
+      getActiveOfficeLocation(),
       getHolidayForDate(clock.dateKey),
     ]);
     const isWeekend = isWeekendDate(clock.dateKey);
-    const isOfficeNetwork = network ? isOfficeIp(currentIp, network.allowedIp) : false;
     const permission = member
       ? await getApprovedAttendancePermission(member.id, clock.dateKey)
       : null;
@@ -338,15 +429,27 @@ export async function GET(request: NextRequest) {
         .where(eq(staffDevice.staffId, member.id))
         .limit(1)
       : [];
+    const [pendingTransfer] = member
+      ? await db.select()
+        .from(deviceTransferRequest)
+        .where(and(
+          eq(deviceTransferRequest.staffId, member.id),
+          eq(deviceTransferRequest.status, 'pending'),
+        ))
+        .orderBy(desc(deviceTransferRequest.requestedAt))
+        .limit(1)
+      : [];
     let resolvedDevice = registeredDevice || null;
 
-    if (member && existingAttendance && !resolvedDevice && deviceHash && isOfficeNetwork) {
+    if (member && existingAttendance && !resolvedDevice && deviceHash) {
       const syncResult = await syncDeviceBinding({
         actorEmail,
         actorUserId: user.id,
         currentIp,
         deviceHash,
+        deviceLabel: getDeviceLabel(null, userAgent),
         existingDevice: null,
+        location: null,
         now: clock.now,
         reason: 'attendance-device-binding-repair',
         staffMember: { fullName: member.fullName, id: member.id },
@@ -367,12 +470,27 @@ export async function GET(request: NextRequest) {
       holidayName: holiday?.holidayNote || null,
       isHoliday: Boolean(holiday),
       isAfterWorkdayEnd: isAfterWorkdayEnd(clock.timeKey),
-      isOfficeNetwork,
       isWeekend,
-      networkConfigured: Boolean(network),
+      locationConfigured: Boolean(office),
+      locationPolicy: office
+        ? {
+            latitude: office.latitude,
+            longitude: office.longitude,
+            maxAccuracyMeters: office.maxAccuracyMeters,
+            radiusMeters: office.radiusMeters,
+          }
+        : null,
+      networkConfigured: Boolean(office),
       permission: serializePermission(permission),
       staff: member ? { id: member.id, fullName: member.fullName, email: member.email } : null,
       time: clock.timeKey,
+      transferRequest: pendingTransfer
+        ? {
+            id: pendingTransfer.id,
+            requestedAt: pendingTransfer.requestedAt,
+            status: pendingTransfer.status,
+          }
+        : null,
     }), {
       headers: { 'Cache-Control': 'no-store' },
     });
@@ -399,13 +517,36 @@ export async function POST(request: NextRequest) {
   const checkInTime = clock.timeKey.slice(0, 5);
   const actor = await getAuditActor({ email: actorEmail, id: userId });
   const body = await request.json().catch(() => ({}));
-  const action = body?.action === 'sign_out' ? 'sign_out' : 'check_in';
+  const attendanceSource = body?.source === 'mobile_app' ? 'mobile_app' : 'staff_portal';
+  const action = body?.action === 'sign_out'
+    ? 'sign_out'
+    : body?.action === 'request_device_transfer'
+    ? 'request_device_transfer'
+    : 'check_in';
   const deviceToken = getDeviceTokenFromRequest(request, body);
   const deviceHash = deviceToken ? hashDeviceToken(deviceToken) : null;
+  const deviceLabel = getDeviceLabel(body?.deviceLabel, userAgent);
 
-  async function block(result: string, message: string, status = 400, staffId?: string | null) {
+  async function block(
+    result: string,
+    message: string,
+    status = 400,
+    staffId?: string | null,
+    location?: LocationValidationResult | null,
+    extra?: Record<string, unknown>,
+  ) {
     await recordAttendanceAttempt({
       date: clock.dateKey,
+      location: location
+        ? {
+            accuracy: location.accuracy,
+            distanceMeters: location.distanceMeters,
+            latitude: location.latitude,
+            locationAt: location.locationAt,
+            longitude: location.longitude,
+            verificationResult: location.result,
+          }
+        : null,
       networkIp: currentIp,
       result,
       staffId,
@@ -422,17 +563,19 @@ export async function POST(request: NextRequest) {
       before: null,
       after: {
         date: clock.dateKey,
+        location: locationForAudit(location),
         networkIp: currentIp,
         networkIpSource: currentIpInfo.source,
         result,
         staffId: staffId || null,
         userEmail: actorEmail,
+        ...extra,
       },
       actor: { email: actor.actorEmail, id: actor.actorUserId },
       reason: 'attendance-check-in',
     });
 
-    return NextResponse.json({ error: message, result }, { status });
+    return NextResponse.json({ error: message, result, ...extra }, { status });
   }
 
   try {
@@ -466,15 +609,6 @@ export async function POST(request: NextRequest) {
       .limit(1);
     let resolvedDevice = registeredDevice || null;
 
-    if (registeredDevice && registeredDevice.deviceHash !== trustedDeviceHash) {
-      return block(
-        'REGISTERED_DEVICE_REQUIRED',
-        'This account is already linked to another device. Ask an admin to reset your attendance device.',
-        403,
-        staffMember.id,
-      );
-    }
-
     const permission = await getApprovedAttendancePermission(staffMember.id, clock.dateKey);
     if (permission?.permissionType === 'absence') {
       return block(
@@ -483,15 +617,6 @@ export async function POST(request: NextRequest) {
         400,
         staffMember.id,
       );
-    }
-
-    const network = await getActiveOfficeNetwork();
-    if (!network) {
-      return block('NETWORK_NOT_CONFIGURED', 'The office WiFi network has not been configured yet.', 403, staffMember.id);
-    }
-
-    if (!isOfficeIp(currentIp, network.allowedIp)) {
-      return block('OFFICE_NETWORK_REQUIRED', 'Connect to the office WiFi before checking in.', 403, staffMember.id);
     }
 
     if (isWeekendDate(clock.dateKey)) {
@@ -508,6 +633,151 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const officeLocation = await getActiveOfficeLocation();
+    const locationValidation = validateAttendanceLocation({
+      evidence: body?.location,
+      now: clock.now,
+      office: officeLocation
+        ? {
+            latitude: officeLocation.latitude,
+            longitude: officeLocation.longitude,
+            maxAccuracyMeters: officeLocation.maxAccuracyMeters,
+            radiusMeters: officeLocation.radiusMeters,
+          }
+        : null,
+    });
+
+    if (!locationValidation.ok) {
+      return block(
+        locationValidation.result,
+        locationValidation.message,
+        locationValidation.result === 'OFFICE_LOCATION_NOT_CONFIGURED' ? 403 : 400,
+        staffMember.id,
+        locationValidation,
+      );
+    }
+    const responseLocationPolicy = officeLocation
+      ? {
+          latitude: officeLocation.latitude,
+          longitude: officeLocation.longitude,
+          maxAccuracyMeters: officeLocation.maxAccuracyMeters,
+          radiusMeters: officeLocation.radiusMeters,
+        }
+      : null;
+
+    if (action === 'request_device_transfer') {
+      if (!registeredDevice) {
+        return block(
+          'DEVICE_TRANSFER_NOT_REQUIRED',
+          'No trusted device is linked yet. Check in from this browser to link it.',
+          400,
+          staffMember.id,
+          locationValidation,
+        );
+      }
+
+      if (registeredDevice.deviceHash === trustedDeviceHash) {
+        return block(
+          'DEVICE_ALREADY_TRUSTED',
+          'This browser is already your trusted attendance device.',
+          400,
+          staffMember.id,
+          locationValidation,
+        );
+      }
+
+      const [existingRequest] = await db.select()
+        .from(deviceTransferRequest)
+        .where(and(
+          eq(deviceTransferRequest.staffId, staffMember.id),
+          eq(deviceTransferRequest.deviceHash, trustedDeviceHash),
+          eq(deviceTransferRequest.status, 'pending'),
+        ))
+        .orderBy(desc(deviceTransferRequest.requestedAt))
+        .limit(1);
+      const transferValues = {
+        ...locationForDb(locationValidation),
+        deviceHash: trustedDeviceHash,
+        deviceLabel,
+        networkIp: currentIp,
+        staffId: staffMember.id,
+        updatedAt: clock.now,
+        userAgent,
+        userEmail: actorEmail,
+        userId,
+      };
+      const [transferRequest] = existingRequest
+        ? await db.update(deviceTransferRequest)
+          .set(transferValues)
+          .where(eq(deviceTransferRequest.id, existingRequest.id))
+          .returning()
+        : await db.insert(deviceTransferRequest)
+          .values(transferValues)
+          .returning();
+
+      await writeAuditEvent({
+        entityType: 'staff_device_transfer',
+        entityId: transferRequest.id,
+        action: existingRequest ? 'UPDATE' : 'CREATE',
+        before: existingRequest || null,
+        after: {
+          ...transferRequest,
+          location: locationForAudit(locationValidation),
+          staffName: staffMember.fullName,
+        },
+        actor: { email: actor.actorEmail, id: actor.actorUserId },
+        reason: 'attendance-device-transfer-request',
+      });
+
+      publishRealtime('attendance', 'invalidate', { reason: 'attendance-device-transfer-request' });
+      publishRealtime('notifications', 'invalidate', { reason: 'attendance-device-transfer-request' });
+
+      return NextResponse.json({
+        success: true,
+        transferRequested: true,
+        ...responsePayload({
+          attendance: null,
+          currentIp,
+          currentIpSource: currentIpInfo.source,
+          date: clock.dateKey,
+          device: serializeDevice(registeredDevice, trustedDeviceHash),
+          holidayName: null,
+          isHoliday: false,
+          isAfterWorkdayEnd: isAfterWorkdayEnd(clock.timeKey),
+          isWeekend: false,
+          locationConfigured: true,
+          locationPolicy: officeLocation
+            ? {
+                latitude: officeLocation.latitude,
+                longitude: officeLocation.longitude,
+                maxAccuracyMeters: officeLocation.maxAccuracyMeters,
+                radiusMeters: officeLocation.radiusMeters,
+              }
+            : null,
+          networkConfigured: true,
+          permission: serializePermission(permission),
+          staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
+          time: clock.timeKey,
+          transferRequest: {
+            id: transferRequest.id,
+            requestedAt: transferRequest.requestedAt,
+            status: transferRequest.status,
+          },
+        }),
+      });
+    }
+
+    if (registeredDevice && registeredDevice.deviceHash !== trustedDeviceHash) {
+      return block(
+        'REGISTERED_DEVICE_REQUIRED',
+        'This browser is not the trusted attendance device. Request a device transfer from this browser for admin approval.',
+        403,
+        staffMember.id,
+        locationValidation,
+        { canRequestTransfer: true },
+      );
+    }
+
     const [existingAttendance] = await db.select()
       .from(attendanceRecord)
       .where(and(eq(attendanceRecord.staffId, staffMember.id), eq(attendanceRecord.date, clock.dateKey)))
@@ -519,7 +789,9 @@ export async function POST(request: NextRequest) {
         actorUserId: userId,
         currentIp,
         deviceHash: trustedDeviceHash,
+        deviceLabel,
         existingDevice: resolvedDevice,
+        location: locationValidation,
         now: clock.now,
         reason: 'attendance-device-binding',
         staffMember: { fullName: staffMember.fullName, id: staffMember.id },
@@ -539,6 +811,7 @@ export async function POST(request: NextRequest) {
               'This account is already linked to another device. Ask an admin to reset your attendance device.',
               403,
               staffMember.id,
+              locationValidation,
             );
           }
 
@@ -551,10 +824,12 @@ export async function POST(request: NextRequest) {
               currentIpSource: currentIpInfo.source,
               date: clock.dateKey,
               device: serializeDevice(resolvedDevice, trustedDeviceHash),
+              holidayName: null,
               isHoliday: false,
               isAfterWorkdayEnd: isAfterWorkdayEnd(clock.timeKey),
-              isOfficeNetwork: true,
               isWeekend: false,
+              locationConfigured: true,
+              locationPolicy: responseLocationPolicy,
               networkConfigured: true,
               permission: serializePermission(permission),
               staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
@@ -569,6 +844,7 @@ export async function POST(request: NextRequest) {
             `Sign-out opens at ${SIGN_OUT_START_LABEL}.`,
             400,
             staffMember.id,
+            locationValidation,
           );
         }
 
@@ -578,11 +854,13 @@ export async function POST(request: NextRequest) {
             'This account is already linked to another device. Ask an admin to reset your attendance device.',
             403,
             staffMember.id,
+            locationValidation,
           );
         }
 
         const [updatedAttendance] = await db.update(attendanceRecord)
           .set({
+            ...signOutLocationValues(locationValidation),
             signOutAt: clock.now,
             signOutNetworkIp: currentIp,
             signOutTime: checkInTime,
@@ -611,10 +889,12 @@ export async function POST(request: NextRequest) {
                 lastSeenAt: clock.now,
                 registeredAt: clock.now,
               }, trustedDeviceHash),
+              holidayName: null,
               isHoliday: false,
               isAfterWorkdayEnd: isAfterWorkdayEnd(clock.timeKey),
-              isOfficeNetwork: true,
               isWeekend: false,
+              locationConfigured: true,
+              locationPolicy: responseLocationPolicy,
               networkConfigured: true,
               permission: serializePermission(permission),
               staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
@@ -625,6 +905,14 @@ export async function POST(request: NextRequest) {
 
         await recordAttendanceAttempt({
           date: clock.dateKey,
+          location: {
+            accuracy: locationValidation.accuracy,
+            distanceMeters: locationValidation.distanceMeters,
+            latitude: locationValidation.latitude,
+            locationAt: locationValidation.locationAt,
+            longitude: locationValidation.longitude,
+            verificationResult: locationValidation.result,
+          },
           networkIp: currentIp,
           result: 'SIGNED_OUT',
           staffId: staffMember.id,
@@ -641,6 +929,7 @@ export async function POST(request: NextRequest) {
           before: existingAttendance,
           after: {
             ...updatedAttendance,
+            location: locationForAudit(locationValidation),
             networkIpSource: currentIpInfo.source,
             staff: { fullName: staffMember.fullName },
           },
@@ -666,10 +955,12 @@ export async function POST(request: NextRequest) {
               lastSeenAt: clock.now,
               registeredAt: clock.now,
             }, trustedDeviceHash),
+            holidayName: null,
             isHoliday: false,
             isAfterWorkdayEnd: isAfterWorkdayEnd(clock.timeKey),
-            isOfficeNetwork: true,
             isWeekend: false,
+            locationConfigured: true,
+            locationPolicy: responseLocationPolicy,
             networkConfigured: true,
             permission: serializePermission(permission),
             staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
@@ -681,15 +972,24 @@ export async function POST(request: NextRequest) {
       if (!(await syncTrustedDevice())) {
         return block(
           'REGISTERED_DEVICE_REQUIRED',
-          'This account is already linked to another device. Ask an admin to reset your attendance device.',
-          403,
-          staffMember.id,
-        );
-      }
+        'This account is already linked to another device. Ask an admin to reset your attendance device.',
+        403,
+        staffMember.id,
+        locationValidation,
+      );
+    }
 
-      await recordAttendanceAttempt({
-        date: clock.dateKey,
-        networkIp: currentIp,
+    await recordAttendanceAttempt({
+      date: clock.dateKey,
+      location: {
+        accuracy: locationValidation.accuracy,
+        distanceMeters: locationValidation.distanceMeters,
+        latitude: locationValidation.latitude,
+        locationAt: locationValidation.locationAt,
+        longitude: locationValidation.longitude,
+        verificationResult: locationValidation.result,
+      },
+      networkIp: currentIp,
         result: 'ALREADY_CHECKED_IN',
         staffId: staffMember.id,
         successful: true,
@@ -707,10 +1007,12 @@ export async function POST(request: NextRequest) {
           currentIpSource: currentIpInfo.source,
           date: clock.dateKey,
           device: serializeDevice(resolvedDevice, trustedDeviceHash),
+          holidayName: null,
           isHoliday: false,
           isAfterWorkdayEnd: isAfterWorkdayEnd(clock.timeKey),
-          isOfficeNetwork: true,
           isWeekend: false,
+          locationConfigured: true,
+          locationPolicy: responseLocationPolicy,
           networkConfigured: true,
           permission: serializePermission(permission),
           staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
@@ -720,7 +1022,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'sign_out') {
-      return block('CHECK_IN_REQUIRED', 'You need to check in before signing out.', 400, staffMember.id);
+      return block('CHECK_IN_REQUIRED', 'You need to check in before signing out.', 400, staffMember.id, locationValidation);
     }
 
     if (isAfterWorkdayEnd(clock.timeKey)) {
@@ -729,6 +1031,7 @@ export async function POST(request: NextRequest) {
         `Check-ins are closed after ${WORKDAY_END_LABEL}. Ask an admin to correct attendance if needed.`,
         400,
         staffMember.id,
+        locationValidation,
       );
     }
 
@@ -738,6 +1041,7 @@ export async function POST(request: NextRequest) {
         'This account is already linked to another device. Ask an admin to reset your attendance device.',
         403,
         staffMember.id,
+        locationValidation,
       );
     }
 
@@ -758,12 +1062,13 @@ export async function POST(request: NextRequest) {
     const now = clock.now;
 
     const [createdAttendance] = await db.insert(attendanceRecord).values({
+      ...checkInLocationValues(locationValidation),
       staffId: staffMember.id,
       date: clock.dateKey,
       checkInAt: now,
       checkInTime,
       status,
-      source: 'staff_portal',
+      source: attendanceSource,
       networkIp: currentIp,
       userAgent,
       computedAmount: penalty.amount.toString(),
@@ -781,6 +1086,14 @@ export async function POST(request: NextRequest) {
 
       await recordAttendanceAttempt({
         date: clock.dateKey,
+        location: {
+          accuracy: locationValidation.accuracy,
+          distanceMeters: locationValidation.distanceMeters,
+          latitude: locationValidation.latitude,
+          locationAt: locationValidation.locationAt,
+          longitude: locationValidation.longitude,
+          verificationResult: locationValidation.result,
+        },
         networkIp: currentIp,
         result: 'ALREADY_CHECKED_IN',
         staffId: staffMember.id,
@@ -803,10 +1116,12 @@ export async function POST(request: NextRequest) {
             lastSeenAt: now,
             registeredAt: now,
           }, trustedDeviceHash),
+          holidayName: null,
           isHoliday: false,
           isAfterWorkdayEnd: false,
-          isOfficeNetwork: true,
           isWeekend: false,
+          locationConfigured: true,
+          locationPolicy: responseLocationPolicy,
           networkConfigured: true,
           permission: serializePermission(permission),
           staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
@@ -817,6 +1132,14 @@ export async function POST(request: NextRequest) {
 
     await recordAttendanceAttempt({
       date: clock.dateKey,
+      location: {
+        accuracy: locationValidation.accuracy,
+        distanceMeters: locationValidation.distanceMeters,
+        latitude: locationValidation.latitude,
+        locationAt: locationValidation.locationAt,
+        longitude: locationValidation.longitude,
+        verificationResult: locationValidation.result,
+      },
       networkIp: currentIp,
       result: status.toUpperCase(),
       staffId: staffMember.id,
@@ -833,8 +1156,9 @@ export async function POST(request: NextRequest) {
       before: null,
       after: {
         ...createdAttendance,
+        location: locationForAudit(locationValidation),
         networkIpSource: currentIpInfo.source,
-        officeNetworkStatus: 'verified',
+        officeLocationStatus: 'verified',
         permission: serializePermission(permission),
         staff: { fullName: staffMember.fullName },
       },
@@ -904,10 +1228,12 @@ export async function POST(request: NextRequest) {
           lastSeenAt: now,
           registeredAt: now,
         }, trustedDeviceHash),
+        holidayName: null,
         isHoliday: false,
         isAfterWorkdayEnd: false,
-        isOfficeNetwork: true,
         isWeekend: false,
+        locationConfigured: true,
+        locationPolicy: responseLocationPolicy,
         networkConfigured: true,
         permission: serializePermission(permission),
         staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },

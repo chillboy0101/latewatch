@@ -1,7 +1,7 @@
 import { and, asc, desc, eq } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { attendanceAttempt, attendancePermission, attendanceRecord, staff, staffDevice } from '@/db/schema';
+import { attendanceAttempt, attendancePermission, attendanceRecord, deviceTransferRequest, officeLocation, staff, staffDevice } from '@/db/schema';
 import { getAccraClock, getActiveOfficeNetwork, isOfficeIp, resolveClientIpInfo } from '@/lib/attendance';
 import { isPermissionWindowOverdue } from '@/lib/attendance-permissions';
 import { shouldAlertNoSignOut } from '@/lib/work-hours';
@@ -72,20 +72,50 @@ export async function GET(request: NextRequest) {
         .where(and(eq(attendancePermission.date, date), eq(attendancePermission.status, 'approved')))),
     ]);
 
-    const [attemptRows, deviceRows, network] = await Promise.all([
+    const [attemptRows, deviceRows, network, location, transferRows] = await Promise.all([
       optionalAttendanceQuery('attendance-attempts', [], () => db.select()
         .from(attendanceAttempt)
         .where(eq(attendanceAttempt.date, date))
         .orderBy(desc(attendanceAttempt.createdAt))
         .limit(25)),
       optionalAttendanceQuery('staff-devices', [], () => db.select({
+        deviceLabel: staffDevice.deviceLabel,
         id: staffDevice.id,
+        lastDistanceMeters: staffDevice.lastDistanceMeters,
         lastSeenAt: staffDevice.lastSeenAt,
+        lastVerificationMethod: staffDevice.lastVerificationMethod,
+        lastVerifiedAt: staffDevice.lastVerifiedAt,
         registeredAt: staffDevice.registeredAt,
         staffId: staffDevice.staffId,
       })
         .from(staffDevice)),
       optionalAttendanceQuery('office-network', null, getActiveOfficeNetwork),
+      optionalAttendanceQuery('office-location', null, () => db.select()
+        .from(officeLocation)
+        .where(eq(officeLocation.isActive, true))
+        .orderBy(desc(officeLocation.updatedAt))
+        .limit(1)
+        .then((rows) => rows[0] || null)),
+      optionalAttendanceQuery('device-transfer-requests', [], () => db.select({
+        accuracyMeters: deviceTransferRequest.accuracyMeters,
+        deviceLabel: deviceTransferRequest.deviceLabel,
+        distanceMeters: deviceTransferRequest.distanceMeters,
+        id: deviceTransferRequest.id,
+        locationAt: deviceTransferRequest.locationAt,
+        networkIp: deviceTransferRequest.networkIp,
+        requestedAt: deviceTransferRequest.requestedAt,
+        staffEmail: staff.email,
+        staffId: deviceTransferRequest.staffId,
+        staffName: staff.fullName,
+        status: deviceTransferRequest.status,
+        userEmail: deviceTransferRequest.userEmail,
+        verificationResult: deviceTransferRequest.verificationResult,
+      })
+        .from(deviceTransferRequest)
+        .leftJoin(staff, eq(deviceTransferRequest.staffId, staff.id))
+        .where(eq(deviceTransferRequest.status, 'pending'))
+        .orderBy(desc(deviceTransferRequest.requestedAt))
+        .limit(20)),
     ]);
 
     const attendanceByStaffId = new Map(attendanceRows.map((row) => [row.staffId, row]));
@@ -123,13 +153,21 @@ export async function GET(request: NextRequest) {
         device: device
           ? {
               id: device.id,
+              deviceLabel: device.deviceLabel,
+              lastDistanceMeters: device.lastDistanceMeters,
               lastSeenAt: device.lastSeenAt,
+              lastVerificationMethod: device.lastVerificationMethod,
+              lastVerifiedAt: device.lastVerifiedAt,
               registered: true,
               registeredAt: device.registeredAt,
             }
           : {
               id: null,
+              deviceLabel: null,
+              lastDistanceMeters: null,
               lastSeenAt: null,
+              lastVerificationMethod: null,
+              lastVerifiedAt: null,
               registered: false,
               registeredAt: null,
             },
@@ -178,6 +216,17 @@ export async function GET(request: NextRequest) {
         updatedAt: network?.updatedAt || null,
         updatedByEmail: network?.updatedByEmail || null,
       },
+      location: {
+        configured: Boolean(location),
+        latitude: location?.latitude || null,
+        longitude: location?.longitude || null,
+        maxAccuracyMeters: location?.maxAccuracyMeters || null,
+        name: location?.name || null,
+        radiusMeters: location?.radiusMeters || null,
+        updatedAt: location?.updatedAt || null,
+        updatedByEmail: location?.updatedByEmail || null,
+      },
+      transferRequests: transferRows,
       totals: {
         ...totals,
         totalStaff: rows.length,
