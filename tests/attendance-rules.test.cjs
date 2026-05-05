@@ -121,6 +121,17 @@ test('attendance geofence validates fresh accurate office location', () => {
 
   assert.equal(validateAttendanceLocation({
     evidence: {
+      accuracy: 150,
+      latitude: 5.606,
+      longitude: -0.18695,
+      timestamp: '2026-05-05T08:44:45.000Z',
+    },
+    now,
+    office,
+  }).result, 'OUTSIDE_OFFICE_LOCATION');
+
+  assert.equal(validateAttendanceLocation({
+    evidence: {
       accuracy: 20,
       latitude: 5.60375,
       longitude: -0.18695,

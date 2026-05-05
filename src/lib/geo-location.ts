@@ -188,21 +188,21 @@ export function validateAttendanceLocation({
     };
   }
 
-  if (normalized.accuracy > configuredOffice.maxAccuracyMeters) {
-    return {
-      ...base,
-      message: `Location accuracy is weak (${Math.round(normalized.accuracy)}m). Move to an open area and try again.`,
-      ok: false,
-      result: 'LOCATION_ACCURACY_WEAK',
-    };
-  }
-
   if (distanceMeters > configuredOffice.radiusMeters) {
     return {
       ...base,
       message: `You appear to be ${Math.round(distanceMeters)}m from the office location.`,
       ok: false,
       result: 'OUTSIDE_OFFICE_LOCATION',
+    };
+  }
+
+  if (normalized.accuracy > configuredOffice.maxAccuracyMeters) {
+    return {
+      ...base,
+      message: `Location accuracy is weak (${Math.round(normalized.accuracy)}m). Move to an open area and try again.`,
+      ok: false,
+      result: 'LOCATION_ACCURACY_WEAK',
     };
   }
 

@@ -4,12 +4,13 @@ import { UserButton, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, CheckCircle2, Clock, Loader2, LogOut, MapPin, Moon, ShieldCheck, Sun, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, LogOut, MapPin, Moon, ShieldCheck, Sun, XCircle } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { getPermissionWindowBounds, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
+import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
 import { applyThemePreference, getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 
@@ -79,6 +80,18 @@ interface CheckInStatus {
   workdayStartLabel: string;
 }
 
+type LocationEvidence = {
+  accuracy: number;
+  latitude: number;
+  longitude: number;
+  timestamp: string;
+};
+
+type LiveLocation =
+  | { blocking: false; message: string; state: 'idle' | 'inside' }
+  | { blocking: false; message: string; state: 'checking' }
+  | { blocking: true; message: string; state: 'error' | 'outside' | 'weak' };
+
 function canSignOut(status: CheckInStatus | null) {
   return Boolean(status?.attendance && !status.attendance.signOutTime && status.time?.slice(0, 5) >= '16:30');
 }
@@ -124,26 +137,52 @@ function statusDetail(status: CheckInStatus | null, fallbackName: string | null 
   return `${person}, you can check in now.`;
 }
 
-function locationValue(status: CheckInStatus | null) {
+function locationValue(status: CheckInStatus | null, liveLocation: LiveLocation) {
   if (!status?.locationConfigured) return 'Not set';
+
+  if (liveLocation.state === 'checking') return 'Checking...';
+  if (liveLocation.state === 'inside') {
+    return (
+      <span className="inline-flex min-w-0 items-center gap-1.5">
+        <VerifiedLocationBadge />
+        <span className="max-w-36 truncate">At office</span>
+      </span>
+    );
+  }
+  if (liveLocation.state === 'outside') return 'Outside office';
+  if (liveLocation.state === 'weak') return 'Weak GPS';
+  if (liveLocation.state === 'error') return 'Location needed';
+
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5">
-      <VerifiedLocationBadge />
-      <span className="max-w-36 truncate">{status.locationPolicy?.name || 'Set'}</span>
+      <MapPin className="h-3.5 w-3.5" />
+      <span className="max-w-36 truncate">{status.locationPolicy?.name || 'Office set'}</span>
     </span>
   );
 }
 
-function attendanceButtonLabel(status: CheckInStatus | null, submitting: boolean) {
+function locationTone(liveLocation: LiveLocation) {
+  if (liveLocation.state === 'inside') return 'success';
+  if (liveLocation.state === 'outside' || liveLocation.state === 'error') return 'danger';
+  if (liveLocation.state === 'weak') return 'warning';
+  return 'neutral';
+}
+
+function attendanceButtonLabel(status: CheckInStatus | null, submitting: boolean, liveLocation: LiveLocation) {
   if (submitting) return status?.attendance && !status.attendance.signOutTime ? 'Checking out' : 'Checking in';
   if (status?.attendance?.signOutTime) return 'Already Checked Out';
+  if (status?.device?.registered && !status.device.trusted) return 'Registered Device Required';
+  if (status?.locationConfigured && liveLocation.blocking) {
+    if (liveLocation.state === 'outside') return 'Outside Office';
+    if (liveLocation.state === 'weak') return 'Improve GPS Accuracy';
+    return 'Location Required';
+  }
   if (status?.attendance) return canSignOut(status) ? 'Check Out' : `Check Out Opens ${status.signOutStartLabel}`;
   if (status?.isHoliday) return 'Closed - Holiday';
   if (status?.isWeekend) return 'Closed - Weekend';
   if (status?.isAfterWorkdayEnd) return 'Closed - After Hours';
   if (status && !status.locationConfigured) return 'Location Not Configured';
   if (status && !status.staff) return 'Profile Not Matched';
-  if (status?.device?.registered && !status.device.trusted) return 'Registered Device Required';
   if (status?.permission?.permissionType === 'absence') return 'Excused - No Check-In';
   return 'Check In';
 }
@@ -177,7 +216,55 @@ function getOrCreateDeviceToken() {
   return token;
 }
 
-async function getCurrentLocationEvidence() {
+function locationErrorMessage(error: unknown) {
+  if (error && typeof error === 'object' && 'code' in error) {
+    const code = Number((error as { code?: unknown }).code);
+    if (code === 1) return 'Location permission is blocked. Allow location access and try again.';
+    if (code === 2) return 'This device could not find its location. Turn on location services and try again.';
+    if (code === 3) return 'Location detection took too long. Move to an open area and try again.';
+  }
+
+  return error instanceof Error ? error.message : 'Could not read this device location.';
+}
+
+function locationStateFromValidation(validation: LocationValidationResult): LiveLocation {
+  if (validation.ok) {
+    return {
+      blocking: false,
+      message: `Office location verified. Accuracy ${Math.round(validation.accuracy || 0)}m.`,
+      state: 'inside',
+    };
+  }
+
+  if (validation.result === 'OUTSIDE_OFFICE_LOCATION') {
+    return { blocking: true, message: validation.message, state: 'outside' };
+  }
+
+  if (validation.result === 'LOCATION_ACCURACY_WEAK') {
+    return { blocking: true, message: validation.message, state: 'weak' };
+  }
+
+  return { blocking: true, message: validation.message, state: 'error' };
+}
+
+function validateLiveLocation(locationPolicy: CheckInStatus['locationPolicy'], evidence: LocationEvidence): LiveLocation {
+  if (!locationPolicy) {
+    return { blocking: false, message: 'Office location is not set yet.', state: 'idle' };
+  }
+
+  return locationStateFromValidation(validateAttendanceLocation({
+    evidence,
+    now: new Date(),
+    office: {
+      latitude: locationPolicy.latitude,
+      longitude: locationPolicy.longitude,
+      maxAccuracyMeters: locationPolicy.maxAccuracyMeters,
+      radiusMeters: locationPolicy.radiusMeters,
+    },
+  }));
+}
+
+async function getCurrentLocationEvidence(): Promise<LocationEvidence> {
   if (!navigator.geolocation) {
     throw new Error('This device does not support location access.');
   }
@@ -206,6 +293,11 @@ export default function CheckInPage() {
   const [checkingIn, setCheckingIn] = useState(false);
   const [requestingTransfer, setRequestingTransfer] = useState(false);
   const [deviceToken, setDeviceToken] = useState<string | null>(null);
+  const [liveLocation, setLiveLocation] = useState<LiveLocation>({
+    blocking: false,
+    message: 'Waiting for location.',
+    state: 'idle',
+  });
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
 
   useEffect(() => {
@@ -216,10 +308,10 @@ export default function CheckInPage() {
     setDeviceToken(getOrCreateDeviceToken());
   }, []);
 
-  const fetchStatus = useCallback(async () => {
+  const fetchStatus = useCallback(async (options?: { preserveMessage?: boolean; silent?: boolean }) => {
     if (!deviceToken) return;
-    setLoading(true);
-    setMessage(null);
+    if (!options?.silent) setLoading(true);
+    if (!options?.preserveMessage) setMessage(null);
 
     try {
       const response = await fetch('/api/attendance/check-in', {
@@ -233,15 +325,77 @@ export default function CheckInPage() {
       setStatus(await response.json());
     } catch (error) {
       console.error('Failed to load check-in status:', error);
-      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Could not load check-in status' });
+      if (!options?.silent) {
+        setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Could not load check-in status' });
+      }
     } finally {
-      setLoading(false);
+      if (!options?.silent) setLoading(false);
     }
   }, [deviceToken]);
 
   useEffect(() => {
     fetchStatus();
   }, [fetchStatus]);
+
+  useEffect(() => {
+    if (!deviceToken) return;
+
+    const interval = window.setInterval(() => {
+      void fetchStatus({ preserveMessage: true, silent: true });
+    }, 30000);
+
+    return () => window.clearInterval(interval);
+  }, [deviceToken, fetchStatus]);
+
+  const locationConfigured = Boolean(status?.locationConfigured);
+  const locationPolicy = status?.locationPolicy || null;
+
+  useEffect(() => {
+    if (!locationConfigured || !locationPolicy || !navigator.geolocation) {
+      setLiveLocation(locationConfigured
+        ? {
+            blocking: true,
+            message: 'This browser does not support location tracking.',
+            state: 'error',
+          }
+        : {
+            blocking: false,
+            message: 'Office location is not set yet.',
+            state: 'idle',
+          });
+      return;
+    }
+
+    let active = true;
+    setLiveLocation({ blocking: false, message: 'Checking live location...', state: 'checking' });
+
+    const onPosition = (position: GeolocationPosition) => {
+      if (!active) return;
+      setLiveLocation(validateLiveLocation(locationPolicy, {
+        accuracy: position.coords.accuracy,
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        timestamp: new Date(position.timestamp).toISOString(),
+      }));
+    };
+    const onError = (error: GeolocationPositionError) => {
+      if (!active) return;
+      setLiveLocation({ blocking: true, message: locationErrorMessage(error), state: 'error' });
+    };
+    const options: PositionOptions = {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 20000,
+    };
+
+    navigator.geolocation.getCurrentPosition(onPosition, onError, options);
+    const watchId = navigator.geolocation.watchPosition(onPosition, onError, options);
+
+    return () => {
+      active = false;
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [locationConfigured, locationPolicy]);
 
   async function submitAttendance() {
     setCheckingIn(true);
@@ -280,7 +434,7 @@ export default function CheckInPage() {
       });
     } catch (error) {
       console.error('Attendance action failed:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Attendance action failed';
+      const errorMessage = locationErrorMessage(error);
       await fetchStatus();
       setMessage({ type: 'error', text: errorMessage });
     } finally {
@@ -317,7 +471,7 @@ export default function CheckInPage() {
       setMessage({ type: 'success', text: 'Device transfer request sent. Ask an admin to approve it.' });
     } catch (error) {
       console.error('Device transfer request failed:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Device transfer request failed';
+      const errorMessage = locationErrorMessage(error);
       await fetchStatus();
       setMessage({ type: 'error', text: errorMessage });
     } finally {
@@ -350,6 +504,7 @@ export default function CheckInPage() {
     canSignOut(status),
   );
   const accessNotSetUp = Boolean(status && !status.staff);
+  const locationBlocksAction = Boolean(status?.locationConfigured && liveLocation.blocking);
 
   return (
     <main className="h-dvh overflow-hidden bg-background px-3 py-3 text-foreground sm:px-6 sm:py-4">
@@ -416,18 +571,20 @@ export default function CheckInPage() {
                       </div>
                     )}
                     <StatusChip
-                      icon={<Clock className="h-3.5 w-3.5" />}
-                      label="Time"
-                      value={status?.time?.slice(0, 5) || '-'}
-                      labelClassName="font-medium text-foreground/85"
-                      valueClassName="font-bold text-foreground"
-                    />
-                    <StatusChip
                       icon={<MapPin className="h-3.5 w-3.5" />}
                       label="Location"
                       labelClassName="font-medium text-foreground/85"
-                      value={locationValue(status)}
+                      tone={locationTone(liveLocation)}
+                      value={locationValue(status, liveLocation)}
                     />
+                    {status?.locationConfigured && (
+                      <p className={cn(
+                        'max-w-sm text-xs leading-5',
+                        liveLocation.state === 'inside' ? 'text-success' : liveLocation.blocking ? 'text-danger' : 'text-muted-foreground',
+                      )}>
+                        {liveLocation.message}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -467,7 +624,7 @@ export default function CheckInPage() {
                   </div>
                 )}
 
-                <Button className="h-10 w-full gap-2 text-sm sm:h-11 sm:text-base" onClick={submitAttendance} disabled={(!canCheckIn && !canSubmitSignOut) || checkingIn}>
+                <Button className="h-10 w-full gap-2 text-sm sm:h-11 sm:text-base" onClick={submitAttendance} disabled={(!canCheckIn && !canSubmitSignOut) || checkingIn || locationBlocksAction}>
                   {checkingIn ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
                   ) : status?.attendance && !status.attendance.signOutTime ? (
@@ -475,13 +632,13 @@ export default function CheckInPage() {
                   ) : (
                     <ShieldCheck className="h-5 w-5" />
                   )}
-                  {attendanceButtonLabel(status, checkingIn)}
+                  {attendanceButtonLabel(status, checkingIn, liveLocation)}
                 </Button>
 
                 {status?.device?.registered && !status.device.trusted && (
                   <Button
                     className="h-10 w-full gap-2 text-sm sm:h-11 sm:text-base"
-                    disabled={requestingTransfer || Boolean(status.transferRequest)}
+                    disabled={requestingTransfer || Boolean(status.transferRequest) || locationBlocksAction}
                     onClick={requestDeviceTransfer}
                     type="button"
                     variant="outline"
@@ -534,7 +691,7 @@ function StatusChip({
 }: {
   icon: ReactNode;
   label: string;
-  tone?: 'neutral' | 'success' | 'warning';
+  tone?: 'danger' | 'neutral' | 'success' | 'warning';
   value: ReactNode;
   labelClassName?: string;
   valueClassName?: string;
@@ -544,6 +701,7 @@ function StatusChip({
       'inline-flex h-9 min-w-0 items-center gap-2 rounded-full border px-3.5 text-sm',
       tone === 'success' && 'border-success/25 bg-success/10 text-success',
       tone === 'warning' && 'border-warning/25 bg-warning/10 text-warning',
+      tone === 'danger' && 'border-danger/25 bg-danger/10 text-danger',
       tone === 'neutral' && 'border-border/80 bg-background/65 text-foreground',
     )}>
       <span className="shrink-0">{icon}</span>
