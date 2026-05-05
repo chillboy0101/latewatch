@@ -578,7 +578,8 @@ function AuthShell({
   palette: Palette;
 }) {
   const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
+  const horizontalPadding = width < 390 ? 18 : 28;
 
   return (
     <View style={{ backgroundColor: palette.background, flex: 1, overflow: 'hidden' }}>
@@ -608,23 +609,20 @@ function AuthShell({
         }}
       />
       <AuthWatermark palette={palette} />
-      <ScrollView
-        contentContainerStyle={{
+      <View
+        style={{
           alignItems: 'center',
-          flexGrow: 1,
+          flex: 1,
           justifyContent: 'center',
-          minHeight: Math.max(520, height - insets.top - insets.bottom),
-          paddingBottom: Math.max(insets.bottom + 24, 34),
-          paddingHorizontal: 18,
-          paddingTop: Math.max(insets.top + 24, 34),
+          paddingBottom: Math.max(insets.bottom + 18, 26),
+          paddingHorizontal: horizontalPadding,
+          paddingTop: Math.max(insets.top + 18, 26),
         }}
-        contentInsetAdjustmentBehavior="automatic"
-        keyboardShouldPersistTaps="handled"
       >
-        <View style={{ maxWidth: 430, width: '100%' }}>
+        <View style={{ maxWidth: 390, width: '100%' }}>
           {children}
         </View>
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -821,7 +819,7 @@ function ExpoGoClerkAuthCard({
       overflow: 'hidden',
       width: '100%',
     }}>
-      <View style={{ gap: 16, paddingHorizontal: 24, paddingBottom: 18, paddingTop: 24 }}>
+      <View style={{ gap: 15, paddingHorizontal: 24, paddingVertical: 24 }}>
         <View style={{ alignItems: 'center', gap: 8 }}>
           <Image source={logo} style={{ borderRadius: 5, height: 20, width: 20 }} />
           <View style={{ alignItems: 'center', gap: 3 }}>
@@ -913,21 +911,6 @@ function ExpoGoClerkAuthCard({
 
         {error && <InlineMessage message={error} palette={palette} tone="danger" />}
       </View>
-
-      <View style={{
-        alignItems: 'center',
-        backgroundColor: palette.background === palettes.dark.background ? '#121216' : '#f8fafc',
-        borderTopColor: palette.border,
-        borderTopWidth: 1,
-        paddingHorizontal: 18,
-        paddingVertical: 14,
-      }}>
-        <Text selectable style={{ color: palette.muted, fontSize: 11, lineHeight: 15, textAlign: 'center' }}>
-          {"Don't have an account? "}<Text style={{ color: palette.foreground, fontWeight: '700' }}>Sign up</Text>
-        </Text>
-      </View>
-
-      <ClerkDevelopmentFooter palette={palette} />
     </View>
   );
 }
