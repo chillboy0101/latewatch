@@ -1,15 +1,20 @@
 /* eslint-disable jsx-a11y/alt-text */
 import { ClerkLoaded, ClerkProvider, useAuth, useClerk, useSSO, useUser } from '@clerk/expo';
+import { AuthView, UserButton as NativeUserButton } from '@clerk/expo/native';
 import { tokenCache } from '@clerk/expo/token-cache';
 import * as Linking from 'expo-linking';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { StatusBar } from 'expo-status-bar';
 import * as WebBrowser from 'expo-web-browser';
 import type { ReactElement, ReactNode } from 'react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Image,
+  Modal,
+  NativeModules,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -68,6 +73,8 @@ const palettes = {
 type Palette = typeof palettes.light;
 type MessageTone = 'danger' | 'success' | 'warning';
 type StatusTone = 'neutral' | 'primary' | 'success' | 'warning';
+
+const hasNativeClerkUi = Boolean(NativeModules.ClerkExpo);
 
 function canSignOut(status: AttendanceStatus | null) {
   return Boolean(status?.attendance && !status.attendance.signOutTime && status.time.slice(0, 5) >= '16:30');
@@ -279,36 +286,30 @@ function SignInScreen({ palette }: { palette: Palette }) {
   }
 
   return (
-    <Shell palette={palette}>
-      <PortalHeader palette={palette} />
-      <PortalCard palette={palette}>
-        <View style={{ gap: 14, padding: 14 }}>
-          <StatusPanel
-            detail="Use your invited staff account to continue."
-            palette={palette}
-            showCheck
-            showMeta={false}
-            title="Sign in to LateWatch"
-            tone="primary"
-          />
-          <PrimaryButton
-            label="Continue with Google"
-            loading={busyProvider === 'google'}
-            onPress={() => start('google')}
-            palette={palette}
-            variant="outline"
-          />
-          <PrimaryButton
-            label="Continue with Apple"
-            loading={busyProvider === 'apple'}
-            onPress={() => start('apple')}
-            palette={palette}
-            variant="outline"
-          />
-          {error && <InlineMessage message={error} palette={palette} tone="danger" />}
+    <AuthShell palette={palette}>
+      {hasNativeClerkUi ? (
+        <View style={{
+          backgroundColor: palette.card,
+          borderColor: palette.border,
+          borderRadius: 12,
+          borderWidth: 1,
+          height: 560,
+          maxWidth: 410,
+          overflow: 'hidden',
+          width: '100%',
+        }}>
+          <AuthView isDismissable={false} mode="signIn" />
         </View>
-      </PortalCard>
-    </Shell>
+      ) : (
+        <ExpoGoClerkAuthCard
+          busyProvider={busyProvider}
+          error={error}
+          onApple={() => start('apple')}
+          onGoogle={() => start('google')}
+          palette={palette}
+        />
+      )}
+    </AuthShell>
   );
 }
 
@@ -459,6 +460,7 @@ function AttendanceScreen({
       )}
     >
       <PortalHeader
+        accountEmail={user?.primaryEmailAddress?.emailAddress || null}
         avatarLabel={displayName}
         onSignOut={() => signOut()}
         palette={palette}
@@ -508,6 +510,332 @@ function AttendanceScreen({
   );
 }
 
+function AuthShell({
+  children,
+  palette,
+}: {
+  children: ReactNode;
+  palette: Palette;
+}) {
+  const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
+
+  return (
+    <View style={{ backgroundColor: palette.background, flex: 1, overflow: 'hidden' }}>
+      <StatusBar style={palette.background === palettes.dark.background ? 'light' : 'dark'} />
+      <View
+        pointerEvents="none"
+        style={{
+          backgroundColor: palette.primarySoft,
+          bottom: 0,
+          left: 0,
+          opacity: palette.background === palettes.dark.background ? 0.16 : 0.42,
+          position: 'absolute',
+          right: 0,
+          top: 0,
+        }}
+      />
+      <View
+        pointerEvents="none"
+        style={{
+          backgroundColor: palette.background,
+          bottom: 0,
+          left: 0,
+          opacity: 0.76,
+          position: 'absolute',
+          right: 0,
+          top: 0,
+        }}
+      />
+      <AuthWatermark palette={palette} />
+      <ScrollView
+        contentContainerStyle={{
+          alignItems: 'center',
+          flexGrow: 1,
+          justifyContent: 'center',
+          minHeight: Math.max(520, height - insets.top - insets.bottom),
+          paddingBottom: Math.max(insets.bottom + 24, 34),
+          paddingHorizontal: 18,
+          paddingTop: Math.max(insets.top + 24, 34),
+        }}
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={{ maxWidth: 430, width: '100%' }}>
+          {children}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+function AuthWatermark({ palette }: { palette: Palette }) {
+  const { height, width } = useWindowDimensions();
+  const drift = useRef(new Animated.Value(0)).current;
+  const spin = useRef(new Animated.Value(0)).current;
+  const pulse = useRef(new Animated.Value(0)).current;
+  const isCompact = width <= 640 || (height <= 720 && width <= 900);
+  const markSize = isCompact ? Math.min(940, Math.max(760, width * 2.35)) : Math.min(1280, Math.max(width, height) * 1.18);
+  const ringInset = isCompact ? markSize * 0.1 : markSize * 0.16;
+  const ringSize = markSize - ringInset * 2;
+  const coreSize = markSize * (isCompact ? 0.3 : 0.33);
+  const dotSize = markSize * 0.18;
+  const primary = palette.background === palettes.dark.background ? 'rgba(143, 169, 244, 1)' : 'rgba(137, 168, 243, 1)';
+
+  useEffect(() => {
+    const driftLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(drift, {
+          duration: 4000,
+          easing: Easing.inOut(Easing.sin),
+          toValue: 1,
+          useNativeDriver: true,
+        }),
+        Animated.timing(drift, {
+          duration: 4000,
+          easing: Easing.inOut(Easing.sin),
+          toValue: 0,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    const spinLoop = Animated.loop(
+      Animated.timing(spin, {
+        duration: 8500,
+        easing: Easing.linear,
+        toValue: 1,
+        useNativeDriver: true,
+      }),
+    );
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          duration: 1600,
+          easing: Easing.inOut(Easing.sin),
+          toValue: 1,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          duration: 1600,
+          easing: Easing.inOut(Easing.sin),
+          toValue: 0,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    driftLoop.start();
+    spinLoop.start();
+    pulseLoop.start();
+
+    return () => {
+      driftLoop.stop();
+      spinLoop.stop();
+      pulseLoop.stop();
+    };
+  }, [drift, pulse, spin]);
+
+  const translateX = drift.interpolate({
+    inputRange: [0, 1],
+    outputRange: isCompact ? [-6, 7] : [-22, 19],
+  });
+  const translateY = drift.interpolate({
+    inputRange: [0, 1],
+    outputRange: isCompact ? [6, -7] : [11, -14],
+  });
+  const floatScale = drift.interpolate({
+    inputRange: [0, 1],
+    outputRange: isCompact ? [1, 1.02] : [0.98, 1.03],
+  });
+  const rotate = spin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+  const coreScale = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.92, 1],
+  });
+  const coreOpacity = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.72, 1],
+  });
+
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        alignItems: 'center',
+        bottom: 0,
+        justifyContent: 'center',
+        left: 0,
+        overflow: 'hidden',
+        position: 'absolute',
+        right: 0,
+        top: 0,
+      }}
+    >
+      <Animated.View
+        style={{
+          alignItems: 'center',
+          height: markSize,
+          justifyContent: 'center',
+          opacity: palette.background === palettes.dark.background ? 0.34 : isCompact ? 0.72 : 0.28,
+          transform: [{ translateX }, { translateY }, { scale: floatScale }],
+          width: markSize,
+        }}
+      >
+        <Animated.View
+          style={{
+            borderColor: 'rgba(137, 168, 243, 0.28)',
+            borderRadius: 9999,
+            borderRightColor: 'rgba(137, 168, 243, 0.7)',
+            borderTopColor: 'rgba(137, 168, 243, 0.92)',
+            borderWidth: isCompact ? Math.min(26, Math.max(16, width * 0.056)) : 18,
+            height: ringSize,
+            position: 'absolute',
+            transform: [{ rotate }],
+            width: ringSize,
+          }}
+        />
+        <Animated.View
+          style={{
+            backgroundColor: primary,
+            borderRadius: 9999,
+            height: coreSize,
+            opacity: coreOpacity,
+            transform: [{ scale: coreScale }],
+            width: coreSize,
+          }}
+        />
+        <View
+          style={{
+            backgroundColor: primary,
+            borderColor: palette.background,
+            borderRadius: 9999,
+            borderWidth: isCompact ? Math.min(12, Math.max(7, width * 0.025)) : 10,
+            height: dotSize,
+            position: 'absolute',
+            right: markSize * 0.17,
+            top: markSize * 0.17,
+            width: dotSize,
+          }}
+        />
+      </Animated.View>
+    </View>
+  );
+}
+
+function ExpoGoClerkAuthCard({
+  busyProvider,
+  error,
+  onApple,
+  onGoogle,
+  palette,
+}: {
+  busyProvider: 'apple' | 'google' | null;
+  error: string | null;
+  onApple: () => void;
+  onGoogle: () => void;
+  palette: Palette;
+}) {
+  return (
+    <View style={{
+      backgroundColor: palette.card,
+      borderColor: palette.border,
+      borderRadius: 12,
+      borderWidth: 1,
+      gap: 18,
+      paddingHorizontal: 22,
+      paddingVertical: 24,
+      width: '100%',
+    }}>
+      <View style={{ alignItems: 'center', gap: 12 }}>
+        <Image source={logo} style={{ borderRadius: 10, height: 54, width: 54 }} />
+        <View style={{ alignItems: 'center', gap: 5 }}>
+          <Text selectable style={{ color: palette.foreground, fontSize: 22, fontWeight: '800', textAlign: 'center' }}>
+            Sign in to LateWatch
+          </Text>
+          <Text selectable style={{ color: palette.muted, fontSize: 14, lineHeight: 20, textAlign: 'center' }}>
+            Welcome back. Please sign in to continue.
+          </Text>
+        </View>
+      </View>
+
+      <View style={{ gap: 10 }}>
+        <AuthProviderButton
+          label="Continue with Google"
+          loading={busyProvider === 'google'}
+          onPress={onGoogle}
+          palette={palette}
+          provider="G"
+        />
+        <AuthProviderButton
+          label="Continue with Apple"
+          loading={busyProvider === 'apple'}
+          onPress={onApple}
+          palette={palette}
+          provider="A"
+        />
+      </View>
+
+      {error && <InlineMessage message={error} palette={palette} tone="danger" />}
+    </View>
+  );
+}
+
+function AuthProviderButton({
+  label,
+  loading,
+  onPress,
+  palette,
+  provider,
+}: {
+  label: string;
+  loading?: boolean;
+  onPress: () => void;
+  palette: Palette;
+  provider: 'A' | 'G';
+}) {
+  return (
+    <Pressable
+      disabled={loading}
+      onPress={onPress}
+      style={{
+        alignItems: 'center',
+        backgroundColor: palette.card,
+        borderColor: palette.border,
+        borderRadius: 8,
+        borderWidth: 1,
+        flexDirection: 'row',
+        gap: 10,
+        minHeight: 46,
+        opacity: loading ? 0.62 : 1,
+        paddingHorizontal: 14,
+      }}
+    >
+      <View style={{
+        alignItems: 'center',
+        borderColor: palette.border,
+        borderRadius: 999,
+        borderWidth: 1,
+        height: 24,
+        justifyContent: 'center',
+        width: 24,
+      }}>
+        <Text selectable style={{ color: palette.foreground, fontSize: 13, fontWeight: '800' }}>
+          {provider}
+        </Text>
+      </View>
+      <Text selectable style={{ color: palette.foreground, flex: 1, fontSize: 15, fontWeight: '700', textAlign: 'center' }}>
+        {label}
+      </Text>
+      <View style={{ width: 24 }}>
+        {loading && <ActivityIndicator color={palette.primary} size="small" />}
+      </View>
+    </Pressable>
+  );
+}
+
 function Shell({
   children,
   palette,
@@ -543,11 +871,13 @@ function Shell({
 }
 
 function PortalHeader({
+  accountEmail,
   avatarLabel,
   onSignOut,
   palette,
   showAccount,
 }: {
+  accountEmail?: string | null;
   avatarLabel?: string;
   onSignOut?: () => void;
   palette: Palette;
@@ -565,38 +895,138 @@ function PortalHeader({
       </View>
 
       {showAccount && (
-        <View style={{ alignItems: 'center', flexDirection: 'row', gap: 8 }}>
-          <Pressable
-            onPress={onSignOut}
-            style={{
-              alignItems: 'center',
-              borderColor: palette.border,
-              borderRadius: 6,
-              borderWidth: 1,
-              height: 36,
-              justifyContent: 'center',
-              paddingHorizontal: 12,
-            }}
-          >
-            <Text selectable style={{ color: palette.foreground, fontSize: 13, fontWeight: '600' }}>
-              Sign out
-            </Text>
-          </Pressable>
-          <View style={{
-            alignItems: 'center',
-            backgroundColor: '#f59e0b',
-            borderRadius: 999,
-            height: 28,
-            justifyContent: 'center',
-            width: 28,
-          }}>
-            <Text selectable style={{ color: '#ffffff', fontSize: 13, fontWeight: '800' }}>
-              {initial}
-            </Text>
+        hasNativeClerkUi ? (
+          <View style={{ borderRadius: 999, height: 30, overflow: 'hidden', width: 30 }}>
+            <NativeUserButton />
           </View>
-        </View>
+        ) : (
+          <ProfileMenu
+            email={accountEmail}
+            initial={initial}
+            name={avatarLabel || null}
+            onSignOut={onSignOut}
+            palette={palette}
+          />
+        )
       )}
     </View>
+  );
+}
+
+function ProfileMenu({
+  email,
+  initial,
+  name,
+  onSignOut,
+  palette,
+}: {
+  email?: string | null;
+  initial: string;
+  name?: string | null;
+  onSignOut?: () => void;
+  palette: Palette;
+}) {
+  const [open, setOpen] = useState(false);
+
+  async function handleSignOut() {
+    setOpen(false);
+    await onSignOut?.();
+  }
+
+  return (
+    <>
+      <Pressable
+        onPress={() => setOpen(true)}
+        style={{
+          alignItems: 'center',
+          backgroundColor: '#f59e0b',
+          borderRadius: 999,
+          height: 30,
+          justifyContent: 'center',
+          width: 30,
+        }}
+      >
+        <Text selectable style={{ color: '#ffffff', fontSize: 13, fontWeight: '800' }}>
+          {initial}
+        </Text>
+      </Pressable>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setOpen(false)}
+        transparent
+        visible={open}
+      >
+        <Pressable
+          onPress={() => setOpen(false)}
+          style={{
+            backgroundColor: 'rgba(2, 6, 23, 0.18)',
+            flex: 1,
+            paddingHorizontal: 18,
+            paddingTop: 64,
+          }}
+        >
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            style={{
+              alignSelf: 'flex-end',
+              backgroundColor: palette.card,
+              borderColor: palette.border,
+              borderRadius: 8,
+              borderWidth: 1,
+              gap: 12,
+              maxWidth: 310,
+              padding: 14,
+              width: '82%',
+            }}
+          >
+            <View style={{ alignItems: 'center', flexDirection: 'row', gap: 10 }}>
+              <View style={{
+                alignItems: 'center',
+                backgroundColor: '#f59e0b',
+                borderRadius: 999,
+                height: 38,
+                justifyContent: 'center',
+                width: 38,
+              }}>
+                <Text selectable style={{ color: '#ffffff', fontSize: 15, fontWeight: '800' }}>
+                  {initial}
+                </Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text selectable numberOfLines={1} style={{ color: palette.foreground, fontSize: 14, fontWeight: '800' }}>
+                  {name || 'LateWatch user'}
+                </Text>
+                {email && (
+                  <Text selectable numberOfLines={1} style={{ color: palette.muted, fontSize: 12, marginTop: 2 }}>
+                    {email}
+                  </Text>
+                )}
+              </View>
+            </View>
+
+            <View style={{ backgroundColor: palette.border, height: 1 }} />
+
+            <Pressable
+              onPress={handleSignOut}
+              style={{
+                alignItems: 'center',
+                borderColor: palette.border,
+                borderRadius: 6,
+                borderWidth: 1,
+                minHeight: 42,
+                justifyContent: 'center',
+                paddingHorizontal: 12,
+              }}
+            >
+              <Text selectable style={{ color: palette.foreground, fontSize: 14, fontWeight: '700' }}>
+                Sign out
+              </Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
   );
 }
 
