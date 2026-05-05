@@ -275,6 +275,15 @@ function serializeDevice(device: {
   };
 }
 
+async function readActiveOfficeLocation() {
+  try {
+    return await getActiveOfficeLocation();
+  } catch (error) {
+    console.error('Failed to read active office location; continuing without a configured location:', error);
+    return null;
+  }
+}
+
 async function syncDeviceBinding(input: {
   actorEmail: string;
   actorUserId: string;
@@ -410,7 +419,7 @@ export async function GET(request: NextRequest) {
           candidateEmails: actorEmails,
           fullName: actorFullName,
         }),
-      getActiveOfficeLocation(),
+      readActiveOfficeLocation(),
       getHolidayForDate(clock.dateKey),
     ]);
     const isWeekend = isWeekendDate(clock.dateKey);
@@ -633,7 +642,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const officeLocation = await getActiveOfficeLocation();
+    const officeLocation = await readActiveOfficeLocation();
     const locationValidation = validateAttendanceLocation({
       evidence: body?.location,
       now: clock.now,

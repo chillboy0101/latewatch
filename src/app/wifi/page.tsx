@@ -26,17 +26,23 @@ type OfficeLocationResponse = {
     updatedAt: string | null;
     updatedByEmail: string | null;
   } | null;
+  message?: string;
+  storageAvailable?: boolean;
 };
 
-type DraftLocation = {
-  accuracy: number | null;
-  latitude: string;
-  longitude: string;
+type DetectedLocation = {
+  accuracy: number;
+  latitude: number;
+  longitude: number;
+  timestamp: string;
 };
 
 function formatUpdatedAt(value: string | null | undefined) {
-  if (!value) return 'Not set';
-  return new Date(value).toLocaleString();
+  if (!value) return 'Not saved yet';
+  return new Date(value).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
 }
 
 function meters(value: number | string | null | undefined) {
@@ -45,13 +51,52 @@ function meters(value: number | string | null | undefined) {
   return Number.isFinite(number) ? `${Math.round(number)}m` : '-';
 }
 
+function savedPoint(location: OfficeLocationResponse['location']) {
+  if (!location) return 'Not set';
+  const latitude = Number(location.latitude);
+  const longitude = Number(location.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return 'Set';
+  return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+}
+
+function locationErrorMessage(error: unknown) {
+  if (error && typeof error === 'object' && 'code' in error) {
+    const code = Number((error as { code?: unknown }).code);
+    if (code === 1) return 'Location permission was blocked. Allow location access in the browser and try again.';
+    if (code === 2) return 'This device could not find its location. Move closer to a window and try again.';
+    if (code === 3) return 'Location detection took too long. Try again from inside the office.';
+  }
+
+  return error instanceof Error ? error.message : 'Could not detect location.';
+}
+
+async function getCurrentBrowserLocation(): Promise<DetectedLocation> {
+  if (!navigator.geolocation) {
+    throw new Error('This browser does not support location detection.');
+  }
+
+  const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 20000,
+    });
+  });
+
+  return {
+    accuracy: position.coords.accuracy,
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude,
+    timestamp: new Date(position.timestamp).toISOString(),
+  };
+}
+
 export default function WifiPage() {
   const [data, setData] = useState<OfficeLocationResponse | null>(null);
-  const [draft, setDraft] = useState<DraftLocation>({ accuracy: null, latitude: '', longitude: '' });
   const [radiusMeters, setRadiusMeters] = useState('100');
   const [maxAccuracyMeters, setMaxAccuracyMeters] = useState('75');
+  const [lastDetected, setLastDetected] = useState<DetectedLocation | null>(null);
   const [loading, setLoading] = useState(true);
-  const [detecting, setDetecting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,24 +107,22 @@ export default function WifiPage() {
 
     try {
       const response = await fetch('/api/attendance/location', { cache: 'no-store' });
-      if (!response.ok) throw new Error(`Location request failed (${response.status})`);
-      const body = await response.json() as OfficeLocationResponse;
-      setData(body);
+      const body = await response.json().catch(() => ({})) as Partial<OfficeLocationResponse> & { error?: string };
+      if (!response.ok) throw new Error(body.error || `Location request failed (${response.status})`);
+
+      setData(body as OfficeLocationResponse);
 
       if (body.location) {
-        setDraft((current) => current.latitude && current.longitude
-          ? current
-          : {
-              accuracy: null,
-              latitude: body.location?.latitude || '',
-              longitude: body.location?.longitude || '',
-            });
         setRadiusMeters(String(body.location.radiusMeters || 100));
         setMaxAccuracyMeters(String(body.location.maxAccuracyMeters || 75));
       }
+
+      if (body.storageAvailable === false && body.message) {
+        setError(body.message);
+      }
     } catch (err) {
       console.error('Failed to load office location:', err);
-      setError(err instanceof Error ? err.message : 'Could not load office location');
+      setError(err instanceof Error ? err.message : 'Could not load office location.');
       setData(null);
     } finally {
       setLoading(false);
@@ -121,180 +164,165 @@ export default function WifiPage() {
     }
   }
 
-  async function detectCurrentLocation() {
-    setDetecting(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      if (!navigator.geolocation) {
-        throw new Error('This browser does not support location detection.');
-      }
-
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          maximumAge: 0,
-          timeout: 20000,
-        });
-      });
-
-      setDraft({
-        accuracy: position.coords.accuracy,
-        latitude: position.coords.latitude.toFixed(7),
-        longitude: position.coords.longitude.toFixed(7),
-      });
-      setSuccess('Current location detected. Review it, then save.');
-    } catch (err) {
-      console.error('Failed to detect office location:', err);
-      setError(err instanceof Error ? err.message : 'Could not detect location');
-    } finally {
-      setDetecting(false);
-    }
+  async function saveDetectedLocation(location: DetectedLocation) {
+    const response = await fetch('/api/attendance/location', {
+      body: JSON.stringify({
+        latitude: location.latitude,
+        longitude: location.longitude,
+        maxAccuracyMeters,
+        name: 'Office Location',
+        radiusMeters,
+      }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+    const body = await response.json().catch(() => ({})) as { error?: string };
+    if (!response.ok) throw new Error(body.error || `Location update failed (${response.status})`);
   }
 
-  async function saveLocation() {
+  async function detectAndSaveLocation() {
     setSaving(true);
     setError(null);
     setSuccess(null);
 
     try {
-      const response = await fetch('/api/attendance/location', {
-        body: JSON.stringify({
-          latitude: draft.latitude,
-          longitude: draft.longitude,
-          maxAccuracyMeters,
-          name: 'Office Location',
-          radiusMeters,
-        }),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || `Location update failed (${response.status})`);
+      const location = await getCurrentBrowserLocation();
+      setLastDetected(location);
+      await saveDetectedLocation(location);
       await fetchLocation();
-      setSuccess('Office location updated.');
+      setSuccess('Office location saved. Staff check-ins will now use this office point.');
     } catch (err) {
-      console.error('Failed to update office location:', err);
-      setError(err instanceof Error ? err.message : 'Could not update office location');
+      console.error('Failed to detect and save office location:', err);
+      setError(locationErrorMessage(err));
     } finally {
       setSaving(false);
     }
   }
 
   const configured = Boolean(data?.configured);
+  const location = data?.location || null;
+  const setupUnavailable = data?.storageAvailable === false;
 
   return (
     <DashboardLayout title="Office Location">
-      <div className="space-y-5">
+      <div className="mx-auto max-w-4xl space-y-4">
         {loading && !data ? (
           <Card>
             <LoadingBuffer variant="section" />
           </Card>
         ) : (
           <>
-            <div className="grid gap-4 xl:grid-cols-3">
-              <Card className="p-5">
-                <div className="flex min-h-36 flex-col justify-between gap-6">
-                  <div className="flex items-center gap-3">
-                    <div className={cn(
-                      'flex h-11 w-11 shrink-0 items-center justify-center rounded-md border',
-                      configured
-                        ? 'border-success/25 bg-success/10 text-success'
-                        : 'border-warning/25 bg-warning/10 text-warning',
-                    )}>
-                      <MapPin className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h2 className="text-lg font-semibold">Office Location</h2>
-                      <p className="text-sm text-muted-foreground">{configured ? 'Configured' : 'Not configured'}</p>
-                    </div>
-                  </div>
-                  <p className={cn(
-                    'text-2xl font-semibold',
-                    configured ? 'text-success' : 'text-warning',
+            <Card className="overflow-hidden">
+              <div className="flex flex-col gap-5 p-5 sm:p-6 lg:flex-row lg:items-start lg:justify-between">
+                <div className="flex min-w-0 gap-4">
+                  <div className={cn(
+                    'flex h-12 w-12 shrink-0 items-center justify-center rounded-md border',
+                    setupUnavailable
+                      ? 'border-danger/25 bg-danger/10 text-danger'
+                      : configured
+                      ? 'border-success/25 bg-success/10 text-success'
+                      : 'border-warning/25 bg-warning/10 text-warning',
                   )}>
-                    {configured ? 'Ready' : 'Needs setup'}
-                  </p>
-                </div>
-              </Card>
-
-              <LocationInfoCard label="Saved Coordinates" value={data?.location ? `${data.location.latitude}, ${data.location.longitude}` : '-'} />
-              <LocationInfoCard label="Allowed Radius" value={meters(data?.location?.radiusMeters)} meta={`Max accuracy ${meters(data?.location?.maxAccuracyMeters)}`} />
-            </div>
-
-            <Card className="p-5">
-              <div className="grid gap-4 xl:grid-cols-[1fr_1fr_9rem_9rem_auto] xl:items-end">
-                <Field label="Latitude">
-                  <Input
-                    className="h-11 font-mono"
-                    inputMode="decimal"
-                    value={draft.latitude}
-                    onChange={(event) => setDraft((current) => ({ ...current, latitude: event.target.value }))}
-                    placeholder="5.6037168"
-                  />
-                </Field>
-                <Field label="Longitude">
-                  <Input
-                    className="h-11 font-mono"
-                    inputMode="decimal"
-                    value={draft.longitude}
-                    onChange={(event) => setDraft((current) => ({ ...current, longitude: event.target.value }))}
-                    placeholder="-0.1869644"
-                  />
-                </Field>
-                <Field label="Radius">
-                  <Input
-                    className="h-11 font-mono"
-                    inputMode="numeric"
-                    value={radiusMeters}
-                    onChange={(event) => setRadiusMeters(event.target.value.replace(/\D/g, '').slice(0, 4))}
-                  />
-                </Field>
-                <Field label="Accuracy">
-                  <Input
-                    className="h-11 font-mono"
-                    inputMode="numeric"
-                    value={maxAccuracyMeters}
-                    onChange={(event) => setMaxAccuracyMeters(event.target.value.replace(/\D/g, '').slice(0, 3))}
-                  />
-                </Field>
-                <div className="flex gap-2">
-                  <Button className="h-11 gap-2" variant="outline" onClick={detectCurrentLocation} disabled={detecting || saving}>
-                    {detecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
-                    Detect
-                  </Button>
-                  <Button className="h-11 gap-2" onClick={saveLocation} disabled={saving || detecting || !draft.latitude || !draft.longitude}>
-                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                    Save
-                  </Button>
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <Meta label="Detected Accuracy" value={meters(draft.accuracy)} />
-                <Meta label="Last Updated" value={formatUpdatedAt(data?.location?.updatedAt)} />
-                <Meta label="Updated By" value={data?.location?.updatedByEmail || 'Not set'} />
-              </div>
-            </Card>
-
-            <Card className="p-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-md border border-primary/25 bg-primary/10 text-primary">
-                    <CheckCircle2 className="h-5 w-5" />
+                    <MapPin className="h-6 w-6" />
                   </div>
-                  <div>
-                    <h3 className="text-base font-semibold">Validation Policy</h3>
-                    <p className="text-sm text-muted-foreground">Staff must be inside the saved radius with fresh accurate GPS evidence.</p>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-xl font-semibold">Office check-in location</h2>
+                      <StatusBadge configured={configured} unavailable={setupUnavailable} />
+                    </div>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                      Stand inside the office, allow location access, then save. LateWatch will use this point to confirm staff are at the office before check-in or check-out.
+                    </p>
                   </div>
                 </div>
-                <Button className="h-10 gap-2" variant="outline" onClick={refreshLocation} disabled={refreshing || loading || saving}>
+                <Button
+                  className="h-10 gap-2"
+                  variant="outline"
+                  onClick={refreshLocation}
+                  disabled={refreshing || saving}
+                >
                   {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                   Refresh
                 </Button>
               </div>
+
+              <div className="border-t border-border p-5 sm:p-6">
+                <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-end">
+                  <div className="space-y-4">
+                    <div className="rounded-md border border-border bg-background px-4 py-3">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="font-medium">{configured ? 'Saved office point is active' : 'No office location saved yet'}</p>
+                        {lastDetected && (
+                          <p className="text-sm text-muted-foreground">Last detection: {meters(lastDetected.accuracy)} accuracy</p>
+                        )}
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {configured
+                          ? `Last saved ${formatUpdatedAt(location?.updatedAt)}.`
+                          : 'Use the button below while you are physically in the office.'}
+                      </p>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field label="Allowed area">
+                        <div className="relative">
+                          <Input
+                            className="h-11 pr-12 font-mono"
+                            inputMode="numeric"
+                            value={radiusMeters}
+                            onChange={(event) => setRadiusMeters(event.target.value.replace(/\D/g, '').slice(0, 4))}
+                            placeholder="100"
+                          />
+                          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-muted-foreground">m</span>
+                        </div>
+                      </Field>
+
+                      <Field label="Location quality">
+                        <select
+                          className="flex h-11 w-full rounded-md border border-border bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                          value={maxAccuracyMeters}
+                          onChange={(event) => setMaxAccuracyMeters(event.target.value)}
+                        >
+                          <option value="50">Strict</option>
+                          <option value="75">Standard</option>
+                          <option value="100">Flexible</option>
+                        </select>
+                      </Field>
+                    </div>
+                  </div>
+
+                  <Button
+                    className="h-11 min-w-full gap-2 px-5 text-base sm:min-w-64"
+                    onClick={detectAndSaveLocation}
+                    disabled={saving}
+                  >
+                    {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <LocateFixed className="h-5 w-5" />}
+                    {configured ? 'Detect & Update Location' : 'Detect & Save Location'}
+                  </Button>
+                </div>
+              </div>
             </Card>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <SummaryCard
+                icon={<ShieldCheck className="h-5 w-5" />}
+                label="Coverage"
+                value={configured ? meters(location?.radiusMeters) : '-'}
+                meta="Staff must be inside this area."
+              />
+              <SummaryCard
+                icon={<CheckCircle2 className="h-5 w-5" />}
+                label="Saved point"
+                value={configured ? 'Set' : 'Not set'}
+                meta={configured ? savedPoint(location) : 'Detect while standing in the office.'}
+              />
+              <SummaryCard
+                icon={<RefreshCw className="h-5 w-5" />}
+                label="Last updated"
+                value={formatUpdatedAt(location?.updatedAt)}
+                meta={location?.updatedByEmail || 'Not saved yet'}
+              />
+            </div>
           </>
         )}
 
@@ -323,27 +351,44 @@ function Field({ children, label }: { children: ReactNode; label: string }) {
   );
 }
 
-function LocationInfoCard({ label, meta, value }: { label: string; meta?: string; value: string }) {
+function StatusBadge({ configured, unavailable }: { configured: boolean; unavailable: boolean }) {
   return (
-    <Card className="p-5" title={`${label}: ${value}`}>
-      <div className="flex min-h-36 flex-col justify-between gap-6">
-        <div>
-          <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
-          <p className="mt-3 break-all font-mono text-xl font-semibold">{value}</p>
-        </div>
-        <p className="text-sm text-muted-foreground">{meta || 'Office geofence'}</p>
-      </div>
-    </Card>
+    <span className={cn(
+      'inline-flex h-7 items-center rounded-full border px-2.5 text-xs font-semibold',
+      unavailable
+        ? 'border-danger/25 bg-danger/10 text-danger'
+        : configured
+        ? 'border-success/25 bg-success/10 text-success'
+        : 'border-warning/25 bg-warning/10 text-warning',
+    )}>
+      {unavailable ? 'Setup unavailable' : configured ? 'Ready' : 'Needs setup'}
+    </span>
   );
 }
 
-function Meta({ label, value }: { label: string; value: string }) {
+function SummaryCard({
+  icon,
+  label,
+  meta,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  meta: string;
+  value: string;
+}) {
   return (
-    <div className="min-w-0">
-      <p className="mb-1.5 text-xs font-medium uppercase text-muted-foreground">{label}</p>
-      <div className="flex min-h-10 items-center rounded-md border border-border bg-background px-3 py-2">
-        <span className="truncate font-mono text-xs font-semibold leading-5 text-foreground">{value}</span>
+    <Card className="p-5">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
+          <p className="mt-1 truncate text-lg font-semibold" title={value}>{value}</p>
+          <p className="mt-1 truncate text-sm text-muted-foreground" title={meta}>{meta}</p>
+        </div>
       </div>
-    </div>
+    </Card>
   );
 }

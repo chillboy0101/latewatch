@@ -43,17 +43,37 @@ function serializeLocation(row: typeof officeLocation.$inferSelect | null) {
 }
 
 export async function GET(request: NextRequest) {
-  const currentIpInfo = await resolveClientIpInfo(request);
-  const location = await getActiveOfficeLocation();
+  try {
+    const currentIpInfo = await resolveClientIpInfo(request);
+    const location = await getActiveOfficeLocation();
 
-  return NextResponse.json({
-    configured: Boolean(location),
-    currentIp: currentIpInfo.ip,
-    currentIpSource: currentIpInfo.source,
-    location: serializeLocation(location),
-  }, {
-    headers: { 'Cache-Control': 'no-store' },
-  });
+    return NextResponse.json({
+      configured: Boolean(location),
+      currentIp: currentIpInfo.ip,
+      currentIpSource: currentIpInfo.source,
+      location: serializeLocation(location),
+      storageAvailable: true,
+    }, {
+      headers: { 'Cache-Control': 'no-store' },
+    });
+  } catch (error) {
+    console.error('Failed to load office location:', error);
+    const currentIpInfo = await resolveClientIpInfo(request).catch(() => ({
+      ip: 'unknown',
+      source: null,
+    }));
+
+    return NextResponse.json({
+      configured: false,
+      currentIp: currentIpInfo.ip,
+      currentIpSource: currentIpInfo.source,
+      location: null,
+      message: 'Office location setup is not ready yet. Refresh and try again.',
+      storageAvailable: false,
+    }, {
+      headers: { 'Cache-Control': 'no-store' },
+    });
+  }
 }
 
 export async function POST(request: NextRequest) {
