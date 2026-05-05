@@ -1,12 +1,12 @@
 /* eslint-disable jsx-a11y/alt-text */
-import { ClerkLoaded, ClerkProvider, useAuth, useClerk, useSSO, useUser } from '@clerk/expo';
-import { AuthView, UserButton as NativeUserButton } from '@clerk/expo/native';
+import { ClerkLoaded, ClerkProvider, useAuth, useClerk, useNativeSession, useSSO, useUser, useUserProfileModal } from '@clerk/expo';
+import { useSignIn as useLegacySignIn } from '@clerk/expo/legacy';
 import { tokenCache } from '@clerk/expo/token-cache';
 import * as Linking from 'expo-linking';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { StatusBar } from 'expo-status-bar';
 import * as WebBrowser from 'expo-web-browser';
-import type { ReactElement, ReactNode } from 'react';
+import type { ComponentType, ReactElement, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,11 +14,11 @@ import {
   Easing,
   Image,
   Modal,
-  NativeModules,
   Pressable,
   RefreshControl,
   ScrollView,
   Text,
+  TextInput,
   useColorScheme,
   useWindowDimensions,
   View,
@@ -73,8 +73,20 @@ const palettes = {
 type Palette = typeof palettes.light;
 type MessageTone = 'danger' | 'success' | 'warning';
 type StatusTone = 'neutral' | 'primary' | 'success' | 'warning';
+type ClerkNativeUi = {
+  AuthView: ComponentType<{ isDismissable?: boolean; mode?: 'signIn' | 'signUp' | 'signInOrUp' }>;
+  UserButton: ComponentType;
+};
 
-const hasNativeClerkUi = Boolean(NativeModules.ClerkExpo);
+declare const require: (id: string) => unknown;
+
+function loadClerkNativeUi() {
+  try {
+    return require('@clerk/expo/native') as ClerkNativeUi;
+  } catch {
+    return null;
+  }
+}
 
 function canSignOut(status: AttendanceStatus | null) {
   return Boolean(status?.attendance && !status.attendance.signOutTime && status.time.slice(0, 5) >= '16:30');
@@ -260,8 +272,15 @@ function AuthGate({ palette }: { palette: Palette }) {
 
 function SignInScreen({ palette }: { palette: Palette }) {
   const { startSSOFlow } = useSSO();
+  const { isAvailable: nativeClerkUiAvailable } = useNativeSession();
+  const { isLoaded: isPasswordSignInLoaded, setActive: setPasswordSessionActive, signIn } = useLegacySignIn();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [busyProvider, setBusyProvider] = useState<'apple' | 'google' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const nativeUi = nativeClerkUiAvailable ? loadClerkNativeUi() : null;
+  const NativeAuthView = nativeUi?.AuthView;
 
   async function start(provider: 'apple' | 'google') {
     setBusyProvider(provider);
@@ -285,9 +304,44 @@ function SignInScreen({ palette }: { palette: Palette }) {
     }
   }
 
+  async function startPasswordSignIn() {
+    const identifier = email.trim();
+
+    if (!identifier || !password) {
+      setError('Enter your email and password to continue.');
+      return;
+    }
+
+    if (!isPasswordSignInLoaded || !signIn) {
+      setError('Clerk is still loading. Try again in a moment.');
+      return;
+    }
+
+    setPasswordBusy(true);
+    setError(null);
+
+    try {
+      const result = await signIn.create({
+        identifier,
+        password,
+        strategy: 'password',
+      });
+
+      if (result.status !== 'complete' || !result.createdSessionId) {
+        throw new Error('This sign-in needs another verification step. Use Google or Apple to continue for now.');
+      }
+
+      await setPasswordSessionActive?.({ session: result.createdSessionId });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sign-in failed');
+    } finally {
+      setPasswordBusy(false);
+    }
+  }
+
   return (
     <AuthShell palette={palette}>
-      {hasNativeClerkUi ? (
+      {NativeAuthView ? (
         <View style={{
           backgroundColor: palette.card,
           borderColor: palette.border,
@@ -298,15 +352,21 @@ function SignInScreen({ palette }: { palette: Palette }) {
           overflow: 'hidden',
           width: '100%',
         }}>
-          <AuthView isDismissable={false} mode="signIn" />
+          <NativeAuthView isDismissable={false} mode="signIn" />
         </View>
       ) : (
         <ExpoGoClerkAuthCard
           busyProvider={busyProvider}
+          email={email}
           error={error}
           onApple={() => start('apple')}
           onGoogle={() => start('google')}
+          onEmailChange={setEmail}
+          onPasswordChange={setPassword}
+          onPasswordSubmit={startPasswordSignIn}
           palette={palette}
+          password={password}
+          passwordBusy={passwordBusy}
         />
       )}
     </AuthShell>
@@ -727,58 +787,224 @@ function AuthWatermark({ palette }: { palette: Palette }) {
 
 function ExpoGoClerkAuthCard({
   busyProvider,
+  email,
   error,
   onApple,
+  onEmailChange,
   onGoogle,
+  onPasswordChange,
+  onPasswordSubmit,
   palette,
+  password,
+  passwordBusy,
 }: {
   busyProvider: 'apple' | 'google' | null;
+  email: string;
   error: string | null;
   onApple: () => void;
+  onEmailChange: (value: string) => void;
   onGoogle: () => void;
+  onPasswordChange: (value: string) => void;
+  onPasswordSubmit: () => void;
   palette: Palette;
+  password: string;
+  passwordBusy: boolean;
 }) {
+  const inputBackground = palette.background === palettes.dark.background ? '#18181b' : '#ffffff';
+
   return (
     <View style={{
       backgroundColor: palette.card,
       borderColor: palette.border,
       borderRadius: 12,
       borderWidth: 1,
-      gap: 18,
-      paddingHorizontal: 22,
-      paddingVertical: 24,
+      overflow: 'hidden',
       width: '100%',
     }}>
-      <View style={{ alignItems: 'center', gap: 12 }}>
-        <Image source={logo} style={{ borderRadius: 10, height: 54, width: 54 }} />
-        <View style={{ alignItems: 'center', gap: 5 }}>
-          <Text selectable style={{ color: palette.foreground, fontSize: 22, fontWeight: '800', textAlign: 'center' }}>
-            Sign in to LateWatch
-          </Text>
-          <Text selectable style={{ color: palette.muted, fontSize: 14, lineHeight: 20, textAlign: 'center' }}>
-            Welcome back. Please sign in to continue.
-          </Text>
+      <View style={{ gap: 16, paddingHorizontal: 24, paddingBottom: 18, paddingTop: 24 }}>
+        <View style={{ alignItems: 'center', gap: 8 }}>
+          <Image source={logo} style={{ borderRadius: 5, height: 20, width: 20 }} />
+          <View style={{ alignItems: 'center', gap: 3 }}>
+            <Text selectable style={{ color: palette.foreground, fontSize: 14, fontWeight: '800', textAlign: 'center' }}>
+              Sign in to LateWatch
+            </Text>
+            <Text selectable style={{ color: palette.muted, fontSize: 11, lineHeight: 15, textAlign: 'center' }}>
+              Welcome back! Please sign in to continue.
+            </Text>
+          </View>
         </View>
+
+        <View style={{ gap: 7 }}>
+          <AuthProviderButton
+            label="Continue with Google"
+            loading={busyProvider === 'google'}
+            onPress={onGoogle}
+            palette={palette}
+            provider="google"
+            tag="Last used"
+          />
+          <AuthProviderButton
+            label="Continue with Apple"
+            loading={busyProvider === 'apple'}
+            onPress={onApple}
+            palette={palette}
+            provider="apple"
+          />
+        </View>
+
+        <AuthDivider palette={palette} />
+
+        <View style={{ gap: 11 }}>
+          <AuthTextField
+            autoComplete="email"
+            autoCorrect={false}
+            inputBackground={inputBackground}
+            inputMode="email"
+            keyboardType="email-address"
+            label="Email address"
+            onChangeText={onEmailChange}
+            palette={palette}
+            placeholder="Enter your email address"
+            returnKeyType="next"
+            textContentType="username"
+            value={email}
+          />
+          <AuthTextField
+            autoComplete="password"
+            inputBackground={inputBackground}
+            label="Password"
+            onChangeText={onPasswordChange}
+            onSubmitEditing={onPasswordSubmit}
+            palette={palette}
+            placeholder="Enter your password"
+            returnKeyType="go"
+            secureTextEntry
+            textContentType="password"
+            value={password}
+          />
+
+          <Pressable
+            disabled={passwordBusy}
+            onPress={onPasswordSubmit}
+            style={{
+              alignItems: 'center',
+              backgroundColor: palette.background === palettes.dark.background ? '#f4f4f5' : '#2f3037',
+              borderRadius: 6,
+              minHeight: 34,
+              justifyContent: 'center',
+              opacity: passwordBusy ? 0.62 : 1,
+              paddingHorizontal: 12,
+            }}
+          >
+            {passwordBusy ? (
+              <ActivityIndicator color={palette.background} size="small" />
+            ) : (
+              <Text selectable style={{
+                color: palette.background === palettes.dark.background ? '#09090b' : '#ffffff',
+                fontSize: 12,
+                fontWeight: '800',
+                textAlign: 'center',
+              }}>
+                Continue &gt;
+              </Text>
+            )}
+          </Pressable>
+        </View>
+
+        {error && <InlineMessage message={error} palette={palette} tone="danger" />}
       </View>
 
-      <View style={{ gap: 10 }}>
-        <AuthProviderButton
-          label="Continue with Google"
-          loading={busyProvider === 'google'}
-          onPress={onGoogle}
-          palette={palette}
-          provider="G"
-        />
-        <AuthProviderButton
-          label="Continue with Apple"
-          loading={busyProvider === 'apple'}
-          onPress={onApple}
-          palette={palette}
-          provider="A"
-        />
+      <View style={{
+        alignItems: 'center',
+        backgroundColor: palette.background === palettes.dark.background ? '#121216' : '#f8fafc',
+        borderTopColor: palette.border,
+        borderTopWidth: 1,
+        paddingHorizontal: 18,
+        paddingVertical: 14,
+      }}>
+        <Text selectable style={{ color: palette.muted, fontSize: 11, lineHeight: 15, textAlign: 'center' }}>
+          {"Don't have an account? "}<Text style={{ color: palette.foreground, fontWeight: '700' }}>Sign up</Text>
+        </Text>
       </View>
 
-      {error && <InlineMessage message={error} palette={palette} tone="danger" />}
+      <ClerkDevelopmentFooter palette={palette} />
+    </View>
+  );
+}
+
+function AuthTextField({
+  autoComplete,
+  autoCorrect,
+  inputBackground,
+  inputMode,
+  keyboardType,
+  label,
+  onChangeText,
+  onSubmitEditing,
+  palette,
+  placeholder,
+  returnKeyType,
+  secureTextEntry,
+  textContentType,
+  value,
+}: {
+  autoComplete?: 'email' | 'password';
+  autoCorrect?: boolean;
+  inputBackground: string;
+  inputMode?: 'email';
+  keyboardType?: 'email-address';
+  label: string;
+  onChangeText: (value: string) => void;
+  onSubmitEditing?: () => void;
+  palette: Palette;
+  placeholder: string;
+  returnKeyType?: 'next' | 'go';
+  secureTextEntry?: boolean;
+  textContentType?: 'username' | 'password';
+  value: string;
+}) {
+  return (
+    <View style={{ gap: 6 }}>
+      <Text selectable style={{ color: palette.foreground, fontSize: 11, fontWeight: '700' }}>
+        {label}
+      </Text>
+      <TextInput
+        autoCapitalize="none"
+        autoComplete={autoComplete}
+        autoCorrect={autoCorrect}
+        inputMode={inputMode}
+        keyboardType={keyboardType}
+        onChangeText={onChangeText}
+        onSubmitEditing={onSubmitEditing}
+        placeholder={placeholder}
+        placeholderTextColor={palette.muted}
+        returnKeyType={returnKeyType}
+        secureTextEntry={secureTextEntry}
+        style={{
+          backgroundColor: inputBackground,
+          borderColor: palette.border,
+          borderRadius: 6,
+          borderWidth: 1,
+          color: palette.foreground,
+          fontSize: 12,
+          minHeight: 34,
+          paddingHorizontal: 10,
+        }}
+        textContentType={textContentType}
+        value={value}
+      />
+    </View>
+  );
+}
+
+function AuthDivider({ palette }: { palette: Palette }) {
+  return (
+    <View style={{ alignItems: 'center', flexDirection: 'row', gap: 10 }}>
+      <View style={{ backgroundColor: palette.border, flex: 1, height: 1 }} />
+      <Text selectable style={{ color: palette.muted, fontSize: 10, fontWeight: '600' }}>
+        or
+      </Text>
+      <View style={{ backgroundColor: palette.border, flex: 1, height: 1 }} />
     </View>
   );
 }
@@ -789,12 +1015,14 @@ function AuthProviderButton({
   onPress,
   palette,
   provider,
+  tag,
 }: {
   label: string;
   loading?: boolean;
   onPress: () => void;
   palette: Palette;
-  provider: 'A' | 'G';
+  provider: 'apple' | 'google';
+  tag?: string;
 }) {
   return (
     <Pressable
@@ -804,35 +1032,106 @@ function AuthProviderButton({
         alignItems: 'center',
         backgroundColor: palette.card,
         borderColor: palette.border,
-        borderRadius: 8,
+        borderRadius: 6,
         borderWidth: 1,
         flexDirection: 'row',
-        gap: 10,
-        minHeight: 46,
+        gap: 8,
+        minHeight: 34,
         opacity: loading ? 0.62 : 1,
-        paddingHorizontal: 14,
+        paddingHorizontal: 10,
       }}
     >
-      <View style={{
-        alignItems: 'center',
-        borderColor: palette.border,
-        borderRadius: 999,
-        borderWidth: 1,
-        height: 24,
-        justifyContent: 'center',
-        width: 24,
-      }}>
-        <Text selectable style={{ color: palette.foreground, fontSize: 13, fontWeight: '800' }}>
-          {provider}
-        </Text>
+      <View style={{ alignItems: 'center', height: 18, justifyContent: 'center', width: 22 }}>
+        {provider === 'google' ? <GoogleIcon /> : <AppleIcon color={palette.foreground} />}
       </View>
-      <Text selectable style={{ color: palette.foreground, flex: 1, fontSize: 15, fontWeight: '700', textAlign: 'center' }}>
+      <Text selectable style={{ color: palette.foreground, flex: 1, fontSize: 11, fontWeight: '700', textAlign: 'center' }}>
         {label}
       </Text>
-      <View style={{ width: 24 }}>
-        {loading && <ActivityIndicator color={palette.primary} size="small" />}
+      <View style={{ alignItems: 'flex-end', minWidth: 54 }}>
+        {loading ? (
+          <ActivityIndicator color={palette.primary} size="small" />
+        ) : tag ? (
+          <View style={{
+            backgroundColor: palette.background === palettes.dark.background ? '#1f2937' : '#f8fafc',
+            borderColor: palette.border,
+            borderRadius: 999,
+            borderWidth: 1,
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+          }}>
+            <Text selectable style={{ color: palette.muted, fontSize: 8, fontWeight: '700' }}>
+              {tag}
+            </Text>
+          </View>
+        ) : null}
       </View>
     </Pressable>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <View style={{ alignItems: 'center', height: 22, justifyContent: 'center', width: 22 }}>
+      <View style={{
+        borderColor: '#4285f4',
+        borderLeftColor: '#fbbc05',
+        borderRadius: 999,
+        borderRightColor: '#34a853',
+        borderTopColor: '#ea4335',
+        borderWidth: 3,
+        height: 20,
+        position: 'absolute',
+        width: 20,
+      }} />
+      <View style={{ backgroundColor: '#4285f4', height: 3, left: 11, position: 'absolute', top: 10, width: 8 }} />
+      <View style={{
+        backgroundColor: paletteWhite,
+        height: 8,
+        position: 'absolute',
+        right: 0,
+        top: 3,
+        width: 8,
+      }} />
+    </View>
+  );
+}
+
+const paletteWhite = '#ffffff';
+
+function AppleIcon({ color }: { color: string }) {
+  return (
+    <View style={{ alignItems: 'center', height: 23, justifyContent: 'center', width: 22 }}>
+      <View style={{
+        backgroundColor: color,
+        borderBottomLeftRadius: 8,
+        borderBottomRightRadius: 7,
+        borderTopLeftRadius: 9,
+        borderTopRightRadius: 9,
+        height: 15,
+        top: 5,
+        transform: [{ rotate: '-7deg' }],
+        width: 15,
+      }} />
+      <View style={{
+        backgroundColor: color,
+        borderRadius: 999,
+        height: 6,
+        position: 'absolute',
+        right: 5,
+        top: 1,
+        transform: [{ rotate: '-35deg' }],
+        width: 4,
+      }} />
+      <View style={{
+        backgroundColor: '#ffffff',
+        borderRadius: 999,
+        height: 7,
+        position: 'absolute',
+        right: 2,
+        top: 9,
+        width: 5,
+      }} />
+    </View>
   );
 }
 
@@ -895,21 +1194,51 @@ function PortalHeader({
       </View>
 
       {showAccount && (
-        hasNativeClerkUi ? (
-          <View style={{ borderRadius: 999, height: 30, overflow: 'hidden', width: 30 }}>
-            <NativeUserButton />
-          </View>
-        ) : (
-          <ProfileMenu
-            email={accountEmail}
-            initial={initial}
-            name={avatarLabel || null}
-            onSignOut={onSignOut}
-            palette={palette}
-          />
-        )
+        <AccountControl
+          email={accountEmail}
+          initial={initial}
+          name={avatarLabel || null}
+          onSignOut={onSignOut}
+          palette={palette}
+        />
       )}
     </View>
+  );
+}
+
+function AccountControl({
+  email,
+  initial,
+  name,
+  onSignOut,
+  palette,
+}: {
+  email?: string | null;
+  initial: string;
+  name?: string | null;
+  onSignOut?: () => void;
+  palette: Palette;
+}) {
+  const { isAvailable: nativeProfileAvailable } = useUserProfileModal();
+  const nativeUi = nativeProfileAvailable ? loadClerkNativeUi() : null;
+  const NativeUserButton = nativeUi?.UserButton;
+
+  if (NativeUserButton) {
+    return (
+      <View style={{ borderRadius: 999, height: 30, overflow: 'hidden', width: 30 }}>
+        <NativeUserButton />
+      </View>
+    );
+  }
+
+  return (
+    <ProfileMenu
+      email={email}
+      initial={initial}
+      name={name}
+      onSignOut={onSignOut}
+      palette={palette}
+    />
   );
 }
 
@@ -974,13 +1303,12 @@ function ProfileMenu({
               borderColor: palette.border,
               borderRadius: 8,
               borderWidth: 1,
-              gap: 12,
               maxWidth: 310,
-              padding: 14,
+              overflow: 'hidden',
               width: '82%',
             }}
           >
-            <View style={{ alignItems: 'center', flexDirection: 'row', gap: 10 }}>
+            <View style={{ alignItems: 'center', flexDirection: 'row', gap: 10, paddingHorizontal: 14, paddingVertical: 13 }}>
               <View style={{
                 alignItems: 'center',
                 backgroundColor: '#f59e0b',
@@ -1005,28 +1333,125 @@ function ProfileMenu({
               </View>
             </View>
 
-            <View style={{ backgroundColor: palette.border, height: 1 }} />
-
-            <Pressable
+            <MenuRow
+              icon={<ManageAccountIcon color={palette.foreground} />}
+              label="Manage account"
+              onPress={() => setOpen(false)}
+              palette={palette}
+            />
+            <MenuRow
+              icon={<SignOutMenuIcon color={palette.foreground} />}
+              label="Sign out"
               onPress={handleSignOut}
-              style={{
-                alignItems: 'center',
-                borderColor: palette.border,
-                borderRadius: 6,
-                borderWidth: 1,
-                minHeight: 42,
-                justifyContent: 'center',
-                paddingHorizontal: 12,
-              }}
-            >
-              <Text selectable style={{ color: palette.foreground, fontSize: 14, fontWeight: '700' }}>
-                Sign out
-              </Text>
-            </Pressable>
+              palette={palette}
+            />
+            <ClerkDevelopmentFooter palette={palette} />
           </Pressable>
         </Pressable>
       </Modal>
     </>
+  );
+}
+
+function MenuRow({
+  icon,
+  label,
+  onPress,
+  palette,
+}: {
+  icon: ReactNode;
+  label: string;
+  onPress: () => void;
+  palette: Palette;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        alignItems: 'center',
+        borderTopColor: palette.border,
+        borderTopWidth: 1,
+        flexDirection: 'row',
+        gap: 12,
+        minHeight: 44,
+        paddingHorizontal: 14,
+      }}
+    >
+      <View style={{ alignItems: 'center', height: 16, justifyContent: 'center', width: 16 }}>
+        {icon}
+      </View>
+      <Text selectable style={{ color: palette.foreground, fontSize: 12, fontWeight: '600' }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function ClerkDevelopmentFooter({ palette }: { palette: Palette }) {
+  return (
+    <View style={{
+      alignItems: 'center',
+      backgroundColor: palette.background === palettes.dark.background ? '#1a1511' : '#fff7ed',
+      borderTopColor: palette.border,
+      borderTopWidth: 1,
+      gap: 3,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+    }}>
+      <Text selectable style={{ color: palette.muted, fontSize: 10, lineHeight: 13, textAlign: 'center' }}>
+        Secured by <Text style={{ color: palette.foreground, fontWeight: '800' }}>clerk</Text>
+      </Text>
+      <Text selectable style={{ color: '#f97316', fontSize: 10, fontWeight: '800', lineHeight: 13, textAlign: 'center' }}>
+        Development mode
+      </Text>
+    </View>
+  );
+}
+
+function ManageAccountIcon({ color }: { color: string }) {
+  return (
+    <View style={{ alignItems: 'center', height: 15, justifyContent: 'center', width: 15 }}>
+      <View style={{
+        borderColor: color,
+        borderRadius: 999,
+        borderWidth: 1.5,
+        height: 9,
+        width: 9,
+      }} />
+      <View style={{ backgroundColor: color, borderRadius: 999, height: 3, position: 'absolute', width: 3 }} />
+      <View style={{ backgroundColor: color, height: 2, position: 'absolute', top: 0, width: 1.5 }} />
+      <View style={{ backgroundColor: color, bottom: 0, height: 2, position: 'absolute', width: 1.5 }} />
+      <View style={{ backgroundColor: color, height: 1.5, left: 0, position: 'absolute', width: 2 }} />
+      <View style={{ backgroundColor: color, height: 1.5, position: 'absolute', right: 0, width: 2 }} />
+    </View>
+  );
+}
+
+function SignOutMenuIcon({ color }: { color: string }) {
+  return (
+    <View style={{ height: 15, justifyContent: 'center', width: 15 }}>
+      <View style={{
+        borderBottomWidth: 1.4,
+        borderColor: color,
+        borderLeftWidth: 1.4,
+        borderTopWidth: 1.4,
+        height: 11,
+        left: 0,
+        position: 'absolute',
+        width: 7,
+      }} />
+      <View style={{ backgroundColor: color, height: 1.4, left: 5, position: 'absolute', width: 8 }} />
+      <View style={{
+        borderColor: color,
+        borderRightWidth: 1.4,
+        borderTopWidth: 1.4,
+        height: 5,
+        position: 'absolute',
+        right: 1,
+        transform: [{ rotate: '45deg' }],
+        width: 5,
+      }} />
+    </View>
   );
 }
 
