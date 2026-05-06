@@ -8,6 +8,7 @@ import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { normalizeStaffEmail } from '@/lib/attendance';
 import { syncStaffEmailIdentity, unlinkStaffEmailIdentity } from '@/lib/clerk-organization';
+import { recalculateStaffStoredPenalties } from '@/lib/staff-penalty-recalculation-server';
 
 type StaffUpdateBody = {
   active?: boolean;
@@ -86,6 +87,7 @@ export async function PUT(
       ? normalizeStaffEmail(email)
       : previousEmail;
     const emailChanged = email !== undefined && previousEmail !== nextEmail;
+    const nssStatusChanged = isNssPersonnel !== undefined && before.isNssPersonnel !== (isNssPersonnel === true);
 
     const updated = await db.update(staff)
       .set(updateData)
@@ -110,6 +112,21 @@ export async function PUT(
       after: updated[0],
       reason: 'staff',
     });
+
+    if (nssStatusChanged) {
+      await recalculateStaffStoredPenalties({
+        actor: {
+          email: actor?.emailAddresses[0]?.emailAddress,
+          id: actor?.id,
+        },
+        reason: 'staff-nss-status-changed',
+        staffMember: {
+          fullName: updated[0].fullName,
+          id: updated[0].id,
+          isNssPersonnel: updated[0].isNssPersonnel,
+        },
+      });
+    }
 
     if (emailChanged) {
       const [registeredDevice] = await db.select()

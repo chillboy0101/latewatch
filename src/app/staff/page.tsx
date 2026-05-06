@@ -33,7 +33,7 @@ interface StaffMember {
   archivedAt?: string | null;
 }
 
-type StaffFilter = 'all' | 'active' | 'inactive' | 'former';
+type StaffFilter = 'all' | 'active' | 'inactive' | 'former' | 'nss';
 
 export default function StaffPage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
@@ -336,6 +336,7 @@ export default function StaffPage() {
         if (staffFilter === 'active') return s.active && !s.archived;
         if (staffFilter === 'inactive') return !s.active && !s.archived;
         if (staffFilter === 'former') return s.archived;
+        if (staffFilter === 'nss') return s.isNssPersonnel === true;
         return true;
       })
     : [];
@@ -360,10 +361,12 @@ export default function StaffPage() {
   const activeCount = staff.filter((s) => s.active && !s.archived).length;
   const inactiveCount = staff.filter((s) => !s.active && !s.archived).length;
   const formerCount = staff.filter((s) => s.archived).length;
+  const nssCount = staff.filter((s) => s.isNssPersonnel === true).length;
   const totalDisplay = loading ? '-' : staff.length.toString();
   const activeDisplay = loading ? '-' : activeCount.toString();
   const inactiveDisplay = loading ? '-' : inactiveCount.toString();
   const formerDisplay = loading ? '-' : formerCount.toString();
+  const nssDisplay = loading ? '-' : nssCount.toString();
   const staffFilterCards: Array<{
     key: StaffFilter;
     label: string;
@@ -374,6 +377,7 @@ export default function StaffPage() {
     { key: 'active', label: 'Active', value: activeDisplay, valueClassName: 'text-success' },
     { key: 'inactive', label: 'Inactive', value: inactiveDisplay, valueClassName: 'text-muted-foreground' },
     { key: 'former', label: 'Former Personnel', value: formerDisplay, valueClassName: 'text-warning' },
+    { key: 'nss', label: 'NSS Personnel', value: nssDisplay, valueClassName: 'text-primary' },
   ];
   const activeFilterLabel = staffFilterCards.find((card) => card.key === staffFilter)?.label || 'staff';
 
@@ -381,7 +385,7 @@ export default function StaffPage() {
     <DashboardLayout title="Staff">
       <div className="space-y-6">
         {/* Stats Bar */}
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           {staffFilterCards.map((card) => {
             const selected = staffFilter === card.key;
 
