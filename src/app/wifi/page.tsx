@@ -128,7 +128,7 @@ export default function WifiPage() {
   const [data, setData] = useState<OfficeLocationResponse | null>(null);
   const [draft, setDraft] = useState<DraftLocation | null>(null);
   const [mode, setMode] = useState<SaveMode>('default');
-  const [radiusMeters, setRadiusMeters] = useState('75');
+  const [radiusMeters, setRadiusMeters] = useState('80');
   const [maxAccuracyMeters, setMaxAccuracyMeters] = useState('75');
   const [scheduleStartDate, setScheduleStartDate] = useState(dateKey());
   const [scheduleEndDate, setScheduleEndDate] = useState(dateKey());
@@ -168,7 +168,7 @@ export default function WifiPage() {
 
       const incomingDefault = body.defaultLocation || null;
       if (incomingDefault) {
-        setRadiusMeters(String(incomingDefault.radiusMeters || 75));
+        setRadiusMeters(String(incomingDefault.radiusMeters || 80));
         setMaxAccuracyMeters(String(incomingDefault.maxAccuracyMeters || 75));
       }
 

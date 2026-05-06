@@ -184,8 +184,8 @@ test('attendance geofence validates fresh accurate office location', () => {
   }).result, 'LOCATION_STALE');
 });
 
-test('default office geofence uses a 75m radius with the existing 75m accuracy limit', () => {
-  assert.equal(DEFAULT_OFFICE_RADIUS_METERS, 75);
+test('default office geofence uses an 80m radius with the existing 75m accuracy limit', () => {
+  assert.equal(DEFAULT_OFFICE_RADIUS_METERS, 80);
 
   const office = {
     latitude: 5.6037168,
@@ -197,7 +197,7 @@ test('default office geofence uses a 75m radius with the existing 75m accuracy l
   const inside = validateAttendanceLocation({
     evidence: {
       accuracy: 20,
-      latitude: 5.6043768,
+      latitude: 5.6044268,
       longitude: -0.1869644,
       timestamp: '2026-05-05T08:44:45.000Z',
     },
@@ -207,12 +207,12 @@ test('default office geofence uses a 75m radius with the existing 75m accuracy l
 
   assert.equal(inside.ok, true);
   assert.equal(inside.result, 'LOCATION_VERIFIED');
-  assert.ok(inside.distanceMeters <= 75);
+  assert.ok(inside.distanceMeters <= 80);
 
   const outside = validateAttendanceLocation({
     evidence: {
       accuracy: 20,
-      latitude: 5.6044068,
+      latitude: 5.6044568,
       longitude: -0.1869644,
       timestamp: '2026-05-05T08:44:45.000Z',
     },

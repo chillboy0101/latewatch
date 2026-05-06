@@ -93,7 +93,7 @@ export const officeLocation = pgTable('office_location', {
   name: text('name').notNull().default('Office Location'),
   latitude: decimal('latitude', { precision: 10, scale: 7 }).notNull(),
   longitude: decimal('longitude', { precision: 10, scale: 7 }).notNull(),
-  radiusMeters: integer('radius_meters').notNull().default(75),
+  radiusMeters: integer('radius_meters').notNull().default(80),
   maxAccuracyMeters: integer('max_accuracy_meters').notNull().default(75),
   locationKind: text('location_kind').notNull().default('default'),
   googlePlaceId: text('google_place_id'),
