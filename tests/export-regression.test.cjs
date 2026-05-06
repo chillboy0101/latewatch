@@ -232,8 +232,9 @@ test('weekly export fills a full working week with entries and totals', async ()
   assert.ok(sheet.getCell(4, 2).value instanceof Date);
   assert.equal(sheet.getCell(4, 3).value, 20);
   assert.equal(sheet.getCell(4, 4).value, 'Late arrival');
-  assert.deepEqual(sheet.getCell(95, 2).value, { formula: 'SUM(C4,C22,C40,C58,C76)' });
-  assert.deepEqual(sheet.getCell(110, 2).value, { formula: 'SUM(B95:B96)' });
+  assert.deepEqual(sheet.getCell(95, 2).value, { formula: 'SUM(C4,C22,C40,C58,C76)', result: 20 });
+  assert.deepEqual(sheet.getCell(96, 2).value, { formula: 'SUM(C5,C23,C41,C59,C77)' });
+  assert.deepEqual(sheet.getCell(110, 2).value, { formula: 'SUM(B95:B96)', result: 20 });
 });
 
 test('weekly export includes archived staff only when they have historical entries', async () => {
@@ -290,8 +291,31 @@ test('monthly export creates correct May 2026 sheets and preserves partial week 
   assert.equal(week2.getCell(1, 1).value, 'MONDAY, 4TH MAY 2026');
   assert.equal(week2.getCell(73, 1).value, 'FRIDAY, 8TH MAY 2026');
   assert.equal(fillArgb(week2.getCell(1, 1)), 'FFC0C0C0');
+  assert.deepEqual(week2.getCell(95, 2).value, { formula: 'SUM(C4,C22,C40,C58,C76)' });
 
   assert.equal(week5.name, 'Week 5 May 25-May 29');
+});
+
+test('monthly export preserves visible cached weekly penalty totals', async () => {
+  resetFixture({
+    entries: [
+      {
+        arrivalTime: '09:20',
+        computedAmount: '20.00',
+        date: '2026-05-04',
+        reason: 'Late arrival',
+        staffId: 'staff-1',
+      },
+    ],
+    staffRows: activeStaff,
+  });
+
+  const workbook = await buildMayMonthlyWorkbook();
+  const week2 = workbook.worksheets[1];
+
+  assert.equal(week2.name, 'Week 2 May 4-May 8');
+  assert.deepEqual(week2.getCell(95, 2).value, { formula: 'SUM(C4,C22,C40,C58,C76)', result: 20 });
+  assert.deepEqual(week2.getCell(110, 2).value, { formula: 'SUM(B95:B96)', result: 20 });
 });
 
 test('weekly export expands safely beyond the 15-row template roster', async () => {

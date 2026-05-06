@@ -233,6 +233,7 @@ export async function buildWeeklyWorkbook(
   for (const e of entries) {
     entryByStaffDate[`${e.staffId}:${e.date}`] = e;
   }
+  const weeklyTotalsByStaff = new Map<string, number>();
 
   // Load template
   const workbook = new ExcelJS.Workbook();
@@ -353,6 +354,9 @@ export async function buildWeeklyWorkbook(
       const staffId = orderedStaff[staffIdx].id;
       const entry = staffId ? entryByStaffDate[`${staffId}:${dateStr}`] : null;
       const amount = entry ? parseFloat(String(entry.computedAmount || '0')) : 0;
+      if (staffId && amount > 0) {
+        weeklyTotalsByStaff.set(staffId, (weeklyTotalsByStaff.get(staffId) || 0) + amount);
+      }
 
       // TIME (col 2)
       const timeCell = worksheet.getCell(row, 2);
@@ -387,15 +391,19 @@ export async function buildWeeklyWorkbook(
 
   // Write staff names into TOTAL section and set formulas
   const totalStart = layout.totalStart;
+  let weeklyGrandTotal = 0;
   for (let staffIdx = 0; staffIdx < orderedStaff.length; staffIdx++) {
     const row = totalStart + staffIdx;
     const name = orderedStaff[staffIdx].fullName;
+    const staffId = orderedStaff[staffIdx].id;
+    const staffWeeklyTotal = staffId ? weeklyTotalsByStaff.get(staffId) || 0 : 0;
+    weeklyGrandTotal += staffWeeklyTotal;
     worksheet.getCell(row, 1).value = name;
     const cRefs = validDays.map((day) => {
       const r = layout.dataStart[day.slot] + staffIdx;
       return `C${r}`;
     }).join(',');
-    worksheet.getCell(row, 2).value = cRefs ? { formula: `SUM(${cRefs})` } : 0;
+    worksheet.getCell(row, 2).value = cRefs ? { formula: `SUM(${cRefs})`, result: staffWeeklyTotal } : 0;
     worksheet.getCell(row, 2).numFmt = '"GHC "#,##0.00';
   }
 
@@ -404,12 +412,15 @@ export async function buildWeeklyWorkbook(
     formula: orderedStaff.length > 0
       ? `SUM(B${totalStart}:B${totalStart + orderedStaff.length - 1})`
       : '0',
+    result: weeklyGrandTotal,
   };
 
   // Set GHC currency format on TOTAL column B
   for (let r = totalStart; r <= layout.totalLabelRow; r++) {
     worksheet.getCell(r, 2).numFmt = '"GHC "#,##0.00';
   }
+
+  workbook.calcProperties.fullCalcOnLoad = true;
 
   return workbook;
 }

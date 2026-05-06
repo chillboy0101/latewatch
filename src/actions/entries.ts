@@ -61,6 +61,7 @@ export async function saveEntry(formData: FormData) {
   const { amount, reason } = computePenalty({
     arrivalTime: parsed.arrivalTime,
     didNotSignOut: parsed.didNotSignOut,
+    isAttendanceOnly: member?.isAttendanceOnly === true,
     isNssPersonnel: member?.isNssPersonnel === true,
     isHoliday: false,
   });
@@ -171,12 +172,14 @@ export async function bulkSaveEntries(entries: Array<{
   const staffRows = staffIds.length > 0
     ? await db.select({
         id: staffTable.id,
+        isAttendanceOnly: staffTable.isAttendanceOnly,
         isNssPersonnel: staffTable.isNssPersonnel,
       })
       .from(staffTable)
       .where(inArray(staffTable.id, staffIds))
     : [];
   const isNssByStaffId = new Map(staffRows.map((member) => [member.id, member.isNssPersonnel === true]));
+  const isAttendanceOnlyByStaffId = new Map(staffRows.map((member) => [member.id, member.isAttendanceOnly === true]));
 
   const results = [];
   
@@ -184,6 +187,7 @@ export async function bulkSaveEntries(entries: Array<{
     const { amount, reason } = computePenalty({
       arrivalTime: entry.arrivalTime,
       didNotSignOut: entry.didNotSignOut,
+      isAttendanceOnly: isAttendanceOnlyByStaffId.get(entry.staffId) === true,
       isNssPersonnel: isNssByStaffId.get(entry.staffId) === true,
       isHoliday: false,
     });

@@ -89,8 +89,14 @@ export async function POST(request: NextRequest) {
             // Copy formula if present (for formula cells like TOTAL section)
             const cellAny = cell as unknown as Record<string, unknown>;
             if (cellAny.formula) {
-              // For formula cells: value must be set as { formula: '...' } to preserve the formula
-              (newCell as unknown as Record<string, unknown>).value = { formula: cellAny.formula };
+              // Preserve cached results so Excel displays totals before recalculating.
+              const formulaValue: ExcelJS.CellFormulaValue = {
+                formula: String(cellAny.formula),
+              };
+              if ('result' in cellAny) {
+                formulaValue.result = cellAny.result as ExcelJS.CellFormulaValue['result'];
+              }
+              newCell.value = formulaValue;
             } else {
               newCell.value = cell.value as ExcelJS.CellValue;
             }
@@ -111,6 +117,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    combinedBook.calcProperties.fullCalcOnLoad = true;
     const buffer = await combinedBook.xlsx.writeBuffer();
 
     try {

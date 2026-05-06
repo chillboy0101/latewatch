@@ -2,9 +2,11 @@ import 'server-only';
 
 import { createClerkClient } from '@clerk/backend';
 import { normalizeStaffEmail } from '@/lib/staff-normalize';
+import { getSiteUrl } from '@/lib/site-metadata';
 
 type ClerkClient = ReturnType<typeof createClerkClient>;
 type ClerkUser = Awaited<ReturnType<ClerkClient['users']['getUser']>>;
+type OrganizationInvitation = Awaited<ReturnType<ClerkClient['organizations']['getOrganizationInvitationList']>>['data'][number];
 type OrganizationMembershipRole = Parameters<ClerkClient['organizations']['createOrganizationMembership']>[0]['role'];
 
 type SyncStaffIdentityInput = {
@@ -20,6 +22,7 @@ type UnlinkStaffIdentityInput = {
 };
 
 let cachedOrganizationId: string | null | undefined;
+const INVITATION_FLOW_VERSION = 'sign-up-ticket-v1';
 
 function getClerkClient() {
   if (!process.env.CLERK_SECRET_KEY) return null;
@@ -30,9 +33,12 @@ function getMemberRole() {
   return (process.env.CLERK_ORGANIZATION_MEMBER_ROLE || 'org:member') as OrganizationMembershipRole;
 }
 
-function getRedirectUrl() {
-  const configuredUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://latewatch.vercel.app';
-  return `${configuredUrl.replace(/\/+$/, '')}/check-in`;
+function getInvitationRedirectUrl() {
+  const searchParams = new URLSearchParams({
+    redirect_url: getSiteUrl('/check-in'),
+  });
+
+  return getSiteUrl(`/sign-up?${searchParams.toString()}`);
 }
 
 function asMetadata(metadata: unknown) {
@@ -49,9 +55,27 @@ function staffMetadata(input: SyncStaffIdentityInput) {
   };
 }
 
+function invitationPrivateMetadata(input: SyncStaffIdentityInput) {
+  return {
+    ...staffMetadata(input),
+    latewatchInvitationFlowVersion: INVITATION_FLOW_VERSION,
+  };
+}
+
 function ownsStaffRecord(user: ClerkUser, staffId: string) {
   return asMetadata(user.privateMetadata).latewatchStaffId === staffId
     || asMetadata(user.publicMetadata).latewatchStaffId === staffId;
+}
+
+function isCurrentInvitationForStaff(invitation: OrganizationInvitation, input: SyncStaffIdentityInput) {
+  const privateMetadata = asMetadata(invitation.privateMetadata);
+  const publicMetadata = asMetadata(invitation.publicMetadata);
+
+  return privateMetadata.latewatchInvitationFlowVersion === INVITATION_FLOW_VERSION
+    && (
+      privateMetadata.latewatchStaffId === input.staffId
+      || publicMetadata.latewatchStaffId === input.staffId
+    );
 }
 
 function isConflict(error: unknown) {
@@ -137,6 +161,8 @@ async function ensureInvitation(client: ClerkClient, organizationId: string, inp
   const email = normalizeStaffEmail(input.email);
   if (!email) return 'no_email';
 
+  let existingInvitations: OrganizationInvitation[] = [];
+
   try {
     const invitations = await client.organizations.getOrganizationInvitationList({
       organizationId,
@@ -144,14 +170,27 @@ async function ensureInvitation(client: ClerkClient, organizationId: string, inp
       limit: 100,
     });
 
-    const existingInvitation = invitations.data.find(
+    existingInvitations = invitations.data.filter(
       (invitation) => invitation.emailAddress.toLowerCase() === email,
     );
-
-    if (existingInvitation) return 'invitation_exists';
   } catch (error) {
     console.warn('Failed to check existing Clerk organization invitations:', error);
   }
+
+  const currentInvitation = existingInvitations.find(
+    (invitation) => isCurrentInvitationForStaff(invitation, input),
+  );
+
+  if (currentInvitation) return 'invitation_exists';
+
+  await Promise.all(existingInvitations.map((invitation) => (
+    client.organizations.revokeOrganizationInvitation({
+      invitationId: invitation.id,
+      organizationId,
+    }).catch((error) => {
+      if (!isConflict(error)) throw error;
+    })
+  )));
 
   try {
     await client.organizations.createOrganizationInvitation({
@@ -159,11 +198,11 @@ async function ensureInvitation(client: ClerkClient, organizationId: string, inp
       expiresInDays: 30,
       inviterUserId: input.actorUserId || undefined,
       organizationId,
-      privateMetadata: staffMetadata(input),
+      privateMetadata: invitationPrivateMetadata(input),
       publicMetadata: {
         latewatchStaffId: input.staffId,
       },
-      redirectUrl: getRedirectUrl(),
+      redirectUrl: getInvitationRedirectUrl(),
       role: getMemberRole(),
     });
     return 'invitation_sent';

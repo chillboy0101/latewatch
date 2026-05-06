@@ -48,6 +48,21 @@ test('NSS personnel late penalty stays flat while staff keep the existing hourly
   );
 });
 
+test('attendance monitoring only staff are never charged penalties', () => {
+  assert.deepEqual(
+    computePenalty({ arrivalTime: '10:31', didNotSignOut: false, isHoliday: false, isAttendanceOnly: true }),
+    { amount: 0, reason: '' },
+  );
+  assert.deepEqual(
+    computePenalty({ arrivalTime: '10:31', didNotSignOut: true, isHoliday: false, isAttendanceOnly: true }),
+    { amount: 0, reason: '' },
+  );
+  assert.deepEqual(
+    computePenalty({ arrivalTime: null, didNotSignOut: true, isHoliday: false, isAttendanceOnly: true }),
+    { amount: 0, reason: '' },
+  );
+});
+
 test('office network audit display includes the saved network IP', () => {
   const record = {
     afterJson: { allowedIp: '192.0.2.15', name: 'Office WiFi' },

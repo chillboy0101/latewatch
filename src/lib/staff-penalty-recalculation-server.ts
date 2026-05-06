@@ -15,6 +15,7 @@ type ActorRef = {
 type StaffRef = {
   fullName: string;
   id: string;
+  isAttendanceOnly: boolean;
   isNssPersonnel: boolean;
 };
 
@@ -36,6 +37,7 @@ export async function recalculateStaffStoredPenalties(input: {
   ]);
   const plan = planStaffPenaltyRecalculation({
     attendanceRecords: attendanceRows,
+    isAttendanceOnly: input.staffMember.isAttendanceOnly,
     isNssPersonnel: input.staffMember.isNssPersonnel,
     latenessEntries: latenessRows,
     permissions: permissionRows,
@@ -69,6 +71,7 @@ export async function recalculateStaffStoredPenalties(input: {
         ...updated,
         staff: {
           fullName: input.staffMember.fullName,
+          isAttendanceOnly: input.staffMember.isAttendanceOnly,
           isNssPersonnel: input.staffMember.isNssPersonnel,
         },
       },
@@ -103,6 +106,7 @@ export async function recalculateStaffStoredPenalties(input: {
         ...updated,
         staff: {
           fullName: input.staffMember.fullName,
+          isAttendanceOnly: input.staffMember.isAttendanceOnly,
           isNssPersonnel: input.staffMember.isNssPersonnel,
         },
       },
@@ -129,6 +133,7 @@ export async function recalculateStaffStoredPenalties(input: {
         ...created,
         staff: {
           fullName: input.staffMember.fullName,
+          isAttendanceOnly: input.staffMember.isAttendanceOnly,
           isNssPersonnel: input.staffMember.isNssPersonnel,
         },
       },
@@ -152,6 +157,7 @@ export async function recalculateStaffStoredPenalties(input: {
             ...before,
             staff: {
               fullName: input.staffMember.fullName,
+              isAttendanceOnly: input.staffMember.isAttendanceOnly,
               isNssPersonnel: input.staffMember.isNssPersonnel,
             },
           }

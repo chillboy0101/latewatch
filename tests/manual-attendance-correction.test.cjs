@@ -89,3 +89,27 @@ test('manual attendance correction applies the NSS flat late penalty', () => {
     status: 'late',
   });
 });
+
+test('manual attendance correction clears penalties for attendance monitoring only staff', () => {
+  const correction = resolveManualAttendanceCorrection({
+    attendance: {
+      checkInAt: new Date('2026-05-06T10:31:00.000Z'),
+      checkInTime: '10:31:00',
+      computedAmount: '20.00',
+      reason: "DIDN'T COME BEFORE 8:30AM",
+      status: 'late',
+    },
+    arrivalTime: '10:31',
+    date: '2026-05-06',
+    didNotSignOut: true,
+    isAttendanceOnly: true,
+  });
+
+  assert.deepEqual(correction, {
+    checkInAt: new Date('2026-05-06T10:31:00.000Z'),
+    checkInTime: '10:31',
+    computedAmount: '0.00',
+    reason: null,
+    status: 'present',
+  });
+});

@@ -90,6 +90,7 @@ function approvedLateArrivalReason(permission: PermissionLike) {
 function resolvePenaltyState(input: {
   arrivalTime: string | null;
   didNotSignOut: boolean;
+  isAttendanceOnly: boolean;
   isNssPersonnel: boolean;
   permission: PermissionLike | null;
 }): PenaltyState {
@@ -105,6 +106,7 @@ function resolvePenaltyState(input: {
       ? computePenalty({
           arrivalTime: null,
           didNotSignOut: true,
+          isAttendanceOnly: input.isAttendanceOnly,
           isNssPersonnel: input.isNssPersonnel,
           isHoliday: false,
         })
@@ -125,6 +127,7 @@ function resolvePenaltyState(input: {
   const penalty = computePenalty({
     arrivalTime: input.arrivalTime,
     didNotSignOut: input.didNotSignOut,
+    isAttendanceOnly: input.isAttendanceOnly,
     isNssPersonnel: input.isNssPersonnel,
     isHoliday: false,
   });
@@ -154,6 +157,7 @@ function entryNeedsUpdate(entry: LatenessEntryLike, next: {
 
 export function planStaffPenaltyRecalculation(input: {
   attendanceRecords: AttendanceRecordLike[];
+  isAttendanceOnly?: boolean;
   isNssPersonnel: boolean;
   latenessEntries: LatenessEntryLike[];
   permissions: PermissionLike[];
@@ -177,6 +181,7 @@ export function planStaffPenaltyRecalculation(input: {
     const next = resolvePenaltyState({
       arrivalTime,
       didNotSignOut,
+      isAttendanceOnly: input.isAttendanceOnly === true,
       isNssPersonnel: input.isNssPersonnel,
       permission: permissionsByDate.get(date) || null,
     });
@@ -232,6 +237,7 @@ export function planStaffPenaltyRecalculation(input: {
     const next = resolvePenaltyState({
       arrivalTime: normalizeTime(entry.arrivalTime),
       didNotSignOut: entry.didNotSignOut === true,
+      isAttendanceOnly: input.isAttendanceOnly === true,
       isNssPersonnel: input.isNssPersonnel,
       permission: permissionsByDate.get(date) || null,
     });

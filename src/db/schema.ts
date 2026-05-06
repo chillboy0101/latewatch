@@ -13,6 +13,7 @@ export const staff = pgTable('staff', {
   department: text('department'),
   unit: text('unit'),
   isNssPersonnel: boolean('is_nss_personnel').default(false).notNull(),
+  isAttendanceOnly: boolean('is_attendance_only').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => [

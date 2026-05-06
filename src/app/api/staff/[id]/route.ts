@@ -16,6 +16,7 @@ type StaffUpdateBody = {
   department?: string | null;
   email?: string | null;
   fullName?: string;
+  isAttendanceOnly?: boolean;
   isNssPersonnel?: boolean;
   unit?: string | null;
 };
@@ -47,7 +48,7 @@ export async function PUT(
     const actor = await currentUser();
     const { id } = await params;
     const body = await request.json() as StaffUpdateBody;
-    const { fullName, email, department, unit, active, archived, isNssPersonnel } = body;
+    const { fullName, email, department, unit, active, archived, isAttendanceOnly, isNssPersonnel } = body;
 
     const updateData: Partial<typeof staff.$inferInsert> = { updatedAt: new Date() };
     if (fullName !== undefined) updateData.fullName = fullName.trim();
@@ -55,7 +56,10 @@ export async function PUT(
     if (department !== undefined) updateData.department = typeof department === 'string' && department.trim() ? department.trim() : null;
     if (unit !== undefined) updateData.unit = typeof unit === 'string' && unit.trim() ? unit.trim() : null;
     if (active !== undefined) updateData.active = active;
-    if (isNssPersonnel !== undefined) updateData.isNssPersonnel = isNssPersonnel === true;
+    if (isAttendanceOnly !== undefined) updateData.isAttendanceOnly = isAttendanceOnly === true;
+    if (isNssPersonnel !== undefined || isAttendanceOnly !== undefined) {
+      updateData.isNssPersonnel = isAttendanceOnly === true ? false : isNssPersonnel === true;
+    }
     if (archived !== undefined) {
       updateData.archived = archived;
       updateData.archivedAt = archived ? new Date() : null;
@@ -87,7 +91,16 @@ export async function PUT(
       ? normalizeStaffEmail(email)
       : previousEmail;
     const emailChanged = email !== undefined && previousEmail !== nextEmail;
-    const nssStatusChanged = isNssPersonnel !== undefined && before.isNssPersonnel !== (isNssPersonnel === true);
+    const nextIsAttendanceOnly = isAttendanceOnly !== undefined
+      ? isAttendanceOnly === true
+      : before.isAttendanceOnly === true;
+    const nextIsNssPersonnel = isNssPersonnel !== undefined || isAttendanceOnly !== undefined
+      ? isAttendanceOnly === true ? false : isNssPersonnel === true
+      : before.isNssPersonnel === true;
+    const penaltyTypeChanged = (
+      (isAttendanceOnly !== undefined && before.isAttendanceOnly !== nextIsAttendanceOnly) ||
+      ((isNssPersonnel !== undefined || isAttendanceOnly !== undefined) && before.isNssPersonnel !== nextIsNssPersonnel)
+    );
 
     const updated = await db.update(staff)
       .set(updateData)
@@ -113,7 +126,7 @@ export async function PUT(
       reason: 'staff',
     });
 
-    if (nssStatusChanged) {
+    if (penaltyTypeChanged) {
       await recalculateStaffStoredPenalties({
         actor: {
           email: actor?.emailAddresses[0]?.emailAddress,
@@ -123,6 +136,7 @@ export async function PUT(
         staffMember: {
           fullName: updated[0].fullName,
           id: updated[0].id,
+          isAttendanceOnly: updated[0].isAttendanceOnly,
           isNssPersonnel: updated[0].isNssPersonnel,
         },
       });

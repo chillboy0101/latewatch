@@ -5,6 +5,7 @@ import { WORKDAY_START_TIME } from '@/lib/work-hours';
 interface PenaltyInput {
   arrivalTime: string | null;  // HH:MM format
   didNotSignOut: boolean;
+  isAttendanceOnly?: boolean;
   isHoliday: boolean;
   isNssPersonnel?: boolean;
 }
@@ -19,6 +20,10 @@ export function computePenalty(input: PenaltyInput): PenaltyOutput {
   const BASE_PENALTY = 10;
   const HOURLY_INCREMENT = 5;
   const SIGN_OUT_PENALTY = 2;
+
+  if (input.isAttendanceOnly) {
+    return { amount: 0, reason: '' };
+  }
 
   // Holiday: no penalty, block entry
   if (input.isHoliday) {

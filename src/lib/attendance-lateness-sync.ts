@@ -36,6 +36,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     computedAmount: attendanceRecord.computedAmount,
     date: attendanceRecord.date,
     reason: attendanceRecord.reason,
+    isAttendanceOnly: staff.isAttendanceOnly,
     isNssPersonnel: staff.isNssPersonnel,
     staffId: attendanceRecord.staffId,
     staffName: staff.fullName,
@@ -53,6 +54,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
       const penalty = computePenalty({
         arrivalTime,
         didNotSignOut: false,
+        isAttendanceOnly: row.isAttendanceOnly === true,
         isNssPersonnel: row.isNssPersonnel === true,
         isHoliday: false,
       });
@@ -63,6 +65,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
         arrivalTime,
         date,
         reason: row.reason || penalty.reason || 'Late arrival',
+        isAttendanceOnly: row.isAttendanceOnly === true,
         isNssPersonnel: row.isNssPersonnel === true,
         staffId: row.staffId,
         shouldSync: isLate,
@@ -92,6 +95,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
       ? computePenalty({
           arrivalTime: candidate.arrivalTime,
           didNotSignOut: true,
+          isAttendanceOnly: candidate.isAttendanceOnly,
           isNssPersonnel: candidate.isNssPersonnel,
           isHoliday: false,
         })

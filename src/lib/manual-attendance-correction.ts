@@ -51,6 +51,7 @@ export function resolveManualAttendanceCorrection(input: {
   arrivalTime: string | null;
   date: string;
   didNotSignOut: boolean;
+  isAttendanceOnly?: boolean;
   isNssPersonnel?: boolean;
 }): ManualAttendanceCorrection {
   const currentArrivalTime = normalizeTime(input.attendance.checkInTime) || WORKDAY_START_TIME;
@@ -58,6 +59,7 @@ export function resolveManualAttendanceCorrection(input: {
   const nextPenalty = computePenalty({
     arrivalTime: nextArrivalTime,
     didNotSignOut: input.didNotSignOut,
+    isAttendanceOnly: input.isAttendanceOnly,
     isNssPersonnel: input.isNssPersonnel,
     isHoliday: false,
   });

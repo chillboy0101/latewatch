@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
       department: staff.department,
       unit: staff.unit,
       isNssPersonnel: staff.isNssPersonnel,
+      isAttendanceOnly: staff.isAttendanceOnly,
       createdAt: staff.createdAt,
       updatedAt: staff.updatedAt,
     })
@@ -57,7 +58,8 @@ export async function POST(request: Request) {
     const { fullName, email, department, unit } = body;
     const name = typeof fullName === 'string' ? fullName.trim() : '';
     const normalizedEmail = normalizeStaffEmail(email);
-    const isNssPersonnel = body?.isNssPersonnel === true;
+    const isAttendanceOnly = body?.isAttendanceOnly === true;
+    const isNssPersonnel = !isAttendanceOnly && body?.isNssPersonnel === true;
 
     if (!name) {
       return NextResponse.json({ error: 'Full name is required' }, { status: 400 });
@@ -95,6 +97,7 @@ export async function POST(request: Request) {
             email: normalizedEmail ?? existingStaff.email,
             department: normalizedDepartment ?? existingStaff.department,
             unit: normalizedUnit ?? existingStaff.unit,
+            isAttendanceOnly,
             isNssPersonnel,
             updatedAt: new Date(),
           })
@@ -135,6 +138,7 @@ export async function POST(request: Request) {
       email: normalizedEmail,
       department: normalizedDepartment,
       unit: normalizedUnit,
+      isAttendanceOnly,
       isNssPersonnel,
       active: true,
       archived: false,
