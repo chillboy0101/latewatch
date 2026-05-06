@@ -28,12 +28,13 @@ interface StaffMember {
   department: string | null;
   unit: string | null;
   isNssPersonnel: boolean;
+  isAttendanceOnly: boolean;
   active: boolean | null;
   archived: boolean | null;
   archivedAt?: string | null;
 }
 
-type StaffFilter = 'all' | 'active' | 'inactive' | 'former' | 'nss';
+type StaffFilter = 'all' | 'active' | 'inactive' | 'former' | 'nss' | 'attendanceOnly';
 
 export default function StaffPage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
@@ -58,6 +59,7 @@ export default function StaffPage() {
   const [newDepartment, setNewDepartment] = useState('');
   const [newUnit, setNewUnit] = useState('');
   const [newIsNssPersonnel, setNewIsNssPersonnel] = useState(false);
+  const [newIsAttendanceOnly, setNewIsAttendanceOnly] = useState(false);
 
   // Edit form state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -66,6 +68,7 @@ export default function StaffPage() {
   const [editDepartment, setEditDepartment] = useState('');
   const [editUnit, setEditUnit] = useState('');
   const [editIsNssPersonnel, setEditIsNssPersonnel] = useState(false);
+  const [editIsAttendanceOnly, setEditIsAttendanceOnly] = useState(false);
 
   const fetchStaff = useCallback(async () => {
     try {
@@ -123,6 +126,7 @@ export default function StaffPage() {
           email: newEmail.trim() || null,
           department: newDepartment.trim() || null,
           unit: newUnit.trim() || null,
+          isAttendanceOnly: newIsAttendanceOnly,
           isNssPersonnel: newIsNssPersonnel,
         }),
       });
@@ -142,6 +146,7 @@ export default function StaffPage() {
         setNewDepartment('');
         setNewUnit('');
         setNewIsNssPersonnel(false);
+        setNewIsAttendanceOnly(false);
         setSubmitMessage('');
         setIsAddDialogOpen(false);
       } else {
@@ -254,6 +259,7 @@ export default function StaffPage() {
           email: editEmail.trim() || null,
           department: editDepartment.trim() || null,
           unit: editUnit.trim() || null,
+          isAttendanceOnly: editIsAttendanceOnly,
           isNssPersonnel: editIsNssPersonnel,
         }),
       });
@@ -323,6 +329,7 @@ export default function StaffPage() {
     setEditDepartment(member.department || '');
     setEditUnit(member.unit || '');
     setEditIsNssPersonnel(member.isNssPersonnel === true);
+    setEditIsAttendanceOnly(member.isAttendanceOnly === true);
   };
 
   const searchTokens = searchTerm
@@ -337,6 +344,7 @@ export default function StaffPage() {
         if (staffFilter === 'inactive') return !s.active && !s.archived;
         if (staffFilter === 'former') return s.archived;
         if (staffFilter === 'nss') return s.isNssPersonnel === true;
+        if (staffFilter === 'attendanceOnly') return s.isAttendanceOnly === true;
         return true;
       })
     : [];
@@ -351,7 +359,7 @@ export default function StaffPage() {
           s.email || '',
           s.department || '',
           s.unit || '',
-          s.isNssPersonnel ? 'nss national service personnel' : 'staff',
+          s.isAttendanceOnly ? 'attendance monitoring only no penalty' : s.isNssPersonnel ? 'nss national service personnel' : 'staff',
         ].join(' ').toLowerCase();
 
         return searchTokens.every((token) => searchable.includes(token));
@@ -362,11 +370,13 @@ export default function StaffPage() {
   const inactiveCount = staff.filter((s) => !s.active && !s.archived).length;
   const formerCount = staff.filter((s) => s.archived).length;
   const nssCount = staff.filter((s) => s.isNssPersonnel === true).length;
+  const attendanceOnlyCount = staff.filter((s) => s.isAttendanceOnly === true).length;
   const totalDisplay = loading ? '-' : staff.length.toString();
   const activeDisplay = loading ? '-' : activeCount.toString();
   const inactiveDisplay = loading ? '-' : inactiveCount.toString();
   const formerDisplay = loading ? '-' : formerCount.toString();
   const nssDisplay = loading ? '-' : nssCount.toString();
+  const attendanceOnlyDisplay = loading ? '-' : attendanceOnlyCount.toString();
   const staffFilterCards: Array<{
     key: StaffFilter;
     label: string;
@@ -378,8 +388,15 @@ export default function StaffPage() {
     { key: 'inactive', label: 'Inactive', value: inactiveDisplay, valueClassName: 'text-muted-foreground' },
     { key: 'former', label: 'Former Personnel', value: formerDisplay, valueClassName: 'text-warning' },
     { key: 'nss', label: 'NSS Personnel', value: nssDisplay, valueClassName: 'text-primary' },
+    { key: 'attendanceOnly', label: 'Monitoring Only', value: attendanceOnlyDisplay, valueClassName: 'text-success' },
   ];
   const activeFilterLabel = staffFilterCards.find((card) => card.key === staffFilter)?.label || 'staff';
+  const regularFilteredStaff = filteredStaff.filter((member) => member.isAttendanceOnly !== true);
+  const attendanceOnlyFilteredStaff = filteredStaff.filter((member) => member.isAttendanceOnly === true);
+  const tableSections = [
+    { key: 'regular', members: regularFilteredStaff, title: 'Staff' },
+    { key: 'attendanceOnly', members: attendanceOnlyFilteredStaff, title: 'Attendance Monitoring Only' },
+  ].filter((section) => section.members.length > 0);
 
   return (
     <DashboardLayout title="Staff">
@@ -487,6 +504,7 @@ export default function StaffPage() {
                 <label className="flex items-start gap-3 rounded-md border border-border p-3 text-sm">
                   <Checkbox
                     checked={newIsNssPersonnel}
+                    disabled={newIsAttendanceOnly}
                     onCheckedChange={(checked) => setNewIsNssPersonnel(checked === true)}
                     className="mt-0.5"
                   />
@@ -494,6 +512,23 @@ export default function StaffPage() {
                     <span className="font-medium">NSS personnel</span>
                     <span className="mt-1 block text-muted-foreground">
                       Late arrival penalty stays at GHC 10 for this person.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 rounded-md border border-border p-3 text-sm">
+                  <Checkbox
+                    checked={newIsAttendanceOnly}
+                    onCheckedChange={(checked) => {
+                      const isChecked = checked === true;
+                      setNewIsAttendanceOnly(isChecked);
+                      if (isChecked) setNewIsNssPersonnel(false);
+                    }}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    <span className="font-medium">Attendance monitoring only</span>
+                    <span className="mt-1 block text-muted-foreground">
+                      Tracks check-in and check-out only. No late or sign-out penalty is charged.
                     </span>
                   </span>
                 </label>
@@ -551,7 +586,13 @@ export default function StaffPage() {
                 </div>
 
                 <div className="divide-y divide-border">
-                  {filteredStaff.map((member) => (
+                  {tableSections.map((section) => (
+                    <div key={section.key}>
+                      <div className="bg-muted/20 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        {section.title}
+                      </div>
+                      <div className="divide-y divide-border">
+                        {section.members.map((member) => (
                     <div key={member.id} className="transition-colors hover:bg-card/50">
                       {editingId === member.id ? (
                         <div className="space-y-4 px-4 py-4">
@@ -597,6 +638,7 @@ export default function StaffPage() {
                           <label className="flex w-fit items-start gap-3 rounded-md border border-border p-3 text-sm">
                             <Checkbox
                               checked={editIsNssPersonnel}
+                              disabled={editIsAttendanceOnly}
                               onCheckedChange={(checked) => setEditIsNssPersonnel(checked === true)}
                               className="mt-0.5"
                             />
@@ -604,6 +646,23 @@ export default function StaffPage() {
                               <span className="font-medium">NSS personnel</span>
                               <span className="mt-1 block text-muted-foreground">
                                 Late arrival penalty stays at GHC 10 for this person.
+                              </span>
+                            </span>
+                          </label>
+                          <label className="flex w-fit items-start gap-3 rounded-md border border-border p-3 text-sm">
+                            <Checkbox
+                              checked={editIsAttendanceOnly}
+                              onCheckedChange={(checked) => {
+                                const isChecked = checked === true;
+                                setEditIsAttendanceOnly(isChecked);
+                                if (isChecked) setEditIsNssPersonnel(false);
+                              }}
+                              className="mt-0.5"
+                            />
+                            <span>
+                              <span className="font-medium">Attendance monitoring only</span>
+                              <span className="mt-1 block text-muted-foreground">
+                                Tracks attendance only. No penalties are charged.
                               </span>
                             </span>
                           </label>
@@ -628,7 +687,7 @@ export default function StaffPage() {
                           <StaffField label="Login Email" value={member.email || 'Not linked'} muted={!member.email} />
                           <StaffField label="Department" value={member.department || '-'} />
                           <StaffField label="Unit" value={member.unit || '-'} />
-                          <StaffField label="Type" value={member.isNssPersonnel ? 'NSS' : 'Staff'} />
+                          <StaffField label="Type" value={member.isAttendanceOnly ? 'Monitoring only' : member.isNssPersonnel ? 'NSS' : 'Staff'} />
                           <div className="min-w-0">
                             <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground xl:hidden">Status</p>
                             <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getStaffStatusClass(member)}`}>
@@ -719,6 +778,9 @@ export default function StaffPage() {
                           </div>
                         </div>
                       )}
+                    </div>
+                        ))}
+                      </div>
                     </div>
                   ))}
                   {filteredStaff.length === 0 && (

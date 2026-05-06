@@ -19,13 +19,14 @@ export async function getStaff() {
   return staff;
 }
 
-export async function createStaff(data: { fullName: string; department?: string; isNssPersonnel?: boolean; unit?: string }) {
+export async function createStaff(data: { fullName: string; department?: string; isAttendanceOnly?: boolean; isNssPersonnel?: boolean; unit?: string }) {
   const user = await requireRole(['admin']);
   
   const newStaff = await db.insert(staffTable).values({
     fullName: data.fullName,
     department: data.department,
-    isNssPersonnel: data.isNssPersonnel === true,
+    isAttendanceOnly: data.isAttendanceOnly === true,
+    isNssPersonnel: data.isAttendanceOnly === true ? false : data.isNssPersonnel === true,
     unit: data.unit,
     active: true,
     archived: false,
@@ -48,7 +49,7 @@ export async function createStaff(data: { fullName: string; department?: string;
   return newStaff[0];
 }
 
-export async function updateStaff(id: string, data: { fullName?: string; active?: boolean; archived?: boolean; department?: string; isNssPersonnel?: boolean; unit?: string }) {
+export async function updateStaff(id: string, data: { fullName?: string; active?: boolean; archived?: boolean; department?: string; isAttendanceOnly?: boolean; isNssPersonnel?: boolean; unit?: string }) {
   const user = await requireRole(['admin']);
 
   const before = await db.query.staff.findFirst({
@@ -61,6 +62,11 @@ export async function updateStaff(id: string, data: { fullName?: string; active?
   
   const updateData = {
     ...data,
+    ...(typeof data.isAttendanceOnly === 'boolean' || typeof data.isNssPersonnel === 'boolean'
+      ? {
+          isNssPersonnel: data.isAttendanceOnly === true ? false : data.isNssPersonnel === true,
+        }
+      : {}),
     ...(typeof data.archived === 'boolean'
       ? {
           active: data.archived ? false : true,
