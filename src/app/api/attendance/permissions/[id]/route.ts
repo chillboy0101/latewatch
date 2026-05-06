@@ -27,7 +27,11 @@ export async function DELETE(
       return NextResponse.json({ error: 'Permission record not found' }, { status: 404 });
     }
 
-    const [member] = await db.select({ fullName: staff.fullName, id: staff.id })
+    const [member] = await db.select({
+      fullName: staff.fullName,
+      id: staff.id,
+      isNssPersonnel: staff.isNssPersonnel,
+    })
       .from(staff)
       .where(eq(staff.id, before.staffId))
       .limit(1);
@@ -61,7 +65,11 @@ export async function DELETE(
         actor: { email: actorEmail, id: user.id },
         date: before.date,
         reason: 'attendance-permission-deleted',
-        staffMember: { fullName: member.fullName, id: member.id },
+        staffMember: {
+          fullName: member.fullName,
+          id: member.id,
+          isNssPersonnel: member.isNssPersonnel,
+        },
       });
     }
 

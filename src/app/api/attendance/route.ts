@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
         email: staff.email,
         department: staff.department,
         unit: staff.unit,
+        isNssPersonnel: staff.isNssPersonnel,
         active: staff.active,
         archived: staff.archived,
       })

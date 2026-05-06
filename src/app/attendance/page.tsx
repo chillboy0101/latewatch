@@ -41,6 +41,7 @@ interface AttendanceRow {
     email: string | null;
     department: string | null;
     unit: string | null;
+    isNssPersonnel?: boolean | null;
   };
   attendance: {
     id: string;

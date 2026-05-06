@@ -59,6 +59,7 @@ function resetFixture() {
       fullName: 'CARL CHRISTIAN QUIST',
       active: true,
       archived: false,
+      isNssPersonnel: false,
     },
   ];
   fixture.workCalendar = [];
@@ -133,7 +134,7 @@ const schema = {
   attendanceRecord: createTable('attendanceRecord', ['id', 'staffId', 'date']),
   entrySubmission: createTable('entrySubmission', ['date']),
   latenessEntry: createTable('latenessEntry', ['id', 'date']),
-  staff: createTable('staff', ['id', 'fullName', 'active', 'archived']),
+  staff: createTable('staff', ['id', 'fullName', 'active', 'archived', 'isNssPersonnel']),
   workCalendar: createTable('workCalendar', ['date', 'isHoliday']),
 };
 
@@ -267,4 +268,29 @@ test('saving a corrected lateness entry also updates the linked attendance recor
   assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
   assert.equal(fixture.attendanceRecord[0].reason, null);
   assert.equal(fixture.attendanceRecord[0].status, 'present');
+});
+
+test('saving a lateness entry uses the NSS flat late penalty', async () => {
+  resetFixture();
+  fixture.staff[0].isNssPersonnel = true;
+
+  const response = await POST(new Request('http://localhost/api/entries', {
+    body: JSON.stringify({
+      date: '2026-05-06',
+      entries: [
+        {
+          arrivalTime: '10:31',
+          didNotSignOut: false,
+          staffId: 'staff-1',
+        },
+      ],
+    }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(fixture.latenessEntry.length, 1);
+  assert.equal(fixture.latenessEntry[0].computedAmount, '10');
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '10.00');
 });

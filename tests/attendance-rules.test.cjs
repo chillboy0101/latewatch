@@ -33,6 +33,21 @@ test('attendance rules use 8:30 AM as the lateness cutoff and close after 5:00 P
   assert.equal(isAfterWorkdayEnd('17:01:00'), true);
 });
 
+test('NSS personnel late penalty stays flat while staff keep the existing hourly rule', () => {
+  assert.deepEqual(
+    computePenalty({ arrivalTime: '10:31', didNotSignOut: false, isHoliday: false }),
+    { amount: 20, reason: 'DIDN\'T COME BEFORE 8:30AM' },
+  );
+  assert.deepEqual(
+    computePenalty({ arrivalTime: '10:31', didNotSignOut: false, isHoliday: false, isNssPersonnel: true }),
+    { amount: 10, reason: 'DIDN\'T COME BEFORE 8:30AM' },
+  );
+  assert.deepEqual(
+    computePenalty({ arrivalTime: '10:31', didNotSignOut: true, isHoliday: false, isNssPersonnel: true }),
+    { amount: 12, reason: 'DIDN\'T COME BEFORE 8:30AM AND DID NOT SIGN OUT' },
+  );
+});
+
 test('office network audit display includes the saved network IP', () => {
   const record = {
     afterJson: { allowedIp: '192.0.2.15', name: 'Office WiFi' },

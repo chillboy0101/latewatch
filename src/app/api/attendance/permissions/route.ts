@@ -86,6 +86,7 @@ export async function POST(request: NextRequest) {
       email: staff.email,
       fullName: staff.fullName,
       id: staff.id,
+      isNssPersonnel: staff.isNssPersonnel,
     })
       .from(staff)
       .where(and(eq(staff.id, staffId), eq(staff.archived, false)))
@@ -150,7 +151,11 @@ export async function POST(request: NextRequest) {
       actor: { email: actorEmail, id: user.id },
       date,
       reason: 'attendance-permission',
-      staffMember: { fullName: member.fullName, id: member.id },
+      staffMember: {
+        fullName: member.fullName,
+        id: member.id,
+        isNssPersonnel: member.isNssPersonnel,
+      },
     });
 
     publishRealtime('dashboard', 'invalidate', { reason: 'attendance-permission' });

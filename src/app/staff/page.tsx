@@ -27,6 +27,7 @@ interface StaffMember {
   email: string | null;
   department: string | null;
   unit: string | null;
+  isNssPersonnel: boolean;
   active: boolean | null;
   archived: boolean | null;
   archivedAt?: string | null;
@@ -56,6 +57,7 @@ export default function StaffPage() {
   const [newEmail, setNewEmail] = useState('');
   const [newDepartment, setNewDepartment] = useState('');
   const [newUnit, setNewUnit] = useState('');
+  const [newIsNssPersonnel, setNewIsNssPersonnel] = useState(false);
 
   // Edit form state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -63,6 +65,7 @@ export default function StaffPage() {
   const [editEmail, setEditEmail] = useState('');
   const [editDepartment, setEditDepartment] = useState('');
   const [editUnit, setEditUnit] = useState('');
+  const [editIsNssPersonnel, setEditIsNssPersonnel] = useState(false);
 
   const fetchStaff = useCallback(async () => {
     try {
@@ -120,6 +123,7 @@ export default function StaffPage() {
           email: newEmail.trim() || null,
           department: newDepartment.trim() || null,
           unit: newUnit.trim() || null,
+          isNssPersonnel: newIsNssPersonnel,
         }),
       });
 
@@ -137,6 +141,7 @@ export default function StaffPage() {
         setNewEmail('');
         setNewDepartment('');
         setNewUnit('');
+        setNewIsNssPersonnel(false);
         setSubmitMessage('');
         setIsAddDialogOpen(false);
       } else {
@@ -249,6 +254,7 @@ export default function StaffPage() {
           email: editEmail.trim() || null,
           department: editDepartment.trim() || null,
           unit: editUnit.trim() || null,
+          isNssPersonnel: editIsNssPersonnel,
         }),
       });
 
@@ -316,6 +322,7 @@ export default function StaffPage() {
     setEditEmail(member.email || '');
     setEditDepartment(member.department || '');
     setEditUnit(member.unit || '');
+    setEditIsNssPersonnel(member.isNssPersonnel === true);
   };
 
   const searchTokens = searchTerm
@@ -343,6 +350,7 @@ export default function StaffPage() {
           s.email || '',
           s.department || '',
           s.unit || '',
+          s.isNssPersonnel ? 'nss national service personnel' : 'staff',
         ].join(' ').toLowerCase();
 
         return searchTokens.every((token) => searchable.includes(token));
@@ -472,6 +480,19 @@ export default function StaffPage() {
                     />
                   </div>
                 </div>
+                <label className="flex items-start gap-3 rounded-md border border-border p-3 text-sm">
+                  <Checkbox
+                    checked={newIsNssPersonnel}
+                    onCheckedChange={(checked) => setNewIsNssPersonnel(checked === true)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    <span className="font-medium">NSS personnel</span>
+                    <span className="mt-1 block text-muted-foreground">
+                      Late arrival penalty stays at GHC 10 for this person.
+                    </span>
+                  </span>
+                </label>
                 {submitMessage && (
                   <p className={`text-sm font-medium ${submitMessage.includes('success') ? 'text-success' : 'text-danger'}`}>
                     {submitMessage}
@@ -515,11 +536,12 @@ export default function StaffPage() {
           ) : (
             <>
               <div>
-                <div className="hidden grid-cols-[1.15fr_1.2fr_.8fr_.7fr_.65fr_1.6fr] gap-4 border-b border-border bg-card px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground xl:grid">
+                <div className="hidden grid-cols-[1.1fr_1.15fr_.75fr_.65fr_.55fr_.65fr_1.55fr] gap-4 border-b border-border bg-card px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground xl:grid">
                   <div>Name</div>
                   <div>Login Email</div>
                   <div>Department</div>
                   <div>Unit</div>
+                  <div>Type</div>
                   <div>Status</div>
                   <div className="text-right">Actions</div>
                 </div>
@@ -568,6 +590,19 @@ export default function StaffPage() {
                               />
                             </div>
                           </div>
+                          <label className="flex w-fit items-start gap-3 rounded-md border border-border p-3 text-sm">
+                            <Checkbox
+                              checked={editIsNssPersonnel}
+                              onCheckedChange={(checked) => setEditIsNssPersonnel(checked === true)}
+                              className="mt-0.5"
+                            />
+                            <span>
+                              <span className="font-medium">NSS personnel</span>
+                              <span className="mt-1 block text-muted-foreground">
+                                Late arrival penalty stays at GHC 10 for this person.
+                              </span>
+                            </span>
+                          </label>
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <span className={`inline-flex w-fit items-center rounded-full px-2 py-1 text-xs font-medium ${getStaffStatusClass(member)}`}>
                               {getStaffStatusLabel(member)}
@@ -584,11 +619,12 @@ export default function StaffPage() {
                           </div>
                         </div>
                       ) : (
-                        <div className="grid gap-3 px-4 py-4 xl:grid-cols-[1.15fr_1.2fr_.8fr_.7fr_.65fr_1.6fr] xl:items-center">
+                        <div className="grid gap-3 px-4 py-4 xl:grid-cols-[1.1fr_1.15fr_.75fr_.65fr_.55fr_.65fr_1.55fr] xl:items-center">
                           <StaffField label="Name" value={member.fullName} strong />
                           <StaffField label="Login Email" value={member.email || 'Not linked'} muted={!member.email} />
                           <StaffField label="Department" value={member.department || '-'} />
                           <StaffField label="Unit" value={member.unit || '-'} />
+                          <StaffField label="Type" value={member.isNssPersonnel ? 'NSS' : 'Staff'} />
                           <div className="min-w-0">
                             <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground xl:hidden">Status</p>
                             <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getStaffStatusClass(member)}`}>

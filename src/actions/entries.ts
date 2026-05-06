@@ -3,13 +3,13 @@
 
 import { requireRole } from '@/lib/auth/roles';
 import { db } from '@/db';
-import { latenessEntry } from '@/db/schema';
+import { latenessEntry, staff as staffTable } from '@/db/schema';
 import { updateTag } from 'next/cache';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { z } from 'zod';
 import { computePenalty } from '@/lib/penalty-calculator';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 
 const entrySchema = z.object({
   staffId: z.string().uuid(),
@@ -53,10 +53,15 @@ export async function saveEntry(formData: FormData) {
     throw new Error('Cannot create entry for holiday');
   }
 
+  const member = await db.query.staff.findFirst({
+    where: (staff, { eq }) => eq(staff.id, parsed.staffId),
+  });
+
   // Compute penalty
   const { amount, reason } = computePenalty({
     arrivalTime: parsed.arrivalTime,
     didNotSignOut: parsed.didNotSignOut,
+    isNssPersonnel: member?.isNssPersonnel === true,
     isHoliday: false,
   });
 
@@ -162,12 +167,24 @@ export async function bulkSaveEntries(entries: Array<{
     throw new Error('Cannot create entries for holiday');
   }
   
+  const staffIds = Array.from(new Set(entries.map((entry) => entry.staffId)));
+  const staffRows = staffIds.length > 0
+    ? await db.select({
+        id: staffTable.id,
+        isNssPersonnel: staffTable.isNssPersonnel,
+      })
+      .from(staffTable)
+      .where(inArray(staffTable.id, staffIds))
+    : [];
+  const isNssByStaffId = new Map(staffRows.map((member) => [member.id, member.isNssPersonnel === true]));
+
   const results = [];
   
   for (const entry of entries) {
     const { amount, reason } = computePenalty({
       arrivalTime: entry.arrivalTime,
       didNotSignOut: entry.didNotSignOut,
+      isNssPersonnel: isNssByStaffId.get(entry.staffId) === true,
       isHoliday: false,
     });
     

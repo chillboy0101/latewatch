@@ -12,6 +12,7 @@ export async function POST() {
     await db.execute(sql`ALTER TABLE staff ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT false`);
     await db.execute(sql`ALTER TABLE staff ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP`);
     await db.execute(sql`ALTER TABLE staff ADD COLUMN IF NOT EXISTS email TEXT`);
+    await db.execute(sql`ALTER TABLE staff ADD COLUMN IF NOT EXISTS is_nss_personnel BOOLEAN DEFAULT false NOT NULL`);
     await db.execute(sql`UPDATE staff SET archived = false WHERE archived IS NULL`);
     await db.execute(sql`
       CREATE UNIQUE INDEX IF NOT EXISTS staff_email_unique_idx

@@ -15,6 +15,7 @@ type StaffUpdateBody = {
   department?: string | null;
   email?: string | null;
   fullName?: string;
+  isNssPersonnel?: boolean;
   unit?: string | null;
 };
 
@@ -45,7 +46,7 @@ export async function PUT(
     const actor = await currentUser();
     const { id } = await params;
     const body = await request.json() as StaffUpdateBody;
-    const { fullName, email, department, unit, active, archived } = body;
+    const { fullName, email, department, unit, active, archived, isNssPersonnel } = body;
 
     const updateData: Partial<typeof staff.$inferInsert> = { updatedAt: new Date() };
     if (fullName !== undefined) updateData.fullName = fullName.trim();
@@ -53,6 +54,7 @@ export async function PUT(
     if (department !== undefined) updateData.department = typeof department === 'string' && department.trim() ? department.trim() : null;
     if (unit !== undefined) updateData.unit = typeof unit === 'string' && unit.trim() ? unit.trim() : null;
     if (active !== undefined) updateData.active = active;
+    if (isNssPersonnel !== undefined) updateData.isNssPersonnel = isNssPersonnel === true;
     if (archived !== undefined) {
       updateData.archived = archived;
       updateData.archivedAt = archived ? new Date() : null;

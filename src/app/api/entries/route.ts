@@ -115,8 +115,10 @@ export async function POST(request: NextRequest) {
       fullName: staff.fullName,
       active: staff.active,
       archived: staff.archived,
+      isNssPersonnel: staff.isNssPersonnel,
     }).from(staff);
     const staffMap = new Map(staffList.map(s => [s.id, s.fullName]));
+    const staffPenaltyMap = new Map(staffList.map((s) => [s.id, s.isNssPersonnel === true]));
     const activeStaffIds = new Set(
       staffList
         .filter((s) => s.active === true && s.archived !== true)
@@ -149,6 +151,7 @@ export async function POST(request: NextRequest) {
       const penalty = computePenalty({
         arrivalTime,
         didNotSignOut,
+        isNssPersonnel: staffPenaltyMap.get(entry.staffId) === true,
         isHoliday: false,
       });
 
@@ -162,6 +165,7 @@ export async function POST(request: NextRequest) {
           arrivalTime,
           date,
           didNotSignOut,
+          isNssPersonnel: staffPenaltyMap.get(entry.staffId) === true,
         });
 
         if (manualAttendanceCorrectionChanged({

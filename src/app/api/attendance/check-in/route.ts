@@ -1077,6 +1077,7 @@ export async function POST(request: NextRequest) {
     const rawPenalty = computePenalty({
       arrivalTime: checkInTime,
       didNotSignOut: false,
+      isNssPersonnel: staffMember.isNssPersonnel === true,
       isHoliday: false,
     });
     const hasActiveLatePermission = isPermissionWindowActive(permission, checkInTime);

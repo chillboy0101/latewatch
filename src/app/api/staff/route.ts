@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
       archivedAt: staff.archivedAt,
       department: staff.department,
       unit: staff.unit,
+      isNssPersonnel: staff.isNssPersonnel,
       createdAt: staff.createdAt,
       updatedAt: staff.updatedAt,
     })
@@ -56,6 +57,7 @@ export async function POST(request: Request) {
     const { fullName, email, department, unit } = body;
     const name = typeof fullName === 'string' ? fullName.trim() : '';
     const normalizedEmail = normalizeStaffEmail(email);
+    const isNssPersonnel = body?.isNssPersonnel === true;
 
     if (!name) {
       return NextResponse.json({ error: 'Full name is required' }, { status: 400 });
@@ -93,6 +95,7 @@ export async function POST(request: Request) {
             email: normalizedEmail ?? existingStaff.email,
             department: normalizedDepartment ?? existingStaff.department,
             unit: normalizedUnit ?? existingStaff.unit,
+            isNssPersonnel,
             updatedAt: new Date(),
           })
           .where(eq(staff.id, existingStaff.id))
@@ -132,6 +135,7 @@ export async function POST(request: Request) {
       email: normalizedEmail,
       department: normalizedDepartment,
       unit: normalizedUnit,
+      isNssPersonnel,
       active: true,
       archived: false,
       archivedAt: null,

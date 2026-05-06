@@ -51,12 +51,14 @@ export function resolveManualAttendanceCorrection(input: {
   arrivalTime: string | null;
   date: string;
   didNotSignOut: boolean;
+  isNssPersonnel?: boolean;
 }): ManualAttendanceCorrection {
   const currentArrivalTime = normalizeTime(input.attendance.checkInTime) || WORKDAY_START_TIME;
   const nextArrivalTime = input.arrivalTime || currentArrivalTime;
   const nextPenalty = computePenalty({
     arrivalTime: nextArrivalTime,
     didNotSignOut: input.didNotSignOut,
+    isNssPersonnel: input.isNssPersonnel,
     isHoliday: false,
   });
   const existingCheckInAt = parseExistingDate(input.attendance.checkInAt);

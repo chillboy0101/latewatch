@@ -16,6 +16,7 @@ type ActorRef = {
 type StaffRef = {
   fullName: string;
   id: string;
+  isNssPersonnel?: boolean | null;
 };
 
 type PermissionRecord = typeof attendancePermission.$inferSelect;
@@ -40,6 +41,7 @@ function resolveNextAttendanceState(input: {
   attendance: AttendanceRecord;
   existingLateness: LatenessRecord | null;
   permission: PermissionRecord | null;
+  staffMember: StaffRef;
 }) {
   const arrivalTime = normalizeTime(input.attendance.checkInTime);
   const didNotSignOut = input.existingLateness?.didNotSignOut === true;
@@ -52,7 +54,12 @@ function resolveNextAttendanceState(input: {
 
   if (permissionClearsLatePenalty && input.permission) {
     const signOutPenalty = didNotSignOut
-      ? computePenalty({ arrivalTime: null, didNotSignOut: true, isHoliday: false })
+      ? computePenalty({
+          arrivalTime: null,
+          didNotSignOut: true,
+          isNssPersonnel: input.staffMember.isNssPersonnel === true,
+          isHoliday: false,
+        })
       : { amount: 0, reason: '' };
     const pardonReason = approvedLateArrivalReason(input.permission);
 
@@ -70,6 +77,7 @@ function resolveNextAttendanceState(input: {
   const penalty = computePenalty({
     arrivalTime,
     didNotSignOut,
+    isNssPersonnel: input.staffMember.isNssPersonnel === true,
     isHoliday: false,
   });
 
@@ -113,6 +121,7 @@ export async function reconcileAttendanceForPermission(input: {
     attendance,
     existingLateness: existingLateness || null,
     permission: input.activePermission,
+    staffMember: input.staffMember,
   });
   const nextAmount = amountText(next.amount);
   const now = new Date();

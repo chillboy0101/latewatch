@@ -65,3 +65,27 @@ test('manual attendance correction keeps an on-time check-in but adds the no-sig
     status: 'late',
   });
 });
+
+test('manual attendance correction applies the NSS flat late penalty', () => {
+  const correction = resolveManualAttendanceCorrection({
+    attendance: {
+      checkInAt: new Date('2026-05-06T10:31:00.000Z'),
+      checkInTime: '10:31:00',
+      computedAmount: '20.00',
+      reason: "DIDN'T COME BEFORE 8:30AM",
+      status: 'late',
+    },
+    arrivalTime: '10:31',
+    date: '2026-05-06',
+    didNotSignOut: false,
+    isNssPersonnel: true,
+  });
+
+  assert.deepEqual(correction, {
+    checkInAt: new Date('2026-05-06T10:31:00.000Z'),
+    checkInTime: '10:31',
+    computedAmount: '10.00',
+    reason: "DIDN'T COME BEFORE 8:30AM",
+    status: 'late',
+  });
+});

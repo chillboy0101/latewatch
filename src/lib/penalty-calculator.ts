@@ -6,6 +6,7 @@ interface PenaltyInput {
   arrivalTime: string | null;  // HH:MM format
   didNotSignOut: boolean;
   isHoliday: boolean;
+  isNssPersonnel?: boolean;
 }
 
 interface PenaltyOutput {
@@ -49,7 +50,7 @@ export function computePenalty(input: PenaltyInput): PenaltyOutput {
 
     // Full hours completed (each 60-minute block after cutoff)
     const fullHoursLate = Math.floor(minutesLate / 60);
-    const hourly = HOURLY_INCREMENT * fullHoursLate;
+    const hourly = input.isNssPersonnel ? 0 : HOURLY_INCREMENT * fullHoursLate;
 
     let reason = 'DIDN\'T COME BEFORE 8:30AM';
     let total = base + hourly;

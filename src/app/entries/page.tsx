@@ -18,6 +18,7 @@ interface StaffMember {
   fullName: string;
   active?: boolean | null;
   archived?: boolean | null;
+  isNssPersonnel?: boolean | null;
 }
 
 interface Entry {
@@ -146,9 +147,11 @@ export default function EntriesPage() {
       prev.map((entry) => {
         if (entry.staffId === staffId) {
           const updated = { ...entry, [field]: value };
+          const member = staff.find((s) => s.id === staffId);
           const penalty = computePenalty({
             arrivalTime: updated.arrivalTime || null,
             didNotSignOut: updated.didNotSignOut,
+            isNssPersonnel: member?.isNssPersonnel === true,
             isHoliday,
           });
           return {
