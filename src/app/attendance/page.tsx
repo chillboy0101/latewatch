@@ -412,7 +412,7 @@ export default function AttendancePage() {
               margin: 0;
               min-height: 100vh;
             }
-            .sheet {
+          .sheet {
               border: 1px solid #dbe3ef;
               border-radius: 16px;
               padding: 32px;
@@ -438,13 +438,19 @@ export default function AttendancePage() {
               line-height: 1.5;
               margin: 8px 0 0;
             }
+            .url {
+              color: #64748b;
+              font-size: 12px;
+              overflow-wrap: anywhere;
+            }
           </style>
         </head>
         <body>
           <main class="sheet">
             <h1>LateWatch Attendance</h1>
-            <p>Scan to check in or check out.</p>
+            <p>Scan to install LateWatch or open attendance.</p>
             <div class="qr">${qrData.qrSvg}</div>
+            <p class="url">${qrData.checkInUrl}</p>
           </main>
         </body>
       </html>

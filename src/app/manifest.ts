@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: `${SITE_NAME} Attendance`,
     short_name: SITE_NAME,
     description: SITE_DESCRIPTION,
-    start_url: "/",
+    start_url: "/check-in",
     scope: "/",
     display: "standalone",
     background_color: "#020617",
@@ -16,9 +16,15 @@ export default function manifest(): MetadataRoute.Manifest {
     icons: [
       {
         src: getSiteUrl("/latewatch-logo.png"),
-        sizes: "1024x1024",
+        sizes: "192x192",
         type: "image/png",
         purpose: "any",
+      },
+      {
+        src: getSiteUrl("/latewatch-logo.png"),
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "maskable",
       },
       {
         src: getSiteUrl("/apple-icon"),
