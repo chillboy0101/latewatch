@@ -1,7 +1,7 @@
 // app/api/entries/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { entrySubmission, latenessEntry, workCalendar, staff } from '@/db/schema';
+import { attendanceRecord, entrySubmission, latenessEntry, workCalendar, staff } from '@/db/schema';
 import { eq, and, gte, lte } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 import { getAuditActor, writeAuditEvent } from '@/lib/audit';
@@ -10,6 +10,10 @@ import {
   syncLatenessEntriesFromAttendanceForDate,
   syncLatenessEntriesFromAttendanceForRange,
 } from '@/lib/attendance-lateness-sync';
+import {
+  manualAttendanceCorrectionChanged,
+  resolveManualAttendanceCorrection,
+} from '@/lib/manual-attendance-correction';
 
 export const dynamic = 'force-dynamic';
 
@@ -124,6 +128,11 @@ export async function POST(request: NextRequest) {
     const existingByStaffId = new Map(existingEntries.map((entry) => [entry.staffId, entry]));
     const existingEntryStaffIds = new Set(existingEntries.map((entry) => entry.staffId));
     const allowedStaffIds = new Set([...activeStaffIds, ...existingEntryStaffIds]);
+    const attendanceRows = await db.select()
+      .from(attendanceRecord)
+      .where(eq(attendanceRecord.date, date));
+    const attendanceByStaffId = new Map(attendanceRows.map((record) => [record.staffId, record]));
+    const actor = await getAuditActor();
 
     const results = [];
     let deletedCount = 0;
@@ -144,7 +153,52 @@ export async function POST(request: NextRequest) {
       });
 
       const existing = existingByStaffId.get(entry.staffId);
+      const existingAttendance = attendanceByStaffId.get(entry.staffId);
       const shouldStoreEntry = didNotSignOut || penalty.amount > 0;
+
+      if (existingAttendance) {
+        const correction = resolveManualAttendanceCorrection({
+          attendance: existingAttendance,
+          arrivalTime,
+          date,
+          didNotSignOut,
+        });
+
+        if (manualAttendanceCorrectionChanged({
+          attendance: existingAttendance,
+          correction,
+        })) {
+          const [updatedAttendance] = await db.update(attendanceRecord)
+            .set({
+              checkInAt: correction.checkInAt,
+              checkInTime: correction.checkInTime,
+              computedAmount: correction.computedAmount,
+              reason: correction.reason,
+              status: correction.status,
+              updatedAt: new Date(),
+            })
+            .where(eq(attendanceRecord.id, existingAttendance.id))
+            .returning();
+
+          if (updatedAttendance) {
+            attendanceByStaffId.set(entry.staffId, updatedAttendance);
+
+            await writeAuditEvent({
+              entityType: 'attendance',
+              entityId: updatedAttendance.id,
+              action: 'UPDATE',
+              before: existingAttendance,
+              after: {
+                ...updatedAttendance,
+                source: 'entries_manual_correction',
+                staff: { fullName: staffMap.get(entry.staffId) || 'Unknown' },
+              },
+              actor: { email: actor.actorEmail, id: actor.actorUserId },
+              reason: 'entries',
+            });
+          }
+        }
+      }
 
       if (!shouldStoreEntry) {
         if (existing) {
@@ -216,7 +270,6 @@ export async function POST(request: NextRequest) {
       results.push(result);
     }
 
-    const actor = await getAuditActor();
     const [existingSubmission] = await db.select()
       .from(entrySubmission)
       .where(eq(entrySubmission.date, date))
@@ -256,6 +309,9 @@ export async function POST(request: NextRequest) {
     });
 
     publishRealtime('dashboard', 'invalidate', { reason: 'entries' });
+    publishRealtime('attendance', 'invalidate', { reason: 'entries' });
+    publishRealtime('entries', 'invalidate', { reason: 'entries' });
+    publishRealtime('audit-trail', 'invalidate', { reason: 'entries' });
 
     return NextResponse.json({
       success: true,

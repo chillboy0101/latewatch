@@ -19,6 +19,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
+import { getStaffIdentitySyncCopy, type StaffIdentitySyncTone } from '@/lib/staff-identity-sync-copy';
 
 interface StaffMember {
   id: string;
@@ -42,7 +43,7 @@ export default function StaffPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [identityActioningId, setIdentityActioningId] = useState<string | null>(null);
-  const [identityNotice, setIdentityNotice] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
+  const [identityNotice, setIdentityNotice] = useState<{ detail: string; title: string; tone: StaffIdentitySyncTone } | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [submitMessage, setSubmitMessage] = useState('');
   const [archiveTarget, setArchiveTarget] = useState<StaffMember | null>(null);
@@ -265,7 +266,11 @@ export default function StaffPage() {
 
   const handleSyncIdentity = async (member: StaffMember) => {
     if (!member.email) {
-      setIdentityNotice({ tone: 'error', text: 'Add a login email before syncing account access.' });
+      setIdentityNotice({
+        detail: 'Add a login email to this staff profile, then sync again.',
+        title: `${member.fullName}: Login email missing`,
+        tone: 'error',
+      });
       return;
     }
 
@@ -280,19 +285,26 @@ export default function StaffPage() {
 
       if (!response.ok) {
         setIdentityNotice({
+          detail: result.error || result.message || 'Could not sync login access.',
+          title: `${member.fullName}: Login sync failed`,
           tone: 'error',
-          text: result.error || result.message || 'Could not sync login access.',
         });
         return;
       }
 
-      setIdentityNotice({
-        tone: 'success',
-        text: `${member.fullName}: ${result.message || 'Login access synced.'}`,
-      });
+      setIdentityNotice(getStaffIdentitySyncCopy({
+        email: member.email,
+        fallbackMessage: result.message,
+        staffName: member.fullName,
+        status: result.status,
+      }));
     } catch (error) {
       console.error('Failed to sync staff login access:', error);
-      setIdentityNotice({ tone: 'error', text: 'Could not sync login access.' });
+      setIdentityNotice({
+        detail: 'Could not reach the login sync endpoint. Try again after confirming the server is running.',
+        title: `${member.fullName}: Login sync failed`,
+        tone: 'error',
+      });
     } finally {
       setIdentityActioningId(null);
     }
@@ -483,9 +495,12 @@ export default function StaffPage() {
             'rounded-md border px-4 py-3 text-sm',
             identityNotice.tone === 'success'
               ? 'border-success/30 bg-success/10 text-success'
-              : 'border-danger/30 bg-danger/10 text-danger',
+              : identityNotice.tone === 'warning'
+                ? 'border-warning/30 bg-warning/10 text-warning'
+                : 'border-danger/30 bg-danger/10 text-danger',
           )}>
-            {identityNotice.text}
+            <p className="font-semibold">{identityNotice.title}</p>
+            <p className="mt-1 text-sm leading-5 text-foreground/70">{identityNotice.detail}</p>
           </div>
         )}
 
@@ -598,7 +613,7 @@ export default function StaffPage() {
                                 ) : (
                                   <ShieldCheck className="h-3.5 w-3.5" />
                                 )}
-                                Sync Login
+                                Sync / Invite
                               </Button>
                             )}
                             {member.archived ? (
