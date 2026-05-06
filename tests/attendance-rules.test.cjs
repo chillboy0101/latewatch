@@ -6,7 +6,7 @@ require('tsx/cjs');
 
 const { computePenalty } = require('../src/lib/penalty-calculator.ts');
 const { getAuditFieldChanges, getAuditTargetName } = require('../src/lib/audit-display.ts');
-const { validateAttendanceLocation } = require('../src/lib/geo-location.ts');
+const { DEFAULT_OFFICE_RADIUS_METERS, validateAttendanceLocation } = require('../src/lib/geo-location.ts');
 const { getClientIp, getClientIpInfo, isLoopbackIp } = require('../src/lib/request-ip.ts');
 const { isAfterWorkdayEnd } = require('../src/lib/work-hours.ts');
 
@@ -182,4 +182,55 @@ test('attendance geofence validates fresh accurate office location', () => {
     now,
     office,
   }).result, 'LOCATION_STALE');
+});
+
+test('default office geofence uses a 75m radius with the existing 75m accuracy limit', () => {
+  assert.equal(DEFAULT_OFFICE_RADIUS_METERS, 75);
+
+  const office = {
+    latitude: 5.6037168,
+    longitude: -0.1869644,
+    maxAccuracyMeters: 75,
+  };
+  const now = new Date('2026-05-05T08:45:00.000Z');
+
+  const inside = validateAttendanceLocation({
+    evidence: {
+      accuracy: 20,
+      latitude: 5.6043768,
+      longitude: -0.1869644,
+      timestamp: '2026-05-05T08:44:45.000Z',
+    },
+    now,
+    office,
+  });
+
+  assert.equal(inside.ok, true);
+  assert.equal(inside.result, 'LOCATION_VERIFIED');
+  assert.ok(inside.distanceMeters <= 75);
+
+  const outside = validateAttendanceLocation({
+    evidence: {
+      accuracy: 20,
+      latitude: 5.6044068,
+      longitude: -0.1869644,
+      timestamp: '2026-05-05T08:44:45.000Z',
+    },
+    now,
+    office,
+  });
+
+  assert.equal(outside.ok, false);
+  assert.equal(outside.result, 'OUTSIDE_OFFICE_LOCATION');
+
+  assert.equal(validateAttendanceLocation({
+    evidence: {
+      accuracy: 76,
+      latitude: 5.60375,
+      longitude: -0.18695,
+      timestamp: '2026-05-05T08:44:45.000Z',
+    },
+    now,
+    office,
+  }).result, 'LOCATION_ACCURACY_WEAK');
 });
