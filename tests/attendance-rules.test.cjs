@@ -33,9 +33,28 @@ test('attendance rules use 8:30 AM as the lateness cutoff and close after 5:00 P
   assert.equal(isAfterWorkdayEnd('17:01:00'), true);
 });
 
-test('NSS personnel late penalty stays flat while staff keep the existing hourly rule', () => {
+test('regular staff penalties increase at one minute past each clock hour', () => {
+  const cases = [
+    ['08:30', 0],
+    ['08:31', 10],
+    ['09:00', 10],
+    ['09:01', 15],
+    ['10:00', 15],
+    ['10:01', 20],
+  ];
+
+  for (const [arrivalTime, amount] of cases) {
+    assert.equal(
+      computePenalty({ arrivalTime, didNotSignOut: false, isHoliday: false }).amount,
+      amount,
+      `${arrivalTime} should be GHC ${amount}`,
+    );
+  }
+});
+
+test('NSS personnel late penalty stays flat while regular staff use the clock-hour rule', () => {
   assert.deepEqual(
-    computePenalty({ arrivalTime: '10:31', didNotSignOut: false, isHoliday: false }),
+    computePenalty({ arrivalTime: '10:01', didNotSignOut: false, isHoliday: false }),
     { amount: 20, reason: 'DIDN\'T COME BEFORE 8:30AM' },
   );
   assert.deepEqual(

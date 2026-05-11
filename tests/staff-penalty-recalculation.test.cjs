@@ -77,6 +77,45 @@ test('switching NSS off restores regular staff hourly penalty', () => {
   assert.equal(plan.latenessUpdates[0].computedAmount, '20.00');
 });
 
+test('regular staff recalculation updates old 09:01 penalties to the new clock-hour amount', () => {
+  const plan = planStaffPenaltyRecalculation({
+    attendanceRecords: [{
+      checkInTime: '09:01:00',
+      computedAmount: '10.00',
+      date: '2026-05-06',
+      id: 'attendance-1',
+      reason: "DIDN'T COME BEFORE 8:30AM",
+      status: 'late',
+    }],
+    isNssPersonnel: false,
+    latenessEntries: [{
+      arrivalTime: '09:01:00',
+      computedAmount: '10.00',
+      date: '2026-05-06',
+      didNotSignOut: false,
+      id: 'entry-1',
+      reason: "DIDN'T COME BEFORE 8:30AM",
+      staffId: 'staff-1',
+    }],
+    permissions: [],
+    staffId: 'staff-1',
+  });
+
+  assert.deepEqual(plan.attendanceUpdates, [{
+    computedAmount: '15.00',
+    id: 'attendance-1',
+    reason: "DIDN'T COME BEFORE 8:30AM",
+    status: 'late',
+  }]);
+  assert.deepEqual(plan.latenessUpdates, [{
+    arrivalTime: '09:01',
+    computedAmount: '15.00',
+    didNotSignOut: false,
+    id: 'entry-1',
+    reason: "DIDN'T COME BEFORE 8:30AM",
+  }]);
+});
+
 test('marking staff as attendance monitoring only clears stored penalties and lateness rows', () => {
   const plan = planStaffPenaltyRecalculation({
     attendanceRecords: [{

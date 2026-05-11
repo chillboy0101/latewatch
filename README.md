@@ -183,10 +183,10 @@ The system automatically calculates penalties based on arrival time:
 | 08:20 | Yes | GHC 2 | DID NOT SIGN OUT |
 | 08:31 | No | GHC 10 | DIDN'T COME BEFORE 8:30AM |
 | 08:31 | Yes | GHC 12 | DIDN'T COME BEFORE 8:30AM AND DID NOT SIGN OUT |
-| 09:25 | No | GHC 10 | DIDN'T COME BEFORE 8:30AM |
-| 09:31 | No | GHC 15 | DIDN'T COME BEFORE 8:30AM |
-| 10:30 | No | GHC 15 | DIDN'T COME BEFORE 8:30AM |
-| 10:31 | No | GHC 20 | DIDN'T COME BEFORE 8:30AM |
+| 09:00 | No | GHC 10 | DIDN'T COME BEFORE 8:30AM |
+| 09:01 | No | GHC 15 | DIDN'T COME BEFORE 8:30AM |
+| 10:00 | No | GHC 15 | DIDN'T COME BEFORE 8:30AM |
+| 10:01 | No | GHC 20 | DIDN'T COME BEFORE 8:30AM |
 
 ## 📊 Database Schema
 

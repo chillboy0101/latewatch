@@ -15,6 +15,11 @@ interface PenaltyOutput {
   reason: string;
 }
 
+function minutesFromTime(time: string) {
+  const [hours, minutes] = time.split(':').map(Number);
+  return hours * 60 + minutes;
+}
+
 export function computePenalty(input: PenaltyInput): PenaltyOutput {
   const CUTOFF_TIME = WORKDAY_START_TIME;
   const BASE_PENALTY = 10;
@@ -47,15 +52,14 @@ export function computePenalty(input: PenaltyInput): PenaltyOutput {
   if (isLate) {
     const base = BASE_PENALTY;
 
-    // Count full hours completed after 8:30
-    const [hours, minutes] = input.arrivalTime.split(':').map(Number);
-    const arrivalMinutes = hours * 60 + minutes;
-    const cutoffMinutes = 8 * 60 + 30; // 8:30 = 510 minutes
-    const minutesLate = arrivalMinutes - cutoffMinutes;
-
-    // Full hours completed (each 60-minute block after cutoff)
-    const fullHoursLate = Math.floor(minutesLate / 60);
-    const hourly = input.isNssPersonnel ? 0 : HOURLY_INCREMENT * fullHoursLate;
+    const arrivalMinutes = minutesFromTime(input.arrivalTime);
+    const cutoffMinutes = minutesFromTime(CUTOFF_TIME);
+    const firstClockHourIncrement = (Math.floor(cutoffMinutes / 60) + 1) * 60 + 1;
+    const clockHourIncrements = Math.max(
+      0,
+      Math.floor((arrivalMinutes - firstClockHourIncrement) / 60) + 1,
+    );
+    const hourly = input.isNssPersonnel ? 0 : HOURLY_INCREMENT * clockHourIncrements;
 
     let reason = 'DIDN\'T COME BEFORE 8:30AM';
     let total = base + hourly;
