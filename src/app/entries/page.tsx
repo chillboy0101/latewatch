@@ -8,7 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card } from '@/components/ui/card';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { addDays, format, isValid, parseISO } from 'date-fns';
-import { Save, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+import { Save, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Clock, RefreshCw } from 'lucide-react';
 import { computePenalty } from '@/lib/penalty-calculator';
 import { getAccraDateKey } from '@/lib/date-key';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
@@ -340,10 +340,25 @@ export default function EntriesPage() {
               {format(selectedDate, 'EEEE,')} <span className="font-medium">{format(selectedDate, 'MMMM d, yyyy')}</span>
             </span>
           </div>
-          <Button onClick={handleSaveAll} disabled={saving || entriesDisabled} className="self-start sm:self-auto">
-            <Save className="mr-2 h-4 w-4" />
-            {saving ? 'Saving...' : entriesDisabled ? 'Closed - No Entries' : 'Save Lateness Entries'}
-          </Button>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <Button
+              aria-label="Refresh lateness entries"
+              disabled={saving}
+              onClick={() => {
+                setMessage(null);
+                void fetchStaffAndEntries();
+              }}
+              size="icon"
+              title="Refresh lateness entries"
+              variant="outline"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button onClick={handleSaveAll} disabled={saving || entriesDisabled}>
+              <Save className="mr-2 h-4 w-4" />
+              {saving ? 'Saving...' : entriesDisabled ? 'Closed - No Entries' : 'Save Lateness Entries'}
+            </Button>
+          </div>
         </div>
 
         {/* Entry Grid */}

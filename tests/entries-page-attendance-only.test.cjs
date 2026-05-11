@@ -14,6 +14,15 @@ test('entries page live penalty calculation preserves monitoring-only staff rule
   assert.match(source, /isAttendanceOnly: member\?\.isAttendanceOnly === true/);
 });
 
+test('entries page exposes an icon-only refresh button beside save entries', () => {
+  const source = fs.readFileSync(entriesPagePath, 'utf8');
+
+  assert.match(source, /RefreshCw/);
+  assert.match(source, /aria-label="Refresh lateness entries"/);
+  assert.match(source, /onClick=\{\(\) => \{\s*setMessage\(null\);\s*void fetchStaffAndEntries\(\);\s*\}\}/);
+  assert.match(source, /<RefreshCw className="h-4 w-4" \/>/);
+});
+
 test('regular staff recalculation apply notifies live pages to refetch entries', () => {
   const source = fs.readFileSync(recalculateScriptPath, 'utf8');
 
