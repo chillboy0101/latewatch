@@ -4,8 +4,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { attendancePermission, staff } from '@/db/schema';
 import {
+  getAbsencePeriodBounds,
+  getInclusivePermissionDateRange,
   getPermissionWindowBounds,
-  normalizeLateArrivalPermissionReason,
+  normalizeAbsencePermissionReason,
+  normalizeAbsenceWindow,
   normalizeMinuteTime,
   normalizePermissionWindow,
 } from '@/lib/attendance-permissions';
@@ -16,9 +19,14 @@ import { publishRealtime } from '@/lib/realtime';
 export const dynamic = 'force-dynamic';
 
 const VALID_TYPES = new Set(['late_arrival', 'absence']);
+const MAX_ABSENCE_DAYS = 62;
 
 function optionalText(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function isBeforeMinute(startTime: string, endTime: string) {
+  return startTime < endTime;
 }
 
 export async function GET(request: NextRequest) {
@@ -68,25 +76,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const staffId = optionalText(body?.staffId);
     const date = optionalText(body?.date);
+    const absenceEndDate = optionalText(body?.absenceEndDate) || date;
     let reason = optionalText(body?.reason);
     const permissionType = optionalText(body?.permissionType) || 'late_arrival';
-    const arrivalWindow = permissionType === 'late_arrival'
-      ? normalizePermissionWindow(body?.arrivalWindow)
-      : 'any_time_today';
-    const expectedTime = normalizeMinuteTime(body?.expectedEndTime ?? body?.expectedByTime);
 
     if (!staffId) return NextResponse.json({ error: 'Staff member is required' }, { status: 400 });
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return NextResponse.json({ error: 'Valid date is required' }, { status: 400 });
     if (!reason) return NextResponse.json({ error: 'Permission reason is required' }, { status: 400 });
     if (!VALID_TYPES.has(permissionType)) return NextResponse.json({ error: 'Invalid permission type' }, { status: 400 });
-    if (permissionType === 'late_arrival') {
-      const selectedReason = normalizeLateArrivalPermissionReason(reason);
-      if (!selectedReason) return NextResponse.json({ error: 'Select a valid late arrival reason' }, { status: 400 });
-      reason = selectedReason;
-    }
-    if (permissionType === 'late_arrival' && arrivalWindow === 'specific_time' && !expectedTime) {
-      return NextResponse.json({ error: 'Expected arrival time is required' }, { status: 400 });
-    }
 
     const [member] = await db.select({
       email: staff.email,
@@ -104,72 +101,140 @@ export async function POST(request: NextRequest) {
 
     const actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';
     const now = new Date();
-    const windowBounds = permissionType === 'late_arrival'
-      ? getPermissionWindowBounds({
-          arrivalWindow,
-          expectedEndTime: expectedTime,
-          permissionType,
-        })
-      : { endTime: null, startTime: null };
-    const [existing] = await db.select()
-      .from(attendancePermission)
-      .where(and(eq(attendancePermission.staffId, staffId), eq(attendancePermission.date, date)))
-      .limit(1);
+    let appliedDates = [date];
+    let arrivalWindow: string;
+    let expectedEndTime: string | null;
+    let expectedStartTime: string | null;
 
-    const values = {
-      arrivalWindow,
-      approvedByEmail: actorEmail,
-      approvedByUserId: user.id,
-      date,
-      expectedEndTime: windowBounds.endTime,
-      expectedStartTime: windowBounds.startTime,
-      permissionType,
-      reason,
-      staffId,
-      status: 'approved',
-      updatedAt: now,
-    };
+    if (permissionType === 'absence') {
+      if (!absenceEndDate || !/^\d{4}-\d{2}-\d{2}$/.test(absenceEndDate)) {
+        return NextResponse.json({ error: 'Valid absence end date is required' }, { status: 400 });
+      }
 
-    const [permission] = existing
-      ? await db.update(attendancePermission)
-        .set(values)
-        .where(eq(attendancePermission.id, existing.id))
-        .returning()
-      : await db.insert(attendancePermission)
-        .values(values)
-        .returning();
+      appliedDates = getInclusivePermissionDateRange(date, absenceEndDate);
+      if (appliedDates.length === 0) {
+        return NextResponse.json({ error: 'Absence end date must be on or after the start date' }, { status: 400 });
+      }
+      if (appliedDates.length > MAX_ABSENCE_DAYS) {
+        return NextResponse.json({ error: `Absence period cannot exceed ${MAX_ABSENCE_DAYS} days` }, { status: 400 });
+      }
 
-    await writeAuditEvent({
-      entityType: 'attendance_permission',
-      entityId: permission.id,
-      action: existing ? 'UPDATE' : 'CREATE',
-      before: existing || null,
-      after: {
-        ...permission,
-        staffName: member.fullName,
-      },
-      actor: { email: actorEmail, id: user.id },
-      reason: 'attendance-permission',
-    });
+      const selectedReason = normalizeAbsencePermissionReason(reason);
+      if (!selectedReason) return NextResponse.json({ error: 'Select a valid excused absence reason' }, { status: 400 });
+      reason = selectedReason;
 
-    const reconciliation = await reconcileAttendanceForPermission({
-      activePermission: permission,
-      actor: { email: actorEmail, id: user.id },
-      date,
-      reason: 'attendance-permission',
-      staffMember: {
-        fullName: member.fullName,
-        id: member.id,
-        isNssPersonnel: member.isNssPersonnel,
-      },
-    });
+      arrivalWindow = normalizeAbsenceWindow(body?.absenceWindow ?? body?.arrivalWindow);
+      const requestedStartTime = normalizeMinuteTime(body?.expectedStartTime);
+      const requestedEndTime = normalizeMinuteTime(body?.expectedEndTime);
+
+      if (arrivalWindow === 'specific_time') {
+        if (!requestedStartTime || !requestedEndTime) {
+          return NextResponse.json({ error: 'Absence start and end times are required' }, { status: 400 });
+        }
+        if (!isBeforeMinute(requestedStartTime, requestedEndTime)) {
+          return NextResponse.json({ error: 'Absence end time must be after the start time' }, { status: 400 });
+        }
+      }
+
+      const periodBounds = getAbsencePeriodBounds({
+        arrivalWindow,
+        expectedEndTime: requestedEndTime,
+        expectedStartTime: requestedStartTime,
+        permissionType,
+      });
+      expectedEndTime = periodBounds.endTime;
+      expectedStartTime = periodBounds.startTime;
+    } else {
+      arrivalWindow = normalizePermissionWindow(body?.arrivalWindow);
+      const expectedTime = normalizeMinuteTime(body?.expectedEndTime ?? body?.expectedByTime);
+
+      if (arrivalWindow === 'specific_time' && !expectedTime) {
+        return NextResponse.json({ error: 'Expected arrival time is required' }, { status: 400 });
+      }
+
+      const windowBounds = getPermissionWindowBounds({
+        arrivalWindow,
+        expectedEndTime: expectedTime,
+        permissionType,
+      });
+      expectedEndTime = windowBounds.endTime;
+      expectedStartTime = windowBounds.startTime;
+      reason = reason.slice(0, 240);
+    }
+
+    const permissions = [];
+    const reconciliations = [];
+
+    for (const permissionDate of appliedDates) {
+      const [existing] = await db.select()
+        .from(attendancePermission)
+        .where(and(eq(attendancePermission.staffId, staffId), eq(attendancePermission.date, permissionDate)))
+        .limit(1);
+
+      const values = {
+        arrivalWindow,
+        approvedByEmail: actorEmail,
+        approvedByUserId: user.id,
+        date: permissionDate,
+        expectedEndTime,
+        expectedStartTime,
+        permissionType,
+        reason,
+        staffId,
+        status: 'approved',
+        updatedAt: now,
+      };
+
+      const [permission] = existing
+        ? await db.update(attendancePermission)
+          .set(values)
+          .where(eq(attendancePermission.id, existing.id))
+          .returning()
+        : await db.insert(attendancePermission)
+          .values(values)
+          .returning();
+
+      await writeAuditEvent({
+        entityType: 'attendance_permission',
+        entityId: permission.id,
+        action: existing ? 'UPDATE' : 'CREATE',
+        before: existing || null,
+        after: {
+          ...permission,
+          staffName: member.fullName,
+        },
+        actor: { email: actorEmail, id: user.id },
+        reason: 'attendance-permission',
+      });
+
+      const reconciliation = await reconcileAttendanceForPermission({
+        activePermission: permission,
+        actor: { email: actorEmail, id: user.id },
+        date: permissionDate,
+        reason: 'attendance-permission',
+        staffMember: {
+          fullName: member.fullName,
+          id: member.id,
+          isNssPersonnel: member.isNssPersonnel,
+        },
+      });
+
+      permissions.push(permission);
+      reconciliations.push({ date: permissionDate, ...reconciliation });
+    }
 
     publishRealtime('dashboard', 'invalidate', { reason: 'attendance-permission' });
     publishRealtime('notifications', 'invalidate', { reason: 'attendance-permission' });
+    publishRealtime('attendance', 'invalidate', { reason: 'attendance-permission' });
+
+    const permission = permissions[0];
 
     return NextResponse.json({
       ...permission,
-      reconciliation,
+      appliedDates,
+      permissions,
+      reconciliation: reconciliations[0] || null,
+      reconciliations,
       staffEmail: member.email,
       staffName: member.fullName,
     });

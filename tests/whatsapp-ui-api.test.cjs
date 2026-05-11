@@ -9,6 +9,7 @@ const queueRoutePath = path.join(__dirname, '../src/app/api/whatsapp/queue/route
 const markSentRoutePath = path.join(__dirname, '../src/app/api/whatsapp/mark-sent/route.ts');
 const staffRoutePath = path.join(__dirname, '../src/app/api/staff/route.ts');
 const staffUpdateRoutePath = path.join(__dirname, '../src/app/api/staff/[id]/route.ts');
+const staffWhatsappSchemaPath = path.join(__dirname, '../src/lib/staff-whatsapp-schema.ts');
 
 test('exports page exposes weekly WhatsApp notice queue controls', () => {
   const source = fs.readFileSync(exportsPagePath, 'utf8');
@@ -46,4 +47,17 @@ test('staff API returns and accepts WhatsApp notice settings', () => {
   assert.match(updateSource, /whatsappPhone\?: string \| null/);
   assert.match(updateSource, /whatsappNotificationsEnabled\?: boolean/);
   assert.match(updateSource, /Enter a valid WhatsApp number/);
+});
+
+test('staff API creates WhatsApp columns before selecting staff rows', () => {
+  const createSource = fs.readFileSync(staffRoutePath, 'utf8');
+  const updateSource = fs.readFileSync(staffUpdateRoutePath, 'utf8');
+  const queueSource = fs.readFileSync(queueRoutePath, 'utf8');
+  const schemaSource = fs.readFileSync(staffWhatsappSchemaPath, 'utf8');
+
+  assert.match(schemaSource, /ALTER TABLE staff ADD COLUMN IF NOT EXISTS whatsapp_phone TEXT/);
+  assert.match(schemaSource, /ALTER TABLE staff ADD COLUMN IF NOT EXISTS whatsapp_notifications_enabled BOOLEAN DEFAULT false NOT NULL/);
+  assert.match(createSource, /await ensureStaffWhatsAppColumns\(\);[\s\S]*db\.select/);
+  assert.match(updateSource, /await ensureStaffWhatsAppColumns\(\);[\s\S]*db\.select/);
+  assert.match(queueSource, /await ensureStaffWhatsAppColumns\(\);[\s\S]*getRowsForRange/);
 });

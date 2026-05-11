@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { and, eq, gte, lte } from 'drizzle-orm';
 import { db } from '@/db';
 import { latenessEntry, staff } from '@/db/schema';
+import { ensureStaffWhatsAppColumns } from '@/lib/staff-whatsapp-schema';
 import {
   createDailyWhatsAppQueue,
   createWeeklyWhatsAppQueue,
@@ -32,6 +33,7 @@ async function getRowsForRange(start: string, end: string) {
 export async function GET(request: NextRequest) {
   try {
     const type = request.nextUrl.searchParams.get('type');
+    await ensureStaffWhatsAppColumns();
 
     if (type === 'daily') {
       const date = validDate(request.nextUrl.searchParams.get('date'));

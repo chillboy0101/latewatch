@@ -13,11 +13,23 @@ test('attendance QR print sheet does not show the raw install URL text', () => {
   assert.doesNotMatch(source, /<p class="url">\$\{qrData\.checkInUrl\}<\/p>/);
 });
 
-test('late arrival permissions use the approved reason select list', () => {
+test('attendance permission form uses free-text late reasons and selected absence reasons', () => {
   const source = fs.readFileSync(attendancePagePath, 'utf8');
 
-  assert.match(source, /LATE_ARRIVAL_PERMISSION_REASONS/);
-  assert.match(source, /permissionType === 'late_arrival'\s*\?/);
-  assert.match(source, /<option value="">Select reason<\/option>/);
-  assert.match(source, /formatLateArrivalPermissionReason\(permission\.reason\)/);
+  assert.match(source, /ABSENCE_PERMISSION_REASONS/);
+  assert.match(source, /permissionType === 'absence'\s*\?/);
+  assert.match(source, /<option value="">Select absence reason<\/option>/);
+  assert.match(source, /placeholder="Enter late arrival reason"/);
+  assert.match(source, /formatAbsencePermissionReason\(permission\.reason\)/);
+});
+
+test('attendance permission form exposes absence date range and period controls', () => {
+  const source = fs.readFileSync(attendancePagePath, 'utf8');
+
+  assert.match(source, /permissionAbsenceEndDate/);
+  assert.match(source, /permissionAbsenceWindow/);
+  assert.match(source, /label="Absence Start"/);
+  assert.match(source, /label="Absence End"/);
+  assert.match(source, /label="Absence Period"/);
+  assert.match(source, /absenceEndDate/);
 });

@@ -8,6 +8,7 @@ import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { normalizeStaffEmail } from '@/lib/attendance';
 import { syncStaffEmailIdentity, unlinkStaffEmailIdentity } from '@/lib/clerk-organization';
+import { ensureStaffWhatsAppColumns } from '@/lib/staff-whatsapp-schema';
 import { recalculateStaffStoredPenalties } from '@/lib/staff-penalty-recalculation-server';
 import { normalizeWhatsAppPhone } from '@/lib/whatsapp-notices';
 
@@ -30,6 +31,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    await ensureStaffWhatsAppColumns();
     const [result] = await db.select().from(staff).where(eq(staff.id, id));
 
     if (!result) {
@@ -51,6 +53,7 @@ export async function PUT(
     const actor = await currentUser();
     const { id } = await params;
     const body = await request.json() as StaffUpdateBody;
+    await ensureStaffWhatsAppColumns();
     const {
       fullName,
       email,

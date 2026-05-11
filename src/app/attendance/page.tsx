@@ -8,9 +8,11 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import {
+  ABSENCE_PERMISSION_REASONS,
+  ABSENCE_PERMISSION_WINDOWS,
   ATTENDANCE_PERMISSION_WINDOWS,
-  LATE_ARRIVAL_PERMISSION_REASONS,
-  formatLateArrivalPermissionReason,
+  formatAbsencePermissionReason,
+  getAbsencePeriodBounds,
   getPermissionWindowBounds,
 } from '@/lib/attendance-permissions';
 import { getAccraDateKey } from '@/lib/date-key';
@@ -210,6 +212,14 @@ function statusClass(status: AttendanceStatus) {
   return 'border-border bg-muted/20 text-muted-foreground';
 }
 
+function permissionSummary(permission: AttendancePermission) {
+  if (permission.permissionType === 'absence') {
+    return `Excused absence / ${getAbsencePeriodBounds(permission).label} / ${formatAbsencePermissionReason(permission.reason)}`;
+  }
+
+  return `Late arrival / ${getPermissionWindowBounds(permission).label} / ${permission.reason}`;
+}
+
 export default function AttendancePage() {
   const [dateInput, setDateInput] = useState(todayKey());
   const [activeFilter, setActiveFilter] = useState<AttendanceFilter>('all');
@@ -220,6 +230,11 @@ export default function AttendancePage() {
   const [permissionType, setPermissionType] = useState('late_arrival');
   const [permissionWindow, setPermissionWindow] = useState('any_time_today');
   const [permissionExpectedTime, setPermissionExpectedTime] = useState('10:30');
+  const [permissionAbsenceStartDate, setPermissionAbsenceStartDate] = useState(todayKey());
+  const [permissionAbsenceEndDate, setPermissionAbsenceEndDate] = useState(todayKey());
+  const [permissionAbsenceWindow, setPermissionAbsenceWindow] = useState('full_day');
+  const [permissionAbsenceStartTime, setPermissionAbsenceStartTime] = useState('08:30');
+  const [permissionAbsenceEndTime, setPermissionAbsenceEndTime] = useState('17:00');
   const [permissionReason, setPermissionReason] = useState('');
   const [savingPermission, setSavingPermission] = useState(false);
   const [deletingPermissionId, setDeletingPermissionId] = useState<string | null>(null);
@@ -230,6 +245,11 @@ export default function AttendancePage() {
 
   const appliedDate = isValidCompleteDate(dateInput) ? dateInput : '';
   const attendanceDate = appliedDate || todayKey();
+
+  useEffect(() => {
+    setPermissionAbsenceStartDate(attendanceDate);
+    setPermissionAbsenceEndDate(attendanceDate);
+  }, [attendanceDate]);
 
   const fetchAttendance = useCallback(async () => {
     setLoading(true);
@@ -301,23 +321,51 @@ export default function AttendancePage() {
 
   async function savePermission() {
     if (!permissionStaffId || !permissionReason.trim()) {
-      setError('Select a staff member and enter the permission reason.');
+      setError(permissionType === 'absence'
+        ? 'Select a staff member and choose the excused absence reason.'
+        : 'Select a staff member and enter the late arrival reason.');
       return;
+    }
+    if (permissionType === 'absence') {
+      if (!isValidCompleteDate(permissionAbsenceStartDate) || !isValidCompleteDate(permissionAbsenceEndDate)) {
+        setError('Select a valid absence start and end date.');
+        return;
+      }
+      if (permissionAbsenceEndDate < permissionAbsenceStartDate) {
+        setError('Absence end date must be on or after the start date.');
+        return;
+      }
+      if (permissionAbsenceWindow === 'specific_time' && permissionAbsenceEndTime <= permissionAbsenceStartTime) {
+        setError('Absence end time must be after the start time.');
+        return;
+      }
     }
 
     setSavingPermission(true);
     setError(null);
 
     try {
+      const payload = permissionType === 'absence'
+        ? {
+            absenceEndDate: permissionAbsenceEndDate,
+            absenceWindow: permissionAbsenceWindow,
+            date: permissionAbsenceStartDate,
+            expectedEndTime: permissionAbsenceWindow === 'specific_time' ? permissionAbsenceEndTime : null,
+            expectedStartTime: permissionAbsenceWindow === 'specific_time' ? permissionAbsenceStartTime : null,
+            permissionType,
+            reason: permissionReason,
+            staffId: permissionStaffId,
+          }
+        : {
+            arrivalWindow: permissionWindow,
+            date: attendanceDate,
+            expectedEndTime: permissionWindow === 'specific_time' ? permissionExpectedTime : null,
+            permissionType,
+            reason: permissionReason,
+            staffId: permissionStaffId,
+          };
       const response = await fetch('/api/attendance/permissions', {
-        body: JSON.stringify({
-          arrivalWindow: permissionWindow,
-          date: attendanceDate,
-          expectedEndTime: permissionWindow === 'specific_time' ? permissionExpectedTime : null,
-          permissionType,
-          reason: permissionReason,
-          staffId: permissionStaffId,
-        }),
+        body: JSON.stringify(payload),
         headers: { 'Content-Type': 'application/json' },
         method: 'POST',
       });
@@ -330,6 +378,11 @@ export default function AttendancePage() {
       setPermissionType('late_arrival');
       setPermissionWindow('any_time_today');
       setPermissionExpectedTime('10:30');
+      setPermissionAbsenceStartDate(attendanceDate);
+      setPermissionAbsenceEndDate(attendanceDate);
+      setPermissionAbsenceWindow('full_day');
+      setPermissionAbsenceStartTime('08:30');
+      setPermissionAbsenceEndTime('17:00');
       await fetchAttendance();
     } catch (err) {
       console.error('Failed to save permission:', err);
@@ -543,8 +596,9 @@ export default function AttendancePage() {
         </div>
 
         <Card className="overflow-hidden">
-          <div className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-[minmax(13rem,1.1fr)_10.5rem_12rem_minmax(12rem,1fr)_7.5rem] xl:items-end">
+          <div className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-12 xl:items-end">
             <SelectField
+              className="xl:col-span-3"
               icon={<UserRound className="h-3.5 w-3.5" />}
               label="Staff"
               value={permissionStaffId}
@@ -556,66 +610,113 @@ export default function AttendancePage() {
                 ))}
             </SelectField>
             <SelectField
+              className="xl:col-span-2"
               icon={<ShieldCheck className="h-3.5 w-3.5" />}
               label="Permission"
               value={permissionType}
               onChange={(value) => {
                 setPermissionType(value);
                 setPermissionReason('');
-                if (value === 'absence') setPermissionWindow('any_time_today');
+                if (value === 'absence') {
+                  setPermissionWindow('any_time_today');
+                  setPermissionAbsenceStartDate(attendanceDate);
+                  setPermissionAbsenceEndDate(attendanceDate);
+                  setPermissionAbsenceWindow('full_day');
+                }
               }}
             >
                 <option value="late_arrival">Late arrival</option>
                 <option value="absence">Excused absence</option>
             </SelectField>
-            <div className="min-w-0 space-y-2">
-              <SelectField
-                disabled={permissionType === 'absence'}
-                icon={<Clock className="h-3.5 w-3.5" />}
-                label="Arrival"
-                value={permissionWindow}
-                onChange={setPermissionWindow}
-              >
-                {ATTENDANCE_PERMISSION_WINDOWS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </SelectField>
-              {permissionType === 'late_arrival' && permissionWindow === 'specific_time' && (
-                <Input
-                  className="h-11 font-medium"
-                  type="time"
-                  value={permissionExpectedTime}
-                  onChange={(event) => setPermissionExpectedTime(event.target.value)}
-                />
-              )}
-            </div>
             {permissionType === 'late_arrival' ? (
-              <SelectField
-                icon={<FileText className="h-3.5 w-3.5" />}
-                label="Reason"
-                value={permissionReason}
-                onChange={setPermissionReason}
-              >
-                <option value="">Select reason</option>
-                {LATE_ARRIVAL_PERMISSION_REASONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </SelectField>
+              <>
+                <div className="min-w-0 space-y-2 xl:col-span-2">
+                  <SelectField
+                    icon={<Clock className="h-3.5 w-3.5" />}
+                    label="Arrival"
+                    value={permissionWindow}
+                    onChange={setPermissionWindow}
+                  >
+                    {ATTENDANCE_PERMISSION_WINDOWS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </SelectField>
+                  {permissionWindow === 'specific_time' && (
+                    <Input
+                      className="h-11 font-medium"
+                      type="time"
+                      value={permissionExpectedTime}
+                      onChange={(event) => setPermissionExpectedTime(event.target.value)}
+                    />
+                  )}
+                </div>
+                <div className="min-w-0 xl:col-span-3">
+                  <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase text-muted-foreground">
+                    <FileText className="h-3.5 w-3.5" />
+                    Reason
+                  </label>
+                  <Input
+                    className="h-11 font-medium"
+                    placeholder="Enter late arrival reason"
+                    value={permissionReason}
+                    onChange={(event) => setPermissionReason(event.target.value)}
+                  />
+                </div>
+              </>
             ) : (
-              <div className="min-w-0">
-                <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase text-muted-foreground">
-                  <FileText className="h-3.5 w-3.5" />
-                  Reason
-                </label>
-                <Input
-                  className="h-11 font-medium"
-                  placeholder="Approved reason"
-                  value={permissionReason}
-                  onChange={(event) => setPermissionReason(event.target.value)}
+              <>
+                <AttendanceDateField
+                  className="xl:col-span-2"
+                  label="Absence Start"
+                  value={permissionAbsenceStartDate}
+                  onChange={(value) => setPermissionAbsenceStartDate((current) => formatDateInput(value, current))}
                 />
-              </div>
+                <AttendanceDateField
+                  className="xl:col-span-2"
+                  label="Absence End"
+                  value={permissionAbsenceEndDate}
+                  onChange={(value) => setPermissionAbsenceEndDate((current) => formatDateInput(value, current))}
+                />
+                <SelectField
+                  className="xl:col-span-3"
+                  icon={<Clock className="h-3.5 w-3.5" />}
+                  label="Absence Period"
+                  value={permissionAbsenceWindow}
+                  onChange={setPermissionAbsenceWindow}
+                >
+                  {ABSENCE_PERMISSION_WINDOWS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </SelectField>
+                {permissionAbsenceWindow === 'specific_time' && (
+                  <>
+                    <TimeField
+                      label="Start Time"
+                      value={permissionAbsenceStartTime}
+                      onChange={setPermissionAbsenceStartTime}
+                    />
+                    <TimeField
+                      label="End Time"
+                      value={permissionAbsenceEndTime}
+                      onChange={setPermissionAbsenceEndTime}
+                    />
+                  </>
+                )}
+                <SelectField
+                  className={permissionAbsenceWindow === 'specific_time' ? 'xl:col-span-4' : 'xl:col-span-8'}
+                  icon={<FileText className="h-3.5 w-3.5" />}
+                  label="Reason"
+                  value={permissionReason}
+                  onChange={setPermissionReason}
+                >
+                  <option value="">Select absence reason</option>
+                  {ABSENCE_PERMISSION_REASONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </SelectField>
+              </>
             )}
-            <Button className="h-11 w-full gap-2 px-4" onClick={savePermission} disabled={savingPermission}>
+            <Button className="h-11 w-full gap-2 px-4 xl:col-span-2" onClick={savePermission} disabled={savingPermission}>
               {savingPermission ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
               Approve
             </Button>
@@ -627,11 +728,7 @@ export default function AttendancePage() {
                   <div className="min-w-0">
                     <p className="text-sm font-medium">{permission.staffName || 'Staff member'}</p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {permission.permissionType === 'absence'
-                        ? 'Excused absence'
-                        : `Late arrival / ${getPermissionWindowBounds(permission).label}`} / {permission.permissionType === 'late_arrival'
-                          ? formatLateArrivalPermissionReason(permission.reason)
-                          : permission.reason}
+                      {permissionSummary(permission)}
                     </p>
                   </div>
                   <Button
@@ -803,10 +900,8 @@ export default function AttendancePage() {
                           {statusLabel(row.status)}
                         </span>
                         {row.permission && (
-                          <p className="mt-1 max-w-52 truncate text-xs text-muted-foreground" title={row.permission.reason}>
-                            {row.permission.permissionType === 'absence'
-                              ? row.permission.reason
-                              : `${getPermissionWindowBounds(row.permission).label} / ${row.permission.reason}`}
+                          <p className="mt-1 max-w-52 truncate text-xs text-muted-foreground" title={permissionSummary(row.permission)}>
+                            {permissionSummary(row.permission)}
                           </p>
                         )}
                       </td>
@@ -903,9 +998,13 @@ function SummaryCard({
 }
 
 function AttendanceDateField({
+  className,
+  label = 'Attendance Date',
   onChange,
   value,
 }: {
+  className?: string;
+  label?: string;
   onChange: (value: string) => void;
   value: string;
 }) {
@@ -924,8 +1023,8 @@ function AttendanceDateField({
   }
 
   return (
-    <div>
-      <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Attendance Date</label>
+    <div className={className}>
+      <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">{label}</label>
       <div className="relative">
         <Input
           type="text"
@@ -956,8 +1055,31 @@ function AttendanceDateField({
   );
 }
 
+function TimeField({
+  label,
+  onChange,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <div className="min-w-0 xl:col-span-2">
+      <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">{label}</label>
+      <Input
+        className="h-11 font-medium"
+        type="time"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
+  );
+}
+
 function SelectField({
   children,
+  className,
   disabled,
   icon,
   label,
@@ -965,6 +1087,7 @@ function SelectField({
   value,
 }: {
   children: ReactNode;
+  className?: string;
   disabled?: boolean;
   icon: ReactNode;
   label: string;
@@ -972,7 +1095,7 @@ function SelectField({
   value: string;
 }) {
   return (
-    <div className="min-w-0">
+    <div className={cn('min-w-0', className)}>
       <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase text-muted-foreground">
         {icon}
         {label}

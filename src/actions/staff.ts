@@ -7,6 +7,7 @@ import { staff as staffTable } from '@/db/schema';
 import { updateTag } from 'next/cache';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
+import { ensureStaffWhatsAppColumns } from '@/lib/staff-whatsapp-schema';
 import { normalizeWhatsAppPhone } from '@/lib/whatsapp-notices';
 import { eq } from 'drizzle-orm';
 
@@ -55,6 +56,7 @@ function normalizeWhatsAppFields(data: Pick<StaffWriteData, 'whatsappNotificatio
 
 export async function getStaff() {
   await requireRole(['admin', 'hr', 'viewer']);
+  await ensureStaffWhatsAppColumns();
   
   const staff = await db.query.staff.findMany({
     orderBy: (staff, { asc }) => [asc(staff.fullName)],
@@ -65,6 +67,7 @@ export async function getStaff() {
 
 export async function createStaff(data: StaffWriteData & { fullName: string }) {
   const user = await requireRole(['admin']);
+  await ensureStaffWhatsAppColumns();
   const whatsappFields = normalizeWhatsAppFields(data);
   
   const newStaff = await db.insert(staffTable).values({
@@ -97,6 +100,7 @@ export async function createStaff(data: StaffWriteData & { fullName: string }) {
 
 export async function updateStaff(id: string, data: StaffWriteData) {
   const user = await requireRole(['admin']);
+  await ensureStaffWhatsAppColumns();
 
   const before = await db.query.staff.findFirst({
     where: (staff, { eq }) => eq(staff.id, id),

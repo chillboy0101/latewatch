@@ -8,6 +8,7 @@ import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { normalizeStaffEmail } from '@/lib/attendance';
 import { syncStaffEmailIdentity } from '@/lib/clerk-organization';
+import { ensureStaffWhatsAppColumns } from '@/lib/staff-whatsapp-schema';
 import { normalizeWhatsAppPhone } from '@/lib/whatsapp-notices';
 
 export const dynamic = 'force-dynamic';
@@ -15,6 +16,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url);
+    await ensureStaffWhatsAppColumns();
     const active = url.searchParams.get('active');
     const whereClause = active === 'true'
       ? and(eq(staff.active, true), eq(staff.archived, false))
@@ -58,6 +60,7 @@ export async function POST(request: Request) {
   try {
     const actor = await currentUser();
     const body = await request.json();
+    await ensureStaffWhatsAppColumns();
     const { fullName, email, department, unit, whatsappPhone } = body;
     const name = typeof fullName === 'string' ? fullName.trim() : '';
     const normalizedEmail = normalizeStaffEmail(email);
