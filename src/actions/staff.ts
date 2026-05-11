@@ -7,7 +7,51 @@ import { staff as staffTable } from '@/db/schema';
 import { updateTag } from 'next/cache';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
+import { normalizeWhatsAppPhone } from '@/lib/whatsapp-notices';
 import { eq } from 'drizzle-orm';
+
+type StaffWriteData = {
+  active?: boolean;
+  archived?: boolean;
+  department?: string;
+  fullName?: string;
+  isAttendanceOnly?: boolean;
+  isNssPersonnel?: boolean;
+  unit?: string;
+  whatsappNotificationsEnabled?: boolean;
+  whatsappPhone?: string | null;
+};
+
+function normalizeWhatsAppFields(data: Pick<StaffWriteData, 'whatsappNotificationsEnabled' | 'whatsappPhone'>) {
+  const hasPhone = Object.prototype.hasOwnProperty.call(data, 'whatsappPhone');
+  const update: {
+    whatsappNotificationsEnabled?: boolean;
+    whatsappPhone?: string | null;
+  } = {};
+
+  if (hasPhone) {
+    if (data.whatsappPhone !== null && data.whatsappPhone !== undefined && typeof data.whatsappPhone !== 'string') {
+      throw new Error('Enter a valid WhatsApp number');
+    }
+
+    const normalizedPhone = typeof data.whatsappPhone === 'string' && data.whatsappPhone.trim()
+      ? normalizeWhatsAppPhone(data.whatsappPhone)
+      : null;
+
+    if (typeof data.whatsappPhone === 'string' && data.whatsappPhone.trim() && !normalizedPhone) {
+      throw new Error('Enter a valid WhatsApp number');
+    }
+
+    update.whatsappPhone = normalizedPhone;
+    if (!normalizedPhone) update.whatsappNotificationsEnabled = false;
+  }
+
+  if (typeof data.whatsappNotificationsEnabled === 'boolean' && update.whatsappNotificationsEnabled !== false) {
+    update.whatsappNotificationsEnabled = data.whatsappNotificationsEnabled;
+  }
+
+  return update;
+}
 
 export async function getStaff() {
   await requireRole(['admin', 'hr', 'viewer']);
@@ -19,12 +63,14 @@ export async function getStaff() {
   return staff;
 }
 
-export async function createStaff(data: { fullName: string; department?: string; isAttendanceOnly?: boolean; isNssPersonnel?: boolean; unit?: string }) {
+export async function createStaff(data: StaffWriteData & { fullName: string }) {
   const user = await requireRole(['admin']);
+  const whatsappFields = normalizeWhatsAppFields(data);
   
   const newStaff = await db.insert(staffTable).values({
     fullName: data.fullName,
     department: data.department,
+    ...whatsappFields,
     isAttendanceOnly: data.isAttendanceOnly === true,
     isNssPersonnel: data.isAttendanceOnly === true ? false : data.isNssPersonnel === true,
     unit: data.unit,
@@ -49,7 +95,7 @@ export async function createStaff(data: { fullName: string; department?: string;
   return newStaff[0];
 }
 
-export async function updateStaff(id: string, data: { fullName?: string; active?: boolean; archived?: boolean; department?: string; isAttendanceOnly?: boolean; isNssPersonnel?: boolean; unit?: string }) {
+export async function updateStaff(id: string, data: StaffWriteData) {
   const user = await requireRole(['admin']);
 
   const before = await db.query.staff.findFirst({
@@ -60,8 +106,13 @@ export async function updateStaff(id: string, data: { fullName?: string; active?
     throw new Error('Staff member not found');
   }
   
+  const whatsappFields = normalizeWhatsAppFields(data);
+  const baseData = { ...data };
+  delete baseData.whatsappNotificationsEnabled;
+  delete baseData.whatsappPhone;
   const updateData = {
-    ...data,
+    ...baseData,
+    ...whatsappFields,
     ...(typeof data.isAttendanceOnly === 'boolean' || typeof data.isNssPersonnel === 'boolean'
       ? {
           isNssPersonnel: data.isAttendanceOnly === true ? false : data.isNssPersonnel === true,

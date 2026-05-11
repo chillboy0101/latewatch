@@ -25,6 +25,8 @@ interface StaffMember {
   id: string;
   fullName: string;
   email: string | null;
+  whatsappPhone: string | null;
+  whatsappNotificationsEnabled: boolean;
   department: string | null;
   unit: string | null;
   isNssPersonnel: boolean;
@@ -56,6 +58,8 @@ export default function StaffPage() {
   // Add form state
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
+  const [newWhatsappPhone, setNewWhatsappPhone] = useState('');
+  const [newWhatsappNotificationsEnabled, setNewWhatsappNotificationsEnabled] = useState(true);
   const [newDepartment, setNewDepartment] = useState('');
   const [newUnit, setNewUnit] = useState('');
   const [newIsNssPersonnel, setNewIsNssPersonnel] = useState(false);
@@ -65,6 +69,8 @@ export default function StaffPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
+  const [editWhatsappPhone, setEditWhatsappPhone] = useState('');
+  const [editWhatsappNotificationsEnabled, setEditWhatsappNotificationsEnabled] = useState(true);
   const [editDepartment, setEditDepartment] = useState('');
   const [editUnit, setEditUnit] = useState('');
   const [editIsNssPersonnel, setEditIsNssPersonnel] = useState(false);
@@ -124,6 +130,8 @@ export default function StaffPage() {
         body: JSON.stringify({
           fullName: newName.trim(),
           email: newEmail.trim() || null,
+          whatsappPhone: newWhatsappPhone.trim() || null,
+          whatsappNotificationsEnabled: newWhatsappNotificationsEnabled,
           department: newDepartment.trim() || null,
           unit: newUnit.trim() || null,
           isAttendanceOnly: newIsAttendanceOnly,
@@ -143,6 +151,8 @@ export default function StaffPage() {
         });
         setNewName('');
         setNewEmail('');
+        setNewWhatsappPhone('');
+        setNewWhatsappNotificationsEnabled(true);
         setNewDepartment('');
         setNewUnit('');
         setNewIsNssPersonnel(false);
@@ -257,6 +267,8 @@ export default function StaffPage() {
         body: JSON.stringify({
           fullName: editName.trim(),
           email: editEmail.trim() || null,
+          whatsappPhone: editWhatsappPhone.trim() || null,
+          whatsappNotificationsEnabled: editWhatsappNotificationsEnabled,
           department: editDepartment.trim() || null,
           unit: editUnit.trim() || null,
           isAttendanceOnly: editIsAttendanceOnly,
@@ -326,6 +338,8 @@ export default function StaffPage() {
     setEditingId(member.id);
     setEditName(member.fullName);
     setEditEmail(member.email || '');
+    setEditWhatsappPhone(member.whatsappPhone || '');
+    setEditWhatsappNotificationsEnabled(member.whatsappNotificationsEnabled === true);
     setEditDepartment(member.department || '');
     setEditUnit(member.unit || '');
     setEditIsNssPersonnel(member.isNssPersonnel === true);
@@ -357,6 +371,7 @@ export default function StaffPage() {
         const searchable = [
           s.fullName,
           s.email || '',
+          s.whatsappPhone || '',
           s.department || '',
           s.unit || '',
           s.isAttendanceOnly ? 'attendance monitoring only no penalty' : s.isNssPersonnel ? 'nss national service personnel' : 'staff',
@@ -481,6 +496,24 @@ export default function StaffPage() {
                     Used to match this staff member to their attendance check-in account.
                   </p>
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-whatsapp-phone">WhatsApp Number</Label>
+                  <Input
+                    id="new-whatsapp-phone"
+                    type="tel"
+                    placeholder="0241234567"
+                    value={newWhatsappPhone}
+                    onChange={(e) => setNewWhatsappPhone(e.target.value)}
+                  />
+                </div>
+                <label className="flex items-start gap-3 rounded-md border border-border p-3 text-sm">
+                  <Checkbox
+                    checked={newWhatsappNotificationsEnabled}
+                    onCheckedChange={(checked) => setNewWhatsappNotificationsEnabled(checked === true)}
+                    className="mt-0.5"
+                  />
+                  <span className="font-medium">Enable WhatsApp penalty notices</span>
+                </label>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="new-department">Department</Label>
@@ -575,9 +608,10 @@ export default function StaffPage() {
           ) : (
             <>
               <div>
-                <div className="hidden grid-cols-[1.1fr_1.15fr_.75fr_.65fr_.55fr_.65fr_1.55fr] gap-4 border-b border-border bg-card px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground xl:grid">
+                <div className="hidden grid-cols-[1fr_1.05fr_.95fr_.7fr_.6fr_.55fr_.65fr_1.45fr] gap-4 border-b border-border bg-card px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground xl:grid">
                   <div>Name</div>
                   <div>Login Email</div>
+                  <div>WhatsApp</div>
                   <div>Department</div>
                   <div>Unit</div>
                   <div>Type</div>
@@ -596,7 +630,7 @@ export default function StaffPage() {
                     <div key={member.id} className="transition-colors hover:bg-card/50">
                       {editingId === member.id ? (
                         <div className="space-y-4 px-4 py-4">
-                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                             <div className="space-y-1.5">
                               <Label htmlFor={`edit-name-${member.id}`}>Full Name</Label>
                               <Input
@@ -613,6 +647,16 @@ export default function StaffPage() {
                                 type="email"
                                 value={editEmail}
                                 onChange={(e) => setEditEmail(e.target.value)}
+                                className="h-10 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label htmlFor={`edit-whatsapp-phone-${member.id}`}>WhatsApp Number</Label>
+                              <Input
+                                id={`edit-whatsapp-phone-${member.id}`}
+                                type="tel"
+                                value={editWhatsappPhone}
+                                onChange={(e) => setEditWhatsappPhone(e.target.value)}
                                 className="h-10 text-sm"
                               />
                             </div>
@@ -635,6 +679,14 @@ export default function StaffPage() {
                               />
                             </div>
                           </div>
+                          <label className="flex w-fit items-start gap-3 rounded-md border border-border p-3 text-sm">
+                            <Checkbox
+                              checked={editWhatsappNotificationsEnabled}
+                              onCheckedChange={(checked) => setEditWhatsappNotificationsEnabled(checked === true)}
+                              className="mt-0.5"
+                            />
+                            <span className="font-medium">Enable WhatsApp penalty notices</span>
+                          </label>
                           <label className="flex w-fit items-start gap-3 rounded-md border border-border p-3 text-sm">
                             <Checkbox
                               checked={editIsNssPersonnel}
@@ -682,9 +734,16 @@ export default function StaffPage() {
                           </div>
                         </div>
                       ) : (
-                        <div className="grid gap-3 px-4 py-4 xl:grid-cols-[1.1fr_1.15fr_.75fr_.65fr_.55fr_.65fr_1.55fr] xl:items-center">
+                        <div className="grid gap-3 px-4 py-4 xl:grid-cols-[1fr_1.05fr_.95fr_.7fr_.6fr_.55fr_.65fr_1.45fr] xl:items-center">
                           <StaffField label="Name" value={member.fullName} strong />
                           <StaffField label="Login Email" value={member.email || 'Not linked'} muted={!member.email} />
+                          <StaffField
+                            label="WhatsApp"
+                            value={member.whatsappPhone
+                              ? member.whatsappNotificationsEnabled ? member.whatsappPhone : `${member.whatsappPhone} (off)`
+                              : 'Not linked'}
+                            muted={!member.whatsappPhone || !member.whatsappNotificationsEnabled}
+                          />
                           <StaffField label="Department" value={member.department || '-'} />
                           <StaffField label="Unit" value={member.unit || '-'} />
                           <StaffField label="Type" value={member.isAttendanceOnly ? 'Monitoring only' : member.isNssPersonnel ? 'NSS' : 'Staff'} />

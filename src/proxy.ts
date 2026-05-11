@@ -57,6 +57,7 @@ const isAdminRoute = createRouteMatcher([
   '/api/exports(.*)',
   '/api/seed(.*)',
   '/api/staff(.*)',
+  '/api/whatsapp(.*)',
 ]);
 
 const clerkConfigured =

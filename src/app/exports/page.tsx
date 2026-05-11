@@ -5,9 +5,10 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
-import { ChevronDown, Download, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { ChevronDown, Download, FileSpreadsheet, Loader2, MessageCircle } from 'lucide-react';
 import { endOfMonth, format, parseISO, startOfMonth } from 'date-fns';
 import { getMonthWorkingWeeks, type WorkingWeekRange } from '@/lib/export-weeks';
+import { WhatsAppNoticeQueue, type WhatsAppNoticeQueueItem } from '@/components/whatsapp/whatsapp-notice-queue';
 
 interface WeekSummary extends WorkingWeekRange {
   weekLabel: string;
@@ -63,6 +64,11 @@ export default function ExportsPage() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState<ExportTarget>(null);
   const [error, setError] = useState<string | null>(null);
+  const [whatsappQueueOpen, setWhatsappQueueOpen] = useState(false);
+  const [whatsappNotices, setWhatsappNotices] = useState<WhatsAppNoticeQueueItem[]>([]);
+  const [whatsappLoading, setWhatsappLoading] = useState(false);
+  const [whatsappError, setWhatsappError] = useState<string | null>(null);
+  const [whatsappWeek, setWhatsappWeek] = useState<{ label: string; weekEnd: string; weekStart: string } | null>(null);
 
   const selectedYear = selectedMonth.getFullYear();
   const selectedMonthIndex = selectedMonth.getMonth();
@@ -195,6 +201,35 @@ export default function ExportsPage() {
     }
   }
 
+  async function openWeeklyWhatsAppQueue(week: WeekSummary) {
+    setWhatsappWeek({
+      label: week.weekLabel,
+      weekEnd: week.exportEnd,
+      weekStart: week.exportStart,
+    });
+    setWhatsappQueueOpen(true);
+    setWhatsappLoading(true);
+    setWhatsappError(null);
+    setWhatsappNotices([]);
+
+    try {
+      const response = await fetch(`/api/whatsapp/queue?type=weekly&weekStart=${week.exportStart}&weekEnd=${week.exportEnd}`, { cache: 'no-store' });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error || 'Could not load WhatsApp notices');
+      }
+
+      const result = await response.json();
+      setWhatsappNotices(Array.isArray(result.notices) ? result.notices : []);
+    } catch (err) {
+      console.error('Failed to load weekly WhatsApp notices:', err);
+      setWhatsappError(err instanceof Error ? err.message : 'Could not load WhatsApp notices');
+      setWhatsappNotices([]);
+    } finally {
+      setWhatsappLoading(false);
+    }
+  }
+
   return (
     <DashboardLayout title="Lateness Exports">
       <div className="space-y-5">
@@ -296,17 +331,29 @@ export default function ExportsPage() {
                       <Metric label="No sign out" value={week.totalSignOut.toString()} tone="warning" />
                       <Metric label="Amount" value={`GHC ${week.totalAmount.toFixed(2)}`} mono />
 
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-2 lg:justify-self-end"
-                        onClick={() => handleWeeklyExport(week)}
-                        disabled={isOtherExporting || isExporting}
-                        aria-busy={isExporting}
-                      >
-                        {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                        {isExporting ? 'Downloading' : 'Download'}
-                      </Button>
+                      <div className="flex flex-wrap gap-2 lg:justify-self-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-2"
+                          onClick={() => openWeeklyWhatsAppQueue(week)}
+                          disabled={week.totalAmount <= 0}
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                          Send Weekly WhatsApp
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-2"
+                          onClick={() => handleWeeklyExport(week)}
+                          disabled={isOtherExporting || isExporting}
+                          aria-busy={isExporting}
+                        >
+                          {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                          {isExporting ? 'Downloading' : 'Download'}
+                        </Button>
+                      </div>
                     </div>
                   );
                 })}
@@ -320,6 +367,19 @@ export default function ExportsPage() {
             )}
           </div>
         </Card>
+        <WhatsAppNoticeQueue
+          description={whatsappWeek
+            ? `${whatsappWeek.label}: ${format(parseISO(whatsappWeek.weekStart), 'MMM d')} - ${format(parseISO(whatsappWeek.weekEnd), 'MMM d')}`
+            : 'Weekly penalty notices'}
+          error={whatsappError}
+          loading={whatsappLoading}
+          notices={whatsappNotices}
+          onOpenChange={setWhatsappQueueOpen}
+          open={whatsappQueueOpen}
+          title="Weekly WhatsApp Notices"
+          weekEnd={whatsappWeek?.weekEnd}
+          weekStart={whatsappWeek?.weekStart}
+        />
       </div>
     </DashboardLayout>
   );

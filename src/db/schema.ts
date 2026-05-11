@@ -6,6 +6,8 @@ export const staff = pgTable('staff', {
   id: uuid('id').primaryKey().defaultRandom(),
   fullName: text('full_name').notNull(),
   email: text('email'),
+  whatsappPhone: text('whatsapp_phone'),
+  whatsappNotificationsEnabled: boolean('whatsapp_notifications_enabled').default(false).notNull(),
   displayOrder: integer('display_order'),
   active: boolean('active').default(true),
   archived: boolean('archived').default(false),

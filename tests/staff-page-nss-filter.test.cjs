@@ -24,3 +24,15 @@ test('staff page keeps attendance monitoring only staff in a separate table sect
   assert.match(source, /regularFilteredStaff/);
   assert.match(source, /attendanceOnlyFilteredStaff/);
 });
+
+test('staff page captures WhatsApp number and notification preference', () => {
+  const source = fs.readFileSync(staffPagePath, 'utf8');
+
+  assert.match(source, /whatsappPhone: string \| null/);
+  assert.match(source, /whatsappNotificationsEnabled: boolean/);
+  assert.match(source, /newWhatsappPhone/);
+  assert.match(source, /editWhatsappPhone/);
+  assert.match(source, /WhatsApp Number/);
+  assert.match(source, /whatsappNotificationsEnabled: newWhatsappNotificationsEnabled/);
+  assert.match(source, /whatsappNotificationsEnabled: editWhatsappNotificationsEnabled/);
+});

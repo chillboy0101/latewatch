@@ -8,10 +8,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card } from '@/components/ui/card';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { addDays, format, isValid, parseISO } from 'date-fns';
-import { Save, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Clock, RefreshCw } from 'lucide-react';
+import { Save, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Clock, MessageCircle, RefreshCw } from 'lucide-react';
 import { computePenalty } from '@/lib/penalty-calculator';
 import { getAccraDateKey } from '@/lib/date-key';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
+import { WhatsAppNoticeQueue, type WhatsAppNoticeQueueItem } from '@/components/whatsapp/whatsapp-notice-queue';
 
 interface StaffMember {
   id: string;
@@ -57,6 +58,10 @@ export default function EntriesPage() {
   const [isHoliday, setIsHoliday] = useState(false);
   const [holidayName, setHolidayName] = useState('');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [whatsappQueueOpen, setWhatsappQueueOpen] = useState(false);
+  const [whatsappNotices, setWhatsappNotices] = useState<WhatsAppNoticeQueueItem[]>([]);
+  const [whatsappLoading, setWhatsappLoading] = useState(false);
+  const [whatsappError, setWhatsappError] = useState<string | null>(null);
 
   const fetchStaffAndEntries = useCallback(async () => {
     try {
@@ -208,6 +213,30 @@ export default function EntriesPage() {
     }
   }
 
+  async function openDailyWhatsAppQueue() {
+    setWhatsappQueueOpen(true);
+    setWhatsappLoading(true);
+    setWhatsappError(null);
+    setWhatsappNotices([]);
+
+    try {
+      const response = await fetch(`/api/whatsapp/queue?type=daily&date=${selectedDateKey}`, { cache: 'no-store' });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error || 'Could not load WhatsApp notices');
+      }
+
+      const result = await response.json();
+      setWhatsappNotices(Array.isArray(result.notices) ? result.notices : []);
+    } catch (error) {
+      console.error('Failed to load WhatsApp notices:', error);
+      setWhatsappError(error instanceof Error ? error.message : 'Could not load WhatsApp notices');
+      setWhatsappNotices([]);
+    } finally {
+      setWhatsappLoading(false);
+    }
+  }
+
   function changeSelectedDate(nextDate: Date) {
     setSelectedDate(nextDate);
     setMessage(null);
@@ -354,6 +383,14 @@ export default function EntriesPage() {
             >
               <RefreshCw className="h-4 w-4" />
             </Button>
+            <Button
+              disabled={saving || entriesDisabled || totals.totalAmount <= 0}
+              onClick={openDailyWhatsAppQueue}
+              variant="outline"
+            >
+              <MessageCircle className="mr-2 h-4 w-4" />
+              Send WhatsApp Notices
+            </Button>
             <Button onClick={handleSaveAll} disabled={saving || entriesDisabled}>
               <Save className="mr-2 h-4 w-4" />
               {saving ? 'Saving...' : entriesDisabled ? 'Closed - No Entries' : 'Save Lateness Entries'}
@@ -451,6 +488,17 @@ export default function EntriesPage() {
             </div>
           </div>
         </Card>
+
+        <WhatsAppNoticeQueue
+          date={selectedDateKey}
+          description={`Daily penalty notices for ${format(selectedDate, 'MMMM d, yyyy')}`}
+          error={whatsappError}
+          loading={whatsappLoading}
+          notices={whatsappNotices}
+          onOpenChange={setWhatsappQueueOpen}
+          open={whatsappQueueOpen}
+          title="Daily WhatsApp Notices"
+        />
       </div>
     </DashboardLayout>
   );
