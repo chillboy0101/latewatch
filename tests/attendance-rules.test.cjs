@@ -9,6 +9,11 @@ const { getAuditFieldChanges, getAuditTargetName } = require('../src/lib/audit-d
 const { DEFAULT_OFFICE_RADIUS_METERS, validateAttendanceLocation } = require('../src/lib/geo-location.ts');
 const { getClientIp, getClientIpInfo, isLoopbackIp } = require('../src/lib/request-ip.ts');
 const { isAfterWorkdayEnd } = require('../src/lib/work-hours.ts');
+const {
+  LATE_ARRIVAL_PERMISSION_REASONS,
+  formatLateArrivalPermissionReason,
+  isValidLateArrivalPermissionReason,
+} = require('../src/lib/attendance-permissions.ts');
 
 function requestWithHeaders(headers) {
   return {
@@ -80,6 +85,18 @@ test('attendance monitoring only staff are never charged penalties', () => {
     computePenalty({ arrivalTime: null, didNotSignOut: true, isHoliday: false, isAttendanceOnly: true }),
     { amount: 0, reason: '' },
   );
+});
+
+test('late arrival permission reasons are restricted to the approved list', () => {
+  assert.deepEqual(
+    LATE_ARRIVAL_PERMISSION_REASONS.map((option) => option.value),
+    ['training', 'official duty', 'personal excuse'],
+  );
+  assert.equal(isValidLateArrivalPermissionReason('training'), true);
+  assert.equal(isValidLateArrivalPermissionReason(' official duty '), true);
+  assert.equal(isValidLateArrivalPermissionReason('meeting'), false);
+  assert.equal(formatLateArrivalPermissionReason('personal excuse'), 'Personal excuse');
+  assert.equal(formatLateArrivalPermissionReason('custom existing reason'), 'custom existing reason');
 });
 
 test('office network audit display includes the saved network IP', () => {

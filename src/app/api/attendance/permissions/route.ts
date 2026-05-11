@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { attendancePermission, staff } from '@/db/schema';
 import {
   getPermissionWindowBounds,
+  normalizeLateArrivalPermissionReason,
   normalizeMinuteTime,
   normalizePermissionWindow,
 } from '@/lib/attendance-permissions';
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const staffId = optionalText(body?.staffId);
     const date = optionalText(body?.date);
-    const reason = optionalText(body?.reason);
+    let reason = optionalText(body?.reason);
     const permissionType = optionalText(body?.permissionType) || 'late_arrival';
     const arrivalWindow = permissionType === 'late_arrival'
       ? normalizePermissionWindow(body?.arrivalWindow)
@@ -78,6 +79,11 @@ export async function POST(request: NextRequest) {
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return NextResponse.json({ error: 'Valid date is required' }, { status: 400 });
     if (!reason) return NextResponse.json({ error: 'Permission reason is required' }, { status: 400 });
     if (!VALID_TYPES.has(permissionType)) return NextResponse.json({ error: 'Invalid permission type' }, { status: 400 });
+    if (permissionType === 'late_arrival') {
+      const selectedReason = normalizeLateArrivalPermissionReason(reason);
+      if (!selectedReason) return NextResponse.json({ error: 'Select a valid late arrival reason' }, { status: 400 });
+      reason = selectedReason;
+    }
     if (permissionType === 'late_arrival' && arrivalWindow === 'specific_time' && !expectedTime) {
       return NextResponse.json({ error: 'Expected arrival time is required' }, { status: 400 });
     }

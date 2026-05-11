@@ -7,7 +7,14 @@ export const ATTENDANCE_PERMISSION_WINDOWS = [
   { value: 'specific_time', label: 'Specific time' },
 ] as const;
 
+export const LATE_ARRIVAL_PERMISSION_REASONS = [
+  { value: 'training', label: 'Training' },
+  { value: 'official duty', label: 'Official duty' },
+  { value: 'personal excuse', label: 'Personal excuse' },
+] as const;
+
 export type AttendancePermissionWindow = typeof ATTENDANCE_PERMISSION_WINDOWS[number]['value'];
+export type LateArrivalPermissionReason = typeof LATE_ARRIVAL_PERMISSION_REASONS[number]['value'];
 
 export type AttendancePermissionLike = {
   arrivalWindow?: string | null;
@@ -17,6 +24,7 @@ export type AttendancePermissionLike = {
 };
 
 const VALID_WINDOWS = new Set<string>(ATTENDANCE_PERMISSION_WINDOWS.map((option) => option.value));
+const VALID_LATE_ARRIVAL_REASONS = new Set<string>(LATE_ARRIVAL_PERMISSION_REASONS.map((option) => option.value));
 const MINUTE_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export function normalizePermissionWindow(value: unknown): AttendancePermissionWindow {
@@ -29,6 +37,23 @@ export function normalizeMinuteTime(value: unknown) {
   if (typeof value !== 'string') return null;
   const time = value.trim().slice(0, 5);
   return MINUTE_TIME_PATTERN.test(time) ? time : null;
+}
+
+export function normalizeLateArrivalPermissionReason(value: unknown): LateArrivalPermissionReason | null {
+  if (typeof value !== 'string') return null;
+  const reason = value.trim().toLowerCase();
+  return VALID_LATE_ARRIVAL_REASONS.has(reason) ? reason as LateArrivalPermissionReason : null;
+}
+
+export function isValidLateArrivalPermissionReason(value: unknown) {
+  return normalizeLateArrivalPermissionReason(value) !== null;
+}
+
+export function formatLateArrivalPermissionReason(value: string | null | undefined) {
+  const reason = normalizeLateArrivalPermissionReason(value);
+  if (!reason) return value || '';
+
+  return LATE_ARRIVAL_PERMISSION_REASONS.find((option) => option.value === reason)?.label || reason;
 }
 
 export function formatTimeLabel(value: string | null | undefined) {

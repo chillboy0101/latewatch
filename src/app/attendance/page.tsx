@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/input';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import {
   ATTENDANCE_PERMISSION_WINDOWS,
+  LATE_ARRIVAL_PERMISSION_REASONS,
+  formatLateArrivalPermissionReason,
   getPermissionWindowBounds,
 } from '@/lib/attendance-permissions';
 import { getAccraDateKey } from '@/lib/date-key';
@@ -559,6 +561,7 @@ export default function AttendancePage() {
               value={permissionType}
               onChange={(value) => {
                 setPermissionType(value);
+                setPermissionReason('');
                 if (value === 'absence') setPermissionWindow('any_time_today');
               }}
             >
@@ -586,18 +589,32 @@ export default function AttendancePage() {
                 />
               )}
             </div>
-            <div className="min-w-0">
-              <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase text-muted-foreground">
-                <FileText className="h-3.5 w-3.5" />
-                Reason
-              </label>
-              <Input
-                className="h-11 font-medium"
-                placeholder="Approved reason"
+            {permissionType === 'late_arrival' ? (
+              <SelectField
+                icon={<FileText className="h-3.5 w-3.5" />}
+                label="Reason"
                 value={permissionReason}
-                onChange={(event) => setPermissionReason(event.target.value)}
-              />
-            </div>
+                onChange={setPermissionReason}
+              >
+                <option value="">Select reason</option>
+                {LATE_ARRIVAL_PERMISSION_REASONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </SelectField>
+            ) : (
+              <div className="min-w-0">
+                <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase text-muted-foreground">
+                  <FileText className="h-3.5 w-3.5" />
+                  Reason
+                </label>
+                <Input
+                  className="h-11 font-medium"
+                  placeholder="Approved reason"
+                  value={permissionReason}
+                  onChange={(event) => setPermissionReason(event.target.value)}
+                />
+              </div>
+            )}
             <Button className="h-11 w-full gap-2 px-4" onClick={savePermission} disabled={savingPermission}>
               {savingPermission ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
               Approve
@@ -612,7 +629,9 @@ export default function AttendancePage() {
                     <p className="truncate text-xs text-muted-foreground">
                       {permission.permissionType === 'absence'
                         ? 'Excused absence'
-                        : `Late arrival / ${getPermissionWindowBounds(permission).label}`} / {permission.reason}
+                        : `Late arrival / ${getPermissionWindowBounds(permission).label}`} / {permission.permissionType === 'late_arrival'
+                          ? formatLateArrivalPermissionReason(permission.reason)
+                          : permission.reason}
                     </p>
                   </div>
                   <Button
