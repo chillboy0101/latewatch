@@ -1,4 +1,5 @@
 import { neon } from '@neondatabase/serverless';
+import { Rest } from 'ably';
 import { createRequire } from 'node:module';
 import dotenv from 'dotenv';
 
@@ -27,6 +28,7 @@ if (!process.env.DATABASE_URL) {
 
 const sql = neon(process.env.DATABASE_URL);
 const AUDIT_REASON = 'regular-staff-penalty-threshold-recalculation';
+const INVALIDATION_CHANNELS = ['entries', 'attendance', 'dashboard', 'audit-trail', 'notifications'];
 
 function countPlan(plan) {
   return {
@@ -79,6 +81,19 @@ async function writeAuditEvent({ action, after, before, entityId, entityType }) 
       'system'
     )
   `;
+}
+
+async function publishInvalidation() {
+  const key = process.env.ABLY_API_KEY;
+  if (!key) return false;
+
+  const client = new Rest({ key });
+  await Promise.all(INVALIDATION_CHANNELS.map((channel) =>
+    client.channels.get(`latewatch:${channel}`).publish('invalidate', {
+      reason: AUDIT_REASON,
+    })
+  ));
+  return true;
 }
 
 async function applyPlan({ attendanceRows, latenessRows, plan }) {
@@ -300,4 +315,9 @@ console.log(`Lateness deletes: ${total.latenessDeleted}`);
 if (!applyChanges) {
   console.log('');
   console.log('No records were changed. Run with --apply to write these corrections.');
+} else {
+  const published = await publishInvalidation();
+  console.log(published
+    ? 'Published live invalidation for entries, attendance, dashboard, audit trail, and notifications.'
+    : 'ABLY_API_KEY is not configured; refresh open pages manually to see applied corrections.');
 }

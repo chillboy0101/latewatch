@@ -18,6 +18,7 @@ interface StaffMember {
   fullName: string;
   active?: boolean | null;
   archived?: boolean | null;
+  isAttendanceOnly?: boolean | null;
   isNssPersonnel?: boolean | null;
 }
 
@@ -151,6 +152,7 @@ export default function EntriesPage() {
           const penalty = computePenalty({
             arrivalTime: updated.arrivalTime || null,
             didNotSignOut: updated.didNotSignOut,
+            isAttendanceOnly: member?.isAttendanceOnly === true,
             isNssPersonnel: member?.isNssPersonnel === true,
             isHoliday,
           });
