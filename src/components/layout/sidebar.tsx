@@ -1,7 +1,7 @@
 // components/layout/sidebar.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { type FocusEvent, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LateWatchMark } from '@/components/brand/latewatch-logo';
@@ -24,6 +24,9 @@ import {
 type SidebarMode = 'auto' | 'fixed';
 
 const SIDEBAR_MODE_STORAGE_KEY = 'latewatch-sidebar-mode';
+const SIDEBAR_MOTION_CLASS = 'duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none';
+const SIDEBAR_LABEL_MOTION_CLASS = 'duration-200 ease-out motion-reduce:transition-none';
+let rememberedAutoExpanded = false;
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -44,8 +47,10 @@ function isSidebarMode(value: string | null): value is SidebarMode {
 export function Sidebar() {
   const pathname = usePathname();
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>('auto');
+  const [isAutoExpanded, setIsAutoExpanded] = useState(() => rememberedAutoExpanded);
   const [hasLoadedSidebarMode, setHasLoadedSidebarMode] = useState(false);
   const isFixed = sidebarMode === 'fixed';
+  const isExpanded = isFixed || isAutoExpanded;
   const toggleLabel = isFixed ? 'Use auto-hide sidebar' : 'Pin sidebar open';
 
   useEffect(() => {
@@ -71,48 +76,99 @@ export function Sidebar() {
     }
   }, [hasLoadedSidebarMode, sidebarMode]);
 
+  const setAutoExpanded = useCallback((value: boolean) => {
+    rememberedAutoExpanded = value;
+    setIsAutoExpanded(value);
+  }, []);
+
+  function expandAutoSidebar() {
+    if (sidebarMode === 'auto') setAutoExpanded(true);
+  }
+
+  function collapseAutoSidebar() {
+    if (sidebarMode === 'auto') setAutoExpanded(false);
+  }
+
+  useEffect(() => {
+    if (sidebarMode !== 'auto') return;
+
+    function collapseAutoSidebarForWindowExit() {
+      setAutoExpanded(false);
+    }
+
+    function collapseAutoSidebarForHiddenDocument() {
+      if (document.visibilityState === 'hidden') {
+        collapseAutoSidebarForWindowExit();
+      }
+    }
+
+    window.addEventListener('blur', collapseAutoSidebarForWindowExit);
+    document.addEventListener('visibilitychange', collapseAutoSidebarForHiddenDocument);
+
+    return () => {
+      window.removeEventListener('blur', collapseAutoSidebarForWindowExit);
+      document.removeEventListener('visibilitychange', collapseAutoSidebarForHiddenDocument);
+    };
+  }, [setAutoExpanded, sidebarMode]);
+
+  function handleSidebarBlur(event: FocusEvent<HTMLDivElement>) {
+    if (sidebarMode !== 'auto') return;
+
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
+
+    setAutoExpanded(false);
+  }
+
   function toggleSidebarMode() {
-    setSidebarMode((mode) => (mode === 'fixed' ? 'auto' : 'fixed'));
+    const nextMode = sidebarMode === 'fixed' ? 'auto' : 'fixed';
+    setSidebarMode(nextMode);
+    if (nextMode === 'auto') setAutoExpanded(false);
   }
 
   const labelClassName = cn(
-    'min-w-0 overflow-hidden whitespace-nowrap transition-[max-width,opacity,transform] duration-200 ease-out',
-    isFixed
-      ? 'max-w-44 translate-x-0 opacity-100'
-      : 'max-w-0 -translate-x-1 opacity-0 group-hover/sidebar:max-w-44 group-hover/sidebar:translate-x-0 group-hover/sidebar:opacity-100 group-focus-within/sidebar:max-w-44 group-focus-within/sidebar:translate-x-0 group-focus-within/sidebar:opacity-100',
+    'min-w-0 overflow-hidden whitespace-nowrap transition-[opacity,transform] will-change-[opacity,transform]',
+    SIDEBAR_LABEL_MOTION_CLASS,
+    isExpanded
+      ? 'translate-x-0 opacity-100'
+      : 'pointer-events-none -translate-x-1 opacity-0',
   );
 
   const itemClassName = cn(
-    'flex h-10 w-full items-center rounded-md text-sm font-medium transition-all duration-200 ease-out',
-    isFixed
-      ? 'gap-3 px-3'
-      : 'justify-center gap-0 px-0 group-hover/sidebar:justify-start group-hover/sidebar:gap-3 group-hover/sidebar:px-3 group-focus-within/sidebar:justify-start group-focus-within/sidebar:gap-3 group-focus-within/sidebar:px-3',
+    'flex h-10 w-full items-center justify-start gap-3 rounded-md px-3 text-sm font-medium transition-colors duration-150 ease-out',
+  );
+
+  const toggleButtonClassName = cn(
+    'absolute bottom-3 left-[14px] flex h-9 w-9 items-center justify-center rounded-md border border-border/80 bg-card text-muted shadow-sm transition-[transform,background-color,color] will-change-transform hover:bg-background hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/35',
+    SIDEBAR_MOTION_CLASS,
+    isExpanded ? 'translate-x-48' : 'translate-x-0',
   );
 
   return (
-    <div className={cn('relative h-full shrink-0 transition-[width] duration-200 ease-out', isFixed ? 'w-64' : 'w-16')}>
+    <div className={cn('relative h-full shrink-0 transition-[width] will-change-[width]', SIDEBAR_MOTION_CLASS, isFixed ? 'w-64' : 'w-16')}>
       <div
+        onMouseEnter={expandAutoSidebar}
+        onMouseLeave={collapseAutoSidebar}
+        onFocusCapture={expandAutoSidebar}
+        onBlurCapture={handleSidebarBlur}
+        style={{
+          clipPath: isExpanded ? 'inset(0 0 0 0)' : 'inset(0 12rem 0 0)',
+        }}
         className={cn(
-          'group/sidebar absolute inset-y-0 left-0 z-40 flex h-full flex-col border-r border-border bg-card transition-[width,box-shadow] duration-200 ease-out',
-          isFixed
-            ? 'w-64'
-            : 'w-16 hover:w-64 focus-within:w-64 group-hover/sidebar:w-64 group-focus-within/sidebar:w-64 hover:shadow-xl focus-within:shadow-xl',
+          'absolute inset-y-0 left-0 z-40 flex h-full w-64 flex-col overflow-hidden border-r border-border bg-card transition-[clip-path,box-shadow] will-change-[clip-path]',
+          SIDEBAR_MOTION_CLASS,
+          !isFixed && isAutoExpanded && 'shadow-xl',
         )}
       >
-        <div className={cn('flex h-16 items-center border-b border-border transition-all duration-200', isFixed ? 'px-6' : 'justify-center px-0 group-hover/sidebar:justify-start group-hover/sidebar:px-6 group-focus-within/sidebar:justify-start group-focus-within/sidebar:px-6')}>
-          <div className={cn(
-            'flex min-w-0 items-center transition-[gap] duration-200',
-            isFixed
-              ? 'gap-2.5'
-              : 'gap-0 group-hover/sidebar:gap-2.5 group-focus-within/sidebar:gap-2.5',
-          )}>
+        <div className="flex h-16 items-center border-b border-border px-4">
+          <div className="flex min-w-0 items-center gap-2.5">
             <LateWatchMark size="sm" />
             <span className={cn('text-lg font-semibold leading-tight', labelClassName)}>
               LateWatch
             </span>
           </div>
         </div>
-        <nav className={cn('flex-1 space-y-1 py-4 transition-[padding] duration-200', isFixed ? 'px-3' : 'px-2 group-hover/sidebar:px-3 group-focus-within/sidebar:px-3')}>
+        <nav className="flex-1 space-y-1 px-2 py-4">
           {navigation.map((item) => {
             const isActive =
               pathname === item.href || pathname?.startsWith(`${item.href}/`);
@@ -136,7 +192,7 @@ export function Sidebar() {
             );
           })}
         </nav>
-        <div className={cn('space-y-2 border-t border-border py-3 transition-[padding] duration-200', isFixed ? 'px-3' : 'px-2 group-hover/sidebar:px-3 group-focus-within/sidebar:px-3')}>
+        <div className="space-y-2 border-t border-border px-2 pb-16 pt-3">
           <Link
             href="/"
             aria-label="Main Portal"
@@ -149,24 +205,20 @@ export function Sidebar() {
             <Home className="h-5 w-5 shrink-0" />
             <span className={labelClassName}>Main Portal</span>
           </Link>
-          <button
-            type="button"
-            aria-label={toggleLabel}
-            title={toggleLabel}
-            onClick={toggleSidebarMode}
-            className={cn(
-              itemClassName,
-              'text-muted hover:bg-background hover:text-foreground',
-            )}
-          >
-            {isFixed ? (
-              <PanelLeftClose className="h-5 w-5 shrink-0" />
-            ) : (
-              <PanelLeftOpen className="h-5 w-5 shrink-0" />
-            )}
-            <span className={labelClassName}>{toggleLabel}</span>
-          </button>
         </div>
+        <button
+          type="button"
+          aria-label={toggleLabel}
+          title={toggleLabel}
+          onClick={toggleSidebarMode}
+          className={toggleButtonClassName}
+        >
+          {isFixed ? (
+            <PanelLeftClose className="h-4 w-4 shrink-0" />
+          ) : (
+            <PanelLeftOpen className="h-4 w-4 shrink-0" />
+          )}
+        </button>
       </div>
     </div>
   );

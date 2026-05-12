@@ -5,6 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const attendancePagePath = path.join(__dirname, '../src/app/attendance/page.tsx');
+const attendanceApiPath = path.join(__dirname, '../src/app/api/attendance/route.ts');
 
 test('attendance QR print sheet does not show the raw install URL text', () => {
   const source = fs.readFileSync(attendancePagePath, 'utf8');
@@ -32,4 +33,20 @@ test('attendance permission form exposes absence date range and period controls'
   assert.match(source, /label="Absence End"/);
   assert.match(source, /label="Absence Period"/);
   assert.match(source, /absenceEndDate/);
+});
+
+test('attendance permission list falls back to loaded staff names', () => {
+  const source = fs.readFileSync(attendancePagePath, 'utf8');
+
+  assert.match(source, /const staffNameById = useMemo\(\(\) => new Map/);
+  assert.match(source, /staffNameById\.get\(permission\.staffId\)/);
+  assert.match(source, /permission\.staffName \|\| staffNameById\.get\(permission\.staffId\) \|\| 'Staff member'/);
+});
+
+test('attendance API includes staff names for permission rows', () => {
+  const source = fs.readFileSync(attendanceApiPath, 'utf8');
+
+  assert.match(source, /staffName: staff\.fullName/);
+  assert.match(source, /staffEmail: staff\.email/);
+  assert.match(source, /leftJoin\(staff, eq\(attendancePermission\.staffId, staff\.id\)\)/);
 });

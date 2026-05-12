@@ -67,10 +67,13 @@ export async function GET(request: NextRequest) {
         id: attendancePermission.id,
         permissionType: attendancePermission.permissionType,
         reason: attendancePermission.reason,
+        staffEmail: staff.email,
         staffId: attendancePermission.staffId,
+        staffName: staff.fullName,
         status: attendancePermission.status,
       })
         .from(attendancePermission)
+        .leftJoin(staff, eq(attendancePermission.staffId, staff.id))
         .where(and(eq(attendancePermission.date, date), eq(attendancePermission.status, 'approved')))),
     ]);
 

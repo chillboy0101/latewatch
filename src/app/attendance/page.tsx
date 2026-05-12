@@ -510,6 +510,10 @@ export default function AttendancePage() {
     printWindow.print();
   }
 
+  const staffNameById = useMemo(() => new Map(
+    (data?.rows || []).map((row) => [row.staff.id, row.staff.fullName]),
+  ), [data?.rows]);
+
   const sortedRows = useMemo(() => {
     const rank: Record<AttendanceStatus, number> = {
       permission_overdue: 0,
@@ -726,7 +730,9 @@ export default function AttendancePage() {
               {data?.permissions.map((permission) => (
                 <div key={permission.id} className="flex flex-col gap-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium">{permission.staffName || 'Staff member'}</p>
+                    <p className="text-sm font-medium">
+                      {permission.staffName || staffNameById.get(permission.staffId) || 'Staff member'}
+                    </p>
                     <p className="truncate text-xs text-muted-foreground">
                       {permissionSummary(permission)}
                     </p>
