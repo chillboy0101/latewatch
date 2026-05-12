@@ -9,10 +9,10 @@ import { Input } from '@/components/ui/input';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import {
   ABSENCE_PERMISSION_REASONS,
-  ABSENCE_PERMISSION_WINDOWS,
   ATTENDANCE_PERMISSION_WINDOWS,
+  LATE_ARRIVAL_PERMISSION_REASONS,
   formatAbsencePermissionReason,
-  getAbsencePeriodBounds,
+  formatLateArrivalPermissionReason,
   getPermissionWindowBounds,
 } from '@/lib/attendance-permissions';
 import { getAccraDateKey } from '@/lib/date-key';
@@ -214,10 +214,10 @@ function statusClass(status: AttendanceStatus) {
 
 function permissionSummary(permission: AttendancePermission) {
   if (permission.permissionType === 'absence') {
-    return `Excused absence / ${getAbsencePeriodBounds(permission).label} / ${formatAbsencePermissionReason(permission.reason)}`;
+    return `Excused absence / ${formatAbsencePermissionReason(permission.reason)}`;
   }
 
-  return `Late arrival / ${getPermissionWindowBounds(permission).label} / ${permission.reason}`;
+  return `Late arrival / ${getPermissionWindowBounds(permission).label} / ${formatLateArrivalPermissionReason(permission.reason)}`;
 }
 
 export default function AttendancePage() {
@@ -232,9 +232,6 @@ export default function AttendancePage() {
   const [permissionExpectedTime, setPermissionExpectedTime] = useState('10:30');
   const [permissionAbsenceStartDate, setPermissionAbsenceStartDate] = useState(todayKey());
   const [permissionAbsenceEndDate, setPermissionAbsenceEndDate] = useState(todayKey());
-  const [permissionAbsenceWindow, setPermissionAbsenceWindow] = useState('full_day');
-  const [permissionAbsenceStartTime, setPermissionAbsenceStartTime] = useState('08:30');
-  const [permissionAbsenceEndTime, setPermissionAbsenceEndTime] = useState('17:00');
   const [permissionReason, setPermissionReason] = useState('');
   const [savingPermission, setSavingPermission] = useState(false);
   const [deletingPermissionId, setDeletingPermissionId] = useState<string | null>(null);
@@ -323,7 +320,7 @@ export default function AttendancePage() {
     if (!permissionStaffId || !permissionReason.trim()) {
       setError(permissionType === 'absence'
         ? 'Select a staff member and choose the excused absence reason.'
-        : 'Select a staff member and enter the late arrival reason.');
+        : 'Select a staff member and choose the late arrival reason.');
       return;
     }
     if (permissionType === 'absence') {
@@ -335,10 +332,6 @@ export default function AttendancePage() {
         setError('Absence end date must be on or after the start date.');
         return;
       }
-      if (permissionAbsenceWindow === 'specific_time' && permissionAbsenceEndTime <= permissionAbsenceStartTime) {
-        setError('Absence end time must be after the start time.');
-        return;
-      }
     }
 
     setSavingPermission(true);
@@ -348,10 +341,7 @@ export default function AttendancePage() {
       const payload = permissionType === 'absence'
         ? {
             absenceEndDate: permissionAbsenceEndDate,
-            absenceWindow: permissionAbsenceWindow,
             date: permissionAbsenceStartDate,
-            expectedEndTime: permissionAbsenceWindow === 'specific_time' ? permissionAbsenceEndTime : null,
-            expectedStartTime: permissionAbsenceWindow === 'specific_time' ? permissionAbsenceStartTime : null,
             permissionType,
             reason: permissionReason,
             staffId: permissionStaffId,
@@ -380,9 +370,6 @@ export default function AttendancePage() {
       setPermissionExpectedTime('10:30');
       setPermissionAbsenceStartDate(attendanceDate);
       setPermissionAbsenceEndDate(attendanceDate);
-      setPermissionAbsenceWindow('full_day');
-      setPermissionAbsenceStartTime('08:30');
-      setPermissionAbsenceEndTime('17:00');
       await fetchAttendance();
     } catch (err) {
       console.error('Failed to save permission:', err);
@@ -625,7 +612,6 @@ export default function AttendancePage() {
                   setPermissionWindow('any_time_today');
                   setPermissionAbsenceStartDate(attendanceDate);
                   setPermissionAbsenceEndDate(attendanceDate);
-                  setPermissionAbsenceWindow('full_day');
                 }
               }}
             >
@@ -655,16 +641,17 @@ export default function AttendancePage() {
                   )}
                 </div>
                 <div className="min-w-0 xl:col-span-3">
-                  <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase text-muted-foreground">
-                    <FileText className="h-3.5 w-3.5" />
-                    Reason
-                  </label>
-                  <Input
-                    className="h-11 font-medium"
-                    placeholder="Enter late arrival reason"
+                  <SelectField
+                    icon={<FileText className="h-3.5 w-3.5" />}
+                    label="Reason"
                     value={permissionReason}
-                    onChange={(event) => setPermissionReason(event.target.value)}
-                  />
+                    onChange={setPermissionReason}
+                  >
+                    <option value="">Select late arrival reason</option>
+                    {LATE_ARRIVAL_PERMISSION_REASONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </SelectField>
                 </div>
               </>
             ) : (
@@ -682,32 +669,7 @@ export default function AttendancePage() {
                   onChange={(value) => setPermissionAbsenceEndDate((current) => formatDateInput(value, current))}
                 />
                 <SelectField
-                  className="xl:col-span-3"
-                  icon={<Clock className="h-3.5 w-3.5" />}
-                  label="Absence Period"
-                  value={permissionAbsenceWindow}
-                  onChange={setPermissionAbsenceWindow}
-                >
-                  {ABSENCE_PERMISSION_WINDOWS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </SelectField>
-                {permissionAbsenceWindow === 'specific_time' && (
-                  <>
-                    <TimeField
-                      label="Start Time"
-                      value={permissionAbsenceStartTime}
-                      onChange={setPermissionAbsenceStartTime}
-                    />
-                    <TimeField
-                      label="End Time"
-                      value={permissionAbsenceEndTime}
-                      onChange={setPermissionAbsenceEndTime}
-                    />
-                  </>
-                )}
-                <SelectField
-                  className={permissionAbsenceWindow === 'specific_time' ? 'xl:col-span-4' : 'xl:col-span-8'}
+                  className="xl:col-span-8"
                   icon={<FileText className="h-3.5 w-3.5" />}
                   label="Reason"
                   value={permissionReason}
@@ -1057,28 +1019,6 @@ function AttendanceDateField({
           className="absolute right-1.5 top-1/2 h-7 w-7 -translate-y-1/2 opacity-0"
         />
       </div>
-    </div>
-  );
-}
-
-function TimeField({
-  label,
-  onChange,
-  value,
-}: {
-  label: string;
-  onChange: (value: string) => void;
-  value: string;
-}) {
-  return (
-    <div className="min-w-0 xl:col-span-2">
-      <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">{label}</label>
-      <Input
-        className="h-11 font-medium"
-        type="time"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
     </div>
   );
 }

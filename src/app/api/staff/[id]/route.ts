@@ -8,9 +8,7 @@ import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { normalizeStaffEmail } from '@/lib/attendance';
 import { syncStaffEmailIdentity, unlinkStaffEmailIdentity } from '@/lib/clerk-organization';
-import { ensureStaffWhatsAppColumns } from '@/lib/staff-whatsapp-schema';
 import { recalculateStaffStoredPenalties } from '@/lib/staff-penalty-recalculation-server';
-import { normalizeWhatsAppPhone } from '@/lib/whatsapp-notices';
 
 type StaffUpdateBody = {
   active?: boolean;
@@ -21,8 +19,6 @@ type StaffUpdateBody = {
   isAttendanceOnly?: boolean;
   isNssPersonnel?: boolean;
   unit?: string | null;
-  whatsappNotificationsEnabled?: boolean;
-  whatsappPhone?: string | null;
 };
 
 export async function GET(
@@ -31,7 +27,6 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    await ensureStaffWhatsAppColumns();
     const [result] = await db.select().from(staff).where(eq(staff.id, id));
 
     if (!result) {
@@ -53,7 +48,6 @@ export async function PUT(
     const actor = await currentUser();
     const { id } = await params;
     const body = await request.json() as StaffUpdateBody;
-    await ensureStaffWhatsAppColumns();
     const {
       fullName,
       email,
@@ -63,38 +57,13 @@ export async function PUT(
       archived,
       isAttendanceOnly,
       isNssPersonnel,
-      whatsappNotificationsEnabled,
-      whatsappPhone,
     } = body;
 
     const updateData: Partial<typeof staff.$inferInsert> = { updatedAt: new Date() };
-    let nextWhatsAppPhone: string | null | undefined;
     if (fullName !== undefined) updateData.fullName = fullName.trim();
     if (email !== undefined) updateData.email = normalizeStaffEmail(email);
     if (department !== undefined) updateData.department = typeof department === 'string' && department.trim() ? department.trim() : null;
     if (unit !== undefined) updateData.unit = typeof unit === 'string' && unit.trim() ? unit.trim() : null;
-    if (whatsappPhone !== undefined) {
-      if (whatsappPhone !== null && typeof whatsappPhone !== 'string') {
-        return NextResponse.json({ error: 'Enter a valid WhatsApp number' }, { status: 400 });
-      }
-
-      const normalizedWhatsAppPhone = typeof whatsappPhone === 'string' && whatsappPhone.trim()
-        ? normalizeWhatsAppPhone(whatsappPhone)
-        : null;
-
-      if (typeof whatsappPhone === 'string' && whatsappPhone.trim() && !normalizedWhatsAppPhone) {
-        return NextResponse.json({ error: 'Enter a valid WhatsApp number' }, { status: 400 });
-      }
-
-      nextWhatsAppPhone = normalizedWhatsAppPhone;
-      updateData.whatsappPhone = normalizedWhatsAppPhone;
-    }
-    if (whatsappNotificationsEnabled !== undefined) {
-      updateData.whatsappNotificationsEnabled = whatsappNotificationsEnabled === true;
-    }
-    if (whatsappPhone !== undefined && nextWhatsAppPhone === null) {
-      updateData.whatsappNotificationsEnabled = false;
-    }
     if (active !== undefined) updateData.active = active;
     if (isAttendanceOnly !== undefined) updateData.isAttendanceOnly = isAttendanceOnly === true;
     if (isNssPersonnel !== undefined || isAttendanceOnly !== undefined) {

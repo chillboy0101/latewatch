@@ -12,9 +12,11 @@ const { isAfterWorkdayEnd } = require('../src/lib/work-hours.ts');
 const {
   ABSENCE_PERMISSION_REASONS,
   formatAbsencePermissionReason,
+  formatLateArrivalPermissionReason,
   getAbsencePeriodBounds,
   getInclusivePermissionDateRange,
   isValidAbsencePermissionReason,
+  isValidLateArrivalPermissionReason,
 } = require('../src/lib/attendance-permissions.ts');
 
 function requestWithHeaders(headers) {
@@ -92,31 +94,37 @@ test('attendance monitoring only staff are never charged penalties', () => {
 test('excused absence permission reasons are restricted to the approved list', () => {
   assert.deepEqual(
     ABSENCE_PERMISSION_REASONS.map((option) => option.value),
-    ['training', 'official duty', 'personal excuse'],
+    ['training', 'official duty', 'personal excuse', 'workshop'],
   );
   assert.equal(isValidAbsencePermissionReason('training'), true);
   assert.equal(isValidAbsencePermissionReason(' official duty '), true);
+  assert.equal(isValidAbsencePermissionReason('Workshop'), true);
   assert.equal(isValidAbsencePermissionReason('meeting'), false);
   assert.equal(formatAbsencePermissionReason('personal excuse'), 'Personal excuse');
+  assert.equal(formatAbsencePermissionReason('workshop'), 'Workshop');
   assert.equal(formatAbsencePermissionReason('custom existing reason'), 'custom existing reason');
 });
 
-test('excused absence periods support date ranges and specific time windows', () => {
+test('late arrival permission reasons use the same approved list', () => {
+  assert.equal(isValidLateArrivalPermissionReason('workshop'), true);
+  assert.equal(isValidLateArrivalPermissionReason('Official duty'), true);
+  assert.equal(isValidLateArrivalPermissionReason('custom reason'), false);
+  assert.equal(formatLateArrivalPermissionReason('training'), 'Training');
+});
+
+test('excused absence permissions use date ranges and full-day bounds', () => {
   assert.deepEqual(
     getInclusivePermissionDateRange('2026-05-04', '2026-05-08'),
     ['2026-05-04', '2026-05-05', '2026-05-06', '2026-05-07', '2026-05-08'],
   );
   assert.deepEqual(
     getAbsencePeriodBounds({
-      arrivalWindow: 'specific_time',
-      expectedStartTime: '09:30',
-      expectedEndTime: '13:15',
       permissionType: 'absence',
     }),
     {
-      endTime: '13:15',
-      label: '9:30 AM - 1:15 PM',
-      startTime: '09:30',
+      endTime: null,
+      label: 'Full day',
+      startTime: null,
     },
   );
 });

@@ -11,6 +11,7 @@ export const ABSENCE_PERMISSION_REASONS = [
   { value: 'training', label: 'Training' },
   { value: 'official duty', label: 'Official duty' },
   { value: 'personal excuse', label: 'Personal excuse' },
+  { value: 'workshop', label: 'Workshop' },
 ] as const;
 
 export const ABSENCE_PERMISSION_WINDOWS = [

@@ -8,15 +8,12 @@ import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { normalizeStaffEmail } from '@/lib/attendance';
 import { syncStaffEmailIdentity } from '@/lib/clerk-organization';
-import { ensureStaffWhatsAppColumns } from '@/lib/staff-whatsapp-schema';
-import { normalizeWhatsAppPhone } from '@/lib/whatsapp-notices';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url);
-    await ensureStaffWhatsAppColumns();
     const active = url.searchParams.get('active');
     const whereClause = active === 'true'
       ? and(eq(staff.active, true), eq(staff.archived, false))
@@ -28,8 +25,6 @@ export async function GET(request: NextRequest) {
       id: staff.id,
       fullName: staff.fullName,
       email: staff.email,
-      whatsappPhone: staff.whatsappPhone,
-      whatsappNotificationsEnabled: staff.whatsappNotificationsEnabled,
       displayOrder: staff.displayOrder,
       active: staff.active,
       archived: staff.archived,
@@ -60,13 +55,9 @@ export async function POST(request: Request) {
   try {
     const actor = await currentUser();
     const body = await request.json();
-    await ensureStaffWhatsAppColumns();
-    const { fullName, email, department, unit, whatsappPhone } = body;
+    const { fullName, email, department, unit } = body;
     const name = typeof fullName === 'string' ? fullName.trim() : '';
     const normalizedEmail = normalizeStaffEmail(email);
-    const normalizedWhatsAppPhone = typeof whatsappPhone === 'string' && whatsappPhone.trim()
-      ? normalizeWhatsAppPhone(whatsappPhone)
-      : null;
     const isAttendanceOnly = body?.isAttendanceOnly === true;
     const isNssPersonnel = !isAttendanceOnly && body?.isNssPersonnel === true;
 
@@ -74,15 +65,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Full name is required' }, { status: 400 });
     }
 
-    if (typeof whatsappPhone === 'string' && whatsappPhone.trim() && !normalizedWhatsAppPhone) {
-      return NextResponse.json({ error: 'Enter a valid WhatsApp number' }, { status: 400 });
-    }
-
     const normalizedDepartment = typeof department === 'string' && department.trim() ? department.trim() : null;
     const normalizedUnit = typeof unit === 'string' && unit.trim() ? unit.trim() : null;
-    const whatsappNotificationsEnabled = normalizedWhatsAppPhone
-      ? body?.whatsappNotificationsEnabled !== false
-      : false;
 
     const [existingStaff] = await db.select()
       .from(staff)
@@ -111,8 +95,6 @@ export async function POST(request: Request) {
             archived: false,
             archivedAt: null,
             email: normalizedEmail ?? existingStaff.email,
-            whatsappNotificationsEnabled,
-            whatsappPhone: normalizedWhatsAppPhone,
             department: normalizedDepartment ?? existingStaff.department,
             unit: normalizedUnit ?? existingStaff.unit,
             isAttendanceOnly,
@@ -154,8 +136,6 @@ export async function POST(request: Request) {
     const newStaff = await db.insert(staff).values({
       fullName: name,
       email: normalizedEmail,
-      whatsappNotificationsEnabled,
-      whatsappPhone: normalizedWhatsAppPhone,
       department: normalizedDepartment,
       unit: normalizedUnit,
       isAttendanceOnly,

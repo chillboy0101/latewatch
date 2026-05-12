@@ -4,11 +4,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { attendancePermission, staff } from '@/db/schema';
 import {
-  getAbsencePeriodBounds,
   getInclusivePermissionDateRange,
   getPermissionWindowBounds,
   normalizeAbsencePermissionReason,
-  normalizeAbsenceWindow,
+  normalizeLateArrivalPermissionReason,
   normalizeMinuteTime,
   normalizePermissionWindow,
 } from '@/lib/attendance-permissions';
@@ -23,10 +22,6 @@ const MAX_ABSENCE_DAYS = 62;
 
 function optionalText(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
-}
-
-function isBeforeMinute(startTime: string, endTime: string) {
-  return startTime < endTime;
 }
 
 export async function GET(request: NextRequest) {
@@ -123,28 +118,14 @@ export async function POST(request: NextRequest) {
       if (!selectedReason) return NextResponse.json({ error: 'Select a valid excused absence reason' }, { status: 400 });
       reason = selectedReason;
 
-      arrivalWindow = normalizeAbsenceWindow(body?.absenceWindow ?? body?.arrivalWindow);
-      const requestedStartTime = normalizeMinuteTime(body?.expectedStartTime);
-      const requestedEndTime = normalizeMinuteTime(body?.expectedEndTime);
-
-      if (arrivalWindow === 'specific_time') {
-        if (!requestedStartTime || !requestedEndTime) {
-          return NextResponse.json({ error: 'Absence start and end times are required' }, { status: 400 });
-        }
-        if (!isBeforeMinute(requestedStartTime, requestedEndTime)) {
-          return NextResponse.json({ error: 'Absence end time must be after the start time' }, { status: 400 });
-        }
-      }
-
-      const periodBounds = getAbsencePeriodBounds({
-        arrivalWindow,
-        expectedEndTime: requestedEndTime,
-        expectedStartTime: requestedStartTime,
-        permissionType,
-      });
-      expectedEndTime = periodBounds.endTime;
-      expectedStartTime = periodBounds.startTime;
+      arrivalWindow = 'full_day';
+      expectedEndTime = null;
+      expectedStartTime = null;
     } else {
+      const selectedReason = normalizeLateArrivalPermissionReason(reason);
+      if (!selectedReason) return NextResponse.json({ error: 'Select a valid late arrival reason' }, { status: 400 });
+      reason = selectedReason;
+
       arrivalWindow = normalizePermissionWindow(body?.arrivalWindow);
       const expectedTime = normalizeMinuteTime(body?.expectedEndTime ?? body?.expectedByTime);
 
@@ -159,7 +140,6 @@ export async function POST(request: NextRequest) {
       });
       expectedEndTime = windowBounds.endTime;
       expectedStartTime = windowBounds.startTime;
-      reason = reason.slice(0, 240);
     }
 
     const permissions = [];

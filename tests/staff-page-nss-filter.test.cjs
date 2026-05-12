@@ -5,6 +5,8 @@ const path = require('node:path');
 const test = require('node:test');
 
 const staffPagePath = path.join(__dirname, '../src/app/staff/page.tsx');
+const staffRoutePath = path.join(__dirname, '../src/app/api/staff/route.ts');
+const staffUpdateRoutePath = path.join(__dirname, '../src/app/api/staff/[id]/route.ts');
 
 test('staff page exposes a top-level NSS personnel filter', () => {
   const source = fs.readFileSync(staffPagePath, 'utf8');
@@ -25,14 +27,26 @@ test('staff page keeps attendance monitoring only staff in a separate table sect
   assert.match(source, /attendanceOnlyFilteredStaff/);
 });
 
-test('staff page captures WhatsApp number and notification preference', () => {
+test('staff page omits removed manual message fields', () => {
   const source = fs.readFileSync(staffPagePath, 'utf8');
+  const lowerFeature = ['what', 'sapp'].join('');
+  const displayFeature = ['Whats', 'App'].join('');
 
-  assert.match(source, /whatsappPhone: string \| null/);
-  assert.match(source, /whatsappNotificationsEnabled: boolean/);
-  assert.match(source, /newWhatsappPhone/);
-  assert.match(source, /editWhatsappPhone/);
-  assert.match(source, /WhatsApp Number/);
-  assert.match(source, /whatsappNotificationsEnabled: newWhatsappNotificationsEnabled/);
-  assert.match(source, /whatsappNotificationsEnabled: editWhatsappNotificationsEnabled/);
+  assert.doesNotMatch(source, new RegExp(`${lowerFeature}Phone`));
+  assert.doesNotMatch(source, new RegExp(`${lowerFeature}NotificationsEnabled`));
+  assert.doesNotMatch(source, new RegExp(`${displayFeature} Number`));
+});
+
+test('staff API omits removed manual message fields', () => {
+  const createSource = fs.readFileSync(staffRoutePath, 'utf8');
+  const updateSource = fs.readFileSync(staffUpdateRoutePath, 'utf8');
+  const lowerFeature = ['what', 'sapp'].join('');
+  const displayFeature = ['Whats', 'App'].join('');
+
+  assert.doesNotMatch(createSource, new RegExp(`${lowerFeature}Phone`));
+  assert.doesNotMatch(createSource, new RegExp(`${lowerFeature}NotificationsEnabled`));
+  assert.doesNotMatch(createSource, new RegExp(`valid ${displayFeature} number`));
+  assert.doesNotMatch(updateSource, new RegExp(`${lowerFeature}Phone`));
+  assert.doesNotMatch(updateSource, new RegExp(`${lowerFeature}NotificationsEnabled`));
+  assert.doesNotMatch(updateSource, new RegExp(`valid ${displayFeature} number`));
 });
