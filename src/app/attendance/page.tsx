@@ -601,7 +601,7 @@ export default function AttendancePage() {
                 ))}
             </SelectField>
             <SelectField
-              className="xl:col-span-2"
+              className={permissionType === 'absence' ? 'xl:col-span-3' : 'xl:col-span-2'}
               icon={<ShieldCheck className="h-3.5 w-3.5" />}
               label="Permission"
               value={permissionType}
@@ -657,19 +657,19 @@ export default function AttendancePage() {
             ) : (
               <>
                 <AttendanceDateField
-                  className="xl:col-span-2"
+                  className="xl:col-span-3"
                   label="Absence Start"
                   value={permissionAbsenceStartDate}
                   onChange={(value) => setPermissionAbsenceStartDate((current) => formatDateInput(value, current))}
                 />
                 <AttendanceDateField
-                  className="xl:col-span-2"
+                  className="xl:col-span-3"
                   label="Absence End"
                   value={permissionAbsenceEndDate}
                   onChange={(value) => setPermissionAbsenceEndDate((current) => formatDateInput(value, current))}
                 />
                 <SelectField
-                  className="xl:col-span-8"
+                  className="xl:col-span-10"
                   icon={<FileText className="h-3.5 w-3.5" />}
                   label="Reason"
                   value={permissionReason}

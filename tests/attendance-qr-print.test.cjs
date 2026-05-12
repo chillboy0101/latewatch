@@ -40,6 +40,15 @@ test('attendance permission form exposes absence date range without period contr
   assert.doesNotMatch(source, /<TimeField/);
 });
 
+test('attendance permission absence fields align across full desktop rows', () => {
+  const source = fs.readFileSync(attendancePagePath, 'utf8');
+
+  assert.match(source, /permissionType === 'absence' \? 'xl:col-span-3' : 'xl:col-span-2'/);
+  assert.match(source, /className="xl:col-span-3"\s+label="Absence Start"/);
+  assert.match(source, /className="xl:col-span-3"\s+label="Absence End"/);
+  assert.match(source, /className="xl:col-span-10"[\s\S]*<option value="">Select absence reason<\/option>/);
+});
+
 test('attendance permission API validates both permission reason lists and full-day absences', () => {
   const source = fs.readFileSync(attendancePermissionsApiPath, 'utf8');
 
