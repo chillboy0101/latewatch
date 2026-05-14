@@ -22,9 +22,28 @@ test('staff page keeps attendance monitoring only staff in a separate table sect
   assert.match(source, /isAttendanceOnly: boolean/);
   assert.match(source, /type StaffFilter = 'all' \| 'active' \| 'inactive' \| 'former' \| 'nss' \| 'attendanceOnly'/);
   assert.match(source, /label: 'Monitoring Only'/);
+  assert.match(source, /Main Staff/);
+  assert.match(source, /NSS Personnel/);
   assert.match(source, /Attendance Monitoring Only/);
-  assert.match(source, /regularFilteredStaff/);
+  assert.match(source, /mainFilteredStaff/);
+  assert.match(source, /nssFilteredStaff/);
   assert.match(source, /attendanceOnlyFilteredStaff/);
+});
+
+test('staff page and API expose attendance export metadata fields', () => {
+  const pageSource = fs.readFileSync(staffPagePath, 'utf8');
+  const createSource = fs.readFileSync(staffRoutePath, 'utf8');
+  const updateSource = fs.readFileSync(staffUpdateRoutePath, 'utf8');
+
+  for (const field of ['staffNo', 'gender', 'rank']) {
+    assert.match(pageSource, new RegExp(`${field}: string \\| null`));
+    assert.match(createSource, new RegExp(`${field}: staff\\.${field}`));
+    assert.match(updateSource, new RegExp(`${field}\\?: string \\| null`));
+  }
+
+  assert.match(pageSource, /Staff No\./);
+  assert.match(pageSource, /Gender/);
+  assert.match(pageSource, /Rank/);
 });
 
 test('staff page omits removed manual message fields', () => {

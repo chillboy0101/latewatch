@@ -29,6 +29,9 @@ export async function GET(request: NextRequest) {
       active: staff.active,
       archived: staff.archived,
       archivedAt: staff.archivedAt,
+      staffNo: staff.staffNo,
+      gender: staff.gender,
+      rank: staff.rank,
       department: staff.department,
       unit: staff.unit,
       isNssPersonnel: staff.isNssPersonnel,
@@ -55,7 +58,7 @@ export async function POST(request: Request) {
   try {
     const actor = await currentUser();
     const body = await request.json();
-    const { fullName, email, department, unit } = body;
+    const { fullName, email, department, unit, staffNo, gender, rank } = body;
     const name = typeof fullName === 'string' ? fullName.trim() : '';
     const normalizedEmail = normalizeStaffEmail(email);
     const isAttendanceOnly = body?.isAttendanceOnly === true;
@@ -67,6 +70,9 @@ export async function POST(request: Request) {
 
     const normalizedDepartment = typeof department === 'string' && department.trim() ? department.trim() : null;
     const normalizedUnit = typeof unit === 'string' && unit.trim() ? unit.trim() : null;
+    const normalizedStaffNo = typeof staffNo === 'string' && staffNo.trim() ? staffNo.trim() : null;
+    const normalizedGender = typeof gender === 'string' && gender.trim() ? gender.trim() : null;
+    const normalizedRank = typeof rank === 'string' && rank.trim() ? rank.trim() : null;
 
     const [existingStaff] = await db.select()
       .from(staff)
@@ -95,6 +101,9 @@ export async function POST(request: Request) {
             archived: false,
             archivedAt: null,
             email: normalizedEmail ?? existingStaff.email,
+            staffNo: normalizedStaffNo ?? existingStaff.staffNo,
+            gender: normalizedGender ?? existingStaff.gender,
+            rank: normalizedRank ?? existingStaff.rank,
             department: normalizedDepartment ?? existingStaff.department,
             unit: normalizedUnit ?? existingStaff.unit,
             isAttendanceOnly,
@@ -136,6 +145,9 @@ export async function POST(request: Request) {
     const newStaff = await db.insert(staff).values({
       fullName: name,
       email: normalizedEmail,
+      staffNo: normalizedStaffNo,
+      gender: normalizedGender,
+      rank: normalizedRank,
       department: normalizedDepartment,
       unit: normalizedUnit,
       isAttendanceOnly,

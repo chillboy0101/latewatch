@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Calendar, CheckCircle2, ChevronDown, Clock, FileText, Loader2, Printer, RotateCcw, Search, ShieldCheck, Smartphone, Trash2, UserRound, XCircle } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
@@ -45,6 +45,7 @@ interface AttendanceRow {
     email: string | null;
     department: string | null;
     unit: string | null;
+    isAttendanceOnly?: boolean | null;
     isNssPersonnel?: boolean | null;
   };
   attendance: {
@@ -521,11 +522,24 @@ export default function AttendancePage() {
           row.staff.email || '',
           row.staff.department || '',
           row.staff.unit || '',
+          row.staff.isAttendanceOnly ? 'attendance monitoring only special staff' : row.staff.isNssPersonnel ? 'nss personnel' : 'main staff',
         ].join(' ').toLowerCase().includes(query))
       : rows;
 
     return [...filteredRows].sort((a, b) => rank[a.status] - rank[b.status] || a.staff.fullName.localeCompare(b.staff.fullName));
   }, [activeFilter, data?.rows, searchQuery]);
+
+  const attendanceTableSections = useMemo(() => {
+    const mainAttendanceRows = sortedRows.filter((row) => row.staff.isAttendanceOnly !== true && row.staff.isNssPersonnel !== true);
+    const nssAttendanceRows = sortedRows.filter((row) => row.staff.isAttendanceOnly !== true && row.staff.isNssPersonnel === true);
+    const monitoringOnlyAttendanceRows = sortedRows.filter((row) => row.staff.isAttendanceOnly === true);
+
+    return [
+      { key: 'main', rows: mainAttendanceRows, title: 'Main Staff' },
+      { key: 'nss', rows: nssAttendanceRows, title: 'NSS Personnel' },
+      { key: 'monitoringOnly', rows: monitoringOnlyAttendanceRows, title: 'Attendance Monitoring Only' },
+    ].filter((section) => section.rows.length > 0);
+  }, [sortedRows]);
 
   return (
     <DashboardLayout title="Attendance">
@@ -817,70 +831,79 @@ export default function AttendancePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {sortedRows.map((row) => (
-                    <tr key={row.staff.id} className="transition-colors hover:bg-card/50">
-                      <td className="px-4 py-3 text-sm font-medium">{row.staff.fullName}</td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">{row.staff.email || 'Not linked'}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className={cn(
-                            'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium',
-                            row.device.registered
-                              ? 'border-success/25 bg-success/10 text-success'
-                              : 'border-border bg-muted/20 text-muted-foreground',
-                          )}>
-                            <Smartphone className="h-3.5 w-3.5" />
-                            {row.device.registered ? 'Linked' : 'Not linked'}
-                          </span>
-                          {row.device.registered && (
-                            <Button
-                              className="h-8 gap-1.5 px-2"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => resetDevice(row.staff.id)}
-                              disabled={resettingDeviceStaffId === row.staff.id}
-                            >
-                              {resettingDeviceStaffId === row.staff.id ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <RotateCcw className="h-3.5 w-3.5" />
+                  {attendanceTableSections.map((section) => (
+                    <Fragment key={section.key}>
+                      <tr className="bg-muted/20">
+                        <td colSpan={7} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          {section.title}
+                        </td>
+                      </tr>
+                      {section.rows.map((row) => (
+                        <tr key={row.staff.id} className="transition-colors hover:bg-card/50">
+                          <td className="px-4 py-3 text-sm font-medium">{row.staff.fullName}</td>
+                          <td className="px-4 py-3 text-sm text-muted-foreground">{row.staff.email || 'Not linked'}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className={cn(
+                                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium',
+                                row.device.registered
+                                  ? 'border-success/25 bg-success/10 text-success'
+                                  : 'border-border bg-muted/20 text-muted-foreground',
+                              )}>
+                                <Smartphone className="h-3.5 w-3.5" />
+                                {row.device.registered ? 'Linked' : 'Not linked'}
+                              </span>
+                              {row.device.registered && (
+                                <Button
+                                  className="h-8 gap-1.5 px-2"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => resetDevice(row.staff.id)}
+                                  disabled={resettingDeviceStaffId === row.staff.id}
+                                >
+                                  {resettingDeviceStaffId === row.staff.id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                  )}
+                                  Reset
+                                </Button>
                               )}
-                              Reset
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-sm font-mono">
-                        {row.attendance?.checkInTime ? row.attendance.checkInTime.slice(0, 5) : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-sm font-mono">
-                        {row.attendance?.signOutTime ? row.attendance.signOutTime.slice(0, 5) : '-'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium', statusClass(row.status))}>
-                          {row.status === 'present' && <CheckCircle2 className="h-3.5 w-3.5" />}
-                          {row.status === 'late' && <Clock className="h-3.5 w-3.5" />}
-                          {row.status === 'excused' && <ShieldCheck className="h-3.5 w-3.5" />}
-                          {row.status === 'expected_late' && <Clock className="h-3.5 w-3.5" />}
-                          {row.status === 'permission_overdue' && <AlertTriangle className="h-3.5 w-3.5" />}
-                          {row.status === 'no_sign_out' && <AlertTriangle className="h-3.5 w-3.5" />}
-                          {row.status === 'not_checked_in' && <XCircle className="h-3.5 w-3.5" />}
-                          {statusLabel(row.status)}
-                        </span>
-                        {row.permission && (
-                          <p className="mt-1 max-w-52 truncate text-xs text-muted-foreground" title={permissionSummary(row.permission)}>
-                            {permissionSummary(row.permission)}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-sm font-mono">
-                        {Number(row.attendance?.computedAmount || 0) > 0
-                          ? `GHC ${Number(row.attendance?.computedAmount || 0).toFixed(2)}`
-                          : '-'}
-                      </td>
-                    </tr>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm font-mono">
+                            {row.attendance?.checkInTime ? row.attendance.checkInTime.slice(0, 5) : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-sm font-mono">
+                            {row.attendance?.signOutTime ? row.attendance.signOutTime.slice(0, 5) : '-'}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium', statusClass(row.status))}>
+                              {row.status === 'present' && <CheckCircle2 className="h-3.5 w-3.5" />}
+                              {row.status === 'late' && <Clock className="h-3.5 w-3.5" />}
+                              {row.status === 'excused' && <ShieldCheck className="h-3.5 w-3.5" />}
+                              {row.status === 'expected_late' && <Clock className="h-3.5 w-3.5" />}
+                              {row.status === 'permission_overdue' && <AlertTriangle className="h-3.5 w-3.5" />}
+                              {row.status === 'no_sign_out' && <AlertTriangle className="h-3.5 w-3.5" />}
+                              {row.status === 'not_checked_in' && <XCircle className="h-3.5 w-3.5" />}
+                              {statusLabel(row.status)}
+                            </span>
+                            {row.permission && (
+                              <p className="mt-1 max-w-52 truncate text-xs text-muted-foreground" title={permissionSummary(row.permission)}>
+                                {permissionSummary(row.permission)}
+                              </p>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm font-mono">
+                            {Number(row.attendance?.computedAmount || 0) > 0
+                              ? `GHC ${Number(row.attendance?.computedAmount || 0).toFixed(2)}`
+                              : '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </Fragment>
                   ))}
-                  {sortedRows.length === 0 && (
+                  {attendanceTableSections.length === 0 && (
                     <tr>
                       <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
                         No staff in this filter

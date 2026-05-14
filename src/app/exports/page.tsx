@@ -8,6 +8,11 @@ import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { ChevronDown, Download, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { endOfMonth, format, parseISO, startOfMonth } from 'date-fns';
 import { getMonthWorkingWeeks, type WorkingWeekRange } from '@/lib/export-weeks';
+import {
+  type AttendanceExportGroup,
+  type AttendanceExportTemplate,
+  getAttendanceExportFileName,
+} from '@/lib/attendance-export-shared';
 
 interface WeekSummary extends WorkingWeekRange {
   weekLabel: string;
@@ -23,7 +28,7 @@ interface ExportEntry {
   reason: string | null;
 }
 
-type ExportTarget = { type: 'monthly' } | { type: 'weekly'; key: string } | null;
+type ExportTarget = { type: 'attendance' } | { type: 'monthly' } | { type: 'weekly'; key: string } | null;
 
 function normalizeDateKey(value: string) {
   return value.includes('T') ? value.slice(0, 10) : value;
@@ -63,10 +68,13 @@ export default function ExportsPage() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState<ExportTarget>(null);
   const [error, setError] = useState<string | null>(null);
+  const [attendanceGroup, setAttendanceGroup] = useState<AttendanceExportGroup>('main');
+  const [attendanceTemplate, setAttendanceTemplate] = useState<AttendanceExportTemplate>('daily-summary');
 
   const selectedYear = selectedMonth.getFullYear();
   const selectedMonthIndex = selectedMonth.getMonth();
   const isMonthlyExporting = exporting?.type === 'monthly';
+  const isAttendanceExporting = exporting?.type === 'attendance';
 
   const fetchExportData = useCallback(async () => {
     setLoading(true);
@@ -195,8 +203,48 @@ export default function ExportsPage() {
     }
   }
 
+  async function handleAttendanceExport() {
+    if (exporting) return;
+
+    setExporting({ type: 'attendance' });
+    setError(null);
+
+    try {
+      const response = await fetch('/api/export/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          group: attendanceGroup,
+          month: selectedMonthIndex,
+          template: attendanceTemplate,
+          year: selectedYear,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Attendance export failed (${response.status})`);
+      }
+
+      await downloadWorkbook(
+        response,
+        getAttendanceExportFileName({
+          group: attendanceGroup,
+          month: selectedMonthIndex,
+          template: attendanceTemplate,
+          year: selectedYear,
+        }),
+      );
+    } catch (err) {
+      console.error('Attendance export failed:', err);
+      setError(err instanceof Error ? err.message : 'Attendance export failed');
+    } finally {
+      setExporting(null);
+    }
+  }
+
   return (
-    <DashboardLayout title="Lateness Exports">
+    <DashboardLayout title="Exports">
       <div className="space-y-5">
         <Card className="overflow-hidden">
           <div className="border-b border-border px-6 py-5">
@@ -320,6 +368,101 @@ export default function ExportsPage() {
                 )}
               </div>
             )}
+          </div>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <div className="border-b border-border px-6 py-5">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-background text-primary">
+                  <FileSpreadsheet className="h-5 w-5" />
+                </div>
+                <h2 className="text-lg font-semibold leading-none">Attendance Exports</h2>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(9rem,1fr)_7rem_minmax(10rem,1fr)_minmax(11rem,1fr)_auto] xl:items-end">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-muted-foreground">Month</label>
+                  <div className="relative">
+                    <select
+                      className="h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-9 text-sm leading-none outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      value={selectedMonthIndex}
+                      onChange={(event) => setSelectedMonth(new Date(selectedYear, parseInt(event.target.value, 10), 1))}
+                    >
+                      {Array.from({ length: 12 }, (_, index) => (
+                        <option key={index} value={index}>
+                          {format(new Date(selectedYear, index, 1), 'MMMM')}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-muted-foreground">Year</label>
+                  <div className="relative">
+                    <select
+                      className="h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-9 text-sm leading-none outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      value={selectedYear}
+                      onChange={(event) => setSelectedMonth(new Date(parseInt(event.target.value, 10), selectedMonthIndex, 1))}
+                    >
+                      {Array.from({ length: 11 }, (_, index) => {
+                        const year = 2024 + index;
+                        return (
+                          <option key={year} value={year}>
+                            {year}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-muted-foreground">Roster</label>
+                  <div className="relative">
+                    <select
+                      className="h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-9 text-sm leading-none outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      value={attendanceGroup}
+                      onChange={(event) => setAttendanceGroup(event.target.value as AttendanceExportGroup)}
+                    >
+                      <option value="main">Main Staff</option>
+                      <option value="nss">NSS Personnel</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-muted-foreground">Template</label>
+                  <div className="relative">
+                    <select
+                      className="h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-9 text-sm leading-none outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      value={attendanceTemplate}
+                      onChange={(event) => setAttendanceTemplate(event.target.value as AttendanceExportTemplate)}
+                    >
+                      <option value="daily-summary">Daily Summary</option>
+                      <option value="monthly-matrix">Monthly Matrix</option>
+                      <option value="weekly-validation">Weekly Validation</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </div>
+
+                <Button
+                  className="h-10 gap-2 sm:col-span-2 xl:col-span-1"
+                  onClick={handleAttendanceExport}
+                  disabled={loading || (exporting !== null && !isAttendanceExporting)}
+                  aria-busy={isAttendanceExporting}
+                >
+                  {isAttendanceExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                  {isAttendanceExporting ? 'Downloading' : 'Download'}
+                </Button>
+              </div>
+            </div>
           </div>
         </Card>
       </div>

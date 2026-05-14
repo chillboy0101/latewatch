@@ -25,6 +25,9 @@ interface StaffMember {
   id: string;
   fullName: string;
   email: string | null;
+  staffNo: string | null;
+  gender: string | null;
+  rank: string | null;
   department: string | null;
   unit: string | null;
   isNssPersonnel: boolean;
@@ -56,6 +59,9 @@ export default function StaffPage() {
   // Add form state
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
+  const [newStaffNo, setNewStaffNo] = useState('');
+  const [newGender, setNewGender] = useState('');
+  const [newRank, setNewRank] = useState('');
   const [newDepartment, setNewDepartment] = useState('');
   const [newUnit, setNewUnit] = useState('');
   const [newIsNssPersonnel, setNewIsNssPersonnel] = useState(false);
@@ -65,6 +71,9 @@ export default function StaffPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
+  const [editStaffNo, setEditStaffNo] = useState('');
+  const [editGender, setEditGender] = useState('');
+  const [editRank, setEditRank] = useState('');
   const [editDepartment, setEditDepartment] = useState('');
   const [editUnit, setEditUnit] = useState('');
   const [editIsNssPersonnel, setEditIsNssPersonnel] = useState(false);
@@ -124,6 +133,9 @@ export default function StaffPage() {
         body: JSON.stringify({
           fullName: newName.trim(),
           email: newEmail.trim() || null,
+          staffNo: newStaffNo.trim() || null,
+          gender: newGender.trim() || null,
+          rank: newRank.trim() || null,
           department: newDepartment.trim() || null,
           unit: newUnit.trim() || null,
           isAttendanceOnly: newIsAttendanceOnly,
@@ -143,6 +155,9 @@ export default function StaffPage() {
         });
         setNewName('');
         setNewEmail('');
+        setNewStaffNo('');
+        setNewGender('');
+        setNewRank('');
         setNewDepartment('');
         setNewUnit('');
         setNewIsNssPersonnel(false);
@@ -257,6 +272,9 @@ export default function StaffPage() {
         body: JSON.stringify({
           fullName: editName.trim(),
           email: editEmail.trim() || null,
+          staffNo: editStaffNo.trim() || null,
+          gender: editGender.trim() || null,
+          rank: editRank.trim() || null,
           department: editDepartment.trim() || null,
           unit: editUnit.trim() || null,
           isAttendanceOnly: editIsAttendanceOnly,
@@ -326,6 +344,9 @@ export default function StaffPage() {
     setEditingId(member.id);
     setEditName(member.fullName);
     setEditEmail(member.email || '');
+    setEditStaffNo(member.staffNo || '');
+    setEditGender(member.gender || '');
+    setEditRank(member.rank || '');
     setEditDepartment(member.department || '');
     setEditUnit(member.unit || '');
     setEditIsNssPersonnel(member.isNssPersonnel === true);
@@ -357,6 +378,9 @@ export default function StaffPage() {
         const searchable = [
           s.fullName,
           s.email || '',
+          s.staffNo || '',
+          s.gender || '',
+          s.rank || '',
           s.department || '',
           s.unit || '',
           s.isAttendanceOnly ? 'attendance monitoring only no penalty' : s.isNssPersonnel ? 'nss national service personnel' : 'staff',
@@ -391,10 +415,12 @@ export default function StaffPage() {
     { key: 'attendanceOnly', label: 'Monitoring Only', value: attendanceOnlyDisplay, valueClassName: 'text-success' },
   ];
   const activeFilterLabel = staffFilterCards.find((card) => card.key === staffFilter)?.label || 'staff';
-  const regularFilteredStaff = filteredStaff.filter((member) => member.isAttendanceOnly !== true);
+  const mainFilteredStaff = filteredStaff.filter((member) => member.isAttendanceOnly !== true && member.isNssPersonnel !== true);
+  const nssFilteredStaff = filteredStaff.filter((member) => member.isAttendanceOnly !== true && member.isNssPersonnel === true);
   const attendanceOnlyFilteredStaff = filteredStaff.filter((member) => member.isAttendanceOnly === true);
   const tableSections = [
-    { key: 'regular', members: regularFilteredStaff, title: 'Staff' },
+    { key: 'main', members: mainFilteredStaff, title: 'Main Staff' },
+    { key: 'nss', members: nssFilteredStaff, title: 'NSS Personnel' },
     { key: 'attendanceOnly', members: attendanceOnlyFilteredStaff, title: 'Attendance Monitoring Only' },
   ].filter((section) => section.members.length > 0);
 
@@ -480,6 +506,35 @@ export default function StaffPage() {
                   <p className="text-xs text-muted-foreground">
                     Used to match this staff member to their attendance check-in account.
                   </p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="new-staff-no">Staff No.</Label>
+                    <Input
+                      id="new-staff-no"
+                      placeholder="e.g. GRA003825"
+                      value={newStaffNo}
+                      onChange={(e) => setNewStaffNo(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-gender">Gender</Label>
+                    <Input
+                      id="new-gender"
+                      placeholder="e.g. Female"
+                      value={newGender}
+                      onChange={(e) => setNewGender(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-rank">Rank</Label>
+                    <Input
+                      id="new-rank"
+                      placeholder="e.g. ARO"
+                      value={newRank}
+                      onChange={(e) => setNewRank(e.target.value)}
+                    />
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -575,9 +630,12 @@ export default function StaffPage() {
           ) : (
             <>
               <div>
-                <div className="hidden grid-cols-[1fr_1.05fr_.8fr_.7fr_.65fr_.65fr_1.45fr] gap-4 border-b border-border bg-card px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground xl:grid">
+                <div className="hidden grid-cols-[1fr_1.05fr_.65fr_.55fr_.55fr_.75fr_.65fr_.65fr_.65fr_1.45fr] gap-4 border-b border-border bg-card px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground xl:grid">
                   <div>Name</div>
                   <div>Login Email</div>
+                  <div>Staff No.</div>
+                  <div>Gender</div>
+                  <div>Rank</div>
                   <div>Department</div>
                   <div>Unit</div>
                   <div>Type</div>
@@ -613,6 +671,33 @@ export default function StaffPage() {
                                 type="email"
                                 value={editEmail}
                                 onChange={(e) => setEditEmail(e.target.value)}
+                                className="h-10 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label htmlFor={`edit-staff-no-${member.id}`}>Staff No.</Label>
+                              <Input
+                                id={`edit-staff-no-${member.id}`}
+                                value={editStaffNo}
+                                onChange={(e) => setEditStaffNo(e.target.value)}
+                                className="h-10 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label htmlFor={`edit-gender-${member.id}`}>Gender</Label>
+                              <Input
+                                id={`edit-gender-${member.id}`}
+                                value={editGender}
+                                onChange={(e) => setEditGender(e.target.value)}
+                                className="h-10 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label htmlFor={`edit-rank-${member.id}`}>Rank</Label>
+                              <Input
+                                id={`edit-rank-${member.id}`}
+                                value={editRank}
+                                onChange={(e) => setEditRank(e.target.value)}
                                 className="h-10 text-sm"
                               />
                             </div>
@@ -682,9 +767,12 @@ export default function StaffPage() {
                           </div>
                         </div>
                       ) : (
-                        <div className="grid gap-3 px-4 py-4 xl:grid-cols-[1fr_1.05fr_.8fr_.7fr_.65fr_.65fr_1.45fr] xl:items-center">
+                        <div className="grid gap-3 px-4 py-4 xl:grid-cols-[1fr_1.05fr_.65fr_.55fr_.55fr_.75fr_.65fr_.65fr_.65fr_1.45fr] xl:items-center">
                           <StaffField label="Name" value={member.fullName} strong />
                           <StaffField label="Login Email" value={member.email || 'Not linked'} muted={!member.email} />
+                          <StaffField label="Staff No." value={member.staffNo || '-'} />
+                          <StaffField label="Gender" value={member.gender || '-'} />
+                          <StaffField label="Rank" value={member.rank || '-'} />
                           <StaffField label="Department" value={member.department || '-'} />
                           <StaffField label="Unit" value={member.unit || '-'} />
                           <StaffField label="Type" value={member.isAttendanceOnly ? 'Monitoring only' : member.isNssPersonnel ? 'NSS' : 'Staff'} />

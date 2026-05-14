@@ -16,8 +16,11 @@ type StaffUpdateBody = {
   department?: string | null;
   email?: string | null;
   fullName?: string;
+  gender?: string | null;
   isAttendanceOnly?: boolean;
   isNssPersonnel?: boolean;
+  rank?: string | null;
+  staffNo?: string | null;
   unit?: string | null;
 };
 
@@ -53,6 +56,9 @@ export async function PUT(
       email,
       department,
       unit,
+      staffNo,
+      gender,
+      rank,
       active,
       archived,
       isAttendanceOnly,
@@ -64,6 +70,9 @@ export async function PUT(
     if (email !== undefined) updateData.email = normalizeStaffEmail(email);
     if (department !== undefined) updateData.department = typeof department === 'string' && department.trim() ? department.trim() : null;
     if (unit !== undefined) updateData.unit = typeof unit === 'string' && unit.trim() ? unit.trim() : null;
+    if (staffNo !== undefined) updateData.staffNo = typeof staffNo === 'string' && staffNo.trim() ? staffNo.trim() : null;
+    if (gender !== undefined) updateData.gender = typeof gender === 'string' && gender.trim() ? gender.trim() : null;
+    if (rank !== undefined) updateData.rank = typeof rank === 'string' && rank.trim() ? rank.trim() : null;
     if (active !== undefined) updateData.active = active;
     if (isAttendanceOnly !== undefined) updateData.isAttendanceOnly = isAttendanceOnly === true;
     if (isNssPersonnel !== undefined || isAttendanceOnly !== undefined) {

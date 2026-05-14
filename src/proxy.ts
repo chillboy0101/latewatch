@@ -54,6 +54,7 @@ const isAdminRoute = createRouteMatcher([
   '/api/dashboard(.*)',
   '/api/entries(.*)',
   '/api/emergency-contacts(.*)',
+  '/api/export(.*)',
   '/api/exports(.*)',
   '/api/seed(.*)',
   '/api/staff(.*)',
