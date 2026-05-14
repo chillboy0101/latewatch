@@ -324,7 +324,7 @@ export default function CheckInPage() {
       }
       setStatus(await response.json());
     } catch (error) {
-      console.error('Failed to load check-in status:', error);
+      console.warn('Check-in status could not load:', error);
       if (!options?.silent) {
         setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Could not load check-in status' });
       }
@@ -433,7 +433,7 @@ export default function CheckInPage() {
               : 'You have checked in for today.',
       });
     } catch (error) {
-      console.error('Attendance action failed:', error);
+      console.warn('Attendance action could not complete:', error);
       const errorMessage = locationErrorMessage(error);
       await fetchStatus();
       setMessage({ type: 'error', text: errorMessage });
@@ -470,7 +470,7 @@ export default function CheckInPage() {
       setStatus(body);
       setMessage({ type: 'success', text: 'Device transfer request sent. Ask an admin to approve it.' });
     } catch (error) {
-      console.error('Device transfer request failed:', error);
+      console.warn('Device transfer request could not complete:', error);
       const errorMessage = locationErrorMessage(error);
       await fetchStatus();
       setMessage({ type: 'error', text: errorMessage });
