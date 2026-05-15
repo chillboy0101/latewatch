@@ -226,26 +226,6 @@ function attendanceButtonLabel(status: CheckInStatus | null, submitting: boolean
   return 'Check In';
 }
 
-function autoAttendanceStatusText(input: {
-  autoAction: AttendanceAction | null;
-  liveLocation: LiveLocation;
-  saving: boolean;
-  status: CheckInStatus | null;
-}) {
-  if (input.saving) return 'Saving auto attendance';
-  if (input.autoAction === 'check_in') return 'Auto check-in running';
-  if (input.autoAction === 'sign_out') return 'Auto sign-out running';
-  if (!input.status?.staff || !input.status.device?.registered || !input.status.device.trusted) return 'Trusted device required';
-
-  const autoCheckInEnabled = Boolean(input.status.device.autoCheckInEnabled);
-  const autoSignOutEnabled = Boolean(input.status.device.autoSignOutEnabled);
-  if (!autoCheckInEnabled && !autoSignOutEnabled) return 'Auto attendance off';
-  if (!input.status.locationConfigured || input.liveLocation.state !== 'inside') return 'Waiting for office location';
-  if (autoCheckInEnabled && autoSignOutEnabled) return 'Auto attendance active';
-  if (autoCheckInEnabled) return 'Auto check-in on. Auto sign-out off';
-  return 'Auto sign-out on';
-}
-
 function statusTone(status: CheckInStatus | null) {
   if (!status) return 'border-border bg-card text-muted-foreground';
   if (status.attendance?.signOutTime) return 'border-success/25 bg-success/10 text-success';
@@ -671,12 +651,6 @@ export default function CheckInPage() {
   const accessNotSetUp = Boolean(status && !status.staff);
   const locationBlocksAction = Boolean(status?.locationConfigured && liveLocation.blocking);
   const autoDeviceReady = Boolean(status?.staff && status.device?.registered && status.device.trusted);
-  const autoAttendanceText = autoAttendanceStatusText({
-    autoAction: autoAttendanceAction,
-    liveLocation,
-    saving: savingAutoSettings,
-    status,
-  });
 
   useEffect(() => {
     if (!autoDeviceReady || checkingIn || autoAttendanceAction || savingAutoSettings) return;
@@ -850,8 +824,6 @@ export default function CheckInPage() {
                       autoSignOutEnabled: !status?.device?.autoSignOutEnabled,
                     });
                   }}
-                  saving={savingAutoSettings}
-                  statusText={autoAttendanceText}
                 />
 
                 {message && (
@@ -1059,27 +1031,16 @@ function AutoAttendancePanel({
   disabled,
   onToggleCheckIn,
   onToggleSignOut,
-  saving,
-  statusText,
 }: {
   autoCheckInEnabled: boolean;
   autoSignOutEnabled: boolean;
   disabled: boolean;
   onToggleCheckIn: () => void;
   onToggleSignOut: () => void;
-  saving: boolean;
-  statusText: string;
 }) {
   return (
-    <div className="rounded-md border border-border bg-card p-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold">Auto attendance</h3>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">{statusText}</p>
-        </div>
-        {saving && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />}
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
+    <div className="rounded-md border border-border bg-card p-2">
+      <div className="grid grid-cols-2 gap-2">
         <AutoAttendanceToggle
           disabled={disabled}
           enabled={autoCheckInEnabled}

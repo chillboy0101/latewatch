@@ -58,7 +58,8 @@ test('check-in page renders independent auto toggles and calls auto settings/act
   assert.match(source, /source: 'auto_attendance'/);
   assert.match(source, /autoCheckInEnabled/);
   assert.match(source, /autoSignOutEnabled/);
-  assert.match(source, /Auto attendance active|Waiting for office location|Auto sign-out off/);
+  assert.doesNotMatch(source, /<h3 className="text-sm font-semibold">Auto attendance<\/h3>/);
+  assert.doesNotMatch(source, /Auto attendance active|Waiting for office location|Auto sign-out off|Auto attendance off/);
 });
 
 test('admin attendance page exposes auto attendance device badges', () => {
