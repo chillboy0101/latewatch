@@ -33,6 +33,7 @@ test('lateness payment API records payments, allocations, audit events, and real
   assert.match(source, /export async function POST/);
   assert.match(source, /allocateLatenessPayment/);
   assert.match(source, /hasDateFilter/);
+  assert.match(source, /eq\(staff\.isAttendanceOnly, false\)/);
   assert.match(source, /paymentWeekStart/);
   assert.match(source, /latenessPaymentAllocation/);
   assert.match(source, /entityType: 'lateness_payment'/);
@@ -59,13 +60,19 @@ test('admin payments page and navigation expose payment management actions', () 
   const proxy = fs.readFileSync(proxyPath, 'utf8');
 
   assert.match(page, /Penalty Payments/);
-  assert.match(page, /Record payment/);
-  assert.match(page, /Pay balance/);
+  assert.match(page, /Record amount/);
+  assert.match(page, /Pay full balance/);
+  assert.match(page, /inputMode="decimal"/);
+  assert.match(page, /placeholder="Amount paid"/);
+  assert.match(page, /Mark as paid/);
   assert.match(page, /Marked day paid/);
   assert.match(page, /Manage/);
   assert.match(page, /DialogContent/);
   assert.match(page, /max-w-xl/);
   assert.match(page, /compactPenaltyLine/);
+  assert.match(page, /paymentRosterSections/);
+  assert.match(page, /Main Staff/);
+  assert.match(page, /NSS Personnel/);
   assert.match(page, /statusFilter/);
   assert.match(page, /paymentStatusForRow/);
   assert.match(page, /All penalty records/);
@@ -84,6 +91,10 @@ test('admin payments page and navigation expose payment management actions', () 
   assert.doesNotMatch(page, /max-h-80 overflow-y-auto/);
   assert.doesNotMatch(page, /MiniAmount/);
   assert.doesNotMatch(page, />Mark paid</);
+  assert.doesNotMatch(page, />Pay<\/Button>/);
+  assert.doesNotMatch(page, /type="number"/);
+  assert.doesNotMatch(page, />Pay balance</);
+  assert.doesNotMatch(page, />Record payment</);
   assert.match(sidebar, /Penalty Payments/);
   assert.match(sidebar, /href: '\/payments'/);
   assert.match(proxy, /\/payments\(\.\*\)/);

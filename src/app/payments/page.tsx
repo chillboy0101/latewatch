@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Loader2, ReceiptText, Search } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
@@ -57,6 +57,15 @@ function moneyNumber(value: string | number | null | undefined) {
   return Number.isFinite(amount) ? amount : 0;
 }
 
+function normalizePaymentAmountInput(value: string) {
+  const cleaned = value.replace(/[^\d.]/g, '');
+  const [whole, ...decimalParts] = cleaned.split('.');
+
+  if (decimalParts.length === 0) return whole;
+
+  return `${whole}.${decimalParts.join('').slice(0, 2)}`;
+}
+
 function statusLabel(status: PaymentStatus) {
   if (status === 'paid') return 'Paid';
   if (status === 'partially_paid') return 'Partially paid';
@@ -64,7 +73,6 @@ function statusLabel(status: PaymentStatus) {
 }
 
 function staffKind(row: PaymentStaffRow) {
-  if (row.isAttendanceOnly) return 'Monitoring only';
   if (row.isNssPersonnel) return 'NSS Personnel';
   return 'Main Staff';
 }
@@ -134,7 +142,7 @@ export default function PenaltyPaymentsPage() {
 
   const matchingRows = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const rows = data?.staff || [];
+    const rows = (data?.staff || []).filter((row) => row.isAttendanceOnly !== true);
     const searchedRows = query
       ? rows.filter((row) => [
         row.fullName,
@@ -148,9 +156,21 @@ export default function PenaltyPaymentsPage() {
       : searchedRows.filter((row) => paymentStatusForRow(row) === statusFilter);
   }, [data?.staff, search, statusFilter]);
   const filteredRows = useMemo(() => sortPaymentRowsByBalance(matchingRows), [matchingRows]);
+  const paymentRosterSections = useMemo(() => {
+    return [
+      {
+        rows: filteredRows.filter((row) => row.isNssPersonnel !== true),
+        title: 'Main Staff',
+      },
+      {
+        rows: filteredRows.filter((row) => row.isNssPersonnel === true),
+        title: 'NSS Personnel',
+      },
+    ].filter((section) => section.rows.length > 0);
+  }, [filteredRows]);
 
   const selectedRow = useMemo(() => {
-    return (data?.staff || []).find((row) => row.id === selectedStaffId) || null;
+    return (data?.staff || []).find((row) => row.id === selectedStaffId && row.isAttendanceOnly !== true) || null;
   }, [data?.staff, selectedStaffId]);
 
   function openPaymentDialog(row: PaymentStaffRow) {
@@ -264,42 +284,54 @@ export default function PenaltyPaymentsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRows.map((row) => (
-                    <tr
-                      key={row.id}
-                      className="cursor-pointer border-b border-border transition-colors hover:bg-muted/20"
-                      onClick={() => openPaymentDialog(row)}
-                    >
-                      <td className="px-4 py-3">
-                        <div className="font-medium">{row.fullName}</div>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          <span>{row.email || 'No email'}</span>
-                          <span className="rounded-full bg-muted/40 px-2 py-0.5">{staffKind(row)}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <PaymentStatusBadge status={paymentStatusForRow(row)} />
-                      </td>
-                      <td className={cn(
-                        'px-4 py-3 text-right font-mono font-semibold',
-                        moneyNumber(row.outstandingBalance) > 0 ? 'text-warning' : 'text-success',
-                      )}>
-                        {currency(row.outstandingBalance)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openPaymentDialog(row);
-                          }}
+                  {paymentRosterSections.map((section) => (
+                    <Fragment key={section.title}>
+                      <tr className="border-b border-border bg-muted/10">
+                        <td className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground" colSpan={4}>
+                          {section.title}
+                          <span className="ml-2 rounded-full bg-background px-2 py-0.5 font-normal normal-case tracking-normal">
+                            {section.rows.length}
+                          </span>
+                        </td>
+                      </tr>
+                      {section.rows.map((row) => (
+                        <tr
+                          key={row.id}
+                          className="cursor-pointer border-b border-border transition-colors hover:bg-muted/20"
+                          onClick={() => openPaymentDialog(row)}
                         >
-                          Manage
-                        </Button>
-                      </td>
-                    </tr>
+                          <td className="px-4 py-3">
+                            <div className="font-medium">{row.fullName}</div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              <span>{row.email || 'No email'}</span>
+                              <span className="rounded-full bg-muted/40 px-2 py-0.5">{staffKind(row)}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <PaymentStatusBadge status={paymentStatusForRow(row)} />
+                          </td>
+                          <td className={cn(
+                            'px-4 py-3 text-right font-mono font-semibold',
+                            moneyNumber(row.outstandingBalance) > 0 ? 'text-warning' : 'text-success',
+                          )}>
+                            {currency(row.outstandingBalance)}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openPaymentDialog(row);
+                              }}
+                            >
+                              Manage
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </Fragment>
                   ))}
                   {filteredRows.length === 0 && (
                     <tr>
@@ -372,7 +404,7 @@ export default function PenaltyPaymentsPage() {
                                 })}
                               >
                                 {savingAction === `day-${entry.entryId}` && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                                Pay
+                                Mark as paid
                               </Button>
                             )}
                           </div>
@@ -390,13 +422,12 @@ export default function PenaltyPaymentsPage() {
                   <div className="grid gap-2 sm:grid-cols-2">
                     <Input
                       id="payment-amount"
-                      aria-label="Amount"
-                      type="number"
-                      min="0"
-                      step="0.01"
+                      aria-label="Payment amount"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.]?[0-9]*"
                       value={amount}
-                      onChange={(event) => setAmount(event.target.value)}
-                      placeholder="Amount"
+                      onChange={(event) => setAmount(normalizePaymentAmountInput(event.target.value))}
+                      placeholder="Amount paid"
                     />
                     <Input
                       id="payment-note"
@@ -416,9 +447,10 @@ export default function PenaltyPaymentsPage() {
                         amount: moneyNumber(selectedRow.outstandingBalance),
                         note: 'Marked balance paid',
                       })}
+                      title="Pay the full outstanding balance"
                     >
                       {savingAction === 'week' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Pay balance
+                      Pay full balance
                     </Button>
                     <Button
                       type="button"
@@ -428,9 +460,10 @@ export default function PenaltyPaymentsPage() {
                         amount: manualAmount,
                         note,
                       })}
+                      title="Record the amount typed above"
                     >
                       {savingAction === 'manual' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Record payment
+                      Record amount
                     </Button>
                   </div>
                 </div>

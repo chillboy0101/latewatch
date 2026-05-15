@@ -90,8 +90,8 @@ export async function GET(request: NextRequest) {
     }
 
     const staffWhere = staffId
-      ? and(eq(staff.id, staffId), eq(staff.active, true), eq(staff.archived, false))
-      : and(eq(staff.active, true), eq(staff.archived, false));
+      ? and(eq(staff.id, staffId), eq(staff.active, true), eq(staff.archived, false), eq(staff.isAttendanceOnly, false))
+      : and(eq(staff.active, true), eq(staff.archived, false), eq(staff.isAttendanceOnly, false));
 
     const staffRows = await db.select({
       email: staff.email,
@@ -205,7 +205,12 @@ export async function POST(request: NextRequest) {
       id: staff.id,
     })
       .from(staff)
-      .where(eq(staff.id, staffId))
+      .where(and(
+        eq(staff.id, staffId),
+        eq(staff.active, true),
+        eq(staff.archived, false),
+        eq(staff.isAttendanceOnly, false),
+      ))
       .limit(1);
 
     if (!member) {
