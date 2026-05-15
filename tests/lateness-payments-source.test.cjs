@@ -77,6 +77,8 @@ test('admin payments page and navigation expose payment management actions', () 
   assert.match(page, /paymentStatusForRow/);
   assert.match(page, /All penalty records/);
   assert.match(page, /sortPaymentRowsByBalance/);
+  assert.match(page, /subscribeRealtimeChannel/);
+  assert.match(page, /'payments', 'entries', 'attendance'/);
   assert.match(page, /\/api\/payments\/lateness/);
   assert.doesNotMatch(page, /Record full or partial lateness payments and keep staff balances transparent/);
   assert.doesNotMatch(page, />Roster</);
@@ -95,6 +97,7 @@ test('admin payments page and navigation expose payment management actions', () 
   assert.doesNotMatch(page, /type="number"/);
   assert.doesNotMatch(page, />Pay balance</);
   assert.doesNotMatch(page, />Record payment</);
+  assert.doesNotMatch(page, /rounded-full bg-muted\/40 px-2 py-0\.5">\{staffKind\(row\)\}/);
   assert.match(sidebar, /Penalty Payments/);
   assert.match(sidebar, /href: '\/payments'/);
   assert.match(proxy, /\/payments\(\.\*\)/);

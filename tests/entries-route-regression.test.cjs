@@ -18,6 +18,7 @@ function createTable(name, columns) {
 }
 
 const fixture = {
+  attendancePermission: [],
   attendanceRecord: [],
   entrySubmission: [],
   latenessEntry: [],
@@ -26,6 +27,7 @@ const fixture = {
 };
 
 function resetFixture() {
+  fixture.attendancePermission = [];
   fixture.attendanceRecord = [
     {
       id: 'attendance-1',
@@ -59,6 +61,7 @@ function resetFixture() {
       fullName: 'CARL CHRISTIAN QUIST',
       active: true,
       archived: false,
+      isAttendanceOnly: false,
       isNssPersonnel: false,
     },
   ];
@@ -131,10 +134,11 @@ function insertIntoTable(tableName, values) {
 }
 
 const schema = {
+  attendancePermission: createTable('attendancePermission', ['date', 'staffId', 'status']),
   attendanceRecord: createTable('attendanceRecord', ['id', 'staffId', 'date']),
   entrySubmission: createTable('entrySubmission', ['date']),
   latenessEntry: createTable('latenessEntry', ['id', 'date']),
-  staff: createTable('staff', ['id', 'fullName', 'active', 'archived', 'isNssPersonnel']),
+  staff: createTable('staff', ['id', 'fullName', 'active', 'archived', 'isAttendanceOnly', 'isNssPersonnel']),
   workCalendar: createTable('workCalendar', ['date', 'isHoliday']),
 };
 
@@ -293,4 +297,43 @@ test('saving a lateness entry uses the NSS flat late penalty', async () => {
   assert.equal(fixture.latenessEntry.length, 1);
   assert.equal(fixture.latenessEntry[0].computedAmount, '10');
   assert.equal(fixture.attendanceRecord[0].computedAmount, '10.00');
+});
+
+test('saving lateness entries respects an approved general pardon', async () => {
+  resetFixture();
+  fixture.attendancePermission = [
+    {
+      id: 'permission-1',
+      arrivalWindow: 'any_time_today',
+      date: '2026-05-06',
+      expectedEndTime: null,
+      expectedStartTime: null,
+      permissionType: 'late_arrival',
+      reason: 'general pardon',
+      staffId: 'staff-1',
+      status: 'approved',
+    },
+  ];
+
+  const response = await POST(new Request('http://localhost/api/entries', {
+    body: JSON.stringify({
+      date: '2026-05-06',
+      entries: [
+        {
+          arrivalTime: '10:31',
+          didNotSignOut: false,
+          staffId: 'staff-1',
+        },
+      ],
+    }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(fixture.latenessEntry.length, 0);
+  assert.equal(fixture.attendanceRecord[0].checkInTime, '10:31');
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
+  assert.equal(fixture.attendanceRecord[0].reason, 'Approved late arrival (Any time today): general pardon');
+  assert.equal(fixture.attendanceRecord[0].status, 'present');
 });

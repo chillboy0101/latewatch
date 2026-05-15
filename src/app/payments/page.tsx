@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
+import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 
 type PaymentStatus = 'paid' | 'partially_paid' | 'unpaid';
@@ -138,6 +139,36 @@ export default function PenaltyPaymentsPage() {
 
   useEffect(() => {
     void loadPayments();
+  }, [loadPayments]);
+
+  useEffect(() => {
+    let cleanups: Array<() => void> = [];
+    let mounted = true;
+
+    (async () => {
+      const unsubscribers = await Promise.all(
+        ['payments', 'entries', 'attendance'].map((channel) =>
+          subscribeRealtimeChannel({
+            channel,
+            events: ['invalidate'],
+            onEvent: () => {
+              void loadPayments();
+            },
+          }),
+        ),
+      );
+
+      if (mounted) {
+        cleanups = unsubscribers;
+      } else {
+        unsubscribers.forEach((unsubscribe) => unsubscribe());
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      cleanups.forEach((unsubscribe) => unsubscribe());
+    };
   }, [loadPayments]);
 
   const matchingRows = useMemo(() => {
@@ -302,10 +333,7 @@ export default function PenaltyPaymentsPage() {
                         >
                           <td className="px-4 py-3">
                             <div className="font-medium">{row.fullName}</div>
-                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                              <span>{row.email || 'No email'}</span>
-                              <span className="rounded-full bg-muted/40 px-2 py-0.5">{staffKind(row)}</span>
-                            </div>
+                            <div className="mt-1 text-xs text-muted-foreground">{row.email || 'No email'}</div>
                           </td>
                           <td className="px-4 py-3">
                             <PaymentStatusBadge status={paymentStatusForRow(row)} />

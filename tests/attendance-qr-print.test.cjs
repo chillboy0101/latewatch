@@ -95,8 +95,18 @@ test('general pardon reconciliation clears late records and keeps late-only miss
 
   assert.match(reconciliationSource, /permission\.permissionType === 'absence'/);
   assert.match(reconciliationSource, /status: 'excused'/);
+  assert.match(reconciliationSource, /publishRealtime\('payments'/);
+  assert.match(reconciliationSource, /publishRealtime\('staff-penalty-history'/);
   assert.match(attendanceApiSource, /isGeneralPardonReason\(permission\.reason\)/);
   assert.match(attendanceApiSource, /return 'not_checked_in'/);
+});
+
+test('general pardon invalidates entries and payment balances', () => {
+  const source = fs.readFileSync(generalPardonApiPath, 'utf8');
+
+  assert.match(source, /publishRealtime\('entries'/);
+  assert.match(source, /publishRealtime\('payments'/);
+  assert.match(source, /publishRealtime\('staff-penalty-history'/);
 });
 
 test('attendance permission list falls back to loaded staff names', () => {

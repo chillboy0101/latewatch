@@ -1,21 +1,46 @@
 // app/api/entries/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { attendanceRecord, entrySubmission, latenessEntry, workCalendar, staff } from '@/db/schema';
+import { attendancePermission, attendanceRecord, entrySubmission, latenessEntry, workCalendar, staff } from '@/db/schema';
 import { eq, and, gte, lte } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 import { getAuditActor, writeAuditEvent } from '@/lib/audit';
-import { computePenalty } from '@/lib/penalty-calculator';
 import {
   syncLatenessEntriesFromAttendanceForDate,
   syncLatenessEntriesFromAttendanceForRange,
 } from '@/lib/attendance-lateness-sync';
+import { mergeAttendanceRowsIntoEntryRows } from '@/lib/lateness-entry-presentation';
 import {
   manualAttendanceCorrectionChanged,
   resolveManualAttendanceCorrection,
+  resolveManualPenalty,
 } from '@/lib/manual-attendance-correction';
 
 export const dynamic = 'force-dynamic';
+
+async function getAttendanceRowsForEntries(start: string, end: string) {
+  return db.select({
+    id: attendanceRecord.id,
+    staffId: attendanceRecord.staffId,
+    date: attendanceRecord.date,
+    checkInTime: attendanceRecord.checkInTime,
+    reason: attendanceRecord.reason,
+    computedAmount: attendanceRecord.computedAmount,
+    createdAt: attendanceRecord.createdAt,
+    updatedAt: attendanceRecord.updatedAt,
+    status: attendanceRecord.status,
+  })
+    .from(attendanceRecord)
+    .where(and(gte(attendanceRecord.date, start), lte(attendanceRecord.date, end)));
+}
+
+async function getActivePermissionsForDate(date: string) {
+  const permissionRows = await db.select()
+    .from(attendancePermission)
+    .where(and(eq(attendancePermission.date, date), eq(attendancePermission.status, 'approved')));
+
+  return new Map(permissionRows.map((permission) => [permission.staffId, permission]));
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -39,7 +64,10 @@ export async function GET(request: NextRequest) {
       })
       .from(latenessEntry)
       .where(eq(latenessEntry.date, date));
-      return NextResponse.json(entries, {
+      const attendanceRows = await getAttendanceRowsForEntries(date, date);
+      const responseRows = mergeAttendanceRowsIntoEntryRows({ attendanceRows, entryRows: entries });
+
+      return NextResponse.json(responseRows, {
         headers: {
           'Cache-Control': 'no-store',
         },
@@ -61,7 +89,10 @@ export async function GET(request: NextRequest) {
       })
       .from(latenessEntry)
       .where(and(gte(latenessEntry.date, start), lte(latenessEntry.date, end)));
-      return NextResponse.json(entries, {
+      const attendanceRows = await getAttendanceRowsForEntries(start, end);
+      const responseRows = mergeAttendanceRowsIntoEntryRows({ attendanceRows, entryRows: entries });
+
+      return NextResponse.json(responseRows, {
         headers: {
           'Cache-Control': 'no-store',
         },
@@ -136,6 +167,7 @@ export async function POST(request: NextRequest) {
       .from(attendanceRecord)
       .where(eq(attendanceRecord.date, date));
     const attendanceByStaffId = new Map(attendanceRows.map((record) => [record.staffId, record]));
+    const activePermissionsByStaffId = await getActivePermissionsForDate(date);
     const actor = await getAuditActor();
 
     const results = [];
@@ -150,20 +182,22 @@ export async function POST(request: NextRequest) {
         ? entry.arrivalTime
         : null;
       const didNotSignOut = entry.didNotSignOut === true;
-      const penalty = computePenalty({
+      const activePermission = activePermissionsByStaffId.get(entry.staffId) || null;
+      const penalty = resolveManualPenalty({
+        activePermission,
         arrivalTime,
         didNotSignOut,
         isAttendanceOnly: staffAttendanceOnlyMap.get(entry.staffId) === true,
         isNssPersonnel: staffPenaltyMap.get(entry.staffId) === true,
-        isHoliday: false,
       });
 
       const existing = existingByStaffId.get(entry.staffId);
       const existingAttendance = attendanceByStaffId.get(entry.staffId);
-      const shouldStoreEntry = didNotSignOut || penalty.amount > 0;
+      const shouldStoreEntry = penalty.didNotSignOut || penalty.amount > 0;
 
       if (existingAttendance) {
         const correction = resolveManualAttendanceCorrection({
+          activePermission,
           attendance: existingAttendance,
           arrivalTime,
           date,
@@ -233,7 +267,7 @@ export async function POST(request: NextRequest) {
         [result] = await db.update(latenessEntry)
           .set({
             arrivalTime,
-            didNotSignOut,
+            didNotSignOut: penalty.didNotSignOut,
             computedAmount: penalty.amount.toString(),
             reason: penalty.reason,
             updatedAt: new Date(),
@@ -257,7 +291,7 @@ export async function POST(request: NextRequest) {
           staffId: entry.staffId,
           date: date,
           arrivalTime,
-          didNotSignOut,
+          didNotSignOut: penalty.didNotSignOut,
           computedAmount: penalty.amount.toString(),
           reason: penalty.reason,
         }).returning();
@@ -319,6 +353,8 @@ export async function POST(request: NextRequest) {
     publishRealtime('dashboard', 'invalidate', { reason: 'entries' });
     publishRealtime('attendance', 'invalidate', { reason: 'entries' });
     publishRealtime('entries', 'invalidate', { reason: 'entries' });
+    publishRealtime('payments', 'invalidate', { date, reason: 'entries' });
+    publishRealtime('staff-penalty-history', 'invalidate', { date, reason: 'entries' });
     publishRealtime('audit-trail', 'invalidate', { reason: 'entries' });
 
     return NextResponse.json({

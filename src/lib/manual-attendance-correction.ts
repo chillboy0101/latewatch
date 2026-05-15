@@ -1,4 +1,5 @@
 import { computePenalty } from '@/lib/penalty-calculator';
+import { formatAbsencePermissionReason, getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/attendance-permissions';
 import { WORKDAY_START_TIME } from '@/lib/work-hours';
 
 type AttendanceLike = {
@@ -14,7 +15,16 @@ type ManualAttendanceCorrection = {
   checkInTime: string;
   computedAmount: string;
   reason: string | null;
-  status: 'late' | 'present';
+  status: 'excused' | 'late' | 'present';
+};
+
+type ManualPermissionLike = {
+  arrivalWindow?: string | null;
+  expectedEndTime?: string | null;
+  expectedStartTime?: string | null;
+  permissionType?: string | null;
+  reason?: string | null;
+  status?: string | null;
 };
 
 function normalizeTime(value: string | null | undefined) {
@@ -46,7 +56,89 @@ function buildCheckInAt(date: string, time: string) {
   return new Date(`${date}T${time}:00.000Z`);
 }
 
+function approvedLateArrivalReason(permission: ManualPermissionLike) {
+  const window = getPermissionWindowBounds({
+    arrivalWindow: permission.arrivalWindow || 'any_time_today',
+    expectedEndTime: permission.expectedEndTime || null,
+    expectedStartTime: permission.expectedStartTime || null,
+    permissionType: 'late_arrival',
+  });
+  return `Approved late arrival (${window.label}): ${permission.reason || 'approved reason'}`.trim();
+}
+
+function approvedAbsenceReason(permission: ManualPermissionLike) {
+  return `Excused absence: ${formatAbsencePermissionReason(permission.reason || 'approved reason')}`.trim();
+}
+
+export function resolveManualPenalty(input: {
+  activePermission?: ManualPermissionLike | null;
+  arrivalTime: string | null;
+  didNotSignOut: boolean;
+  isAttendanceOnly?: boolean;
+  isNssPersonnel?: boolean;
+}) {
+  if (
+    input.activePermission?.status === 'approved' &&
+    input.activePermission.permissionType === 'absence'
+  ) {
+    return {
+      amount: 0,
+      didNotSignOut: false,
+      reason: approvedAbsenceReason(input.activePermission),
+      status: 'excused' as const,
+    };
+  }
+
+  const permissionClearsLatePenalty = Boolean(
+    input.activePermission?.status === 'approved' &&
+    input.activePermission.permissionType === 'late_arrival' &&
+    input.arrivalTime &&
+    isPermissionWindowActive({
+      arrivalWindow: input.activePermission.arrivalWindow || 'any_time_today',
+      expectedEndTime: input.activePermission.expectedEndTime || null,
+      expectedStartTime: input.activePermission.expectedStartTime || null,
+      permissionType: 'late_arrival',
+    }, input.arrivalTime),
+  );
+
+  if (permissionClearsLatePenalty && input.activePermission) {
+    const signOutPenalty = input.didNotSignOut
+      ? computePenalty({
+          arrivalTime: null,
+          didNotSignOut: true,
+          isAttendanceOnly: input.isAttendanceOnly,
+          isNssPersonnel: input.isNssPersonnel,
+          isHoliday: false,
+        })
+      : { amount: 0, reason: '' };
+    const permissionReason = approvedLateArrivalReason(input.activePermission);
+
+    return {
+      amount: signOutPenalty.amount,
+      didNotSignOut: input.didNotSignOut,
+      reason: signOutPenalty.amount > 0 ? `${signOutPenalty.reason}; ${permissionReason}` : permissionReason,
+      status: signOutPenalty.amount > 0 ? 'late' as const : 'present' as const,
+    };
+  }
+
+  const penalty = computePenalty({
+    arrivalTime: input.arrivalTime,
+    didNotSignOut: input.didNotSignOut,
+    isAttendanceOnly: input.isAttendanceOnly,
+    isNssPersonnel: input.isNssPersonnel,
+    isHoliday: false,
+  });
+
+  return {
+    amount: penalty.amount,
+    didNotSignOut: input.didNotSignOut,
+    reason: penalty.reason || null,
+    status: penalty.amount > 0 ? 'late' as const : 'present' as const,
+  };
+}
+
 export function resolveManualAttendanceCorrection(input: {
+  activePermission?: ManualPermissionLike | null;
   attendance: AttendanceLike;
   arrivalTime: string | null;
   date: string;
@@ -56,12 +148,12 @@ export function resolveManualAttendanceCorrection(input: {
 }): ManualAttendanceCorrection {
   const currentArrivalTime = normalizeTime(input.attendance.checkInTime) || WORKDAY_START_TIME;
   const nextArrivalTime = input.arrivalTime || currentArrivalTime;
-  const nextPenalty = computePenalty({
+  const nextPenalty = resolveManualPenalty({
+    activePermission: input.activePermission,
     arrivalTime: nextArrivalTime,
     didNotSignOut: input.didNotSignOut,
     isAttendanceOnly: input.isAttendanceOnly,
     isNssPersonnel: input.isNssPersonnel,
-    isHoliday: false,
   });
   const existingCheckInAt = parseExistingDate(input.attendance.checkInAt);
   const nextCheckInAt = input.arrivalTime
@@ -72,8 +164,8 @@ export function resolveManualAttendanceCorrection(input: {
     checkInAt: nextCheckInAt,
     checkInTime: nextArrivalTime,
     computedAmount: nextPenalty.amount.toFixed(2),
-    reason: nextPenalty.reason || null,
-    status: nextPenalty.amount > 0 ? 'late' : 'present',
+    reason: nextPenalty.reason,
+    status: nextPenalty.status,
   };
 }
 

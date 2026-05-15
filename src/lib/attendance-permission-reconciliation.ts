@@ -264,6 +264,8 @@ export async function reconcileAttendanceForPermission(input: {
     publishRealtime('attendance', 'invalidate', { reason: input.reason });
     publishRealtime('dashboard', 'invalidate', { reason: input.reason });
     publishRealtime('entries', 'invalidate', { reason: input.reason });
+    publishRealtime('payments', 'invalidate', { date: input.date, reason: input.reason, staffId: input.staffMember.id });
+    publishRealtime('staff-penalty-history', 'invalidate', { date: input.date, reason: input.reason, staffId: input.staffMember.id });
     publishRealtime('audit-trail', 'invalidate', { reason: input.reason });
     publishRealtime('notifications', 'invalidate', { reason: input.reason });
   }

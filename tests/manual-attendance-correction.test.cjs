@@ -113,3 +113,34 @@ test('manual attendance correction clears penalties for attendance monitoring on
     status: 'present',
   });
 });
+
+test('manual attendance correction keeps approved general late pardons at zero penalty', () => {
+  const correction = resolveManualAttendanceCorrection({
+    activePermission: {
+      arrivalWindow: 'any_time_today',
+      expectedEndTime: '23:59',
+      expectedStartTime: '00:00',
+      permissionType: 'late_arrival',
+      reason: 'general pardon',
+      status: 'approved',
+    },
+    attendance: {
+      checkInAt: new Date('2026-05-06T09:12:00.000Z'),
+      checkInTime: '09:12:00',
+      computedAmount: '0.00',
+      reason: 'Approved late arrival (Any time today): general pardon',
+      status: 'present',
+    },
+    arrivalTime: '10:31',
+    date: '2026-05-06',
+    didNotSignOut: false,
+  });
+
+  assert.deepEqual(correction, {
+    checkInAt: new Date('2026-05-06T10:31:00.000Z'),
+    checkInTime: '10:31',
+    computedAmount: '0.00',
+    reason: 'Approved late arrival (Any time today): general pardon',
+    status: 'present',
+  });
+});

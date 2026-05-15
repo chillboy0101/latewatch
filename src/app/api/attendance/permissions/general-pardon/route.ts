@@ -145,6 +145,8 @@ export async function POST(request: NextRequest) {
     publishRealtime('notifications', 'invalidate', { reason: 'attendance-general-pardon' });
     publishRealtime('attendance', 'invalidate', { reason: 'attendance-general-pardon' });
     publishRealtime('entries', 'invalidate', { reason: 'attendance-general-pardon' });
+    publishRealtime('payments', 'invalidate', { date, reason: 'attendance-general-pardon' });
+    publishRealtime('staff-penalty-history', 'invalidate', { date, reason: 'attendance-general-pardon' });
 
     return NextResponse.json({
       affectedCount: permissions.length,

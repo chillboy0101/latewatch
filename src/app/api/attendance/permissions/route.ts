@@ -206,6 +206,9 @@ export async function POST(request: NextRequest) {
     publishRealtime('dashboard', 'invalidate', { reason: 'attendance-permission' });
     publishRealtime('notifications', 'invalidate', { reason: 'attendance-permission' });
     publishRealtime('attendance', 'invalidate', { reason: 'attendance-permission' });
+    publishRealtime('entries', 'invalidate', { reason: 'attendance-permission' });
+    publishRealtime('payments', 'invalidate', { reason: 'attendance-permission', staffId });
+    publishRealtime('staff-penalty-history', 'invalidate', { reason: 'attendance-permission', staffId });
 
     const permission = permissions[0];
 
