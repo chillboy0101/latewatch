@@ -5,6 +5,7 @@ import { AlertTriangle, Calendar, CheckCircle2, ChevronDown, Clock, FileText, Lo
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import {
@@ -21,6 +22,7 @@ import { cn } from '@/lib/utils';
 
 type AttendanceStatus = 'present' | 'late' | 'excused' | 'expected_late' | 'permission_overdue' | 'no_sign_out' | 'not_checked_in';
 type AttendanceFilter = 'all' | AttendanceStatus;
+type GeneralPardonType = 'absence' | 'late_arrival';
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 interface AttendancePermission {
@@ -236,10 +238,14 @@ export default function AttendancePage() {
   const [permissionReason, setPermissionReason] = useState('');
   const [savingPermission, setSavingPermission] = useState(false);
   const [deletingPermissionId, setDeletingPermissionId] = useState<string | null>(null);
+  const [generalPardonOpen, setGeneralPardonOpen] = useState(false);
+  const [generalPardonType, setGeneralPardonType] = useState<GeneralPardonType>('absence');
+  const [savingGeneralPardon, setSavingGeneralPardon] = useState(false);
   const [resettingDeviceStaffId, setResettingDeviceStaffId] = useState<string | null>(null);
   const [reviewingTransferId, setReviewingTransferId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const appliedDate = isValidCompleteDate(dateInput) ? dateInput : '';
   const attendanceDate = appliedDate || todayKey();
@@ -319,6 +325,7 @@ export default function AttendancePage() {
 
   async function savePermission() {
     if (!permissionStaffId || !permissionReason.trim()) {
+      setNotice(null);
       setError(permissionType === 'absence'
         ? 'Select a staff member and choose the excused absence reason.'
         : 'Select a staff member and choose the late arrival reason.');
@@ -337,6 +344,7 @@ export default function AttendancePage() {
 
     setSavingPermission(true);
     setError(null);
+    setNotice(null);
 
     try {
       const payload = permissionType === 'absence'
@@ -383,6 +391,7 @@ export default function AttendancePage() {
   async function deletePermission(permissionId: string) {
     setDeletingPermissionId(permissionId);
     setError(null);
+    setNotice(null);
 
     try {
       const response = await fetch(`/api/attendance/permissions/${permissionId}`, { method: 'DELETE' });
@@ -397,9 +406,41 @@ export default function AttendancePage() {
     }
   }
 
+  async function applyGeneralPardon() {
+    if (!isValidCompleteDate(attendanceDate)) {
+      setNotice(null);
+      setError('Select a valid attendance date before applying a general pardon.');
+      return;
+    }
+
+    setSavingGeneralPardon(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const response = await fetch('/api/attendance/permissions/general-pardon', {
+        body: JSON.stringify({ date: attendanceDate, pardonType: generalPardonType }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || 'Could not apply general pardon');
+
+      setGeneralPardonOpen(false);
+      setNotice(`General pardon applied to ${body.affectedCount ?? data?.rows.length ?? 0} staff for ${attendanceDate}.`);
+      await fetchAttendance();
+    } catch (err) {
+      console.error('Failed to apply general pardon:', err);
+      setError(err instanceof Error ? err.message : 'Could not apply general pardon');
+    } finally {
+      setSavingGeneralPardon(false);
+    }
+  }
+
   async function resetDevice(staffId: string) {
     setResettingDeviceStaffId(staffId);
     setError(null);
+    setNotice(null);
 
     try {
       const response = await fetch(`/api/attendance/devices/${staffId}`, { method: 'DELETE' });
@@ -417,6 +458,7 @@ export default function AttendancePage() {
   async function reviewDeviceTransfer(transferId: string, action: 'approve' | 'reject') {
     setReviewingTransferId(transferId);
     setError(null);
+    setNotice(null);
 
     try {
       const response = await fetch(`/api/attendance/device-transfers/${transferId}`, {
@@ -701,6 +743,23 @@ export default function AttendancePage() {
               Approve
             </Button>
           </div>
+          <div className="flex flex-col gap-3 border-t border-border px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">Emergency general pardon</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Apply a full-day excuse or late-only pardon to every attendance row for {attendanceDate}.
+              </p>
+            </div>
+            <Button
+              className="h-10 gap-2 lg:w-auto"
+              variant="outline"
+              onClick={() => setGeneralPardonOpen(true)}
+              disabled={savingGeneralPardon || !data?.rows.length}
+            >
+              <ShieldCheck className="h-4 w-4" />
+              Grant General Pardon
+            </Button>
+          </div>
           {(data?.permissions || []).length > 0 && (
             <div className="divide-y divide-border border-t border-border">
               {data?.permissions.map((permission) => (
@@ -728,6 +787,69 @@ export default function AttendancePage() {
             </div>
           )}
         </Card>
+
+        <Dialog
+          open={generalPardonOpen}
+          onOpenChange={(open) => {
+            if (!savingGeneralPardon) setGeneralPardonOpen(open);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Grant General Pardon</DialogTitle>
+              <DialogDescription>
+                Confirm the pardon for {attendanceDate}. This will update all {data?.rows.length ?? 0} active attendance rows for the selected date.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setGeneralPardonType('absence')}
+                className={cn(
+                  'rounded-lg border p-4 text-left transition-colors hover:border-primary/60 hover:bg-primary/5',
+                  generalPardonType === 'absence' ? 'border-primary bg-primary/10' : 'border-border bg-background',
+                )}
+              >
+                <span className="block text-sm font-semibold">Full-day excuse</span>
+                <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                  Mark everyone excused for the day and clear lateness penalties.
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setGeneralPardonType('late_arrival')}
+                className={cn(
+                  'rounded-lg border p-4 text-left transition-colors hover:border-primary/60 hover:bg-primary/5',
+                  generalPardonType === 'late_arrival' ? 'border-primary bg-primary/10' : 'border-border bg-background',
+                )}
+              >
+                <span className="block text-sm font-semibold">Late-only pardon</span>
+                <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                  Waive late penalties while staff without check-ins remain not checked in.
+                </span>
+              </button>
+            </div>
+
+            <div className="rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+              This is a bulk action. Individual permission records can still be removed after it is applied.
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setGeneralPardonOpen(false)}
+                disabled={savingGeneralPardon}
+              >
+                Cancel
+              </Button>
+              <Button className="gap-2" onClick={applyGeneralPardon} disabled={savingGeneralPardon}>
+                {savingGeneralPardon ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                Confirm General Pardon
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Card>
           <div className="grid gap-4 p-5 xl:grid-cols-[minmax(18rem,1fr)_13rem_7.5rem] xl:items-end">
@@ -757,6 +879,11 @@ export default function AttendancePage() {
         {error && (
           <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
             {error}
+          </div>
+        )}
+        {notice && (
+          <div className="rounded-md border border-success/30 bg-success/10 px-4 py-3 text-sm text-success">
+            {notice}
           </div>
         )}
 

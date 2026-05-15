@@ -199,6 +199,11 @@ function resolveDayStatus(
 ): DayStatus {
   if (member.active === false) return { kind: 'leave' };
 
+  const permission = permissionsByStaffDate.get(`${member.id}:${key}`);
+  if (permission) {
+    return { kind: 'approved_absence', reason: permission.reason || null };
+  }
+
   const attendance = attendanceByStaffDate.get(`${member.id}:${key}`);
   if (attendance) {
     const checkInTime = normalizeTime(attendance.checkInTime);
@@ -207,11 +212,6 @@ function resolveDayStatus(
       isLate: Boolean(checkInTime && checkInTime > WORKDAY_START_TIME),
       kind: 'present',
     };
-  }
-
-  const permission = permissionsByStaffDate.get(`${member.id}:${key}`);
-  if (permission) {
-    return { kind: 'approved_absence', reason: permission.reason || null };
   }
 
   return { kind: 'unapproved_absence' };

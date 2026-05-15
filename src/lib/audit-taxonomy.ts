@@ -37,6 +37,7 @@ const ACTION_LABELS: Record<CanonicalAuditAction, string> = {
 const ENTITY_LABELS: Record<string, string> = {
   attendance: 'Attendance Check-In',
   attendance_attempt: 'Attendance Attempt',
+  attendance_general_pardon: 'Attendance General Pardon',
   attendance_permission: 'Attendance Permission',
   calendar: 'Holiday Calendar',
   emergency_contact: 'Emergency Contact',

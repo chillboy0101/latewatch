@@ -7,6 +7,8 @@ const test = require('node:test');
 const attendancePagePath = path.join(__dirname, '../src/app/attendance/page.tsx');
 const attendanceApiPath = path.join(__dirname, '../src/app/api/attendance/route.ts');
 const attendancePermissionsApiPath = path.join(__dirname, '../src/app/api/attendance/permissions/route.ts');
+const generalPardonApiPath = path.join(__dirname, '../src/app/api/attendance/permissions/general-pardon/route.ts');
+const reconciliationPath = path.join(__dirname, '../src/lib/attendance-permission-reconciliation.ts');
 
 test('attendance QR print sheet does not show the raw install URL text', () => {
   const source = fs.readFileSync(attendancePagePath, 'utf8');
@@ -57,6 +59,44 @@ test('attendance permission API validates both permission reason lists and full-
   assert.match(source, /arrivalWindow = 'full_day'/);
   assert.match(source, /expectedEndTime = null/);
   assert.match(source, /expectedStartTime = null/);
+});
+
+test('attendance page confirms general pardons before calling the bulk endpoint', () => {
+  const source = fs.readFileSync(attendancePagePath, 'utf8');
+
+  assert.match(source, /Grant General Pardon/);
+  assert.match(source, /Confirm General Pardon/);
+  assert.match(source, /Full-day excuse/);
+  assert.match(source, /Late-only pardon/);
+  assert.match(source, /generalPardonType/);
+  assert.match(source, /setGeneralPardonOpen\(true\)/);
+  assert.match(source, /\/api\/attendance\/permissions\/general-pardon/);
+});
+
+test('general pardon API bulk applies to all active attendance staff and audits the summary', () => {
+  assert.equal(fs.existsSync(generalPardonApiPath), true);
+  const source = fs.readFileSync(generalPardonApiPath, 'utf8');
+
+  assert.match(source, /currentUser\(\)/);
+  assert.match(source, /pardonType/);
+  assert.match(source, /Invalid pardon type/);
+  assert.match(source, /eq\(staff\.active, true\)/);
+  assert.match(source, /eq\(staff\.archived, false\)/);
+  assert.match(source, /isAttendanceOnly: staff\.isAttendanceOnly/);
+  assert.match(source, /isNssPersonnel: staff\.isNssPersonnel/);
+  assert.match(source, /reason: 'general pardon'/);
+  assert.match(source, /reconcileAttendanceForPermission/);
+  assert.match(source, /entityType: 'attendance_general_pardon'/);
+});
+
+test('general pardon reconciliation clears late records and keeps late-only missing staff unchecked', () => {
+  const reconciliationSource = fs.readFileSync(reconciliationPath, 'utf8');
+  const attendanceApiSource = fs.readFileSync(attendanceApiPath, 'utf8');
+
+  assert.match(reconciliationSource, /permission\.permissionType === 'absence'/);
+  assert.match(reconciliationSource, /status: 'excused'/);
+  assert.match(attendanceApiSource, /isGeneralPardonReason\(permission\.reason\)/);
+  assert.match(attendanceApiSource, /return 'not_checked_in'/);
 });
 
 test('attendance permission list falls back to loaded staff names', () => {

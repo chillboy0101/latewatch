@@ -3,7 +3,7 @@ import 'server-only';
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { attendancePermission, attendanceRecord, latenessEntry } from '@/db/schema';
-import { getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/attendance-permissions';
+import { formatAbsencePermissionReason, getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/attendance-permissions';
 import { writeAuditEvent } from '@/lib/audit';
 import { computePenalty } from '@/lib/penalty-calculator';
 import { publishRealtime } from '@/lib/realtime';
@@ -37,6 +37,10 @@ function approvedLateArrivalReason(permission: PermissionRecord) {
   return `Approved late arrival (${window.label}): ${permission.reason}`.trim();
 }
 
+function approvedAbsenceReason(permission: PermissionRecord) {
+  return `Excused absence: ${formatAbsencePermissionReason(permission.reason)}`.trim();
+}
+
 function resolveNextAttendanceState(input: {
   attendance: AttendanceRecord;
   existingLateness: LatenessRecord | null;
@@ -45,6 +49,20 @@ function resolveNextAttendanceState(input: {
 }) {
   const arrivalTime = normalizeTime(input.attendance.checkInTime);
   const didNotSignOut = input.existingLateness?.didNotSignOut === true;
+
+  if (
+    input.permission?.status === 'approved' &&
+    input.permission.permissionType === 'absence'
+  ) {
+    return {
+      amount: 0,
+      didNotSignOut: false,
+      pardoned: true,
+      reason: approvedAbsenceReason(input.permission),
+      status: 'excused',
+    };
+  }
+
   const permissionClearsLatePenalty = Boolean(
     input.permission?.status === 'approved' &&
     input.permission.permissionType === 'late_arrival' &&
@@ -254,6 +272,6 @@ export async function reconcileAttendanceForPermission(input: {
     changed,
     pardoned: next.pardoned,
     penaltyAmount: nextAmount,
-    reason: next.pardoned ? 'late_arrival_pardoned' : 'penalty_recalculated',
+    reason: next.pardoned ? 'attendance_pardoned' : 'penalty_recalculated',
   };
 }

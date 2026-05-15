@@ -12,6 +12,7 @@ export const ABSENCE_PERMISSION_REASONS = [
   { value: 'official duty', label: 'Official duty' },
   { value: 'personal excuse', label: 'Personal excuse' },
   { value: 'workshop', label: 'Workshop' },
+  { value: 'general pardon', label: 'General pardon' },
 ] as const;
 
 export const ABSENCE_PERMISSION_WINDOWS = [
@@ -113,6 +114,10 @@ export function formatLateArrivalPermissionReason(value: string | null | undefin
   if (!reason) return value || '';
 
   return LATE_ARRIVAL_PERMISSION_REASONS.find((option) => option.value === reason)?.label || reason;
+}
+
+export function isGeneralPardonReason(value: string | null | undefined) {
+  return normalizeAbsencePermissionReason(value) === 'general pardon';
 }
 
 export function formatTimeLabel(value: string | null | undefined) {

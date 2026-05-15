@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { attendanceAttempt, attendancePermission, attendanceRecord, deviceTransferRequest, staff, staffDevice } from '@/db/schema';
 import { getAccraClock, getActiveOfficeNetwork, getOfficeLocationsForAttendance, isOfficeIp, resolveClientIpInfo } from '@/lib/attendance';
-import { isPermissionWindowOverdue } from '@/lib/attendance-permissions';
+import { isGeneralPardonReason, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
 import { resolveOfficeLocationForDate } from '@/lib/office-location-policy';
 import { shouldAlertNoSignOut } from '@/lib/work-hours';
 
@@ -135,6 +135,7 @@ export async function GET(request: NextRequest) {
       const fallbackStatus = (() => {
         if (!permission) return 'not_checked_in';
         if (permission.permissionType === 'absence') return 'excused';
+        if (isGeneralPardonReason(permission.reason)) return 'not_checked_in';
         if (isPermissionWindowOverdue(permission, date, clock.dateKey, clock.timeKey)) return 'permission_overdue';
         return 'expected_late';
       })();
@@ -174,7 +175,9 @@ export async function GET(request: NextRequest) {
               registeredAt: null,
             },
         permission,
-        status: noSignOut
+        status: permission?.permissionType === 'absence'
+          ? 'excused'
+          : noSignOut
           ? 'no_sign_out'
           : attendance?.status || fallbackStatus,
       };
