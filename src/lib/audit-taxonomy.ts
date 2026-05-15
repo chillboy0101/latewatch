@@ -44,6 +44,7 @@ const ENTITY_LABELS: Record<string, string> = {
   entry: 'Lateness Entry',
   entry_submission: 'Daily Entry Submission',
   export: 'Report Export',
+  lateness_payment: 'Lateness Payment',
   notification: 'Notification',
   office_network: 'Office Network',
   staff: 'Staff Member',

@@ -4,10 +4,11 @@ import { UserButton, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, LogOut, MapPin, Moon, ShieldCheck, Sun, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, LogOut, MapPin, Moon, ReceiptText, ShieldCheck, Sun, XCircle } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { getPermissionWindowBounds, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
@@ -78,6 +79,39 @@ interface CheckInStatus {
   signOutStartLabel: string;
   workdayEndLabel: string;
   workdayStartLabel: string;
+}
+
+type PenaltyPaymentStatus = 'paid' | 'partially_paid' | 'unpaid';
+
+interface PenaltyHistoryEntry {
+  arrivalTime: string | null;
+  date: string;
+  entryId: string;
+  outstandingAmount: string;
+  paidAmount: string;
+  penaltyAmount: string;
+  reason: string | null;
+  status: PenaltyPaymentStatus;
+}
+
+interface PenaltyHistoryWeek {
+  endDate: string;
+  entries: PenaltyHistoryEntry[];
+  outstandingBalance: string;
+  paidAmount: string;
+  startDate: string;
+  status: PenaltyPaymentStatus;
+  totalPenalty: string;
+}
+
+interface PenaltyHistoryResponse {
+  currentWeek: PenaltyHistoryWeek;
+  staff: {
+    email: string | null;
+    fullName: string;
+    id: string;
+  };
+  weeks: PenaltyHistoryWeek[];
 }
 
 type LocationEvidence = {
@@ -247,6 +281,16 @@ function locationStateFromValidation(validation: LocationValidationResult): Live
   return { blocking: true, message: validation.message, state: 'error' };
 }
 
+function ghc(value: string | number | null | undefined) {
+  return `GHC ${Number(value || 0).toFixed(2)}`;
+}
+
+function paymentStatusLabel(status: PenaltyPaymentStatus) {
+  if (status === 'paid') return 'Paid';
+  if (status === 'partially_paid') return 'Partially paid';
+  return 'Unpaid';
+}
+
 function validateLiveLocation(locationPolicy: CheckInStatus['locationPolicy'], evidence: LocationEvidence): LiveLocation {
   if (!locationPolicy) {
     return { blocking: false, message: 'Office location is not set yet.', state: 'idle' };
@@ -293,6 +337,10 @@ export default function CheckInPage() {
   const [checkingIn, setCheckingIn] = useState(false);
   const [requestingTransfer, setRequestingTransfer] = useState(false);
   const [deviceToken, setDeviceToken] = useState<string | null>(null);
+  const [penaltyHistory, setPenaltyHistory] = useState<PenaltyHistoryResponse | null>(null);
+  const [penaltyHistoryError, setPenaltyHistoryError] = useState<string | null>(null);
+  const [penaltyHistoryLoading, setPenaltyHistoryLoading] = useState(false);
+  const [penaltyHistoryOpen, setPenaltyHistoryOpen] = useState(false);
   const [liveLocation, setLiveLocation] = useState<LiveLocation>({
     blocking: false,
     message: 'Waiting for location.',
@@ -336,6 +384,29 @@ export default function CheckInPage() {
   useEffect(() => {
     fetchStatus();
   }, [fetchStatus]);
+
+  const fetchPenaltyHistory = useCallback(async () => {
+    setPenaltyHistoryLoading(true);
+    setPenaltyHistoryError(null);
+
+    try {
+      const response = await fetch('/api/attendance/check-in/penalty-history', { cache: 'no-store' });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || `Penalty history failed (${response.status})`);
+      setPenaltyHistory(body);
+    } catch (error) {
+      console.warn('Penalty history could not load:', error);
+      setPenaltyHistory(null);
+      setPenaltyHistoryError(error instanceof Error ? error.message : 'Could not load penalty history');
+    } finally {
+      setPenaltyHistoryLoading(false);
+    }
+  }, []);
+
+  function openPenaltyHistory() {
+    setPenaltyHistoryOpen(true);
+    void fetchPenaltyHistory();
+  }
 
   useEffect(() => {
     if (!deviceToken) return;
@@ -530,6 +601,17 @@ export default function CheckInPage() {
               variant="ghost"
               size="icon"
               className="h-9 w-9"
+              onClick={openPenaltyHistory}
+              aria-label="Penalty History"
+              title="Penalty History"
+            >
+              <ReceiptText className="h-5 w-5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9"
               onClick={toggleTheme}
               aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
               title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -539,6 +621,15 @@ export default function CheckInPage() {
             <UserButton />
           </div>
         </header>
+
+        <PenaltyHistoryDialog
+          history={penaltyHistory}
+          loading={penaltyHistoryLoading}
+          error={penaltyHistoryError}
+          onRefresh={fetchPenaltyHistory}
+          onOpenChange={setPenaltyHistoryOpen}
+          open={penaltyHistoryOpen}
+        />
 
         <div className="flex min-h-0 flex-1 items-center py-3 sm:py-4">
           <Card className="w-full overflow-hidden">
@@ -653,6 +744,136 @@ export default function CheckInPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+function PenaltyHistoryDialog({
+  error,
+  history,
+  loading,
+  onOpenChange,
+  onRefresh,
+  open,
+}: {
+  error: string | null;
+  history: PenaltyHistoryResponse | null;
+  loading: boolean;
+  onOpenChange: (open: boolean) => void;
+  onRefresh: () => void;
+  open: boolean;
+}) {
+  const currentWeek = history?.currentWeek || null;
+  const olderWeeks = (history?.weeks || []).filter((week) => week.startDate !== currentWeek?.startDate);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[88dvh] max-w-md overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Penalty History</DialogTitle>
+          <DialogDescription>
+            Review late days, paid amounts, and outstanding balance.
+          </DialogDescription>
+        </DialogHeader>
+
+        {loading ? (
+          <LoadingBuffer variant="section" label="Loading penalty history" description="Checking your weekly balance." />
+        ) : error ? (
+          <div className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+            {error}
+          </div>
+        ) : currentWeek ? (
+          <div className="space-y-4">
+            <div>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold">Current week</h3>
+                  <p className="text-xs text-muted-foreground">{currentWeek.startDate} to {currentWeek.endDate}</p>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={onRefresh}>
+                  Refresh
+                </Button>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <PenaltyHistoryStat label="Penalty" value={ghc(currentWeek.totalPenalty)} />
+                <PenaltyHistoryStat label="Paid" value={ghc(currentWeek.paidAmount)} />
+                <PenaltyHistoryStat label="Outstanding balance" value={ghc(currentWeek.outstandingBalance)} highlight />
+              </div>
+            </div>
+
+            <PenaltyHistoryEntries entries={currentWeek.entries} emptyLabel="No late penalty days this week." />
+
+            {olderWeeks.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold">Older weekly history</h3>
+                {olderWeeks.map((week) => (
+                  <details key={`${week.startDate}-${week.endDate}`} className="rounded-md border border-border bg-background">
+                    <summary className="cursor-pointer px-3 py-2 text-sm font-medium">
+                      {week.startDate} to {week.endDate} - {ghc(week.outstandingBalance)} outstanding
+                    </summary>
+                    <div className="border-t border-border p-3">
+                      <PenaltyHistoryEntries entries={week.entries} emptyLabel="No penalty days for this week." />
+                    </div>
+                  </details>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-md border border-border px-3 py-6 text-center text-sm text-muted-foreground">
+            No penalty history found.
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PenaltyHistoryStat({ highlight, label, value }: { highlight?: boolean; label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border bg-background p-2">
+      <div className="text-[11px] uppercase leading-tight text-muted-foreground">{label}</div>
+      <div className={cn('mt-1 font-mono text-sm font-semibold', highlight && 'text-warning')}>{value}</div>
+    </div>
+  );
+}
+
+function PenaltyHistoryEntries({ emptyLabel, entries }: { emptyLabel: string; entries: PenaltyHistoryEntry[] }) {
+  if (entries.length === 0) {
+    return (
+      <div className="rounded-md border border-border px-3 py-5 text-center text-sm text-muted-foreground">
+        {emptyLabel}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {entries.map((entry) => (
+        <div key={entry.entryId} className="rounded-md border border-border bg-background p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold">{entry.date}</div>
+              <div className="mt-0.5 text-xs text-muted-foreground">
+                {entry.arrivalTime?.slice(0, 5) || '-'} - {entry.reason || 'Late arrival'}
+              </div>
+            </div>
+            <span className={cn(
+              'inline-flex h-7 shrink-0 items-center rounded-full border px-2.5 text-xs font-medium',
+              entry.status === 'paid' && 'border-success/25 bg-success/10 text-success',
+              entry.status === 'partially_paid' && 'border-warning/25 bg-warning/10 text-warning',
+              entry.status === 'unpaid' && 'border-danger/25 bg-danger/10 text-danger',
+            )}>
+              {paymentStatusLabel(entry.status)}
+            </span>
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+            <PenaltyHistoryStat label="Penalty" value={ghc(entry.penaltyAmount)} />
+            <PenaltyHistoryStat label="Paid" value={ghc(entry.paidAmount)} />
+            <PenaltyHistoryStat label="Balance" value={ghc(entry.outstandingAmount)} highlight />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

@@ -19,6 +19,7 @@ import {
   MapPin,
   PanelLeftClose,
   PanelLeftOpen,
+  ReceiptText,
 } from 'lucide-react';
 
 type SidebarMode = 'auto' | 'fixed';
@@ -36,6 +37,7 @@ const navigation = [
   { name: 'Location', href: '/wifi', icon: MapPin },
   { name: 'Lateness Entries', href: '/entries', icon: Table2 },
   { name: 'Lateness Exports', href: '/exports', icon: Download },
+  { name: 'Penalty Payments', href: '/payments', icon: ReceiptText },
   { name: 'Calendar', href: '/calendar', icon: Calendar },
   { name: 'Audit Trail', href: '/audit-trail', icon: Shield },
 ];

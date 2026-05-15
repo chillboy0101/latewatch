@@ -11,6 +11,7 @@ const WORKSPACE_TITLES: Record<string, string> = {
   entries: 'Lateness Entries',
   'emergency-contacts': 'Emergency Contacts',
   exports: 'Lateness Exports',
+  payments: 'Penalty Payments',
   settings: 'Settings',
   staff: 'Staff',
 };

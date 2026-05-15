@@ -31,6 +31,7 @@ export const staffRelations = relations(staff, ({ many }) => ({
   devices: many(staffDevice),
   emergencyContacts: many(emergencyContact),
   entries: many(latenessEntry),
+  latenessPayments: many(latenessPayment),
 }));
 
 export const latenessEntry = pgTable('lateness_entry', {
@@ -51,10 +52,58 @@ export const latenessEntry = pgTable('lateness_entry', {
   unique().on(table.staffId, table.date),
 ]);
 
-export const latenessEntryRelations = relations(latenessEntry, ({ one }) => ({
+export const latenessEntryRelations = relations(latenessEntry, ({ many, one }) => ({
+  paymentAllocations: many(latenessPaymentAllocation),
   staff: one(staff, {
     fields: [latenessEntry.staffId],
     references: [staff.id],
+  }),
+}));
+
+export const latenessPayment = pgTable('lateness_payment', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  staffId: uuid('staff_id').notNull().references(() => staff.id, { onDelete: 'cascade' }),
+  amount: decimal('amount', { precision: 10, scale: 2 }).notNull(),
+  weekStart: date('week_start').notNull(),
+  weekEnd: date('week_end').notNull(),
+  note: text('note'),
+  recordedByUserId: text('recorded_by_user_id'),
+  recordedByEmail: text('recorded_by_email').notNull(),
+  recordedAt: timestamp('recorded_at').defaultNow(),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => [
+  index('lateness_payment_staff_week_idx').on(table.staffId, table.weekStart, table.weekEnd),
+  index('lateness_payment_recorded_at_idx').on(table.recordedAt),
+]);
+
+export const latenessPaymentRelations = relations(latenessPayment, ({ many, one }) => ({
+  allocations: many(latenessPaymentAllocation),
+  staff: one(staff, {
+    fields: [latenessPayment.staffId],
+    references: [staff.id],
+  }),
+}));
+
+export const latenessPaymentAllocation = pgTable('lateness_payment_allocation', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  paymentId: uuid('payment_id').notNull().references(() => latenessPayment.id, { onDelete: 'cascade' }),
+  entryId: uuid('entry_id').notNull().references(() => latenessEntry.id, { onDelete: 'cascade' }),
+  allocatedAmount: decimal('allocated_amount', { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => [
+  index('lateness_payment_allocation_payment_idx').on(table.paymentId),
+  index('lateness_payment_allocation_entry_idx').on(table.entryId),
+  unique().on(table.paymentId, table.entryId),
+]);
+
+export const latenessPaymentAllocationRelations = relations(latenessPaymentAllocation, ({ one }) => ({
+  entry: one(latenessEntry, {
+    fields: [latenessPaymentAllocation.entryId],
+    references: [latenessEntry.id],
+  }),
+  payment: one(latenessPayment, {
+    fields: [latenessPaymentAllocation.paymentId],
+    references: [latenessPayment.id],
   }),
 }));
 
