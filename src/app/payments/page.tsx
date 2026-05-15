@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { addDays, format, parseISO, startOfWeek } from 'date-fns';
 import { CalendarDays, CheckCircle2, Loader2, ReceiptText, Search } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
@@ -12,6 +11,7 @@ import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { cn } from '@/lib/utils';
 
 type PaymentStatus = 'paid' | 'partially_paid' | 'unpaid';
+type PaymentFilter = 'all' | PaymentStatus;
 
 interface PaymentEntry {
   arrivalTime: string | null;
@@ -37,26 +37,16 @@ interface PaymentStaffRow {
 }
 
 interface PaymentsResponse {
+  scope: 'all' | 'week';
   staff: PaymentStaffRow[];
-  weekEnd: string;
-  weekStart: string;
 }
 
-function currentWeekStart() {
-  return format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd');
-}
-
-function weekEndFor(weekStart: string) {
-  return format(addDays(parseISO(weekStart), 4), 'yyyy-MM-dd');
-}
-
-function weekRangeLabel(weekStart: string, weekEnd: string) {
-  try {
-    return `${format(parseISO(weekStart), 'MMM d')} - ${format(parseISO(weekEnd), 'MMM d, yyyy')}`;
-  } catch {
-    return `${weekStart} - ${weekEnd}`;
-  }
-}
+const paymentFilterOptions: Array<{ label: string; value: PaymentFilter }> = [
+  { label: 'All', value: 'all' },
+  { label: 'Unpaid', value: 'unpaid' },
+  { label: 'Partial', value: 'partially_paid' },
+  { label: 'Paid', value: 'paid' },
+];
 
 function currency(value: string | number | null | undefined) {
   return `GHC ${Number(value || 0).toFixed(2)}`;
@@ -79,6 +69,16 @@ function staffKind(row: PaymentStaffRow) {
   return 'Main Staff';
 }
 
+function paymentStatusForRow(row: PaymentStaffRow): PaymentStatus {
+  const totalPenalty = moneyNumber(row.totalPenalty);
+  const paidAmount = moneyNumber(row.paidAmount);
+  const outstandingBalance = moneyNumber(row.outstandingBalance);
+
+  if (totalPenalty <= 0 || outstandingBalance <= 0) return 'paid';
+  if (paidAmount > 0) return 'partially_paid';
+  return 'unpaid';
+}
+
 function sortPaymentRowsByBalance(rows: PaymentStaffRow[]) {
   return rows
     .map((row, index) => ({ index, row }))
@@ -93,15 +93,13 @@ function sortPaymentRowsByBalance(rows: PaymentStaffRow[]) {
 }
 
 export default function PenaltyPaymentsPage() {
-  const [weekStart, setWeekStart] = useState(currentWeekStart);
-  const weekEnd = useMemo(() => weekEndFor(weekStart), [weekStart]);
-  const rangeLabel = useMemo(() => weekRangeLabel(weekStart, weekEnd), [weekEnd, weekStart]);
   const [data, setData] = useState<PaymentsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingAction, setSavingAction] = useState<string | null>(null);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<PaymentFilter>('all');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'error' | 'success' } | null>(null);
@@ -111,7 +109,7 @@ export default function PenaltyPaymentsPage() {
     setMessage(null);
 
     try {
-      const response = await fetch(`/api/payments/lateness?weekStart=${weekStart}&weekEnd=${weekEnd}`, {
+      const response = await fetch('/api/payments/lateness', {
         cache: 'no-store',
       });
       const body = await response.json().catch(() => ({}));
@@ -124,7 +122,7 @@ export default function PenaltyPaymentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [weekEnd, weekStart]);
+  }, []);
 
   useEffect(() => {
     void loadPayments();
@@ -133,14 +131,18 @@ export default function PenaltyPaymentsPage() {
   const matchingRows = useMemo(() => {
     const query = search.trim().toLowerCase();
     const rows = data?.staff || [];
-    if (!query) return rows;
+    const searchedRows = query
+      ? rows.filter((row) => [
+        row.fullName,
+        row.email || '',
+        staffKind(row),
+      ].some((value) => value.toLowerCase().includes(query)))
+      : rows;
 
-    return rows.filter((row) => [
-      row.fullName,
-      row.email || '',
-      staffKind(row),
-    ].some((value) => value.toLowerCase().includes(query)));
-  }, [data?.staff, search]);
+    return statusFilter === 'all'
+      ? searchedRows
+      : searchedRows.filter((row) => paymentStatusForRow(row) === statusFilter);
+  }, [data?.staff, search, statusFilter]);
   const filteredRows = useMemo(() => sortPaymentRowsByBalance(matchingRows), [matchingRows]);
 
   const selectedRow = useMemo(() => {
@@ -174,8 +176,6 @@ export default function PenaltyPaymentsPage() {
           entryId: input.entryId,
           note: input.note,
           staffId: selectedRow.id,
-          weekEnd,
-          weekStart,
         }),
       });
       const body = await response.json().catch(() => ({}));
@@ -212,13 +212,27 @@ export default function PenaltyPaymentsPage() {
 
         <Card className="overflow-hidden">
           <div className="border-b border-border p-4">
-            <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold">Weekly balances</h2>
-                <p className="text-sm text-muted-foreground">{filteredRows.length} staff</p>
+                <h2 className="text-lg font-semibold">Payment balances</h2>
+                <p className="text-sm text-muted-foreground">All penalty records</p>
               </div>
 
-              <div className="flex flex-wrap items-end gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex rounded-md border border-border bg-background p-1">
+                  {paymentFilterOptions.map((option) => (
+                    <Button
+                      key={option.value}
+                      type="button"
+                      variant={statusFilter === option.value ? 'default' : 'ghost'}
+                      size="sm"
+                      className="h-8"
+                      onClick={() => setStatusFilter(option.value)}
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                </div>
                 <div className="relative w-full min-w-64 sm:w-80">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -228,31 +242,19 @@ export default function PenaltyPaymentsPage() {
                     className="pl-9"
                   />
                 </div>
-                <div className="grid gap-1.5">
-                  <label className="text-xs font-medium uppercase text-muted-foreground" htmlFor="payment-week-start">
-                    Week start
-                  </label>
-                  <Input
-                    id="payment-week-start"
-                    type="date"
-                    value={weekStart}
-                    onChange={(event) => setWeekStart(event.target.value || currentWeekStart())}
-                    className="h-10 w-44"
-                  />
-                </div>
-                <div className="pb-2 text-sm text-muted-foreground">{rangeLabel}</div>
               </div>
             </div>
           </div>
 
           {loading ? (
-            <LoadingBuffer variant="section" label="Loading payments" description="Checking weekly balances." />
+            <LoadingBuffer variant="section" label="Loading payments" description="Checking balances." />
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[620px] text-sm">
+              <table className="w-full min-w-[700px] text-sm">
                 <thead className="border-b border-border bg-muted/20 text-left text-xs uppercase text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3 font-medium">Staff</th>
+                    <th className="px-4 py-3 font-medium">Status</th>
                     <th className="px-4 py-3 text-right font-medium">Balance</th>
                     <th className="px-4 py-3 text-right font-medium">Action</th>
                   </tr>
@@ -270,6 +272,9 @@ export default function PenaltyPaymentsPage() {
                           <span>{row.email || 'No email'}</span>
                           <span className="rounded-full bg-muted/40 px-2 py-0.5">{staffKind(row)}</span>
                         </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <PaymentStatusBadge status={paymentStatusForRow(row)} />
                       </td>
                       <td className={cn(
                         'px-4 py-3 text-right font-mono font-semibold',
@@ -294,8 +299,8 @@ export default function PenaltyPaymentsPage() {
                   ))}
                   {filteredRows.length === 0 && (
                     <tr>
-                      <td className="px-4 py-8 text-center text-muted-foreground" colSpan={3}>
-                        No staff balances found for this week.
+                      <td className="px-4 py-8 text-center text-muted-foreground" colSpan={4}>
+                        No staff balances found.
                       </td>
                     </tr>
                   )}
@@ -316,7 +321,7 @@ export default function PenaltyPaymentsPage() {
                   </DialogDescription>
                   <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                     <span>{staffKind(selectedRow)}</span>
-                    <span>{rangeLabel}</span>
+                    <span>All penalty records</span>
                   </div>
                 </DialogHeader>
 
@@ -371,7 +376,7 @@ export default function PenaltyPaymentsPage() {
                       ))}
                       {selectedRow.entries.length === 0 && (
                         <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-                          No penalty days for this week.
+                          No penalty days found.
                         </div>
                       )}
                     </div>
@@ -415,7 +420,7 @@ export default function PenaltyPaymentsPage() {
                         onClick={() => recordPayment({
                           actionKey: 'week',
                           amount: moneyNumber(selectedRow.outstandingBalance),
-                          note: 'Marked week paid',
+                          note: 'Marked balance paid',
                         })}
                       >
                         {savingAction === 'week' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

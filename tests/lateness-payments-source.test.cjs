@@ -32,10 +32,13 @@ test('lateness payment API records payments, allocations, audit events, and real
   assert.match(source, /export async function GET/);
   assert.match(source, /export async function POST/);
   assert.match(source, /allocateLatenessPayment/);
+  assert.match(source, /hasDateFilter/);
+  assert.match(source, /paymentWeekStart/);
   assert.match(source, /latenessPaymentAllocation/);
   assert.match(source, /entityType: 'lateness_payment'/);
   assert.match(source, /publishRealtime\('payments'/);
   assert.match(source, /Payment amount exceeds outstanding balance/);
+  assert.doesNotMatch(source, /Valid weekStart and weekEnd are required/);
 });
 
 test('staff penalty history endpoint is scoped to the signed-in staff member', () => {
@@ -61,7 +64,9 @@ test('admin payments page and navigation expose payment management actions', () 
   assert.match(page, /Mark paid/);
   assert.match(page, /Manage/);
   assert.match(page, /DialogContent/);
-  assert.match(page, /weekRangeLabel/);
+  assert.match(page, /statusFilter/);
+  assert.match(page, /paymentStatusForRow/);
+  assert.match(page, /All penalty records/);
   assert.match(page, /sortPaymentRowsByBalance/);
   assert.match(page, /\/api\/payments\/lateness/);
   assert.doesNotMatch(page, /Record full or partial lateness payments and keep staff balances transparent/);
@@ -70,6 +75,9 @@ test('admin payments page and navigation expose payment management actions', () 
   assert.doesNotMatch(page, /xl:grid-cols/);
   assert.doesNotMatch(page, />Owed<\/th>/);
   assert.doesNotMatch(page, />Paid<\/th>/);
+  assert.doesNotMatch(page, /Week start/);
+  assert.doesNotMatch(page, /weekStart/);
+  assert.doesNotMatch(page, /weekEnd/);
   assert.match(sidebar, /Penalty Payments/);
   assert.match(sidebar, /href: '\/payments'/);
   assert.match(proxy, /\/payments\(\.\*\)/);

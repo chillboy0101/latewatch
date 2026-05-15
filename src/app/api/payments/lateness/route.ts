@@ -3,7 +3,7 @@ import { and, asc, eq, gte, inArray, lte } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { latenessEntry, latenessPayment, latenessPaymentAllocation, staff } from '@/db/schema';
-import { allocateLatenessPayment, summarizeLatenessPaymentEntries } from '@/lib/lateness-payments';
+import { allocateLatenessPayment, getWeekBoundsForDate, summarizeLatenessPaymentEntries } from '@/lib/lateness-payments';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 
@@ -44,16 +44,21 @@ function getActorEmail(user: Awaited<ReturnType<typeof currentUser>>) {
 async function getWeekEntries(input: {
   entryId?: string | null;
   staffId: string;
-  weekEnd: string;
-  weekStart: string;
+  hasDateFilter: boolean;
+  weekEnd?: string;
+  weekStart?: string;
 }) {
-  const rows = await db.select()
-    .from(latenessEntry)
-    .where(and(
+  const whereClause = input.hasDateFilter && input.weekStart && input.weekEnd
+    ? and(
       eq(latenessEntry.staffId, input.staffId),
       gte(latenessEntry.date, input.weekStart),
       lte(latenessEntry.date, input.weekEnd),
-    ))
+    )
+    : eq(latenessEntry.staffId, input.staffId);
+
+  const rows = await db.select()
+    .from(latenessEntry)
+    .where(whereClause)
     .orderBy(asc(latenessEntry.date));
 
   return input.entryId ? rows.filter((row) => row.id === input.entryId) : rows;
@@ -78,9 +83,10 @@ export async function GET(request: NextRequest) {
     const weekStart = url.searchParams.get('weekStart');
     const weekEnd = url.searchParams.get('weekEnd');
     const staffId = url.searchParams.get('staffId');
+    const hasDateFilter = Boolean(weekStart || weekEnd);
 
-    if (!isDateKey(weekStart) || !isDateKey(weekEnd)) {
-      return NextResponse.json({ error: 'Valid weekStart and weekEnd are required' }, { status: 400 });
+    if (hasDateFilter && (!isDateKey(weekStart) || !isDateKey(weekEnd))) {
+      return NextResponse.json({ error: 'Valid start and end dates are required when filtering payments' }, { status: 400 });
     }
 
     const staffWhere = staffId
@@ -99,15 +105,18 @@ export async function GET(request: NextRequest) {
       .orderBy(asc(staff.displayOrder), asc(staff.fullName));
 
     const staffIds = staffRows.map((member) => member.id);
+    const entryWhere = hasDateFilter
+      ? and(
+        inArray(latenessEntry.staffId, staffIds),
+        gte(latenessEntry.date, weekStart!),
+        lte(latenessEntry.date, weekEnd!),
+      )
+      : inArray(latenessEntry.staffId, staffIds);
     const entryRows = staffIds.length === 0
       ? []
       : await db.select()
         .from(latenessEntry)
-        .where(and(
-          inArray(latenessEntry.staffId, staffIds),
-          gte(latenessEntry.date, weekStart!),
-          lte(latenessEntry.date, weekEnd!),
-        ))
+        .where(entryWhere)
         .orderBy(asc(latenessEntry.date));
 
     const penaltyEntries = entryRows.filter((entry) => Number(entry.computedAmount || 0) > 0);
@@ -154,8 +163,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       staff: rows,
-      weekEnd,
-      weekStart,
+      scope: hasDateFilter ? 'week' : 'all',
+      weekEnd: hasDateFilter ? weekEnd : null,
+      weekStart: hasDateFilter ? weekStart : null,
     }, {
       headers: { 'Cache-Control': 'no-store' },
     });
@@ -179,9 +189,14 @@ export async function POST(request: NextRequest) {
     const entryId = typeof body?.entryId === 'string' && body.entryId.trim() ? body.entryId.trim() : null;
     const note = typeof body?.note === 'string' && body.note.trim() ? body.note.trim().slice(0, 500) : null;
     const amount = normalizeAmount(body?.amount);
+    const hasDateFilter = Boolean(weekStart || weekEnd);
 
-    if (!staffId || !isDateKey(weekStart) || !isDateKey(weekEnd) || amount == null || amount <= 0) {
-      return NextResponse.json({ error: 'Valid staff, amount, weekStart, and weekEnd are required' }, { status: 400 });
+    if (!staffId || amount == null || amount <= 0) {
+      return NextResponse.json({ error: 'Valid staff and amount are required' }, { status: 400 });
+    }
+
+    if (hasDateFilter && (!isDateKey(weekStart) || !isDateKey(weekEnd))) {
+      return NextResponse.json({ error: 'Valid start and end dates are required when limiting a payment' }, { status: 400 });
     }
 
     const [member] = await db.select({
@@ -197,7 +212,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Staff member was not found' }, { status: 404 });
     }
 
-    const entries = await getWeekEntries({ entryId, staffId, weekEnd, weekStart });
+    const entries = await getWeekEntries({ entryId, hasDateFilter, staffId, weekEnd, weekStart });
     const penaltyEntries = entries.filter((entry) => Number(entry.computedAmount || 0) > 0);
     const existingAllocations = await getAllocationsForEntries(penaltyEntries.map((entry) => entry.id));
     let allocationPlan: ReturnType<typeof allocateLatenessPayment>;
@@ -215,6 +230,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: message }, { status });
     }
 
+    const dateByEntryId = new Map(penaltyEntries.map((entry) => [entry.id, entry.date]));
+    const allocatedDates = allocationPlan.allocations
+      .map((allocation) => dateByEntryId.get(allocation.entryId))
+      .filter((date): date is string => Boolean(date))
+      .sort();
+    const fallbackDate = penaltyEntries[0]?.date || new Date().toISOString().slice(0, 10);
+    const firstPaymentDate = allocatedDates[0] || fallbackDate;
+    const lastPaymentDate = allocatedDates[allocatedDates.length - 1] || firstPaymentDate;
+    const firstPaymentWeek = getWeekBoundsForDate(firstPaymentDate);
+    const lastPaymentWeek = getWeekBoundsForDate(lastPaymentDate);
+    const paymentWeekStart = hasDateFilter ? weekStart : firstPaymentWeek.weekStart;
+    const paymentWeekEnd = hasDateFilter ? weekEnd : lastPaymentWeek.weekEnd;
+
     const actorEmail = getActorEmail(user);
     const [payment] = await db.insert(latenessPayment)
       .values({
@@ -223,8 +251,8 @@ export async function POST(request: NextRequest) {
         recordedByEmail: actorEmail,
         recordedByUserId: user.id,
         staffId,
-        weekEnd,
-        weekStart,
+        weekEnd: paymentWeekEnd,
+        weekStart: paymentWeekStart,
       })
       .returning();
 
@@ -255,7 +283,12 @@ export async function POST(request: NextRequest) {
       reason: 'lateness-payment',
     });
 
-    publishRealtime('payments', 'invalidate', { reason: 'lateness-payment', staffId, weekEnd, weekStart });
+    publishRealtime('payments', 'invalidate', {
+      reason: 'lateness-payment',
+      staffId,
+      weekEnd: paymentWeekEnd,
+      weekStart: paymentWeekStart,
+    });
     publishRealtime('staff-penalty-history', 'invalidate', { reason: 'lateness-payment', staffId });
     publishRealtime('dashboard', 'invalidate', { reason: 'lateness-payment' });
     publishRealtime('audit-trail', 'invalidate', { reason: 'lateness-payment' });
