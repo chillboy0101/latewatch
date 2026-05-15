@@ -6,6 +6,7 @@ import { CalendarDays, CheckCircle2, Loader2, ReceiptText, Search } from 'lucide
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { cn } from '@/lib/utils';
@@ -49,6 +50,14 @@ function weekEndFor(weekStart: string) {
   return format(addDays(parseISO(weekStart), 4), 'yyyy-MM-dd');
 }
 
+function weekRangeLabel(weekStart: string, weekEnd: string) {
+  try {
+    return `${format(parseISO(weekStart), 'MMM d')} - ${format(parseISO(weekEnd), 'MMM d, yyyy')}`;
+  } catch {
+    return `${weekStart} - ${weekEnd}`;
+  }
+}
+
 function currency(value: string | number | null | undefined) {
   return `GHC ${Number(value || 0).toFixed(2)}`;
 }
@@ -86,10 +95,12 @@ function sortPaymentRowsByBalance(rows: PaymentStaffRow[]) {
 export default function PenaltyPaymentsPage() {
   const [weekStart, setWeekStart] = useState(currentWeekStart);
   const weekEnd = useMemo(() => weekEndFor(weekStart), [weekStart]);
+  const rangeLabel = useMemo(() => weekRangeLabel(weekStart, weekEnd), [weekEnd, weekStart]);
   const [data, setData] = useState<PaymentsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingAction, setSavingAction] = useState<string | null>(null);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
@@ -133,17 +144,15 @@ export default function PenaltyPaymentsPage() {
   const filteredRows = useMemo(() => sortPaymentRowsByBalance(matchingRows), [matchingRows]);
 
   const selectedRow = useMemo(() => {
-    return filteredRows.find((row) => row.id === selectedStaffId)
-      || filteredRows.find((row) => moneyNumber(row.outstandingBalance) > 0)
-      || filteredRows[0]
-      || null;
-  }, [filteredRows, selectedStaffId]);
+    return (data?.staff || []).find((row) => row.id === selectedStaffId) || null;
+  }, [data?.staff, selectedStaffId]);
 
-  useEffect(() => {
-    if (selectedRow && selectedRow.id !== selectedStaffId) {
-      setSelectedStaffId(selectedRow.id);
-    }
-  }, [selectedRow, selectedStaffId]);
+  function openPaymentDialog(row: PaymentStaffRow) {
+    setSelectedStaffId(row.id);
+    setAmount('');
+    setNote('');
+    setPaymentDialogOpen(true);
+  }
 
   async function recordPayment(input: {
     actionKey: string;
@@ -189,21 +198,6 @@ export default function PenaltyPaymentsPage() {
   return (
     <DashboardLayout title="Penalty Payments">
       <div className="space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <h1 className="text-2xl font-semibold">Penalty Payments</h1>
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="text-xs font-medium uppercase text-muted-foreground" htmlFor="payment-week-start">Week</label>
-            <Input
-              id="payment-week-start"
-              type="date"
-              value={weekStart}
-              onChange={(event) => setWeekStart(event.target.value || currentWeekStart())}
-              className="h-10 w-44"
-            />
-            <span className="text-sm text-muted-foreground">to {weekEnd}</span>
-          </div>
-        </div>
-
         {message && (
           <div className={cn(
             'flex items-center gap-2 rounded-md border px-3 py-2 text-sm',
@@ -216,15 +210,16 @@ export default function PenaltyPaymentsPage() {
           </div>
         )}
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
-          <Card className="overflow-hidden">
-            <div className="border-b border-border p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold">Weekly balances</h2>
-                  <p className="text-sm text-muted-foreground">{filteredRows.length} staff</p>
-                </div>
-                <div className="relative w-full max-w-xs">
+        <Card className="overflow-hidden">
+          <div className="border-b border-border p-4">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">Weekly balances</h2>
+                <p className="text-sm text-muted-foreground">{filteredRows.length} staff</p>
+              </div>
+
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="relative w-full min-w-64 sm:w-80">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     value={search}
@@ -233,195 +228,223 @@ export default function PenaltyPaymentsPage() {
                     className="pl-9"
                   />
                 </div>
+                <div className="grid gap-1.5">
+                  <label className="text-xs font-medium uppercase text-muted-foreground" htmlFor="payment-week-start">
+                    Week start
+                  </label>
+                  <Input
+                    id="payment-week-start"
+                    type="date"
+                    value={weekStart}
+                    onChange={(event) => setWeekStart(event.target.value || currentWeekStart())}
+                    className="h-10 w-44"
+                  />
+                </div>
+                <div className="pb-2 text-sm text-muted-foreground">{rangeLabel}</div>
               </div>
             </div>
+          </div>
 
-            {loading ? (
-              <LoadingBuffer variant="section" label="Loading payments" description="Checking weekly balances." />
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[640px] text-sm">
-                  <thead className="border-b border-border bg-muted/20 text-left text-xs uppercase text-muted-foreground">
-                    <tr>
-                      <th className="px-4 py-3 font-medium">Staff</th>
-                      <th className="px-4 py-3 text-right font-medium">Owed</th>
-                      <th className="px-4 py-3 text-right font-medium">Paid</th>
-                      <th className="px-4 py-3 text-right font-medium">Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredRows.map((row) => {
-                      const active = selectedRow?.id === row.id;
-                      return (
-                        <tr
-                          key={row.id}
-                          className={cn(
-                            'cursor-pointer border-b border-border transition-colors hover:bg-muted/20',
-                            active && 'bg-primary/5',
-                          )}
-                          onClick={() => setSelectedStaffId(row.id)}
+          {loading ? (
+            <LoadingBuffer variant="section" label="Loading payments" description="Checking weekly balances." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[620px] text-sm">
+                <thead className="border-b border-border bg-muted/20 text-left text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Staff</th>
+                    <th className="px-4 py-3 text-right font-medium">Balance</th>
+                    <th className="px-4 py-3 text-right font-medium">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRows.map((row) => (
+                    <tr
+                      key={row.id}
+                      className="cursor-pointer border-b border-border transition-colors hover:bg-muted/20"
+                      onClick={() => openPaymentDialog(row)}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{row.fullName}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <span>{row.email || 'No email'}</span>
+                          <span className="rounded-full bg-muted/40 px-2 py-0.5">{staffKind(row)}</span>
+                        </div>
+                      </td>
+                      <td className={cn(
+                        'px-4 py-3 text-right font-mono font-semibold',
+                        moneyNumber(row.outstandingBalance) > 0 ? 'text-warning' : 'text-success',
+                      )}>
+                        {currency(row.outstandingBalance)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openPaymentDialog(row);
+                          }}
                         >
-                          <td className="px-4 py-3">
-                            <div className="font-medium">{row.fullName}</div>
-                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                              <span>{row.email || 'No email'}</span>
-                              <span className="rounded-full bg-muted/40 px-2 py-0.5">{staffKind(row)}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-right font-mono">{currency(row.totalPenalty)}</td>
-                          <td className="px-4 py-3 text-right font-mono">{currency(row.paidAmount)}</td>
-                          <td className={cn(
-                            'px-4 py-3 text-right font-mono font-semibold',
-                            moneyNumber(row.outstandingBalance) > 0 ? 'text-warning' : 'text-success',
-                          )}>
-                            {currency(row.outstandingBalance)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {filteredRows.length === 0 && (
-                      <tr>
-                        <td className="px-4 py-8 text-center text-muted-foreground" colSpan={4}>
-                          No staff balances found for this week.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Card>
-
-          <Card className="self-start overflow-hidden">
-            <div className="border-b border-border p-4">
-              <div className="min-w-0">
-                <h2 className="truncate text-lg font-semibold">{selectedRow?.fullName || 'Select staff'}</h2>
-                <p className="text-sm text-muted-foreground">{selectedRow ? staffKind(selectedRow) : 'Choose a row'}</p>
-              </div>
+                          Manage
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredRows.length === 0 && (
+                    <tr>
+                      <td className="px-4 py-8 text-center text-muted-foreground" colSpan={3}>
+                        No staff balances found for this week.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
+          )}
+        </Card>
 
+        <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
+          <DialogContent className="max-h-[88dvh] max-w-3xl overflow-y-auto">
             {selectedRow ? (
-              <div className="space-y-3 p-4">
-                <div className="grid grid-cols-3 divide-x divide-border rounded-md border border-border bg-background">
-                  <BalanceStat label="Owed" value={currency(selectedRow.totalPenalty)} />
-                  <BalanceStat label="Paid" value={currency(selectedRow.paidAmount)} />
-                  <BalanceStat label="Balance" value={currency(selectedRow.outstandingBalance)} highlight />
-                </div>
-
-                <div className="rounded-md border border-border">
-                  <div className="flex items-center gap-2 border-b border-border px-3 py-2 text-sm font-medium">
-                    <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                    Late days
+              <>
+                <DialogHeader>
+                  <DialogTitle>{selectedRow.fullName}</DialogTitle>
+                  <DialogDescription className="sr-only">
+                    Manage lateness payments for the selected staff member.
+                  </DialogDescription>
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                    <span>{staffKind(selectedRow)}</span>
+                    <span>{rangeLabel}</span>
                   </div>
-                  <div className="max-h-80 overflow-y-auto">
-                    {selectedRow.entries.map((entry) => (
-                      <div key={entry.entryId} className="border-b border-border px-3 py-3 last:border-b-0">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="font-semibold">{entry.date}</div>
-                            <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                              {entry.arrivalTime?.slice(0, 5) || '-'} - {entry.reason || 'Late arrival'}
+                </DialogHeader>
+
+                <div className="space-y-4">
+                  <div className="grid grid-cols-3 divide-x divide-border rounded-md border border-border bg-background">
+                    <BalanceStat label="Owed" value={currency(selectedRow.totalPenalty)} />
+                    <BalanceStat label="Paid" value={currency(selectedRow.paidAmount)} />
+                    <BalanceStat label="Balance" value={currency(selectedRow.outstandingBalance)} highlight />
+                  </div>
+
+                  <div className="rounded-md border border-border">
+                    <div className="flex items-center gap-2 border-b border-border px-3 py-2 text-sm font-medium">
+                      <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                      Late days
+                    </div>
+                    <div className="max-h-80 overflow-y-auto">
+                      {selectedRow.entries.map((entry) => (
+                        <div key={entry.entryId} className="border-b border-border px-3 py-3 last:border-b-0">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="font-semibold">{entry.date}</div>
+                              <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                                {entry.arrivalTime?.slice(0, 5) || '-'} - {entry.reason || 'Late arrival'}
+                              </div>
                             </div>
+                            <PaymentStatusBadge status={entry.status} />
                           </div>
-                          <PaymentStatusBadge status={entry.status} />
+                          <div className="mt-2 grid grid-cols-3 gap-3 text-xs">
+                            <MiniAmount label="Penalty" value={currency(entry.penaltyAmount)} />
+                            <MiniAmount label="Paid" value={currency(entry.paidAmount)} />
+                            <MiniAmount label="Balance" value={currency(entry.outstandingAmount)} highlight />
+                          </div>
+                          {moneyNumber(entry.outstandingAmount) > 0 && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="mt-3 w-full gap-2"
+                              disabled={Boolean(savingAction)}
+                              onClick={() => recordPayment({
+                                actionKey: `day-${entry.entryId}`,
+                                amount: moneyNumber(entry.outstandingAmount),
+                                entryId: entry.entryId,
+                                note: 'Marked day paid',
+                              })}
+                            >
+                              {savingAction === `day-${entry.entryId}` && <Loader2 className="h-4 w-4 animate-spin" />}
+                              Mark paid
+                            </Button>
+                          )}
                         </div>
-                        <div className="mt-2 grid grid-cols-3 gap-3 text-xs">
-                          <MiniAmount label="Penalty" value={currency(entry.penaltyAmount)} />
-                          <MiniAmount label="Paid" value={currency(entry.paidAmount)} />
-                          <MiniAmount label="Balance" value={currency(entry.outstandingAmount)} highlight />
+                      ))}
+                      {selectedRow.entries.length === 0 && (
+                        <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                          No penalty days for this week.
                         </div>
-                        {moneyNumber(entry.outstandingAmount) > 0 && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="mt-3 w-full gap-2"
-                            disabled={Boolean(savingAction)}
-                            onClick={() => recordPayment({
-                              actionKey: `day-${entry.entryId}`,
-                              amount: moneyNumber(entry.outstandingAmount),
-                              entryId: entry.entryId,
-                              note: 'Marked day paid',
-                            })}
-                          >
-                            {savingAction === `day-${entry.entryId}` && <Loader2 className="h-4 w-4 animate-spin" />}
-                            Mark paid
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                    {selectedRow.entries.length === 0 && (
-                      <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-                        No penalty days for this week.
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                <div className="space-y-3 rounded-md border border-border bg-background p-3">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="text-xs font-medium uppercase text-muted-foreground" htmlFor="payment-amount">
-                        Amount
-                      </label>
-                      <Input
-                        id="payment-amount"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={amount}
-                        onChange={(event) => setAmount(event.target.value)}
-                        placeholder="0.00"
-                        className="mt-1"
-                      />
+                  <div className="space-y-3 rounded-md border border-border bg-background p-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="text-xs font-medium uppercase text-muted-foreground" htmlFor="payment-amount">
+                          Amount
+                        </label>
+                        <Input
+                          id="payment-amount"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={amount}
+                          onChange={(event) => setAmount(event.target.value)}
+                          placeholder="0.00"
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium uppercase text-muted-foreground" htmlFor="payment-note">
+                          Note
+                        </label>
+                        <Input
+                          id="payment-note"
+                          value={note}
+                          onChange={(event) => setNote(event.target.value)}
+                          placeholder="Optional"
+                          className="mt-1"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-xs font-medium uppercase text-muted-foreground" htmlFor="payment-note">
-                        Note
-                      </label>
-                      <Input
-                        id="payment-note"
-                        value={note}
-                        onChange={(event) => setNote(event.target.value)}
-                        placeholder="Optional"
-                        className="mt-1"
-                      />
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={Boolean(savingAction) || moneyNumber(selectedRow.outstandingBalance) <= 0}
+                        onClick={() => recordPayment({
+                          actionKey: 'week',
+                          amount: moneyNumber(selectedRow.outstandingBalance),
+                          note: 'Marked week paid',
+                        })}
+                      >
+                        {savingAction === 'week' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Pay balance
+                      </Button>
+                      <Button
+                        type="button"
+                        disabled={Boolean(savingAction) || manualAmount <= 0}
+                        onClick={() => recordPayment({
+                          actionKey: 'manual',
+                          amount: manualAmount,
+                          note,
+                        })}
+                      >
+                        {savingAction === 'manual' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Record payment
+                      </Button>
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={Boolean(savingAction) || moneyNumber(selectedRow.outstandingBalance) <= 0}
-                      onClick={() => recordPayment({
-                        actionKey: 'week',
-                        amount: moneyNumber(selectedRow.outstandingBalance),
-                        note: 'Marked week paid',
-                      })}
-                    >
-                      {savingAction === 'week' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Pay balance
-                    </Button>
-                    <Button
-                      type="button"
-                      disabled={Boolean(savingAction) || manualAmount <= 0}
-                      onClick={() => recordPayment({
-                        actionKey: 'manual',
-                        amount: manualAmount,
-                        note,
-                      })}
-                    >
-                      {savingAction === 'manual' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Record payment
-                    </Button>
                   </div>
                 </div>
-              </div>
+              </>
             ) : (
-              <div className="p-6 text-sm text-muted-foreground">Select a staff member to view penalty days.</div>
+              <DialogHeader>
+                <DialogTitle>Payment details</DialogTitle>
+                <DialogDescription>Select a staff member from the table.</DialogDescription>
+              </DialogHeader>
             )}
-          </Card>
-        </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );
