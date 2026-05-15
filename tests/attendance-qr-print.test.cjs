@@ -65,7 +65,7 @@ test('attendance page confirms general pardons before calling the bulk endpoint'
   const source = fs.readFileSync(attendancePagePath, 'utf8');
 
   assert.match(source, /Grant General Pardon/);
-  assert.match(source, /Confirm General Pardon/);
+  assert.match(source, /Apply pardon/);
   assert.match(source, /Full-day excuse/);
   assert.match(source, /Late-only pardon/);
   assert.match(source, /generalPardonType/);

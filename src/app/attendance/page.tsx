@@ -745,10 +745,8 @@ export default function AttendancePage() {
           </div>
           <div className="flex flex-col gap-3 border-t border-border px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
-              <p className="text-sm font-semibold">Emergency general pardon</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Apply a full-day excuse or late-only pardon to every attendance row for {attendanceDate}.
-              </p>
+              <p className="text-sm font-semibold">General pardon</p>
+              <p className="mt-1 text-xs text-muted-foreground">Excuse everyone or clear late fees for {attendanceDate}.</p>
             </div>
             <Button
               className="h-10 gap-2 lg:w-auto"
@@ -796,10 +794,8 @@ export default function AttendancePage() {
         >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Grant General Pardon</DialogTitle>
-              <DialogDescription>
-                Confirm the pardon for {attendanceDate}. This will update all {data?.rows.length ?? 0} active attendance rows for the selected date.
-              </DialogDescription>
+              <DialogTitle>General pardon</DialogTitle>
+              <DialogDescription>{attendanceDate} - {data?.rows.length ?? 0} staff</DialogDescription>
             </DialogHeader>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -807,32 +803,28 @@ export default function AttendancePage() {
                 type="button"
                 onClick={() => setGeneralPardonType('absence')}
                 className={cn(
-                  'rounded-lg border p-4 text-left transition-colors hover:border-primary/60 hover:bg-primary/5',
+                  'rounded-md border p-3 text-left transition-colors hover:border-primary/60 hover:bg-primary/5',
                   generalPardonType === 'absence' ? 'border-primary bg-primary/10' : 'border-border bg-background',
                 )}
               >
                 <span className="block text-sm font-semibold">Full-day excuse</span>
-                <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                  Mark everyone excused for the day and clear lateness penalties.
-                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">Everyone excused. Penalties cleared.</span>
               </button>
               <button
                 type="button"
                 onClick={() => setGeneralPardonType('late_arrival')}
                 className={cn(
-                  'rounded-lg border p-4 text-left transition-colors hover:border-primary/60 hover:bg-primary/5',
+                  'rounded-md border p-3 text-left transition-colors hover:border-primary/60 hover:bg-primary/5',
                   generalPardonType === 'late_arrival' ? 'border-primary bg-primary/10' : 'border-border bg-background',
                 )}
               >
                 <span className="block text-sm font-semibold">Late-only pardon</span>
-                <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                  Waive late penalties while staff without check-ins remain not checked in.
-                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">Late fees cleared. Absences stay.</span>
               </button>
             </div>
 
-            <div className="rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
-              This is a bulk action. Individual permission records can still be removed after it is applied.
+            <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
+              Bulk action. You can remove records later.
             </div>
 
             <DialogFooter>
@@ -845,7 +837,7 @@ export default function AttendancePage() {
               </Button>
               <Button className="gap-2" onClick={applyGeneralPardon} disabled={savingGeneralPardon}>
                 {savingGeneralPardon ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                Confirm General Pardon
+                Apply pardon
               </Button>
             </DialogFooter>
           </DialogContent>
