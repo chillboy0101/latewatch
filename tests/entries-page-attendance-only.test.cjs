@@ -34,6 +34,13 @@ test('entries page omits removed manual message queue controls', () => {
   assert.doesNotMatch(source, new RegExp(queueSymbol));
 });
 
+test('entries page shows general pardon in the amount column for pardoned rows', () => {
+  const source = fs.readFileSync(entriesPagePath, 'utf8');
+
+  assert.match(source, /isGeneralPardon/);
+  assert.match(source, />General pardon</);
+});
+
 test('regular staff recalculation apply notifies live pages to refetch entries', () => {
   const source = fs.readFileSync(recalculateScriptPath, 'utf8');
 

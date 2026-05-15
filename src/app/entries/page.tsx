@@ -27,6 +27,7 @@ interface Entry {
   arrivalTime: string;
   didNotSignOut: boolean;
   amount: number;
+  isGeneralPardon: boolean;
   reason: string;
 }
 
@@ -41,6 +42,7 @@ interface ExistingEntry {
   arrivalTime: string | null;
   didNotSignOut: boolean | null;
   computedAmount: string | number | null;
+  isGeneralPardon?: boolean | null;
   reason: string | null;
 }
 
@@ -98,6 +100,7 @@ export default function EntriesPage() {
           arrivalTime: normalizeTimeValue(existing?.arrivalTime),
           didNotSignOut: existing?.didNotSignOut || false,
           amount: existing ? parseFloat(String(existing.computedAmount || '0')) : 0,
+          isGeneralPardon: existing?.isGeneralPardon === true,
           reason: existing?.reason || '',
         };
       });
@@ -149,6 +152,14 @@ export default function EntriesPage() {
         if (entry.staffId === staffId) {
           const updated = { ...entry, [field]: value };
           const member = staff.find((s) => s.id === staffId);
+          if (entry.isGeneralPardon && updated.didNotSignOut !== true) {
+            return {
+              ...updated,
+              amount: 0,
+              isGeneralPardon: true,
+              reason: updated.reason || 'General pardon',
+            };
+          }
           const penalty = computePenalty({
             arrivalTime: updated.arrivalTime || null,
             didNotSignOut: updated.didNotSignOut,
@@ -159,6 +170,7 @@ export default function EntriesPage() {
           return {
             ...updated,
             amount: penalty.amount,
+            isGeneralPardon: false,
             reason: penalty.reason,
           };
         }
@@ -403,6 +415,8 @@ export default function EntriesPage() {
                       <td className="px-4 py-3 text-sm font-mono">
                         {entry.amount > 0 ? (
                           <span className="text-danger">GHC {entry.amount}</span>
+                        ) : entry.isGeneralPardon ? (
+                          <span className="rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">General pardon</span>
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}

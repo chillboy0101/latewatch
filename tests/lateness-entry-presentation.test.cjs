@@ -30,7 +30,33 @@ test('pardoned late attendance rows still appear on the lateness entries page', 
   assert.equal(rows[0].staffId, 'staff-1');
   assert.equal(rows[0].arrivalTime, '09:12:00');
   assert.equal(rows[0].computedAmount, '0.00');
+  assert.equal(rows[0].isGeneralPardon, true);
   assert.equal(rows[0].reason, 'Approved late arrival (Any time today): general pardon');
+});
+
+test('general pardon permissions appear even when staff has no attendance row yet', () => {
+  const rows = mergeAttendanceRowsIntoEntryRows({
+    attendanceRows: [],
+    entryRows: [],
+    permissionRows: [
+      {
+        id: 'permission-1',
+        date: '2026-05-06',
+        permissionType: 'late_arrival',
+        reason: 'general pardon',
+        staffId: 'staff-1',
+        status: 'approved',
+      },
+    ],
+  });
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, 'permission:permission-1');
+  assert.equal(rows[0].staffId, 'staff-1');
+  assert.equal(rows[0].arrivalTime, null);
+  assert.equal(rows[0].computedAmount, '0.00');
+  assert.equal(rows[0].isGeneralPardon, true);
+  assert.equal(rows[0].reason, 'General pardon');
 });
 
 test('stored lateness entries win over attendance fallback rows', () => {

@@ -2,8 +2,8 @@ import 'server-only';
 
 import { and, eq, gte, lte } from 'drizzle-orm';
 import { db } from '@/db';
-import { attendanceRecord, latenessEntry, staff } from '@/db/schema';
-import { computePenalty } from '@/lib/penalty-calculator';
+import { attendancePermission, attendanceRecord, latenessEntry, staff } from '@/db/schema';
+import { resolveManualPenalty } from '@/lib/manual-attendance-correction';
 
 function normalizeDateKey(value: unknown) {
   if (value instanceof Date) return value.toISOString().slice(0, 10);
@@ -26,6 +26,10 @@ function amountText(value: number) {
   return value.toFixed(2);
 }
 
+function rowKey(staffId: string, date: string) {
+  return `${staffId}:${date}`;
+}
+
 export async function syncLatenessEntriesFromAttendanceForDate(dateKey: string) {
   return syncLatenessEntriesFromAttendanceForRange(dateKey, dateKey);
 }
@@ -46,77 +50,75 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     .leftJoin(staff, eq(staff.id, attendanceRecord.staffId))
     .where(and(gte(attendanceRecord.date, startDate), lte(attendanceRecord.date, endDate)));
 
-  const candidates = attendanceRows
-    .map((row) => {
-      const date = normalizeDateKey(row.date);
-      const arrivalTime = normalizeTimeKey(row.checkInTime);
-      const amount = amountNumber(row.computedAmount);
-      const penalty = computePenalty({
-        arrivalTime,
-        didNotSignOut: false,
-        isAttendanceOnly: row.isAttendanceOnly === true,
-        isNssPersonnel: row.isNssPersonnel === true,
-        isHoliday: false,
-      });
-      const isLate = row.status === 'late' || amount > 0;
-
-      return {
-        amount: penalty.amount,
-        arrivalTime,
-        date,
-        reason: row.reason || penalty.reason || 'Late arrival',
-        isAttendanceOnly: row.isAttendanceOnly === true,
-        isNssPersonnel: row.isNssPersonnel === true,
-        staffId: row.staffId,
-        shouldSync: isLate,
-      };
-    })
-    .filter((row) => row.shouldSync && row.date && row.staffId);
-
-  if (candidates.length === 0) {
-    return { inserted: 0, updated: 0 };
-  }
-
+  const permissionRows = await db.select()
+    .from(attendancePermission)
+    .where(and(
+      gte(attendancePermission.date, startDate),
+      lte(attendancePermission.date, endDate),
+      eq(attendancePermission.status, 'approved'),
+    ));
+  const permissionsByStaffDate = new Map(
+    permissionRows.map((permission) => [
+      rowKey(permission.staffId, normalizeDateKey(permission.date)),
+      permission,
+    ]),
+  );
   const existingRows = await db.select()
     .from(latenessEntry)
     .where(and(gte(latenessEntry.date, startDate), lte(latenessEntry.date, endDate)));
   const existingByStaffDate = new Map(
-    existingRows.map((entry) => [`${entry.staffId}:${normalizeDateKey(entry.date)}`, entry]),
+    existingRows.map((entry) => [rowKey(entry.staffId, normalizeDateKey(entry.date)), entry]),
   );
 
+  const processedKeys = new Set<string>();
+  let deleted = 0;
   let inserted = 0;
   let updated = 0;
 
-  for (const candidate of candidates) {
-    const key = `${candidate.staffId}:${candidate.date}`;
+  for (const row of attendanceRows) {
+    const date = normalizeDateKey(row.date);
+    const arrivalTime = normalizeTimeKey(row.checkInTime);
+    if (!date || !row.staffId) continue;
+
+    const key = rowKey(row.staffId, date);
     const existing = existingByStaffDate.get(key);
-    const existingDidNotSignOut = existing?.didNotSignOut === true;
-    const nextPenalty = existingDidNotSignOut
-      ? computePenalty({
-          arrivalTime: candidate.arrivalTime,
-          didNotSignOut: true,
-          isAttendanceOnly: candidate.isAttendanceOnly,
-          isNssPersonnel: candidate.isNssPersonnel,
-          isHoliday: false,
-        })
-      : null;
-    const computedAmount = amountText(nextPenalty?.amount || candidate.amount);
-    const reason = nextPenalty?.reason || candidate.reason;
+    const activePermission = permissionsByStaffDate.get(key) || null;
+    const didNotSignOut = existing?.didNotSignOut === true;
+    const penalty = resolveManualPenalty({
+      activePermission,
+      arrivalTime,
+      didNotSignOut,
+      isAttendanceOnly: row.isAttendanceOnly === true,
+      isNssPersonnel: row.isNssPersonnel === true,
+    });
+    const computedAmount = amountText(penalty.amount);
+    const reason = penalty.reason || row.reason || 'Late arrival';
+
+    processedKeys.add(key);
+
+    if (penalty.amount <= 0) {
+      if (existing) {
+        await db.delete(latenessEntry).where(eq(latenessEntry.id, existing.id));
+        deleted += 1;
+      }
+      continue;
+    }
 
     if (existing) {
       const existingAmount = amountText(amountNumber(existing.computedAmount));
       const needsUpdate =
-        normalizeTimeKey(existing.arrivalTime) !== candidate.arrivalTime ||
+        normalizeTimeKey(existing.arrivalTime) !== arrivalTime ||
         existingAmount !== computedAmount ||
-        (existing.reason || '') !== reason;
+        (existing.reason || '') !== reason ||
+        existing.didNotSignOut !== penalty.didNotSignOut;
 
       if (!needsUpdate) continue;
 
       await db.update(latenessEntry)
         .set({
-          arrivalTime: candidate.arrivalTime,
+          arrivalTime,
           computedAmount,
-          didNotSignOut: existingDidNotSignOut,
+          didNotSignOut: penalty.didNotSignOut,
           reason,
           updatedAt: new Date(),
         })
@@ -127,16 +129,57 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
 
     await db.insert(latenessEntry)
       .values({
-        arrivalTime: candidate.arrivalTime,
+        arrivalTime,
         computedAmount,
-        date: candidate.date,
-        didNotSignOut: false,
+        date,
+        didNotSignOut: penalty.didNotSignOut,
         reason,
-        staffId: candidate.staffId,
+        staffId: row.staffId,
       })
       .onConflictDoNothing();
     inserted += 1;
   }
 
-  return { inserted, updated };
+  for (const existing of existingRows) {
+    const date = normalizeDateKey(existing.date);
+    const key = rowKey(existing.staffId, date);
+    if (processedKeys.has(key)) continue;
+
+    const activePermission = permissionsByStaffDate.get(key) || null;
+    if (!activePermission) continue;
+
+    const penalty = resolveManualPenalty({
+      activePermission,
+      arrivalTime: normalizeTimeKey(existing.arrivalTime),
+      didNotSignOut: existing.didNotSignOut === true,
+    });
+    const computedAmount = amountText(penalty.amount);
+
+    if (penalty.amount <= 0) {
+      await db.delete(latenessEntry).where(eq(latenessEntry.id, existing.id));
+      deleted += 1;
+      continue;
+    }
+
+    const existingAmount = amountText(amountNumber(existing.computedAmount));
+    if (
+      existingAmount === computedAmount &&
+      existing.reason === penalty.reason &&
+      existing.didNotSignOut === penalty.didNotSignOut
+    ) {
+      continue;
+    }
+
+    await db.update(latenessEntry)
+      .set({
+        computedAmount,
+        didNotSignOut: penalty.didNotSignOut,
+        reason: penalty.reason || existing.reason || 'Late arrival',
+        updatedAt: new Date(),
+      })
+      .where(eq(latenessEntry.id, existing.id));
+    updated += 1;
+  }
+
+  return { deleted, inserted, updated };
 }

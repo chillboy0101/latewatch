@@ -1,0 +1,265 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
+const assert = require('node:assert/strict');
+const Module = require('node:module');
+const test = require('node:test');
+
+const originalLoad = Module._load;
+
+function createColumn(table, name) {
+  return { name, table };
+}
+
+function createTable(name, columns) {
+  const table = { __table: name };
+  for (const column of columns) {
+    table[column] = createColumn(name, column);
+  }
+  return table;
+}
+
+const fixture = {
+  attendancePermission: [],
+  attendanceRecord: [],
+  latenessEntry: [],
+  staff: [],
+};
+
+function resetFixture() {
+  fixture.attendancePermission = [
+    {
+      id: 'permission-1',
+      arrivalWindow: 'any_time_today',
+      date: '2026-05-15',
+      expectedEndTime: null,
+      expectedStartTime: null,
+      permissionType: 'late_arrival',
+      reason: 'general pardon',
+      staffId: 'staff-1',
+      status: 'approved',
+    },
+  ];
+  fixture.attendanceRecord = [
+    {
+      id: 'attendance-1',
+      checkInTime: '09:12:00',
+      computedAmount: '15.00',
+      date: '2026-05-15',
+      reason: "DIDN'T COME BEFORE 8:30AM",
+      staffId: 'staff-1',
+      status: 'late',
+    },
+  ];
+  fixture.latenessEntry = [];
+  fixture.staff = [
+    {
+      fullName: 'PARDONED STAFF',
+      id: 'staff-1',
+      isAttendanceOnly: false,
+      isNssPersonnel: false,
+    },
+  ];
+}
+
+function cloneRow(row) {
+  return { ...row };
+}
+
+function normalizeDate(value) {
+  return typeof value === 'string' ? value.slice(0, 10) : value;
+}
+
+function rowInRange(row, start, end) {
+  const date = normalizeDate(row.date);
+  return date >= start && date <= end;
+}
+
+function collectDateBounds(condition, bounds = { end: '9999-12-31', start: '0000-01-01' }) {
+  if (!condition || typeof condition !== 'object') return bounds;
+  if (Array.isArray(condition.conditions)) {
+    for (const child of condition.conditions) collectDateBounds(child, bounds);
+  }
+  if (condition.op === 'gte' && condition.left?.name === 'date') bounds.start = condition.right;
+  if (condition.op === 'lte' && condition.left?.name === 'date') bounds.end = condition.right;
+  if (condition.op === 'eq' && condition.left?.name === 'date') {
+    bounds.start = condition.right;
+    bounds.end = condition.right;
+  }
+  return bounds;
+}
+
+function eqIdFromCondition(condition) {
+  if (!condition || typeof condition !== 'object') return null;
+  if (condition.op === 'eq' && condition.left?.name === 'id') return condition.right;
+  if (Array.isArray(condition.conditions)) {
+    for (const child of condition.conditions) {
+      const value = eqIdFromCondition(child);
+      if (value) return value;
+    }
+  }
+  return null;
+}
+
+function attendanceRowsForCondition(condition) {
+  const { end, start } = collectDateBounds(condition);
+  return fixture.attendanceRecord
+    .filter((row) => rowInRange(row, start, end))
+    .map((row) => {
+      const member = fixture.staff.find((staff) => staff.id === row.staffId) || {};
+      return {
+        ...cloneRow(row),
+        isAttendanceOnly: member.isAttendanceOnly,
+        isNssPersonnel: member.isNssPersonnel,
+        staffName: member.fullName,
+      };
+    });
+}
+
+function rowsForTable(tableName, condition) {
+  const { end, start } = collectDateBounds(condition);
+  return fixture[tableName]
+    .filter((row) => !row.date || rowInRange(row, start, end))
+    .map(cloneRow);
+}
+
+const fakeDb = {
+  delete(table) {
+    return {
+      where(condition) {
+        if (table.__table !== 'latenessEntry') throw new Error(`Unexpected delete table: ${table.__table}`);
+        const id = eqIdFromCondition(condition);
+        fixture.latenessEntry = id
+          ? fixture.latenessEntry.filter((row) => row.id !== id)
+          : [];
+        return Promise.resolve();
+      },
+    };
+  },
+  insert(table) {
+    return {
+      values(values) {
+        return {
+          onConflictDoNothing() {
+            if (table.__table !== 'latenessEntry') throw new Error(`Unexpected insert table: ${table.__table}`);
+            const existing = fixture.latenessEntry.find((row) => row.staffId === values.staffId && row.date === values.date);
+            if (!existing) {
+              fixture.latenessEntry.push({ id: `entry-${fixture.latenessEntry.length + 1}`, ...values });
+            }
+            return Promise.resolve();
+          },
+        };
+      },
+    };
+  },
+  select() {
+    return {
+      from(table) {
+        return {
+          leftJoin() {
+            return {
+              where(condition) {
+                if (table.__table !== 'attendanceRecord') throw new Error(`Unexpected joined select table: ${table.__table}`);
+                return Promise.resolve(attendanceRowsForCondition(condition));
+              },
+            };
+          },
+          where(condition) {
+            return Promise.resolve(rowsForTable(table.__table, condition));
+          },
+        };
+      },
+    };
+  },
+  update(table) {
+    return {
+      set(values) {
+        return {
+          where(condition) {
+            if (table.__table !== 'latenessEntry') throw new Error(`Unexpected update table: ${table.__table}`);
+            const id = eqIdFromCondition(condition);
+            fixture.latenessEntry = fixture.latenessEntry.map((row) => row.id === id ? { ...row, ...values } : row);
+            return Promise.resolve();
+          },
+        };
+      },
+    };
+  },
+};
+
+const schema = {
+  attendancePermission: createTable('attendancePermission', ['date', 'staffId', 'status']),
+  attendanceRecord: createTable('attendanceRecord', ['checkInTime', 'computedAmount', 'date', 'reason', 'staffId', 'status']),
+  latenessEntry: createTable('latenessEntry', ['id', 'date', 'staffId']),
+  staff: createTable('staff', ['id', 'fullName', 'isAttendanceOnly', 'isNssPersonnel']),
+};
+
+Module._load = function patchedLoad(request, ...args) {
+  if (request === 'server-only') return {};
+  if (request === '@/db') return { db: fakeDb };
+  if (request === '@/db/schema') return schema;
+  if (request === 'drizzle-orm') {
+    return {
+      and: (...conditions) => ({ conditions, op: 'and' }),
+      eq: (left, right) => ({ left, op: 'eq', right }),
+      gte: (left, right) => ({ left, op: 'gte', right }),
+      lte: (left, right) => ({ left, op: 'lte', right }),
+    };
+  }
+  return originalLoad.call(this, request, ...args);
+};
+
+require('tsx/cjs');
+
+const { syncLatenessEntriesFromAttendanceForDate } = require('../src/lib/attendance-lateness-sync.ts');
+
+test.after(() => {
+  Module._load = originalLoad;
+});
+
+test('sync does not create a positive lateness entry when a general pardon clears late arrival', async () => {
+  resetFixture();
+
+  await syncLatenessEntriesFromAttendanceForDate('2026-05-15');
+
+  assert.equal(fixture.latenessEntry.length, 0);
+});
+
+test('sync deletes an existing positive lateness entry when a general pardon clears late arrival', async () => {
+  resetFixture();
+  fixture.latenessEntry = [
+    {
+      id: 'entry-1',
+      arrivalTime: '09:12:00',
+      computedAmount: '15.00',
+      date: '2026-05-15',
+      didNotSignOut: false,
+      reason: "DIDN'T COME BEFORE 8:30AM",
+      staffId: 'staff-1',
+    },
+  ];
+
+  await syncLatenessEntriesFromAttendanceForDate('2026-05-15');
+
+  assert.equal(fixture.latenessEntry.length, 0);
+});
+
+test('sync keeps only the no-sign-out amount for a late-only general pardon', async () => {
+  resetFixture();
+  fixture.latenessEntry = [
+    {
+      id: 'entry-1',
+      arrivalTime: '09:12:00',
+      computedAmount: '17.00',
+      date: '2026-05-15',
+      didNotSignOut: true,
+      reason: "DIDN'T COME BEFORE 8:30AM AND DID NOT SIGN OUT",
+      staffId: 'staff-1',
+    },
+  ];
+
+  await syncLatenessEntriesFromAttendanceForDate('2026-05-15');
+
+  assert.equal(fixture.latenessEntry.length, 1);
+  assert.equal(fixture.latenessEntry[0].computedAmount, '2.00');
+  assert.match(fixture.latenessEntry[0].reason, /DID NOT SIGN OUT/);
+  assert.match(fixture.latenessEntry[0].reason, /general pardon/);
+});

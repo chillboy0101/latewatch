@@ -34,6 +34,23 @@ async function getAttendanceRowsForEntries(start: string, end: string) {
     .where(and(gte(attendanceRecord.date, start), lte(attendanceRecord.date, end)));
 }
 
+async function getPermissionRowsForEntries(start: string, end: string) {
+  return db.select({
+    id: attendancePermission.id,
+    staffId: attendancePermission.staffId,
+    date: attendancePermission.date,
+    permissionType: attendancePermission.permissionType,
+    reason: attendancePermission.reason,
+    status: attendancePermission.status,
+  })
+    .from(attendancePermission)
+    .where(and(
+      gte(attendancePermission.date, start),
+      lte(attendancePermission.date, end),
+      eq(attendancePermission.status, 'approved'),
+    ));
+}
+
 async function getActivePermissionsForDate(date: string) {
   const permissionRows = await db.select()
     .from(attendancePermission)
@@ -65,7 +82,8 @@ export async function GET(request: NextRequest) {
       .from(latenessEntry)
       .where(eq(latenessEntry.date, date));
       const attendanceRows = await getAttendanceRowsForEntries(date, date);
-      const responseRows = mergeAttendanceRowsIntoEntryRows({ attendanceRows, entryRows: entries });
+      const permissionRows = await getPermissionRowsForEntries(date, date);
+      const responseRows = mergeAttendanceRowsIntoEntryRows({ attendanceRows, entryRows: entries, permissionRows });
 
       return NextResponse.json(responseRows, {
         headers: {
@@ -90,7 +108,8 @@ export async function GET(request: NextRequest) {
       .from(latenessEntry)
       .where(and(gte(latenessEntry.date, start), lte(latenessEntry.date, end)));
       const attendanceRows = await getAttendanceRowsForEntries(start, end);
-      const responseRows = mergeAttendanceRowsIntoEntryRows({ attendanceRows, entryRows: entries });
+      const permissionRows = await getPermissionRowsForEntries(start, end);
+      const responseRows = mergeAttendanceRowsIntoEntryRows({ attendanceRows, entryRows: entries, permissionRows });
 
       return NextResponse.json(responseRows, {
         headers: {

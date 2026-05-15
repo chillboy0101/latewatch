@@ -5,6 +5,7 @@ import { auditEvent, latenessEntry, staff, workCalendar } from '@/db/schema';
 import { gte, lte, and, desc, count, eq } from 'drizzle-orm';
 import { startOfWeek, addDays, subWeeks, format } from 'date-fns';
 import { getAuditActivityLabel, getAuditSummary, getAuditTargetName } from '@/lib/audit-display';
+import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 
 export async function GET() {
   try {
@@ -19,6 +20,8 @@ export async function GET() {
     const prevWeekEnd = addDays(prevWeekStart, 4);
     const prevWeekStartStr = format(prevWeekStart, 'yyyy-MM-dd');
     const prevWeekEndStr = format(prevWeekEnd, 'yyyy-MM-dd');
+
+    await syncLatenessEntriesFromAttendanceForRange(prevWeekStartStr, weekEndStr);
 
     // Fetch current week entries - use db.select with proper where clause
     const weekEntriesResult = await db.select({

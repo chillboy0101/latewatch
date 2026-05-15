@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { latenessEntry, latenessPaymentAllocation } from '@/db/schema';
 import { getAccraClock, getOrAutoLinkStaffByEmail } from '@/lib/attendance';
+import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 import { summarizeLatenessPaymentEntries, summarizePenaltyHistoryWeeks } from '@/lib/lateness-payments';
 
 export const dynamic = 'force-dynamic';
@@ -57,6 +58,9 @@ export async function GET() {
       return NextResponse.json({ error: 'Staff profile was not found' }, { status: 404 });
     }
 
+    const clock = getAccraClock();
+    await syncLatenessEntriesFromAttendanceForRange('2000-01-01', clock.dateKey);
+
     const entries = await db.select()
       .from(latenessEntry)
       .where(eq(latenessEntry.staffId, member.id))
@@ -72,7 +76,7 @@ export async function GET() {
       entries: penaltyEntries,
     });
     const history = summarizePenaltyHistoryWeeks({
-      currentDate: getAccraClock().dateKey,
+      currentDate: clock.dateKey,
       entries: entrySummaries,
     });
 

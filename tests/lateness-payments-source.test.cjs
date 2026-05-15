@@ -9,6 +9,7 @@ const schemaPath = path.join(root, 'src/db/schema.ts');
 const migrationPath = path.join(root, 'drizzle/0019_lateness_payments.sql');
 const paymentsApiPath = path.join(root, 'src/app/api/payments/lateness/route.ts');
 const penaltyHistoryApiPath = path.join(root, 'src/app/api/attendance/check-in/penalty-history/route.ts');
+const dashboardApiPath = path.join(root, 'src/app/api/dashboard/route.ts');
 const paymentsPagePath = path.join(root, 'src/app/payments/page.tsx');
 const checkInPagePath = path.join(root, 'src/app/check-in/page.tsx');
 const sidebarPath = path.join(root, 'src/components/layout/sidebar.tsx');
@@ -32,6 +33,7 @@ test('lateness payment API records payments, allocations, audit events, and real
   assert.match(source, /export async function GET/);
   assert.match(source, /export async function POST/);
   assert.match(source, /allocateLatenessPayment/);
+  assert.match(source, /syncLatenessEntriesFromAttendanceForRange/);
   assert.match(source, /hasDateFilter/);
   assert.match(source, /eq\(staff\.isAttendanceOnly, false\)/);
   assert.match(source, /paymentWeekStart/);
@@ -48,9 +50,18 @@ test('staff penalty history endpoint is scoped to the signed-in staff member', (
 
   assert.match(source, /currentUser\(\)/);
   assert.match(source, /resolveMemberForPenaltyHistory/);
+  assert.match(source, /syncLatenessEntriesFromAttendanceForRange/);
   assert.match(source, /eq\(latenessEntry\.staffId, member\.id\)/);
   assert.match(source, /summarizePenaltyHistoryWeeks/);
   assert.doesNotMatch(source, /searchParams\.get\('staffId'\)/);
+});
+
+test('dashboard syncs lateness entries before reading weekly totals', () => {
+  const source = fs.readFileSync(dashboardApiPath, 'utf8');
+
+  assert.match(source, /syncLatenessEntriesFromAttendanceForRange/);
+  assert.match(source, /prevWeekStartStr/);
+  assert.match(source, /weekEndStr/);
 });
 
 test('admin payments page and navigation expose payment management actions', () => {
