@@ -272,6 +272,8 @@ export const staffDevice = pgTable('staff_device', {
   lastVerifiedAt: timestamp('last_verified_at'),
   lastVerificationMethod: text('last_verification_method'),
   lastDistanceMeters: decimal('last_distance_meters', { precision: 10, scale: 2 }),
+  autoCheckInEnabled: boolean('auto_check_in_enabled').default(false).notNull(),
+  autoSignOutEnabled: boolean('auto_sign_out_enabled').default(false).notNull(),
   registeredAt: timestamp('registered_at').defaultNow(),
   lastSeenAt: timestamp('last_seen_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),

@@ -234,6 +234,8 @@ export async function POST() {
     await db.execute(sql`ALTER TABLE staff_device ADD COLUMN IF NOT EXISTS last_verified_at timestamp`);
     await db.execute(sql`ALTER TABLE staff_device ADD COLUMN IF NOT EXISTS last_verification_method text`);
     await db.execute(sql`ALTER TABLE staff_device ADD COLUMN IF NOT EXISTS last_distance_meters numeric(10, 2)`);
+    await db.execute(sql`ALTER TABLE staff_device ADD COLUMN IF NOT EXISTS auto_check_in_enabled boolean DEFAULT false NOT NULL`);
+    await db.execute(sql`ALTER TABLE staff_device ADD COLUMN IF NOT EXISTS auto_sign_out_enabled boolean DEFAULT false NOT NULL`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS device_transfer_request (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,

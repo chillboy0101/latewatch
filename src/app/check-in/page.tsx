@@ -11,6 +11,7 @@ import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { getPermissionWindowBounds, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
+import { resolveAutoAttendanceAction } from '@/lib/auto-attendance';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
 import { applyThemePreference, getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 import { cn } from '@/lib/utils';
@@ -49,6 +50,8 @@ interface CheckInStatus {
   networkConfigured: boolean;
   officeCodeRequired: boolean;
   device: {
+    autoCheckInEnabled: boolean;
+    autoSignOutEnabled: boolean;
     lastSeenAt: string | null;
     registered: boolean;
     registeredAt: string | null;
@@ -125,6 +128,8 @@ type LiveLocation =
   | { blocking: false; message: string; state: 'idle' | 'inside' }
   | { blocking: false; message: string; state: 'checking' }
   | { blocking: true; message: string; state: 'error' | 'outside' | 'weak' };
+type AttendanceAction = 'check_in' | 'sign_out';
+type AttendanceSource = 'auto_attendance' | 'staff_portal';
 
 function canSignOut(status: CheckInStatus | null) {
   return Boolean(status?.attendance && !status.attendance.signOutTime && status.time?.slice(0, 5) >= '16:30');
@@ -219,6 +224,26 @@ function attendanceButtonLabel(status: CheckInStatus | null, submitting: boolean
   if (status && !status.staff) return 'Profile Not Matched';
   if (status?.permission?.permissionType === 'absence') return 'Excused - No Check-In';
   return 'Check In';
+}
+
+function autoAttendanceStatusText(input: {
+  autoAction: AttendanceAction | null;
+  liveLocation: LiveLocation;
+  saving: boolean;
+  status: CheckInStatus | null;
+}) {
+  if (input.saving) return 'Saving auto attendance';
+  if (input.autoAction === 'check_in') return 'Auto check-in running';
+  if (input.autoAction === 'sign_out') return 'Auto sign-out running';
+  if (!input.status?.staff || !input.status.device?.registered || !input.status.device.trusted) return 'Trusted device required';
+
+  const autoCheckInEnabled = Boolean(input.status.device.autoCheckInEnabled);
+  const autoSignOutEnabled = Boolean(input.status.device.autoSignOutEnabled);
+  if (!autoCheckInEnabled && !autoSignOutEnabled) return 'Auto attendance off';
+  if (!input.status.locationConfigured || input.liveLocation.state !== 'inside') return 'Waiting for office location';
+  if (autoCheckInEnabled && autoSignOutEnabled) return 'Auto attendance active';
+  if (autoCheckInEnabled) return 'Auto check-in on. Auto sign-out off';
+  return 'Auto sign-out on';
 }
 
 function statusTone(status: CheckInStatus | null) {
@@ -335,6 +360,9 @@ export default function CheckInPage() {
   const [status, setStatus] = useState<CheckInStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [checkingIn, setCheckingIn] = useState(false);
+  const [autoAttendanceAction, setAutoAttendanceAction] = useState<AttendanceAction | null>(null);
+  const [lastAutoActionAt, setLastAutoActionAt] = useState<number | null>(null);
+  const [savingAutoSettings, setSavingAutoSettings] = useState(false);
   const [requestingTransfer, setRequestingTransfer] = useState(false);
   const [deviceToken, setDeviceToken] = useState<string | null>(null);
   const [penaltyHistory, setPenaltyHistory] = useState<PenaltyHistoryResponse | null>(null);
@@ -468,10 +496,16 @@ export default function CheckInPage() {
     };
   }, [locationConfigured, locationPolicy]);
 
-  async function submitAttendance() {
-    setCheckingIn(true);
+  const submitAttendance = useCallback(async (options?: { action?: AttendanceAction; source?: AttendanceSource }) => {
+    const action = options?.action || (status?.attendance && !status.attendance.signOutTime ? 'sign_out' : 'check_in');
+    const source = options?.source || 'staff_portal';
+    const isAutoAttendance = source === 'auto_attendance';
+    if (isAutoAttendance) {
+      setAutoAttendanceAction(action);
+    } else {
+      setCheckingIn(true);
+    }
     setMessage(null);
-    const action = status?.attendance && !status.attendance.signOutTime ? 'sign_out' : 'check_in';
 
     try {
       const location = await getCurrentLocationEvidence();
@@ -481,7 +515,7 @@ export default function CheckInPage() {
           deviceLabel: navigator.userAgent,
           deviceToken,
           location,
-          source: 'staff_portal',
+          source,
         }),
         headers: {
           'Content-Type': 'application/json',
@@ -495,23 +529,83 @@ export default function CheckInPage() {
       setStatus(body);
       setMessage({
         type: 'success',
-        text: body.signedOut
-          ? 'You have checked out for today.'
-          : body.alreadySignedOut
-            ? 'You already checked out today.'
-            : body.alreadyCheckedIn
-              ? 'You already checked in today.'
-              : 'You have checked in for today.',
+        text: isAutoAttendance
+          ? action === 'sign_out'
+            ? 'Auto sign-out complete.'
+            : 'Auto check-in complete.'
+          : body.signedOut
+            ? 'You have checked out for today.'
+            : body.alreadySignedOut
+              ? 'You already checked out today.'
+              : body.alreadyCheckedIn
+                ? 'You already checked in today.'
+                : 'You have checked in for today.',
       });
     } catch (error) {
       console.warn('Attendance action could not complete:', error);
       const errorMessage = locationErrorMessage(error);
-      await fetchStatus();
-      setMessage({ type: 'error', text: errorMessage });
+      await fetchStatus({ preserveMessage: isAutoAttendance, silent: isAutoAttendance });
+      if (!isAutoAttendance) {
+        setMessage({ type: 'error', text: errorMessage });
+      }
     } finally {
-      setCheckingIn(false);
+      if (isAutoAttendance) {
+        setAutoAttendanceAction(null);
+      } else {
+        setCheckingIn(false);
+      }
     }
-  }
+  }, [deviceToken, fetchStatus, status]);
+
+  const updateAutoAttendanceSettings = useCallback(async (next: {
+    autoCheckInEnabled: boolean;
+    autoSignOutEnabled: boolean;
+  }) => {
+    if (!deviceToken) return;
+
+    setSavingAutoSettings(true);
+    setMessage(null);
+
+    try {
+      const response = await fetch('/api/attendance/check-in/auto-settings', {
+        body: JSON.stringify({
+          ...next,
+          deviceToken,
+        }),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-latewatch-device': deviceToken,
+        },
+        method: 'PATCH',
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || 'Could not update auto attendance');
+
+      setStatus((current) => current
+        ? {
+            ...current,
+            device: current.device
+              ? {
+                  ...current.device,
+                  autoCheckInEnabled: Boolean(body.device?.autoCheckInEnabled),
+                  autoSignOutEnabled: Boolean(body.device?.autoSignOutEnabled),
+                  lastSeenAt: body.device?.lastSeenAt || current.device.lastSeenAt,
+                  registered: Boolean(body.device?.registered ?? current.device.registered),
+                  registeredAt: body.device?.registeredAt || current.device.registeredAt,
+                  trusted: Boolean(body.device?.trusted ?? current.device.trusted),
+                }
+              : body.device || null,
+          }
+        : current);
+      setMessage({ type: 'success', text: 'Auto attendance updated.' });
+    } catch (error) {
+      console.warn('Auto attendance settings could not update:', error);
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Could not update auto attendance' });
+      await fetchStatus({ preserveMessage: true, silent: true });
+    } finally {
+      setSavingAutoSettings(false);
+    }
+  }, [deviceToken, fetchStatus]);
 
   async function requestDeviceTransfer() {
     if (!deviceToken) return;
@@ -576,6 +670,43 @@ export default function CheckInPage() {
   );
   const accessNotSetUp = Boolean(status && !status.staff);
   const locationBlocksAction = Boolean(status?.locationConfigured && liveLocation.blocking);
+  const autoDeviceReady = Boolean(status?.staff && status.device?.registered && status.device.trusted);
+  const autoAttendanceText = autoAttendanceStatusText({
+    autoAction: autoAttendanceAction,
+    liveLocation,
+    saving: savingAutoSettings,
+    status,
+  });
+
+  useEffect(() => {
+    if (!autoDeviceReady || checkingIn || autoAttendanceAction || savingAutoSettings) return;
+
+    const action = resolveAutoAttendanceAction({
+      autoCheckInEnabled: Boolean(status?.device?.autoCheckInEnabled),
+      autoSignOutEnabled: Boolean(status?.device?.autoSignOutEnabled),
+      canCheckIn: autoDeviceReady && canCheckIn,
+      canSubmitSignOut: autoDeviceReady && canSubmitSignOut,
+      lastAutoActionAt,
+      officeVerified: liveLocation.state === 'inside',
+    });
+
+    if (!action) return;
+
+    setLastAutoActionAt(Date.now());
+    void submitAttendance({ action, source: 'auto_attendance' });
+  }, [
+    autoAttendanceAction,
+    autoDeviceReady,
+    canCheckIn,
+    canSubmitSignOut,
+    checkingIn,
+    lastAutoActionAt,
+    liveLocation.state,
+    savingAutoSettings,
+    status?.device?.autoCheckInEnabled,
+    status?.device?.autoSignOutEnabled,
+    submitAttendance,
+  ]);
 
   return (
     <main className="h-dvh overflow-hidden bg-background px-3 py-3 text-foreground sm:px-6 sm:py-4">
@@ -703,6 +834,26 @@ export default function CheckInPage() {
                   </div>
                 )}
 
+                <AutoAttendancePanel
+                  autoCheckInEnabled={Boolean(status?.device?.autoCheckInEnabled)}
+                  autoSignOutEnabled={Boolean(status?.device?.autoSignOutEnabled)}
+                  disabled={!autoDeviceReady || savingAutoSettings || Boolean(autoAttendanceAction)}
+                  onToggleCheckIn={() => {
+                    void updateAutoAttendanceSettings({
+                      autoCheckInEnabled: !status?.device?.autoCheckInEnabled,
+                      autoSignOutEnabled: Boolean(status?.device?.autoSignOutEnabled),
+                    });
+                  }}
+                  onToggleSignOut={() => {
+                    void updateAutoAttendanceSettings({
+                      autoCheckInEnabled: Boolean(status?.device?.autoCheckInEnabled),
+                      autoSignOutEnabled: !status?.device?.autoSignOutEnabled,
+                    });
+                  }}
+                  saving={savingAutoSettings}
+                  statusText={autoAttendanceText}
+                />
+
                 {message && (
                   <div className={cn(
                     'flex items-center gap-2 rounded-md border px-3 py-2 text-sm',
@@ -715,7 +866,7 @@ export default function CheckInPage() {
                   </div>
                 )}
 
-                <Button className="h-10 w-full gap-2 text-sm sm:h-11 sm:text-base" onClick={submitAttendance} disabled={(!canCheckIn && !canSubmitSignOut) || checkingIn || locationBlocksAction}>
+                <Button className="h-10 w-full gap-2 text-sm sm:h-11 sm:text-base" onClick={() => void submitAttendance()} disabled={(!canCheckIn && !canSubmitSignOut) || checkingIn || locationBlocksAction}>
                   {checkingIn ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
                   ) : status?.attendance && !status.attendance.signOutTime ? (
@@ -899,6 +1050,83 @@ function AccessNotSetUp({ email }: { email: string | null }) {
         <Link href="/">Back to portal</Link>
       </Button>
     </div>
+  );
+}
+
+function AutoAttendancePanel({
+  autoCheckInEnabled,
+  autoSignOutEnabled,
+  disabled,
+  onToggleCheckIn,
+  onToggleSignOut,
+  saving,
+  statusText,
+}: {
+  autoCheckInEnabled: boolean;
+  autoSignOutEnabled: boolean;
+  disabled: boolean;
+  onToggleCheckIn: () => void;
+  onToggleSignOut: () => void;
+  saving: boolean;
+  statusText: string;
+}) {
+  return (
+    <div className="rounded-md border border-border bg-card p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold">Auto attendance</h3>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">{statusText}</p>
+        </div>
+        {saving && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />}
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <AutoAttendanceToggle
+          disabled={disabled}
+          enabled={autoCheckInEnabled}
+          label="Auto check-in"
+          onToggle={onToggleCheckIn}
+        />
+        <AutoAttendanceToggle
+          disabled={disabled}
+          enabled={autoSignOutEnabled}
+          label="Auto sign-out"
+          onToggle={onToggleSignOut}
+        />
+      </div>
+    </div>
+  );
+}
+
+function AutoAttendanceToggle({
+  disabled,
+  enabled,
+  label,
+  onToggle,
+}: {
+  disabled: boolean;
+  enabled: boolean;
+  label: string;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      aria-pressed={enabled}
+      className={cn(
+        'flex h-11 items-center justify-between gap-2 rounded-md border px-3 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-55',
+        enabled
+          ? 'border-primary/40 bg-primary/10 text-primary'
+          : 'border-border bg-background text-foreground',
+      )}
+      disabled={disabled}
+      onClick={onToggle}
+      type="button"
+    >
+      <span className="truncate">{label}</span>
+      <span className={cn(
+        'h-2.5 w-2.5 shrink-0 rounded-full',
+        enabled ? 'bg-primary' : 'bg-muted-foreground/40',
+      )} />
+    </button>
   );
 }
 

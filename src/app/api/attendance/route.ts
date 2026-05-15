@@ -85,6 +85,8 @@ export async function GET(request: NextRequest) {
         .orderBy(desc(attendanceAttempt.createdAt))
         .limit(25)),
       optionalAttendanceQuery('staff-devices', [], () => db.select({
+        autoCheckInEnabled: staffDevice.autoCheckInEnabled,
+        autoSignOutEnabled: staffDevice.autoSignOutEnabled,
         deviceLabel: staffDevice.deviceLabel,
         id: staffDevice.id,
         lastDistanceMeters: staffDevice.lastDistanceMeters,
@@ -155,6 +157,8 @@ export async function GET(request: NextRequest) {
           : null,
         device: device
           ? {
+              autoCheckInEnabled: device.autoCheckInEnabled,
+              autoSignOutEnabled: device.autoSignOutEnabled,
               id: device.id,
               deviceLabel: device.deviceLabel,
               lastDistanceMeters: device.lastDistanceMeters,
@@ -165,6 +169,8 @@ export async function GET(request: NextRequest) {
               registeredAt: device.registeredAt,
             }
           : {
+              autoCheckInEnabled: false,
+              autoSignOutEnabled: false,
               id: null,
               deviceLabel: null,
               lastDistanceMeters: null,
