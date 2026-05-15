@@ -70,6 +70,19 @@ function staffKind(row: PaymentStaffRow) {
   return 'Main Staff';
 }
 
+function sortPaymentRowsByBalance(rows: PaymentStaffRow[]) {
+  return rows
+    .map((row, index) => ({ index, row }))
+    .sort((left, right) => {
+      const balanceDifference = moneyNumber(right.row.outstandingBalance) - moneyNumber(left.row.outstandingBalance);
+      if (balanceDifference !== 0) return balanceDifference;
+
+      const penaltyDifference = moneyNumber(right.row.totalPenalty) - moneyNumber(left.row.totalPenalty);
+      return penaltyDifference !== 0 ? penaltyDifference : left.index - right.index;
+    })
+    .map(({ row }) => row);
+}
+
 export default function PenaltyPaymentsPage() {
   const [weekStart, setWeekStart] = useState(currentWeekStart);
   const weekEnd = useMemo(() => weekEndFor(weekStart), [weekStart]);
@@ -106,7 +119,7 @@ export default function PenaltyPaymentsPage() {
     void loadPayments();
   }, [loadPayments]);
 
-  const filteredRows = useMemo(() => {
+  const matchingRows = useMemo(() => {
     const query = search.trim().toLowerCase();
     const rows = data?.staff || [];
     if (!query) return rows;
@@ -117,6 +130,7 @@ export default function PenaltyPaymentsPage() {
       staffKind(row),
     ].some((value) => value.toLowerCase().includes(query)));
   }, [data?.staff, search]);
+  const filteredRows = useMemo(() => sortPaymentRowsByBalance(matchingRows), [matchingRows]);
 
   const selectedRow = useMemo(() => {
     return filteredRows.find((row) => row.id === selectedStaffId)
@@ -175,27 +189,18 @@ export default function PenaltyPaymentsPage() {
   return (
     <DashboardLayout title="Penalty Payments">
       <div className="space-y-5">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold">Penalty Payments</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Record full or partial lateness payments and keep staff balances transparent.
-            </p>
-          </div>
-          <div className="grid gap-1.5">
-            <label className="text-xs font-medium uppercase text-muted-foreground" htmlFor="payment-week-start">
-              Week start
-            </label>
-            <div className="flex items-center gap-2">
-              <Input
-                id="payment-week-start"
-                type="date"
-                value={weekStart}
-                onChange={(event) => setWeekStart(event.target.value || currentWeekStart())}
-                className="h-10 w-44"
-              />
-              <span className="text-sm text-muted-foreground">to {weekEnd}</span>
-            </div>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h1 className="text-2xl font-semibold">Penalty Payments</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-xs font-medium uppercase text-muted-foreground" htmlFor="payment-week-start">Week</label>
+            <Input
+              id="payment-week-start"
+              type="date"
+              value={weekStart}
+              onChange={(event) => setWeekStart(event.target.value || currentWeekStart())}
+              className="h-10 w-44"
+            />
+            <span className="text-sm text-muted-foreground">to {weekEnd}</span>
           </div>
         </div>
 
@@ -217,11 +222,9 @@ export default function PenaltyPaymentsPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">Weekly balances</h2>
-                  <p className="text-sm text-muted-foreground">
-                    {weekStart} to {weekEnd}
-                  </p>
+                  <p className="text-sm text-muted-foreground">{filteredRows.length} staff</p>
                 </div>
-                <div className="relative w-full max-w-sm">
+                <div className="relative w-full max-w-xs">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     value={search}
@@ -237,14 +240,13 @@ export default function PenaltyPaymentsPage() {
               <LoadingBuffer variant="section" label="Loading payments" description="Checking weekly balances." />
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px] text-sm">
+                <table className="w-full min-w-[640px] text-sm">
                   <thead className="border-b border-border bg-muted/20 text-left text-xs uppercase text-muted-foreground">
                     <tr>
                       <th className="px-4 py-3 font-medium">Staff</th>
-                      <th className="px-4 py-3 font-medium">Roster</th>
                       <th className="px-4 py-3 text-right font-medium">Owed</th>
                       <th className="px-4 py-3 text-right font-medium">Paid</th>
-                      <th className="px-4 py-3 text-right font-medium">Outstanding</th>
+                      <th className="px-4 py-3 text-right font-medium">Balance</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -261,9 +263,11 @@ export default function PenaltyPaymentsPage() {
                         >
                           <td className="px-4 py-3">
                             <div className="font-medium">{row.fullName}</div>
-                            <div className="text-xs text-muted-foreground">{row.email || 'No email'}</div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              <span>{row.email || 'No email'}</span>
+                              <span className="rounded-full bg-muted/40 px-2 py-0.5">{staffKind(row)}</span>
+                            </div>
                           </td>
-                          <td className="px-4 py-3 text-muted-foreground">{staffKind(row)}</td>
                           <td className="px-4 py-3 text-right font-mono">{currency(row.totalPenalty)}</td>
                           <td className="px-4 py-3 text-right font-mono">{currency(row.paidAmount)}</td>
                           <td className={cn(
@@ -277,7 +281,7 @@ export default function PenaltyPaymentsPage() {
                     })}
                     {filteredRows.length === 0 && (
                       <tr>
-                        <td className="px-4 py-8 text-center text-muted-foreground" colSpan={5}>
+                        <td className="px-4 py-8 text-center text-muted-foreground" colSpan={4}>
                           No staff balances found for this week.
                         </td>
                       </tr>
@@ -290,23 +294,18 @@ export default function PenaltyPaymentsPage() {
 
           <Card className="self-start overflow-hidden">
             <div className="border-b border-border p-4">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
-                  <ReceiptText className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <h2 className="truncate text-lg font-semibold">{selectedRow?.fullName || 'Select staff'}</h2>
-                  <p className="text-sm text-muted-foreground">{selectedRow ? staffKind(selectedRow) : 'Choose a row to manage payments'}</p>
-                </div>
+              <div className="min-w-0">
+                <h2 className="truncate text-lg font-semibold">{selectedRow?.fullName || 'Select staff'}</h2>
+                <p className="text-sm text-muted-foreground">{selectedRow ? staffKind(selectedRow) : 'Choose a row'}</p>
               </div>
             </div>
 
             {selectedRow ? (
-              <div className="space-y-4 p-4">
-                <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-3 p-4">
+                <div className="grid grid-cols-3 divide-x divide-border rounded-md border border-border bg-background">
                   <BalanceStat label="Owed" value={currency(selectedRow.totalPenalty)} />
                   <BalanceStat label="Paid" value={currency(selectedRow.paidAmount)} />
-                  <BalanceStat label="Outstanding" value={currency(selectedRow.outstandingBalance)} highlight />
+                  <BalanceStat label="Balance" value={currency(selectedRow.outstandingBalance)} highlight />
                 </div>
 
                 <div className="rounded-md border border-border">
@@ -314,22 +313,22 @@ export default function PenaltyPaymentsPage() {
                     <CalendarDays className="h-4 w-4 text-muted-foreground" />
                     Late days
                   </div>
-                  <div className="max-h-72 overflow-y-auto">
+                  <div className="max-h-80 overflow-y-auto">
                     {selectedRow.entries.map((entry) => (
                       <div key={entry.entryId} className="border-b border-border px-3 py-3 last:border-b-0">
                         <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="font-medium">{entry.date}</div>
-                            <div className="mt-0.5 text-xs text-muted-foreground">
+                          <div className="min-w-0">
+                            <div className="font-semibold">{entry.date}</div>
+                            <div className="mt-0.5 truncate text-xs text-muted-foreground">
                               {entry.arrivalTime?.slice(0, 5) || '-'} - {entry.reason || 'Late arrival'}
                             </div>
                           </div>
                           <PaymentStatusBadge status={entry.status} />
                         </div>
-                        <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                        <div className="mt-2 grid grid-cols-3 gap-3 text-xs">
                           <MiniAmount label="Penalty" value={currency(entry.penaltyAmount)} />
                           <MiniAmount label="Paid" value={currency(entry.paidAmount)} />
-                          <MiniAmount label="Balance" value={currency(entry.outstandingAmount)} />
+                          <MiniAmount label="Balance" value={currency(entry.outstandingAmount)} highlight />
                         </div>
                         {moneyNumber(entry.outstandingAmount) > 0 && (
                           <Button
@@ -346,7 +345,7 @@ export default function PenaltyPaymentsPage() {
                             })}
                           >
                             {savingAction === `day-${entry.entryId}` && <Loader2 className="h-4 w-4 animate-spin" />}
-                            Mark day paid
+                            Mark paid
                           </Button>
                         )}
                       </div>
@@ -359,33 +358,35 @@ export default function PenaltyPaymentsPage() {
                   </div>
                 </div>
 
-                <div className="space-y-3 rounded-md border border-border p-3">
-                  <div>
-                    <label className="text-xs font-medium uppercase text-muted-foreground" htmlFor="payment-amount">
-                      Amount
-                    </label>
-                    <Input
-                      id="payment-amount"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={amount}
-                      onChange={(event) => setAmount(event.target.value)}
-                      placeholder="0.00"
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium uppercase text-muted-foreground" htmlFor="payment-note">
-                      Note
-                    </label>
-                    <Input
-                      id="payment-note"
-                      value={note}
-                      onChange={(event) => setNote(event.target.value)}
-                      placeholder="Optional payment note"
-                      className="mt-1"
-                    />
+                <div className="space-y-3 rounded-md border border-border bg-background p-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="text-xs font-medium uppercase text-muted-foreground" htmlFor="payment-amount">
+                        Amount
+                      </label>
+                      <Input
+                        id="payment-amount"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={amount}
+                        onChange={(event) => setAmount(event.target.value)}
+                        placeholder="0.00"
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium uppercase text-muted-foreground" htmlFor="payment-note">
+                        Note
+                      </label>
+                      <Input
+                        id="payment-note"
+                        value={note}
+                        onChange={(event) => setNote(event.target.value)}
+                        placeholder="Optional"
+                        className="mt-1"
+                      />
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <Button
@@ -399,7 +400,7 @@ export default function PenaltyPaymentsPage() {
                       })}
                     >
                       {savingAction === 'week' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Mark week paid
+                      Pay balance
                     </Button>
                     <Button
                       type="button"
@@ -428,18 +429,18 @@ export default function PenaltyPaymentsPage() {
 
 function BalanceStat({ highlight, label, value }: { highlight?: boolean; label: string; value: string }) {
   return (
-    <div className="rounded-md border border-border bg-background p-2">
+    <div className="min-w-0 p-3">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className={cn('mt-1 truncate font-mono text-sm font-semibold', highlight && 'text-warning')}>{value}</div>
     </div>
   );
 }
 
-function MiniAmount({ label, value }: { label: string; value: string }) {
+function MiniAmount({ highlight, label, value }: { highlight?: boolean; label: string; value: string }) {
   return (
-    <div className="rounded-md bg-muted/20 p-2">
+    <div className="min-w-0">
       <div className="text-muted-foreground">{label}</div>
-      <div className="mt-1 font-mono font-semibold">{value}</div>
+      <div className={cn('mt-0.5 truncate font-mono font-semibold', highlight && 'text-warning')}>{value}</div>
     </div>
   );
 }

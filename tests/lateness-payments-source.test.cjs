@@ -57,9 +57,12 @@ test('admin payments page and navigation expose payment management actions', () 
 
   assert.match(page, /Penalty Payments/);
   assert.match(page, /Record payment/);
-  assert.match(page, /Mark week paid/);
-  assert.match(page, /Mark day paid/);
+  assert.match(page, /Pay balance/);
+  assert.match(page, /Mark paid/);
+  assert.match(page, /sortPaymentRowsByBalance/);
   assert.match(page, /\/api\/payments\/lateness/);
+  assert.doesNotMatch(page, /Record full or partial lateness payments and keep staff balances transparent/);
+  assert.doesNotMatch(page, />Roster</);
   assert.match(sidebar, /Penalty Payments/);
   assert.match(sidebar, /href: '\/payments'/);
   assert.match(proxy, /\/payments\(\.\*\)/);
