@@ -61,9 +61,11 @@ test('admin payments page and navigation expose payment management actions', () 
   assert.match(page, /Penalty Payments/);
   assert.match(page, /Record payment/);
   assert.match(page, /Pay balance/);
-  assert.match(page, /Mark paid/);
+  assert.match(page, /Marked day paid/);
   assert.match(page, /Manage/);
   assert.match(page, /DialogContent/);
+  assert.match(page, /max-w-xl/);
+  assert.match(page, /compactPenaltyLine/);
   assert.match(page, /statusFilter/);
   assert.match(page, /paymentStatusForRow/);
   assert.match(page, /All penalty records/);
@@ -78,6 +80,10 @@ test('admin payments page and navigation expose payment management actions', () 
   assert.doesNotMatch(page, /Week start/);
   assert.doesNotMatch(page, /weekStart/);
   assert.doesNotMatch(page, /weekEnd/);
+  assert.doesNotMatch(page, /max-h-\[88dvh\] max-w-3xl overflow-y-auto/);
+  assert.doesNotMatch(page, /max-h-80 overflow-y-auto/);
+  assert.doesNotMatch(page, /MiniAmount/);
+  assert.doesNotMatch(page, />Mark paid</);
   assert.match(sidebar, /Penalty Payments/);
   assert.match(sidebar, /href: '\/payments'/);
   assert.match(proxy, /\/payments\(\.\*\)/);
