@@ -124,7 +124,7 @@ async function getCurrentBrowserLocation(): Promise<DraftLocation> {
   };
 }
 
-export default function WifiPage() {
+export default function LocationPage() {
   const [data, setData] = useState<OfficeLocationResponse | null>(null);
   const [draft, setDraft] = useState<DraftLocation | null>(null);
   const [mode, setMode] = useState<SaveMode>('default');
@@ -141,7 +141,6 @@ export default function WifiPage() {
 
   const resolvedLocation = data?.location || null;
   const defaultLocation = data?.defaultLocation || null;
-  const scheduledLocations = data?.scheduledLocations || [];
   const configured = Boolean(data?.configured);
   const setupUnavailable = data?.storageAvailable === false;
   const savedDefaultDraft = useMemo(() => savedToDraft(defaultLocation), [defaultLocation]);
@@ -150,11 +149,7 @@ export default function WifiPage() {
     [draft, mode, savedDefaultDraft],
   );
   const currentLocationLabel = resolvedLocation?.name || defaultLocation?.name || 'No location saved';
-  const currentLocationMeta = resolvedLocation
-    ? `Active today: ${resolvedLocation.name}`
-    : defaultLocation
-    ? 'Default office saved'
-    : 'Detect and save the office location.';
+  const currentPoint = coordinateLabel(resolvedLocation || defaultLocation);
 
   const fetchLocation = useCallback(async () => {
     setError(null);
@@ -230,7 +225,7 @@ export default function WifiPage() {
         ...location,
         name: mode === 'scheduled' ? 'Program Location' : 'Office Location',
       });
-      setSuccess('Location detected. Review the details, then save.');
+      setSuccess('Location detected.');
     } catch (err) {
       console.error('Failed to detect office location:', err);
       setError(locationErrorMessage(err));
@@ -277,9 +272,7 @@ export default function WifiPage() {
 
       await fetchLocation();
       setDraft(null);
-      setSuccess(mode === 'scheduled'
-        ? 'Program location saved. It will override the office on the scheduled dates.'
-        : 'Default office location saved.');
+      setSuccess(mode === 'scheduled' ? 'Program location saved.' : 'Office location saved.');
     } catch (err) {
       console.error('Failed to save office location:', err);
       setError(err instanceof Error ? err.message : 'Could not save location.');
@@ -302,60 +295,39 @@ export default function WifiPage() {
 
   return (
     <DashboardLayout title="Office Location">
-      <div className="mx-auto max-w-3xl space-y-4">
+      <div className="mx-auto max-w-2xl space-y-4">
         {loading && !data ? (
           <Card>
             <LoadingBuffer variant="section" />
           </Card>
         ) : (
           <Card className="overflow-hidden">
-            <div className="flex items-start justify-between gap-4 border-b border-border p-5">
-              <div className="flex min-w-0 items-start gap-3">
-                <div className={cn(
-                  'flex h-11 w-11 shrink-0 items-center justify-center rounded-md border',
-                  setupUnavailable
-                    ? 'border-danger/25 bg-danger/10 text-danger'
-                    : configured
-                    ? 'border-success/25 bg-success/10 text-success'
-                    : 'border-warning/25 bg-warning/10 text-warning',
-                )}>
-                  <MapPin className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-xl font-semibold">Office location</h2>
-                    <StatusBadge configured={configured} unavailable={setupUnavailable} />
-                  </div>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                    Stand at the location, detect it, then save.
-                  </p>
-                </div>
+            <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <h2 className="truncate text-lg font-semibold">Office Location</h2>
+                <StatusBadge configured={configured} unavailable={setupUnavailable} />
               </div>
-              <Button className="h-10 shrink-0 gap-2" variant="outline" onClick={refreshLocation} disabled={refreshing || saving || detecting}>
+              <Button
+                aria-label="Refresh location"
+                className="h-9 w-9 shrink-0 p-0"
+                title="Refresh"
+                variant="outline"
+                onClick={refreshLocation}
+                disabled={refreshing || saving || detecting}
+              >
                 {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                Refresh
               </Button>
             </div>
 
-            <div className="space-y-5 p-5">
-              <div className="rounded-md border border-border bg-background p-4">
-                <p className="text-xs font-medium uppercase text-muted-foreground">Current setting</p>
-                <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold" title={currentLocationLabel}>{currentLocationLabel}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{currentLocationMeta}</p>
-                  </div>
-                  {scheduledLocations.length > 0 && (
-                    <p className="shrink-0 text-sm text-muted-foreground">
-                      {scheduledLocations.length} program {scheduledLocations.length === 1 ? 'schedule' : 'schedules'}
-                    </p>
-                  )}
-                </div>
+            <div className="space-y-4 p-4">
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_14rem]">
+                <InfoBlock label="Current" value={currentLocationLabel} />
+                <InfoBlock label="Point" value={currentPoint} mono />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <ModeButton active={mode === 'default'} icon={<MapPin className="h-4 w-4" />} onClick={() => selectMode('default')}>
-                  Default office
+                  Default
                 </ModeButton>
                 <ModeButton active={mode === 'scheduled'} icon={<CalendarDays className="h-4 w-4" />} onClick={() => selectMode('scheduled')}>
                   Program
@@ -373,53 +345,30 @@ export default function WifiPage() {
                 </div>
               )}
 
-              <div className="rounded-md border border-dashed border-border bg-background p-5 text-center">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
-                  <Crosshair className="h-6 w-6" />
-                </div>
-                <h3 className="mt-4 text-lg font-semibold">
-                  {activeDraft ? 'Location ready' : 'Detect this location'}
-                </h3>
-                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-                  {activeDraft
-                    ? 'Review the name below, then save it for attendance checks.'
-                    : 'Allow location access when the browser asks. Run this while standing at the exact place staff should check in.'}
-                </p>
-                <Button className="mt-5 h-11 gap-2" onClick={detectCurrentLocation} disabled={detecting || saving}>
-                  {detecting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Crosshair className="h-5 w-5" />}
-                  Detect Current Location
-                </Button>
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_14rem]">
+                <Field label="Name">
+                  <Input
+                    className="h-11"
+                    disabled={saving || !activeDraft}
+                    value={activeDraft?.name || ''}
+                    onChange={(event) => setDraft((current) => {
+                      const base = current || activeDraft;
+                      if (!base) return current;
+                      return { ...base, name: event.target.value };
+                    })}
+                    placeholder={mode === 'scheduled' ? 'Program Location' : 'Office Location'}
+                  />
+                </Field>
+                <InfoBlock label="Point" value={coordinateLabel(activeDraft)} mono />
               </div>
-
-              {activeDraft && (
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_14rem]">
-                  <Field label="Location name">
-                    <Input
-                      className="h-11"
-                      disabled={saving}
-                      value={activeDraft.name || ''}
-                      onChange={(event) => setDraft((current) => {
-                        const base = current || activeDraft;
-                        if (!base) return current;
-                        return { ...base, name: event.target.value };
-                      })}
-                      placeholder={mode === 'scheduled' ? 'Program Location' : 'Office Location'}
-                    />
-                  </Field>
-                  <div className="rounded-md border border-border bg-background px-3 py-2">
-                    <p className="text-xs font-medium uppercase text-muted-foreground">Point</p>
-                    <p className="mt-1 break-words font-mono text-sm font-semibold">{coordinateLabel(activeDraft)}</p>
-                  </div>
-                </div>
-              )}
 
               <details className="group rounded-md border border-border bg-background">
                 <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold">
-                  Optional settings
+                  Options
                   <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
                 </summary>
                 <div className="grid gap-3 border-t border-border p-4 sm:grid-cols-2">
-                  <Field label="Attendance area">
+                  <Field label="Area">
                     <div className="relative">
                       <Input
                         className="h-11 pr-12 font-mono"
@@ -432,7 +381,7 @@ export default function WifiPage() {
                     </div>
                   </Field>
 
-                  <Field label="Location quality">
+                  <Field label="Quality">
                     <select
                       className="flex h-11 w-full rounded-md border border-border bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                       value={maxAccuracyMeters}
@@ -446,10 +395,16 @@ export default function WifiPage() {
                 </div>
               </details>
 
-              <Button className="h-11 w-full gap-2 text-base" onClick={saveLocation} disabled={saving || detecting || !activeDraft}>
-                {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
-                Save Location
-              </Button>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button className="h-11 gap-2" variant="outline" onClick={detectCurrentLocation} disabled={detecting || saving}>
+                  {detecting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Crosshair className="h-5 w-5" />}
+                  Detect
+                </Button>
+                <Button className="h-11 gap-2" onClick={saveLocation} disabled={saving || detecting || !activeDraft}>
+                  {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
+                  Save
+                </Button>
+              </div>
             </div>
           </Card>
         )}
@@ -470,6 +425,20 @@ export default function WifiPage() {
         )}
       </div>
     </DashboardLayout>
+  );
+}
+
+function InfoBlock({ label, mono, value }: { label: string; mono?: boolean; value: string }) {
+  return (
+    <div className="min-w-0 rounded-md border border-border bg-background px-3 py-2">
+      <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
+      <p className={cn(
+        'mt-1 text-sm font-semibold',
+        mono ? 'break-words font-mono' : 'truncate',
+      )} title={value}>
+        {value}
+      </p>
+    </div>
   );
 }
 

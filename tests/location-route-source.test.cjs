@@ -20,8 +20,34 @@ test('office location admin page uses the location route with a protected wifi r
   const legacyWifiPage = fs.readFileSync(legacyWifiPagePath, 'utf8');
 
   assert.match(locationPage, /DashboardLayout title="Office Location"/);
+  assert.match(locationPage, /export default function LocationPage/);
   assert.match(legacyWifiPage, /from 'next\/navigation'/);
   assert.match(legacyWifiPage, /redirect\('\/location'\)/);
+});
+
+test('location page keeps location APIs and core actions intact', () => {
+  const locationPage = fs.readFileSync(locationPagePath, 'utf8');
+
+  assert.match(locationPage, /fetch\(`\/api\/attendance\/location\?date=\$\{dateKey\(\)\}`/);
+  assert.match(locationPage, /fetch\('\/api\/attendance\/location'/);
+  assert.match(locationPage, /Detect\s*<\/Button>/);
+  assert.match(locationPage, /Save\s*<\/Button>/);
+  assert.match(locationPage, />\s*Default\s*</);
+  assert.match(locationPage, />\s*Program\s*</);
+  assert.match(locationPage, />\s*Options\s*</);
+  assert.match(locationPage, /StatusBadge/);
+});
+
+test('location page uses ultra-minimal copy instead of the old instruction panel', () => {
+  const locationPage = fs.readFileSync(locationPagePath, 'utf8');
+
+  assert.doesNotMatch(locationPage, /Stand at the location, detect it, then save/);
+  assert.doesNotMatch(locationPage, /Review the name below, then save it for attendance checks/);
+  assert.doesNotMatch(locationPage, /Allow location access when the browser asks/);
+  assert.doesNotMatch(locationPage, /Detect Current Location/);
+  assert.doesNotMatch(locationPage, /Save Location/);
+  assert.doesNotMatch(locationPage, /border-dashed/);
+  assert.doesNotMatch(locationPage, /export default function WifiPage/);
 });
 
 test('location navigation and notifications point to /location instead of /wifi', () => {
