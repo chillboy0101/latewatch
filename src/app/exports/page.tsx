@@ -6,13 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { ChevronDown, Download, FileSpreadsheet, Loader2 } from 'lucide-react';
-import { endOfMonth, format, parseISO, startOfMonth } from 'date-fns';
+import { endOfMonth, format, startOfMonth } from 'date-fns';
 import { getMonthWorkingWeeks, type WorkingWeekRange } from '@/lib/export-weeks';
 import {
   type AttendanceExportGroup,
   type AttendanceExportTemplate,
   getAttendanceExportFileName,
 } from '@/lib/attendance-export-shared';
+import { formatShortDisplayDate } from '@/lib/date-format';
 
 interface WeekSummary extends WorkingWeekRange {
   weekLabel: string;
@@ -335,7 +336,7 @@ export default function ExportsPage() {
                       <div className="min-w-0">
                         <p className="font-semibold">{week.weekLabel}</p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          {format(parseISO(week.exportStart), 'MMM d')} - {format(parseISO(week.exportEnd), 'MMM d')}
+                          {formatShortDisplayDate(week.exportStart)} - {formatShortDisplayDate(week.exportEnd)}
                           {' '}({week.dates.length} working day{week.dates.length === 1 ? '' : 's'})
                         </p>
                       </div>

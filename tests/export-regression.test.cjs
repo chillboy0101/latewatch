@@ -281,19 +281,19 @@ test('monthly export creates correct May 2026 sheets and preserves partial week 
   const [week1, week2, , , week5] = workbook.worksheets;
 
   assert.equal(workbook.worksheets.length, 5);
-  assert.equal(week1.name, 'Week 1 May 1-May 1');
+  assert.equal(week1.name, 'Week 1 01 May-01 May');
   assert.equal(week1.getCell(1, 1).value, 'FRIDAY, 1ST MAY 2026');
   assert.deepEqual(titleRowsVisible(week1), [1]);
   assert.deepEqual(titleRowsHidden(week1), [19, 37, 55, 73]);
   assert.equal(fillArgb(week1.getCell(1, 1)), 'FFC0C0C0');
 
-  assert.equal(week2.name, 'Week 2 May 4-May 8');
+  assert.equal(week2.name, 'Week 2 04 May-08 May');
   assert.equal(week2.getCell(1, 1).value, 'MONDAY, 4TH MAY 2026');
   assert.equal(week2.getCell(73, 1).value, 'FRIDAY, 8TH MAY 2026');
   assert.equal(fillArgb(week2.getCell(1, 1)), 'FFC0C0C0');
   assert.deepEqual(week2.getCell(95, 2).value, { formula: 'SUM(C4,C22,C40,C58,C76)' });
 
-  assert.equal(week5.name, 'Week 5 May 25-May 29');
+  assert.equal(week5.name, 'Week 5 25 May-29 May');
 });
 
 test('monthly export preserves visible cached weekly penalty totals', async () => {
@@ -313,7 +313,7 @@ test('monthly export preserves visible cached weekly penalty totals', async () =
   const workbook = await buildMayMonthlyWorkbook();
   const week2 = workbook.worksheets[1];
 
-  assert.equal(week2.name, 'Week 2 May 4-May 8');
+  assert.equal(week2.name, 'Week 2 04 May-08 May');
   assert.deepEqual(week2.getCell(95, 2).value, { formula: 'SUM(C4,C22,C40,C58,C76)', result: 20 });
   assert.deepEqual(week2.getCell(110, 2).value, { formula: 'SUM(B95:B96)', result: 20 });
 });

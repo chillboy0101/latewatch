@@ -3,6 +3,7 @@ import {
   getAuditEntityLabel,
   getAuditOperation,
 } from '@/lib/audit-taxonomy';
+import { formatDisplayDate, formatDisplayDateTime, isIsoDateKey } from '@/lib/date-format';
 
 export type AuditDisplayPayload = Record<string, unknown> | null;
 
@@ -87,9 +88,9 @@ export function formatAuditFieldLabel(field: string) {
 export function formatAuditValue(value: unknown): string {
   if (value === null || value === undefined || value === '') return '-';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-  if (value instanceof Date) return value.toLocaleString();
+  if (value instanceof Date) return formatDisplayDateTime(value);
   if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '-';
-  if (typeof value === 'string') return value;
+  if (typeof value === 'string') return isIsoDateKey(value) ? formatDisplayDate(value) : value;
   if (Array.isArray(value)) return value.length === 0 ? 'None' : `${value.length} item${value.length === 1 ? '' : 's'}`;
 
   if (typeof value === 'object') {

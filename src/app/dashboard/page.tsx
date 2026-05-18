@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { addDays, format, startOfWeek } from 'date-fns';
+import { addDays, startOfWeek } from 'date-fns';
 import {
   Activity,
   ClipboardList,
@@ -17,6 +17,7 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
+import { formatDisplayDateTime, formatShortDisplayDate } from '@/lib/date-format';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 
 interface WeekDayData {
@@ -104,7 +105,7 @@ export default function DashboardPage() {
     const today = new Date();
     const start = startOfWeek(today, { weekStartsOn: 1 });
     const end = addDays(start, 4);
-    return `${format(start, 'MMM dd')} - ${format(end, 'MMM dd')}`;
+    return `${formatShortDisplayDate(start)} - ${formatShortDisplayDate(end)}`;
   })();
 
   const penaltyChange = stats && stats.prevWeekTotal > 0
@@ -203,7 +204,7 @@ export default function DashboardPage() {
                   <ActivityItem
                     key={activity.id}
                     summary={activity.summary}
-                    time={activity.timestamp ? new Date(activity.timestamp).toLocaleString() : 'Recently'}
+                    time={activity.timestamp ? formatDisplayDateTime(activity.timestamp) : 'Recently'}
                   />
                 ))}
               </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
+import { DateField } from '@/components/ui/date-field';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card } from '@/components/ui/card';
@@ -11,6 +12,7 @@ import { addDays, format, isValid, parseISO } from 'date-fns';
 import { Save, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Clock, RefreshCw } from 'lucide-react';
 import { computePenalty } from '@/lib/penalty-calculator';
 import { getAccraDateKey } from '@/lib/date-key';
+import { formatLongDisplayDate } from '@/lib/date-format';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 
 interface StaffMember {
@@ -372,11 +374,11 @@ export default function EntriesPage() {
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <Input
-                type="date"
+              <DateField
+                ariaLabel="Entries date"
                 value={selectedDateKey}
-                onChange={(event) => handleDateInputChange(event.target.value)}
-                className="h-10 w-[168px]"
+                onChange={handleDateInputChange}
+                inputClassName="w-[168px]"
               />
               <Button
                 variant="outline"
@@ -394,8 +396,8 @@ export default function EntriesPage() {
             >
               Today
             </Button>
-            <span className="text-sm text-muted-foreground">
-              {format(selectedDate, 'EEEE,')} <span className="font-medium">{format(selectedDate, 'MMMM d, yyyy')}</span>
+            <span className="text-sm font-medium text-muted-foreground">
+              {formatLongDisplayDate(selectedDate)}
             </span>
           </div>
           <div className="flex items-center gap-2 self-start sm:self-auto">

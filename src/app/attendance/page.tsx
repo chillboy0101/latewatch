@@ -1,10 +1,11 @@
 'use client';
 
-import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Calendar, CheckCircle2, ChevronDown, Clock, FileText, Loader2, Printer, RotateCcw, Search, ShieldCheck, Smartphone, Trash2, UserRound, XCircle } from 'lucide-react';
+import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, CheckCircle2, ChevronDown, Clock, FileText, Loader2, Printer, RotateCcw, Search, ShieldCheck, Smartphone, Trash2, UserRound, XCircle } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { DateField } from '@/components/ui/date-field';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
@@ -16,6 +17,7 @@ import {
   formatLateArrivalPermissionReason,
   getPermissionWindowBounds,
 } from '@/lib/attendance-permissions';
+import { formatDisplayDate, formatDisplayDateTime, isIsoDateKey } from '@/lib/date-format';
 import { getAccraDateKey } from '@/lib/date-key';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
@@ -23,7 +25,6 @@ import { cn } from '@/lib/utils';
 type AttendanceStatus = 'present' | 'late' | 'excused' | 'expected_late' | 'permission_overdue' | 'no_sign_out' | 'not_checked_in';
 type AttendanceFilter = 'all' | 'on_time' | AttendanceStatus;
 type GeneralPardonType = 'absence' | 'late_arrival';
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 interface AttendancePermission {
   approvedByEmail: string;
@@ -138,66 +139,6 @@ function todayKey() {
   return getAccraDateKey();
 }
 
-function getDaysInMonth(year: number, month: number) {
-  return new Date(year, month, 0).getDate();
-}
-
-function isValidCompleteDate(value: string) {
-  if (!ISO_DATE_PATTERN.test(value)) return false;
-
-  const [yearText, monthText, dayText] = value.split('-');
-  const year = Number(yearText);
-  const month = Number(monthText);
-  const day = Number(dayText);
-
-  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return false;
-  if (month < 1 || month > 12) return false;
-
-  return day >= 1 && day <= getDaysInMonth(year, month);
-}
-
-function formatDateInput(value: string, previousValue = '') {
-  const digits = value.replace(/\D/g, '').slice(0, 8);
-
-  if (digits.length <= 4) return digits;
-
-  const yearText = digits.slice(0, 4);
-  const year = Number(yearText);
-  const rest = digits.slice(4);
-  let monthText = '';
-  let dayText = '';
-
-  if (rest.length === 1) {
-    const monthDigit = Number(rest);
-    monthText = monthDigit > 1 ? `0${rest}` : rest;
-  } else {
-    const monthCandidate = Number(rest.slice(0, 2));
-
-    if (monthCandidate >= 1 && monthCandidate <= 12) {
-      monthText = rest.slice(0, 2);
-      dayText = rest.slice(2, 4);
-    } else {
-      const firstMonthDigit = Number(rest[0]);
-      if (firstMonthDigit < 2 || firstMonthDigit > 9) return previousValue;
-
-      monthText = `0${rest[0]}`;
-      dayText = rest.slice(1, 3);
-    }
-  }
-
-  if (monthText.length === 2) {
-    const month = Number(monthText);
-    if (month < 1 || month > 12) return previousValue;
-
-    if (dayText.length === 2) {
-      const day = Number(dayText);
-      if (day < 1 || day > getDaysInMonth(year, month)) return previousValue;
-    }
-  }
-
-  return `${yearText}-${monthText}${dayText ? `-${dayText}` : ''}`;
-}
-
 function statusLabel(status: AttendanceStatus) {
   if (status === 'present') return 'On Time';
   if (status === 'late') return 'Late';
@@ -250,7 +191,7 @@ export default function AttendancePage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const appliedDate = isValidCompleteDate(dateInput) ? dateInput : '';
+  const appliedDate = isIsoDateKey(dateInput) ? dateInput : '';
   const attendanceDate = appliedDate || todayKey();
 
   useEffect(() => {
@@ -335,7 +276,7 @@ export default function AttendancePage() {
       return;
     }
     if (permissionType === 'absence') {
-      if (!isValidCompleteDate(permissionAbsenceStartDate) || !isValidCompleteDate(permissionAbsenceEndDate)) {
+      if (!isIsoDateKey(permissionAbsenceStartDate) || !isIsoDateKey(permissionAbsenceEndDate)) {
         setError('Select a valid absence start and end date.');
         return;
       }
@@ -410,7 +351,7 @@ export default function AttendancePage() {
   }
 
   async function applyGeneralPardon() {
-    if (!isValidCompleteDate(attendanceDate)) {
+    if (!isIsoDateKey(attendanceDate)) {
       setNotice(null);
       setError('Select a valid attendance date before applying a general pardon.');
       return;
@@ -430,7 +371,7 @@ export default function AttendancePage() {
       if (!response.ok) throw new Error(body.error || 'Could not apply general pardon');
 
       setGeneralPardonOpen(false);
-      setNotice(`General pardon applied to ${body.affectedCount ?? data?.rows.length ?? 0} staff for ${attendanceDate}.`);
+      setNotice(`General pardon applied to ${body.affectedCount ?? data?.rows.length ?? 0} staff for ${formatDisplayDate(attendanceDate)}.`);
       await fetchAttendance();
     } catch (err) {
       console.error('Failed to apply general pardon:', err);
@@ -725,17 +666,17 @@ export default function AttendancePage() {
               </>
             ) : (
               <>
-                <AttendanceDateField
+                <DateField
                   className="xl:col-span-3"
                   label="Absence Start"
                   value={permissionAbsenceStartDate}
-                  onChange={(value) => setPermissionAbsenceStartDate((current) => formatDateInput(value, current))}
+                  onChange={setPermissionAbsenceStartDate}
                 />
-                <AttendanceDateField
+                <DateField
                   className="xl:col-span-3"
                   label="Absence End"
                   value={permissionAbsenceEndDate}
-                  onChange={(value) => setPermissionAbsenceEndDate((current) => formatDateInput(value, current))}
+                  onChange={setPermissionAbsenceEndDate}
                 />
                 <SelectField
                   className="xl:col-span-10"
@@ -759,7 +700,7 @@ export default function AttendancePage() {
           <div className="flex flex-col gap-3 border-t border-border px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
               <p className="text-sm font-semibold">General pardon</p>
-              <p className="mt-1 text-xs text-muted-foreground">Excuse everyone or clear late fees for {attendanceDate}.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Excuse everyone or clear late fees for {formatDisplayDate(attendanceDate)}.</p>
             </div>
             <Button
               className="h-10 gap-2 lg:w-auto"
@@ -808,7 +749,7 @@ export default function AttendancePage() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>General pardon</DialogTitle>
-              <DialogDescription>{attendanceDate} - {data?.rows.length ?? 0} staff</DialogDescription>
+              <DialogDescription>{formatDisplayDate(attendanceDate)} - {data?.rows.length ?? 0} staff</DialogDescription>
             </DialogHeader>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -870,9 +811,10 @@ export default function AttendancePage() {
                 />
               </div>
             </div>
-            <AttendanceDateField
+            <DateField
               value={dateInput}
-              onChange={(value) => setDateInput((current) => formatDateInput(value, current))}
+              onChange={setDateInput}
+              label="Attendance Date"
             />
             <Button className="h-11 w-full gap-2 px-4 xl:self-end" onClick={printOfficeQr} disabled={!qrData?.qrSvg}>
               <Printer className="h-4 w-4" />
@@ -910,7 +852,7 @@ export default function AttendancePage() {
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{request.deviceLabel || 'New attendance device'}</p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {request.requestedAt ? new Date(request.requestedAt).toLocaleString() : 'Pending review'}
+                      {request.requestedAt ? formatDisplayDateTime(request.requestedAt) : 'Pending review'}
                     </p>
                   </div>
                   <div className="min-w-0">
@@ -1127,64 +1069,6 @@ function SummaryCard({
         <p className="mt-1.5 min-h-8 max-w-24 text-balance text-xs leading-4 text-muted-foreground">{label}</p>
       </div>
     </button>
-  );
-}
-
-function AttendanceDateField({
-  className,
-  label = 'Attendance Date',
-  onChange,
-  value,
-}: {
-  className?: string;
-  label?: string;
-  onChange: (value: string) => void;
-  value: string;
-}) {
-  const pickerRef = useRef<HTMLInputElement | null>(null);
-
-  function openPicker() {
-    const picker = pickerRef.current;
-    if (!picker) return;
-
-    if (typeof picker.showPicker === 'function') {
-      picker.showPicker();
-      return;
-    }
-
-    picker.click();
-  }
-
-  return (
-    <div className={className}>
-      <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">{label}</label>
-      <div className="relative">
-        <Input
-          type="text"
-          inputMode="numeric"
-          placeholder="YYYY-MM-DD"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          className="h-10 pr-11 font-mono text-sm"
-        />
-        <button
-          type="button"
-          aria-label="Open attendance date picker"
-          onClick={openPicker}
-          className="absolute right-1.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
-        >
-          <Calendar className="h-4 w-4" />
-        </button>
-        <input
-          ref={pickerRef}
-          type="date"
-          value={isValidCompleteDate(value) ? value : ''}
-          onChange={(event) => onChange(event.target.value)}
-          tabIndex={-1}
-          className="absolute right-1.5 top-1/2 h-7 w-7 -translate-y-1/2 opacity-0"
-        />
-      </div>
-    </div>
   );
 }
 

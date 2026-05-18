@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
+import { formatDisplayDate } from '@/lib/date-format';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 
@@ -408,7 +409,7 @@ export default function PenaltyPaymentsPage() {
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <div className="font-medium">
-                                {entry.date}
+                                {formatDisplayDate(entry.date)}
                                 <span className="ml-2 font-normal text-muted-foreground">
                                   {entry.arrivalTime?.slice(0, 5) || '-'}
                                 </span>

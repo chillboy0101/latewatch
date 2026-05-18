@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { getPermissionWindowBounds, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
 import { resolveAutoAttendanceAction } from '@/lib/auto-attendance';
+import { formatDisplayDate } from '@/lib/date-format';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
 import { applyThemePreference, getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 import { cn } from '@/lib/utils';
@@ -909,7 +910,7 @@ function PenaltyHistoryDialog({
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-semibold">Current week</h3>
-                  <p className="text-xs text-muted-foreground">{currentWeek.startDate} to {currentWeek.endDate}</p>
+                  <p className="text-xs text-muted-foreground">{formatDisplayDate(currentWeek.startDate)} to {formatDisplayDate(currentWeek.endDate)}</p>
                 </div>
                 <Button type="button" variant="outline" size="sm" onClick={onRefresh}>
                   Refresh
@@ -930,7 +931,7 @@ function PenaltyHistoryDialog({
                 {olderWeeks.map((week) => (
                   <details key={`${week.startDate}-${week.endDate}`} className="rounded-md border border-border bg-background">
                     <summary className="cursor-pointer px-3 py-2 text-sm font-medium">
-                      {week.startDate} to {week.endDate} - {ghc(week.outstandingBalance)} outstanding
+                      {formatDisplayDate(week.startDate)} to {formatDisplayDate(week.endDate)} - {ghc(week.outstandingBalance)} outstanding
                     </summary>
                     <div className="border-t border-border p-3">
                       <PenaltyHistoryEntries entries={week.entries} emptyLabel="No penalty days for this week." />
@@ -987,7 +988,7 @@ function PenaltyHistoryEntries({ emptyLabel, entries }: { emptyLabel: string; en
         <div key={entry.entryId} className="rounded-md border border-border bg-background p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-sm font-semibold">{entry.date}</div>
+              <div className="text-sm font-semibold">{formatDisplayDate(entry.date)}</div>
               <div className="mt-0.5 text-xs text-muted-foreground">
                 {entry.arrivalTime?.slice(0, 5) || '-'} - {entry.reason || 'Late arrival'}
               </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useState, useEffect, useCallback, useRef } from 'react';
+import { Fragment, useState, useEffect, useCallback } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
@@ -28,14 +28,14 @@ import {
   UserX,
   Archive,
   RotateCcw,
-  X,
 } from 'lucide-react';
-import { format } from 'date-fns';
 import {
   getAuditActionLabel,
   getAuditEntityLabel,
   getAuditOperation,
 } from '@/lib/audit-taxonomy';
+import { DateField } from '@/components/ui/date-field';
+import { formatDisplayDate, formatDisplayDateTime, isIsoDateKey } from '@/lib/date-format';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import {
   getAuditFieldChanges,
@@ -87,69 +87,6 @@ interface Pagination {
   totalPages: number;
 }
 
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-function getDaysInMonth(year: number, month: number) {
-  return new Date(year, month, 0).getDate();
-}
-
-function isValidCompleteDate(value: string) {
-  if (!ISO_DATE_PATTERN.test(value)) return false;
-
-  const [yearText, monthText, dayText] = value.split('-');
-  const year = Number(yearText);
-  const month = Number(monthText);
-  const day = Number(dayText);
-
-  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return false;
-  if (month < 1 || month > 12) return false;
-
-  const maxDay = getDaysInMonth(year, month);
-  return day >= 1 && day <= maxDay;
-}
-
-function formatDateInput(value: string, previousValue = '') {
-  const digits = value.replace(/\D/g, '').slice(0, 8);
-
-  if (digits.length <= 4) return digits;
-
-  const yearText = digits.slice(0, 4);
-  const year = Number(yearText);
-  const rest = digits.slice(4);
-  let monthText = '';
-  let dayText = '';
-
-  if (rest.length === 1) {
-    const monthDigit = Number(rest);
-    monthText = monthDigit > 1 ? `0${rest}` : rest;
-  } else {
-    const monthCandidate = Number(rest.slice(0, 2));
-
-    if (monthCandidate >= 1 && monthCandidate <= 12) {
-      monthText = rest.slice(0, 2);
-      dayText = rest.slice(2, 4);
-    } else {
-      const firstMonthDigit = Number(rest[0]);
-      if (firstMonthDigit < 2 || firstMonthDigit > 9) return previousValue;
-
-      monthText = `0${rest[0]}`;
-      dayText = rest.slice(1, 3);
-    }
-  }
-
-  if (monthText.length === 2) {
-    const month = Number(monthText);
-    if (month < 1 || month > 12) return previousValue;
-
-    if (dayText.length === 2) {
-      const day = Number(dayText);
-      if (day < 1 || day > getDaysInMonth(year, month)) return previousValue;
-    }
-  }
-
-  return `${yearText}-${monthText}${dayText ? `-${dayText}` : ''}`;
-}
-
 export default function AuditTrailPage() {
   const { user } = useUser();
   const [logs, setLogs] = useState<AuditEvent[]>([]);
@@ -165,8 +102,8 @@ export default function AuditTrailPage() {
     startDate: '',
     endDate: '',
   });
-  const appliedStartDate = isValidCompleteDate(dateInputs.startDate) ? dateInputs.startDate : '';
-  const appliedEndDate = isValidCompleteDate(dateInputs.endDate) ? dateInputs.endDate : '';
+  const appliedStartDate = isIsoDateKey(dateInputs.startDate) ? dateInputs.startDate : '';
+  const appliedEndDate = isIsoDateKey(dateInputs.endDate) ? dateInputs.endDate : '';
   const currentUserEmail = user?.primaryEmailAddress?.emailAddress || user?.emailAddresses[0]?.emailAddress || '';
 
   const getActorDisplayName = useCallback((actorEmail: string | null | undefined) => {
@@ -295,9 +232,13 @@ export default function AuditTrailPage() {
     }
   }
 
-  function getEntityLabel(entityType: string) {
-    return getAuditEntityLabel(entityType);
-  }
+function getEntityLabel(entityType: string) {
+  return getAuditEntityLabel(entityType);
+}
+
+function displayAuditDate(value: unknown, fallback = 'date') {
+  return typeof value === 'string' ? formatDisplayDate(value, fallback) : fallback;
+}
 
   function getDetails(event: AuditEvent) {
     const afterData = event.afterJson && typeof event.afterJson === 'object' ? event.afterJson : null;
@@ -318,7 +259,7 @@ export default function AuditTrailPage() {
       }
       if (event.entityType === 'entry_submission') {
         const count = Number(afterData?.entryCount || 0);
-        return `Entries submitted for ${afterData?.date || 'date'} (${count} late record${count === 1 ? '' : 's'})`;
+        return `Entries submitted for ${displayAuditDate(afterData?.date)} (${count} late record${count === 1 ? '' : 's'})`;
       }
       if (event.entityType === 'attendance') {
         const name = afterData?.staff?.fullName || 'Staff member';
@@ -326,7 +267,7 @@ export default function AuditTrailPage() {
       }
       if (event.entityType === 'attendance_permission') {
         const name = afterData?.staffName || 'Staff member';
-        return `${name} approved for ${afterData?.permissionType === 'absence' ? 'excused absence' : 'late arrival'} on ${afterData?.date || 'date'}`;
+        return `${name} approved for ${afterData?.permissionType === 'absence' ? 'excused absence' : 'late arrival'} on ${displayAuditDate(afterData?.date)}`;
       }
       if (event.entityType === 'emergency_contact') {
         const name = afterData?.contactName || 'Emergency contact';
@@ -334,7 +275,7 @@ export default function AuditTrailPage() {
         return staffName ? `${name} linked to ${staffName}` : `${name} saved`;
       }
       if (event.entityType === 'calendar') {
-        return `Holiday: "${afterData?.holidayNote || 'Unknown'}" on ${afterData?.date || 'date'}`;
+        return `Holiday: "${afterData?.holidayNote || 'Unknown'}" on ${displayAuditDate(afterData?.date)}`;
       }
       return `Created new ${getEntityLabel(event.entityType).toLowerCase()}`;
     }
@@ -364,7 +305,7 @@ export default function AuditTrailPage() {
       }
       if (event.entityType === 'entry_submission') {
         const count = Number(afterData?.entryCount || 0);
-        return `Entries updated for ${afterData?.date || 'date'} (${count} late record${count === 1 ? '' : 's'})`;
+        return `Entries updated for ${displayAuditDate(afterData?.date)} (${count} late record${count === 1 ? '' : 's'})`;
       }
       if (event.entityType === 'attendance_permission') {
         return `Permission updated for ${afterData?.staffName || beforeData?.staffName || 'staff member'}`;
@@ -373,7 +314,7 @@ export default function AuditTrailPage() {
         return `${afterData?.contactName || beforeData?.contactName || 'Emergency contact'} updated`;
       }
       if (event.entityType === 'calendar') {
-        return `Calendar entry for ${afterData?.date || 'date'} updated`;
+        return `Calendar entry for ${displayAuditDate(afterData?.date)} updated`;
       }
       if (event.entityType === 'office_network') {
         return `Office network updated${afterData?.allowedIp ? ` for ${afterData.allowedIp}` : ''}`;
@@ -404,7 +345,7 @@ export default function AuditTrailPage() {
 
     if (operation === 'GENERATE') {
       if (afterData?.weekStart) {
-        return `Weekly export (${afterData.weekStart} to ${afterData.weekEnd || '?'})`;
+        return `Weekly export (${displayAuditDate(afterData.weekStart)} to ${displayAuditDate(afterData.weekEnd, '?')})`;
       }
       return 'Monthly export generated';
     }
@@ -449,7 +390,7 @@ export default function AuditTrailPage() {
                 label="From"
                 value={dateInputs.startDate}
                 onChange={(value) => {
-                  setDateInputs((current) => ({ ...current, startDate: formatDateInput(value, current.startDate) }));
+                  setDateInputs((current) => ({ ...current, startDate: value }));
                   setCurrentPage(1);
                 }}
               />
@@ -458,7 +399,7 @@ export default function AuditTrailPage() {
                 label="To"
                 value={dateInputs.endDate}
                 onChange={(value) => {
-                  setDateInputs((current) => ({ ...current, endDate: formatDateInput(value, current.endDate) }));
+                  setDateInputs((current) => ({ ...current, endDate: value }));
                   setCurrentPage(1);
                 }}
               />
@@ -520,7 +461,7 @@ export default function AuditTrailPage() {
                       <tr className="hover:bg-card/50 transition-colors">
                         <td className="px-3 py-3 text-sm">
                           <div className="flex items-center gap-1.5 text-muted-foreground">
-                            {log.timestamp ? format(new Date(log.timestamp), 'MMM d, yyyy h:mm a') : '—'}
+                            {log.timestamp ? formatDisplayDateTime(log.timestamp) : '—'}
                           </div>
                         </td>
                         <td className="px-3 py-3 text-sm">
@@ -572,7 +513,7 @@ export default function AuditTrailPage() {
                                   <div className="space-y-2">
                                     <KeyValue label="Event ID" value={log.id} mono />
                                     <KeyValue label="Entity ID" value={log.entityId} mono />
-                                    <KeyValue label="Time" value={log.timestamp ? format(new Date(log.timestamp), 'PPpp') : '-'} />
+                                    <KeyValue label="Time" value={log.timestamp ? formatDisplayDateTime(log.timestamp) : '-'} />
                                     {log.actorUserId && <KeyValue label="Actor ID" value={log.actorUserId} mono />}
                                   </div>
                                 </div>
@@ -679,60 +620,13 @@ function DateFilter({
   onChange: (value: string) => void;
   value: string;
 }) {
-  const pickerRef = useRef<HTMLInputElement | null>(null);
-
-  const openPicker = () => {
-    const picker = pickerRef.current;
-    if (!picker) return;
-
-    if (typeof picker.showPicker === 'function') {
-      picker.showPicker();
-      return;
-    }
-
-    picker.click();
-  };
-
   return (
-    <div>
-      <label className="mb-2 block text-xs font-medium uppercase text-muted-foreground">{label}</label>
-      <div className="relative">
-        <Input
-          type="text"
-          inputMode="numeric"
-          placeholder="YYYY-MM-DD"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          className="h-10 pr-20 font-mono text-sm"
-        />
-        {value && (
-          <button
-            type="button"
-            aria-label={`Clear ${label.toLowerCase()} date`}
-            onClick={() => onChange('')}
-            className="absolute right-9 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
-        <button
-          type="button"
-          aria-label={`Open ${label.toLowerCase()} date picker`}
-          onClick={openPicker}
-          className="absolute right-1.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
-        >
-          <Calendar className="h-4 w-4" />
-        </button>
-        <input
-          ref={pickerRef}
-          type="date"
-          value={isValidCompleteDate(value) ? value : ''}
-          onChange={(event) => onChange(event.target.value)}
-          tabIndex={-1}
-          className="pointer-events-none absolute right-2 top-2 h-6 w-6 opacity-0"
-        />
-      </div>
-    </div>
+    <DateField
+      clearable
+      label={label}
+      value={value}
+      onChange={onChange}
+    />
   );
 }
 

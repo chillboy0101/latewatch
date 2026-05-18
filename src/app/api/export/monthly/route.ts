@@ -7,8 +7,8 @@ import { getAuditActor, tryWriteAuditEvent } from '@/lib/audit';
 import { getMonthWorkingWeeks, type WorkingWeekRange } from '@/lib/export-weeks';
 
 function sheetNameForWeek(week: WorkingWeekRange) {
-  const startLabel = format(parseISO(week.exportStart), 'MMM d');
-  const endLabel = format(parseISO(week.exportEnd), 'MMM d');
+  const startLabel = format(parseISO(week.exportStart), 'dd MMM');
+  const endLabel = format(parseISO(week.exportEnd), 'dd MMM');
   return `Week ${week.weekNumber} ${startLabel}-${endLabel}`
     .replace(/[\\/*?:[\]]/g, '')
     .slice(0, 31);

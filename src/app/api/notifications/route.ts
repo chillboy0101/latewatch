@@ -9,6 +9,7 @@ import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-late
 import { getPermissionWindowBounds, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
 import { getAuditActionLabel, getAuditEntityLabel, getAuditOperation } from '@/lib/audit-taxonomy';
 import { tryWriteAuditEvent } from '@/lib/audit';
+import { formatDisplayDate, isIsoDateKey } from '@/lib/date-format';
 import { publishRealtime } from '@/lib/realtime';
 import { NO_SIGN_OUT_ALERT_LABEL, shouldAlertNoSignOut } from '@/lib/work-hours';
 
@@ -178,7 +179,12 @@ function getTimeAgo(date: Date): string {
   if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
-  return date.toLocaleDateString();
+  return formatDisplayDate(date);
+}
+
+function notificationDateLabel(value: unknown, fallback = 'the selected date') {
+  if (typeof value !== 'string') return fallback;
+  return isIsoDateKey(value) ? formatDisplayDate(value) : value;
 }
 
 function makeNotification(
@@ -222,7 +228,7 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
   switch (operation) {
     case 'CREATE':
       if (event.entityType === 'entry_submission') {
-        const dateLabel = afterData?.date ? String(afterData.date) : 'the selected date';
+        const dateLabel = notificationDateLabel(afterData?.date);
         const entryCount = Number(afterData?.entryCount || 0);
 
         return makeNotification(
@@ -329,7 +335,7 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
           event,
           read,
           'Holiday added',
-          `${afterData?.holidayNote || 'Holiday'} was marked for ${afterData?.date || 'the selected date'}.`,
+          `${afterData?.holidayNote || 'Holiday'} was marked for ${notificationDateLabel(afterData?.date)}.`,
           'info',
           'normal',
         );
@@ -366,7 +372,7 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
 
     case 'UPDATE':
       if (event.entityType === 'entry_submission') {
-        const dateLabel = afterData?.date ? String(afterData.date) : 'the selected date';
+        const dateLabel = notificationDateLabel(afterData?.date);
         const entryCount = Number(afterData?.entryCount || 0);
 
         return makeNotification(
@@ -435,7 +441,7 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
           event,
           read,
           'Calendar updated',
-          `Calendar entry for ${afterData?.date || 'the selected date'} was modified.`,
+          `Calendar entry for ${notificationDateLabel(afterData?.date)} was modified.`,
           'info',
           'normal',
         );
@@ -513,7 +519,7 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
         read,
         'Export generated',
         afterData?.weekStart
-          ? `Weekly export generated for ${afterData.weekStart} to ${afterData.weekEnd || '?'}.`
+          ? `Weekly export generated for ${notificationDateLabel(afterData.weekStart)} to ${notificationDateLabel(afterData.weekEnd, '?')}.`
           : `Monthly export generated${afterData?.year ? ` for ${afterData.year}-${afterData.month || ''}` : ''}.`,
         'success',
         'normal',

@@ -15,6 +15,7 @@ import {
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { DateField } from '@/components/ui/date-field';
 import { Input } from '@/components/ui/input';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
@@ -337,10 +338,18 @@ export default function LocationPage() {
               {mode === 'scheduled' && (
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="Program starts">
-                    <Input className="h-11" type="date" value={scheduleStartDate} onChange={(event) => setScheduleStartDate(event.target.value)} />
+                    <DateField
+                      value={scheduleStartDate}
+                      onChange={setScheduleStartDate}
+                      inputClassName="h-11"
+                    />
                   </Field>
                   <Field label="Program ends">
-                    <Input className="h-11" type="date" value={scheduleEndDate} onChange={(event) => setScheduleEndDate(event.target.value)} />
+                    <DateField
+                      value={scheduleEndDate}
+                      onChange={setScheduleEndDate}
+                      inputClassName="h-11"
+                    />
                   </Field>
                 </div>
               )}
