@@ -5,6 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const entriesPagePath = path.join(__dirname, '../src/app/entries/page.tsx');
+const entriesRoutePath = path.join(__dirname, '../src/app/api/entries/route.ts');
 const recalculateScriptPath = path.join(__dirname, '../scripts/recalculate-regular-staff-penalties.mjs');
 
 test('entries page live penalty calculation preserves monitoring-only staff rules', () => {
@@ -67,6 +68,13 @@ test('entries page shows general pardon in the amount column for pardoned rows',
 
   assert.match(source, /isGeneralPardon/);
   assert.match(source, />General pardon</);
+});
+
+test('entries API sources saved arrival times from attendance records', () => {
+  const source = fs.readFileSync(entriesRoutePath, 'utf8');
+
+  assert.match(source, /checkInTime: attendanceRecord\.checkInTime/);
+  assert.match(source, /mergeAttendanceRowsIntoEntryRows\(\{ attendanceRows, entryRows: entries, permissionRows \}\)/);
 });
 
 test('regular staff recalculation apply notifies live pages to refetch entries', () => {

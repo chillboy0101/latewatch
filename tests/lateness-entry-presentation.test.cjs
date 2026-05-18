@@ -92,7 +92,7 @@ test('stored lateness entries win over attendance fallback rows', () => {
   assert.equal(rows[0].id, 'entry-1');
 });
 
-test('plain on-time attendance without a reason stays out of lateness entries', () => {
+test('plain on-time attendance without a reason appears on the entries page', () => {
   const rows = mergeAttendanceRowsIntoEntryRows({
     attendanceRows: [
       {
@@ -110,7 +110,11 @@ test('plain on-time attendance without a reason stays out of lateness entries', 
     entryRows: [],
   });
 
-  assert.equal(rows.length, 0);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, 'attendance:attendance-1');
+  assert.equal(rows[0].arrivalTime, '08:10:00');
+  assert.equal(rows[0].computedAmount, '0.00');
+  assert.equal(rows[0].reason, null);
 });
 
 test('manual on-time check-ins stay visible on the entries page', () => {

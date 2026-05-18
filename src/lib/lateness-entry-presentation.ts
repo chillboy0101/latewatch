@@ -47,6 +47,7 @@ export function isGeneralPardonEntryReason(value: string | null | undefined) {
 
 function hasVisibleAttendanceState(row: AttendanceEntryPresentationRow) {
   return (
+    Boolean(row.checkInTime) ||
     amountNumber(row.computedAmount) > 0 ||
     Boolean(row.reason) ||
     row.source === 'entries_manual_check_in' ||
