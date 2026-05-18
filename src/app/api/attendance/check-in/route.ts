@@ -307,6 +307,88 @@ function serializeDevice(device: {
   };
 }
 
+function normalizeTimeKey(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const time = value.slice(0, 5);
+  return /^\d{2}:\d{2}$/.test(time) ? time : null;
+}
+
+function isLegacyEntriesFallbackSignOut(attendance: typeof attendanceRecord.$inferSelect | null | undefined) {
+  return Boolean(
+    attendance &&
+    normalizeTimeKey(attendance.signOutTime) === '17:00' &&
+    attendance.signOutNetworkIp === 'manual_admin'
+  );
+}
+
+async function clearLegacyEntriesFallbackSignOut(input: {
+  actor: { email: string; id?: string | null };
+  attendance: typeof attendanceRecord.$inferSelect;
+  date: string;
+  staffName: string;
+}) {
+  if (!isLegacyEntriesFallbackSignOut(input.attendance)) {
+    return input.attendance;
+  }
+
+  const [updatedAttendance] = await db.update(attendanceRecord)
+    .set({
+      signOutAccuracyMeters: null,
+      signOutAt: null,
+      signOutDistanceMeters: null,
+      signOutLatitude: null,
+      signOutLocationAt: null,
+      signOutLocationVerified: false,
+      signOutLongitude: null,
+      signOutNetworkIp: null,
+      signOutOfficeLocationId: null,
+      signOutTime: null,
+      signOutUserAgent: null,
+      signOutVerificationResult: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(attendanceRecord.id, input.attendance.id))
+    .returning();
+
+  if (!updatedAttendance) {
+    return input.attendance;
+  }
+
+  await writeAuditEvent({
+    entityType: 'attendance',
+    entityId: updatedAttendance.id,
+    action: 'UPDATE',
+    before: input.attendance,
+    after: {
+      ...updatedAttendance,
+      repairedLegacyEntriesFallbackSignOut: true,
+      staff: { fullName: input.staffName },
+    },
+    actor: input.actor,
+    reason: 'attendance-sign-out-repair',
+  });
+
+  try {
+    await syncLatenessEntriesFromAttendanceForDate(input.date);
+  } catch (error) {
+    console.error('Failed to sync lateness after sign-out repair:', error);
+  }
+
+  const [syncedAttendance] = await db.select()
+    .from(attendanceRecord)
+    .where(eq(attendanceRecord.id, updatedAttendance.id))
+    .limit(1);
+
+  publishRealtime('dashboard', 'invalidate', { reason: 'attendance-sign-out-repair' });
+  publishRealtime('attendance', 'invalidate', { reason: 'attendance-sign-out-repair' });
+  publishRealtime('entries', 'invalidate', { reason: 'attendance-sign-out-repair' });
+  publishRealtime('payments', 'invalidate', { date: input.date, reason: 'attendance-sign-out-repair' });
+  publishRealtime('staff-penalty-history', 'invalidate', { date: input.date, reason: 'attendance-sign-out-repair' });
+  publishRealtime('notifications', 'invalidate', { reason: 'attendance-sign-out-repair' });
+
+  return syncedAttendance || updatedAttendance;
+}
+
 async function readActiveOfficeLocation() {
   try {
     return await getActiveOfficeLocation();
@@ -458,12 +540,21 @@ export async function GET(request: NextRequest) {
     const permission = member
       ? await getApprovedAttendancePermission(member.id, clock.dateKey)
       : null;
-    const [existingAttendance] = member
+    const [existingAttendanceRow] = member
       ? await db.select()
         .from(attendanceRecord)
         .where(and(eq(attendanceRecord.staffId, member.id), eq(attendanceRecord.date, clock.dateKey)))
         .limit(1)
       : [];
+    let existingAttendance = existingAttendanceRow || null;
+    if (member && existingAttendance) {
+      existingAttendance = await clearLegacyEntriesFallbackSignOut({
+        actor: { email: actorEmail, id: user.id },
+        attendance: existingAttendance,
+        date: clock.dateKey,
+        staffName: member.fullName,
+      });
+    }
     const [registeredDevice] = member
       ? await db.select()
         .from(staffDevice)
@@ -810,10 +901,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const [existingAttendance] = await db.select()
+    const [existingAttendanceRow] = await db.select()
       .from(attendanceRecord)
       .where(and(eq(attendanceRecord.staffId, staffMember.id), eq(attendanceRecord.date, clock.dateKey)))
       .limit(1);
+    let existingAttendance = existingAttendanceRow || null;
+    if (existingAttendance) {
+      existingAttendance = await clearLegacyEntriesFallbackSignOut({
+        actor: { email: actor.actorEmail, id: actor.actorUserId },
+        attendance: existingAttendance,
+        date: clock.dateKey,
+        staffName: staffMember.fullName,
+      });
+    }
 
     async function syncTrustedDevice() {
       const syncResult = await syncDeviceBinding({

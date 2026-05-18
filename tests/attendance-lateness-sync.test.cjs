@@ -194,7 +194,7 @@ const fakeDb = {
 
 const schema = {
   attendancePermission: createTable('attendancePermission', ['date', 'staffId', 'status']),
-  attendanceRecord: createTable('attendanceRecord', ['checkInTime', 'computedAmount', 'date', 'id', 'reason', 'signOutTime', 'staffId', 'status', 'updatedAt']),
+  attendanceRecord: createTable('attendanceRecord', ['checkInTime', 'computedAmount', 'date', 'id', 'reason', 'signOutNetworkIp', 'signOutTime', 'staffId', 'status', 'updatedAt']),
   latenessEntry: createTable('latenessEntry', ['id', 'date', 'staffId']),
   staff: createTable('staff', ['id', 'fullName', 'isAttendanceOnly', 'isNssPersonnel']),
 };
@@ -352,4 +352,33 @@ test('sync clears stale no-sign-out penalties after a sign-out is recorded', asy
   assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
   assert.equal(fixture.attendanceRecord[0].reason, null);
   assert.equal(fixture.attendanceRecord[0].status, 'present');
+});
+
+test('sync repairs legacy entries fallback sign-out and applies no-sign-out rules', async () => {
+  resetFixture();
+  fixture.attendancePermission = [];
+  fixture.attendanceRecord = [
+    {
+      id: 'attendance-1',
+      checkInTime: '08:05:00',
+      computedAmount: '0.00',
+      date: '2026-05-14',
+      reason: null,
+      signOutNetworkIp: 'manual_admin',
+      signOutTime: '17:00:00',
+      staffId: 'staff-1',
+      status: 'present',
+    },
+  ];
+
+  await syncLatenessEntriesFromAttendanceForDate('2026-05-14');
+
+  assert.equal(fixture.attendanceRecord[0].signOutTime, null);
+  assert.equal(fixture.attendanceRecord[0].signOutNetworkIp, null);
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '2.00');
+  assert.equal(fixture.attendanceRecord[0].reason, 'DID NOT SIGN OUT');
+  assert.equal(fixture.attendanceRecord[0].status, 'late');
+  assert.equal(fixture.latenessEntry.length, 1);
+  assert.equal(fixture.latenessEntry[0].computedAmount, '2.00');
+  assert.equal(fixture.latenessEntry[0].didNotSignOut, true);
 });

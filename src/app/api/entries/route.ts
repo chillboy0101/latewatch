@@ -261,8 +261,8 @@ export async function POST(request: NextRequest) {
       const didNotSignOutChanged =
         entry.didNotSignOutChanged === true ||
         (existing?.didNotSignOut === true) !== didNotSignOut;
-      const signOutCorrection = didNotSignOutChanged
-        ? didNotSignOut ? 'clear' : 'manual'
+      const signOutCorrection = didNotSignOutChanged && didNotSignOut
+        ? 'clear'
         : 'preserve';
 
       if (existingAttendance) {

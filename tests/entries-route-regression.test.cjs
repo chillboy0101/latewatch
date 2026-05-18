@@ -341,7 +341,7 @@ test('saving attendance and lateness changes for one staff reports that staff on
   assert.equal(responseBody.count, 1);
 });
 
-test('clearing no-sign-out from entries records a manual attendance sign-out', async () => {
+test('clearing no-sign-out from entries does not create a fake attendance sign-out', async () => {
   resetFixture();
   fixture.attendanceRecord[0] = {
     ...fixture.attendanceRecord[0],
@@ -380,8 +380,8 @@ test('clearing no-sign-out from entries records a manual attendance sign-out', a
   assert.equal(response.status, 200);
   const responseBody = await response.json();
   assert.equal(responseBody.changedStaffCount, 1);
-  assert.equal(fixture.attendanceRecord[0].signOutTime, '17:00');
-  assert.deepEqual(fixture.attendanceRecord[0].signOutAt, new Date('2026-05-06T17:00:00.000Z'));
+  assert.equal(fixture.attendanceRecord[0].signOutTime, null);
+  assert.equal(fixture.attendanceRecord[0].signOutAt, null);
   assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
   assert.equal(fixture.attendanceRecord[0].reason, null);
   assert.equal(fixture.attendanceRecord[0].status, 'present');

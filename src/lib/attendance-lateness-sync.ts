@@ -28,6 +28,13 @@ function amountText(value: number) {
   return value.toFixed(2);
 }
 
+function isLegacyEntriesFallbackSignOut(input: {
+  signOutNetworkIp?: string | null;
+  signOutTime?: string | null;
+}) {
+  return normalizeTimeKey(input.signOutTime) === '17:00' && input.signOutNetworkIp === 'manual_admin';
+}
+
 function rowKey(staffId: string, date: string) {
   return `${staffId}:${date}`;
 }
@@ -60,6 +67,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     reason: attendanceRecord.reason,
     isAttendanceOnly: staff.isAttendanceOnly,
     isNssPersonnel: staff.isNssPersonnel,
+    signOutNetworkIp: attendanceRecord.signOutNetworkIp,
     signOutTime: attendanceRecord.signOutTime,
     staffId: attendanceRecord.staffId,
     staffName: staff.fullName,
@@ -103,11 +111,15 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     const key = rowKey(row.staffId, date);
     const existing = existingByStaffDate.get(key);
     const activePermission = permissionsByStaffDate.get(key) || null;
+    const hasLegacyEntriesFallbackSignOut = isLegacyEntriesFallbackSignOut(row);
+    const signOutTime = hasLegacyEntriesFallbackSignOut
+      ? null
+      : normalizeTimeKey(row.signOutTime);
     const didNotSignOut = shouldApplyNoSignOutPenalty({
       checkInTime: normalizeTimeKey(row.checkInTime),
       date,
       existingDidNotSignOut: existing?.didNotSignOut === true,
-      signOutTime: normalizeTimeKey(row.signOutTime),
+      signOutTime,
     });
     const penalty = resolveManualPenalty({
       activePermission,
@@ -123,16 +135,32 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     processedKeys.add(key);
 
     const attendanceAmount = amountText(amountNumber(row.computedAmount));
-    const needsAttendanceUpdate =
+    const needsPenaltyAttendanceUpdate =
       attendanceAmount !== computedAmount ||
       (row.reason || null) !== attendanceReason ||
       (row.status || null) !== penalty.status;
 
-    if (needsAttendanceUpdate) {
+    if (needsPenaltyAttendanceUpdate || hasLegacyEntriesFallbackSignOut) {
       await db.update(attendanceRecord)
         .set({
           computedAmount,
           reason: attendanceReason,
+          ...(hasLegacyEntriesFallbackSignOut
+            ? {
+                signOutAccuracyMeters: null,
+                signOutAt: null,
+                signOutDistanceMeters: null,
+                signOutLatitude: null,
+                signOutLocationAt: null,
+                signOutLocationVerified: false,
+                signOutLongitude: null,
+                signOutNetworkIp: null,
+                signOutOfficeLocationId: null,
+                signOutTime: null,
+                signOutUserAgent: null,
+                signOutVerificationResult: null,
+              }
+            : {}),
           status: penalty.status,
           updatedAt: new Date(),
         })

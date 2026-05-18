@@ -1,6 +1,6 @@
 import { computePenalty } from '@/lib/penalty-calculator';
 import { formatAbsencePermissionReason, getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/attendance-permissions';
-import { WORKDAY_END_TIME, WORKDAY_START_TIME } from '@/lib/work-hours';
+import { WORKDAY_START_TIME } from '@/lib/work-hours';
 
 type AttendanceLike = {
   checkInAt: Date | string | null;
@@ -153,7 +153,7 @@ export function resolveManualAttendanceCorrection(input: {
   didNotSignOut: boolean;
   isAttendanceOnly?: boolean;
   isNssPersonnel?: boolean;
-  signOutCorrection?: 'clear' | 'manual' | 'preserve';
+  signOutCorrection?: 'clear' | 'preserve';
 }): ManualAttendanceCorrection {
   const currentArrivalTime = normalizeTime(input.attendance.checkInTime) || WORKDAY_START_TIME;
   const nextArrivalTime = input.arrivalTime || currentArrivalTime;
@@ -180,13 +180,6 @@ export function resolveManualAttendanceCorrection(input: {
   if (signOutCorrection === 'clear') {
     correction.signOutAt = null;
     correction.signOutTime = null;
-  } else if (signOutCorrection === 'manual') {
-    const existingSignOutTime = normalizeTime(input.attendance.signOutTime);
-    const existingSignOutAt = parseExistingDate(input.attendance.signOutAt || null);
-    const nextSignOutTime = existingSignOutTime || WORKDAY_END_TIME;
-
-    correction.signOutAt = existingSignOutAt || buildCheckInAt(input.date, nextSignOutTime);
-    correction.signOutTime = nextSignOutTime;
   }
 
   return correction;

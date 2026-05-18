@@ -49,6 +49,17 @@ test('check-in APIs expose and accept auto attendance source', () => {
   assert.match(attendanceRoute, /autoSignOutEnabled: staffDevice\.autoSignOutEnabled/);
 });
 
+test('check-in API repairs legacy entries fallback sign-outs', () => {
+  const route = fs.readFileSync(checkInRoutePath, 'utf8');
+
+  assert.match(route, /isLegacyEntriesFallbackSignOut/);
+  assert.match(route, /normalizeTimeKey\(attendance\.signOutTime\) === '17:00'/);
+  assert.match(route, /attendance\.signOutNetworkIp === 'manual_admin'/);
+  assert.match(route, /clearLegacyEntriesFallbackSignOut/);
+  assert.match(route, /signOutTime: null/);
+  assert.match(route, /attendance-sign-out-repair/);
+});
+
 test('check-in page renders independent auto toggles and calls auto settings/action APIs', () => {
   const source = fs.readFileSync(checkInPagePath, 'utf8');
 
