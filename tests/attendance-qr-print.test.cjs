@@ -6,7 +6,9 @@ const test = require('node:test');
 
 const attendancePagePath = path.join(__dirname, '../src/app/attendance/page.tsx');
 const attendanceApiPath = path.join(__dirname, '../src/app/api/attendance/route.ts');
+const attendanceCheckInApiPath = path.join(__dirname, '../src/app/api/attendance/check-in/route.ts');
 const attendancePermissionsApiPath = path.join(__dirname, '../src/app/api/attendance/permissions/route.ts');
+const notificationsApiPath = path.join(__dirname, '../src/app/api/notifications/route.ts');
 const generalPardonApiPath = path.join(__dirname, '../src/app/api/attendance/permissions/general-pardon/route.ts');
 const reconciliationPath = path.join(__dirname, '../src/lib/attendance-permission-reconciliation.ts');
 
@@ -141,4 +143,21 @@ test('attendance present and on-time filters stay distinct', () => {
   assert.match(apiSource, /if \(row\.attendance\?\.checkInTime\) acc\.present \+= 1/);
   assert.match(apiSource, /if \(row\.status === 'present'\) acc\.onTime \+= 1/);
   assert.match(apiSource, /onTime: 0/);
+});
+
+test('staff sign-out syncs penalties and invalidates entries and payment views', () => {
+  const source = fs.readFileSync(attendanceCheckInApiPath, 'utf8');
+
+  assert.match(source, /syncLatenessEntriesFromAttendanceForDate/);
+  assert.match(source, /await syncLatenessEntriesFromAttendanceForDate\(clock\.dateKey\)/);
+  assert.match(source, /publishRealtime\('entries', 'invalidate', \{ reason: 'attendance-sign-out' \}\)/);
+  assert.match(source, /publishRealtime\('payments', 'invalidate', \{ date: clock\.dateKey, reason: 'attendance-sign-out' \}\)/);
+  assert.match(source, /publishRealtime\('staff-penalty-history', 'invalidate', \{ date: clock\.dateKey, reason: 'attendance-sign-out' \}\)/);
+});
+
+test('system notifications sync lateness before reading weekly penalty totals', () => {
+  const source = fs.readFileSync(notificationsApiPath, 'utf8');
+
+  assert.match(source, /syncLatenessEntriesFromAttendanceForRange/);
+  assert.match(source, /await syncLatenessEntriesFromAttendanceForRange\(weekStart, todayStr\)[\s\S]*const weekEntries/);
 });

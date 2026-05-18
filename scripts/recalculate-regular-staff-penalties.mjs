@@ -245,6 +245,7 @@ for (const staffMember of staffRows) {
         staff_id as "staffId",
         date,
         check_in_time as "checkInTime",
+        sign_out_time as "signOutTime",
         computed_amount as "computedAmount",
         reason,
         status

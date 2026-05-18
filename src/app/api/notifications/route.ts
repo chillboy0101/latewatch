@@ -5,6 +5,7 @@ import { format, subDays } from 'date-fns';
 import { db } from '@/db';
 import { attendancePermission, attendanceRecord, auditEvent, latenessEntry, notificationRead, staff, workCalendar } from '@/db/schema';
 import { getAccraClock } from '@/lib/attendance';
+import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 import { getPermissionWindowBounds, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
 import { getAuditActionLabel, getAuditEntityLabel, getAuditOperation } from '@/lib/audit-taxonomy';
 import { tryWriteAuditEvent } from '@/lib/audit';
@@ -812,6 +813,7 @@ async function getSystemNotifications(readIds: Set<string>): Promise<Notificatio
   }
 
   const weekStart = format(subDays(today, dayOfWeek === 0 ? 6 : dayOfWeek - 1), 'yyyy-MM-dd');
+  await syncLatenessEntriesFromAttendanceForRange(weekStart, todayStr);
   const weekEntries = await db.select({ computedAmount: latenessEntry.computedAmount })
     .from(latenessEntry)
     .where(gte(latenessEntry.date, weekStart));

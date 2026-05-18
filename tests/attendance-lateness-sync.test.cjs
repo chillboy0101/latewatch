@@ -45,6 +45,7 @@ function resetFixture() {
       computedAmount: '15.00',
       date: '2026-05-15',
       reason: "DIDN'T COME BEFORE 8:30AM",
+      signOutTime: '16:45:00',
       staffId: 'staff-1',
       status: 'late',
     },
@@ -193,7 +194,7 @@ const fakeDb = {
 
 const schema = {
   attendancePermission: createTable('attendancePermission', ['date', 'staffId', 'status']),
-  attendanceRecord: createTable('attendanceRecord', ['checkInTime', 'computedAmount', 'date', 'id', 'reason', 'staffId', 'status', 'updatedAt']),
+  attendanceRecord: createTable('attendanceRecord', ['checkInTime', 'computedAmount', 'date', 'id', 'reason', 'signOutTime', 'staffId', 'status', 'updatedAt']),
   latenessEntry: createTable('latenessEntry', ['id', 'date', 'staffId']),
   staff: createTable('staff', ['id', 'fullName', 'isAttendanceOnly', 'isNssPersonnel']),
 };
@@ -202,6 +203,15 @@ Module._load = function patchedLoad(request, ...args) {
   if (request === 'server-only') return {};
   if (request === '@/db') return { db: fakeDb };
   if (request === '@/db/schema') return schema;
+  if (request === '@/lib/attendance') {
+    return {
+      getAccraClock: () => ({
+        dateKey: '2026-05-18',
+        now: new Date('2026-05-18T12:00:00.000Z'),
+        timeKey: '12:00:00',
+      }),
+    };
+  }
   if (request === 'drizzle-orm') {
     return {
       and: (...conditions) => ({ conditions, op: 'and' }),
@@ -256,6 +266,7 @@ test('sync deletes an existing positive lateness entry when a general pardon cle
 
 test('sync keeps only the no-sign-out amount for a late-only general pardon', async () => {
   resetFixture();
+  fixture.attendanceRecord[0].signOutTime = null;
   fixture.latenessEntry = [
     {
       id: 'entry-1',
@@ -278,4 +289,67 @@ test('sync keeps only the no-sign-out amount for a late-only general pardon', as
   assert.equal(fixture.attendanceRecord[0].status, 'late');
   assert.match(fixture.attendanceRecord[0].reason, /DID NOT SIGN OUT/);
   assert.match(fixture.attendanceRecord[0].reason, /general pardon/);
+});
+
+test('sync creates no-sign-out penalties for past attendance without sign-out', async () => {
+  resetFixture();
+  fixture.attendancePermission = [];
+  fixture.attendanceRecord = [
+    {
+      id: 'attendance-1',
+      checkInTime: '08:05:00',
+      computedAmount: '0.00',
+      date: '2026-05-14',
+      reason: null,
+      signOutTime: null,
+      staffId: 'staff-1',
+      status: 'present',
+    },
+  ];
+
+  await syncLatenessEntriesFromAttendanceForDate('2026-05-14');
+
+  assert.equal(fixture.latenessEntry.length, 1);
+  assert.equal(fixture.latenessEntry[0].arrivalTime, '08:05');
+  assert.equal(fixture.latenessEntry[0].computedAmount, '2.00');
+  assert.equal(fixture.latenessEntry[0].didNotSignOut, true);
+  assert.equal(fixture.latenessEntry[0].reason, 'DID NOT SIGN OUT');
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '2.00');
+  assert.equal(fixture.attendanceRecord[0].reason, 'DID NOT SIGN OUT');
+  assert.equal(fixture.attendanceRecord[0].status, 'late');
+});
+
+test('sync clears stale no-sign-out penalties after a sign-out is recorded', async () => {
+  resetFixture();
+  fixture.attendancePermission = [];
+  fixture.attendanceRecord = [
+    {
+      id: 'attendance-1',
+      checkInTime: '08:05:00',
+      computedAmount: '2.00',
+      date: '2026-05-14',
+      reason: 'DID NOT SIGN OUT',
+      signOutTime: '16:40:00',
+      staffId: 'staff-1',
+      status: 'late',
+    },
+  ];
+  fixture.latenessEntry = [
+    {
+      id: 'entry-1',
+      arrivalTime: '08:05:00',
+      computedAmount: '2.00',
+      date: '2026-05-14',
+      didNotSignOut: true,
+      reason: 'DID NOT SIGN OUT',
+      staffId: 'staff-1',
+    },
+  ];
+
+  await syncLatenessEntriesFromAttendanceForDate('2026-05-14');
+
+  assert.equal(fixture.latenessEntry.length, 0);
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
+  assert.equal(fixture.attendanceRecord[0].reason, null);
+  assert.equal(fixture.attendanceRecord[0].status, 'present');
 });

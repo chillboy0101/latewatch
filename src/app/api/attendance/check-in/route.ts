@@ -13,6 +13,7 @@ import {
   recordAttendanceAttempt,
   resolveClientIpInfo,
 } from '@/lib/attendance';
+import { syncLatenessEntriesFromAttendanceForDate } from '@/lib/attendance-lateness-sync';
 import { getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/attendance-permissions';
 import { getAuditActor, writeAuditEvent } from '@/lib/audit';
 import { computePenalty } from '@/lib/penalty-calculator';
@@ -973,8 +974,17 @@ export async function POST(request: NextRequest) {
           reason: 'attendance-sign-out',
         });
 
+        try {
+          await syncLatenessEntriesFromAttendanceForDate(clock.dateKey);
+        } catch (error) {
+          console.error('Failed to sync lateness after sign-out:', error);
+        }
+
         publishRealtime('dashboard', 'invalidate', { reason: 'attendance-sign-out' });
         publishRealtime('attendance', 'invalidate', { reason: 'attendance-sign-out' });
+        publishRealtime('entries', 'invalidate', { reason: 'attendance-sign-out' });
+        publishRealtime('payments', 'invalidate', { date: clock.dateKey, reason: 'attendance-sign-out' });
+        publishRealtime('staff-penalty-history', 'invalidate', { date: clock.dateKey, reason: 'attendance-sign-out' });
         publishRealtime('audit-trail', 'invalidate', { reason: 'attendance-sign-out' });
         publishRealtime('notifications', 'invalidate', { reason: 'attendance-sign-out' });
 

@@ -1,5 +1,6 @@
 import { getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/attendance-permissions';
 import { computePenalty } from '@/lib/penalty-calculator';
+import { shouldAlertNoSignOut } from '@/lib/work-hours';
 
 type AttendanceRecordLike = {
   checkInTime: string | null;
@@ -7,6 +8,7 @@ type AttendanceRecordLike = {
   date: Date | string;
   id: string;
   reason: string | null;
+  signOutTime?: string | null;
   status: string;
 };
 
@@ -87,6 +89,42 @@ function approvedLateArrivalReason(permission: PermissionLike) {
   return `Approved late arrival (${window.label}): ${permission.reason || ''}`.trim();
 }
 
+function getCurrentAccraClock() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    day: '2-digit',
+    hour: '2-digit',
+    hour12: false,
+    minute: '2-digit',
+    month: '2-digit',
+    timeZone: 'Africa/Accra',
+    year: 'numeric',
+  }).formatToParts(new Date());
+  const valueFor = (type: string) => parts.find((part) => part.type === type)?.value || '00';
+  const hour = valueFor('hour') === '24' ? '00' : valueFor('hour');
+
+  return {
+    dateKey: `${valueFor('year')}-${valueFor('month')}-${valueFor('day')}`,
+    timeKey: `${hour}:${valueFor('minute')}`,
+  };
+}
+
+function shouldApplyNoSignOutPenalty(input: {
+  checkInTime: string | null;
+  currentDateKey: string;
+  currentTimeKey: string;
+  date: string;
+  existingDidNotSignOut: boolean;
+  signOutKnown: boolean;
+  signOutTime: string | null;
+}) {
+  if (!input.signOutKnown) return input.existingDidNotSignOut;
+  if (!input.checkInTime || input.signOutTime) return false;
+  if (input.existingDidNotSignOut) return true;
+  if (input.date < input.currentDateKey) return true;
+  if (input.date > input.currentDateKey) return false;
+  return shouldAlertNoSignOut(input.currentTimeKey);
+}
+
 function resolvePenaltyState(input: {
   arrivalTime: string | null;
   didNotSignOut: boolean;
@@ -157,6 +195,8 @@ function entryNeedsUpdate(entry: LatenessEntryLike, next: {
 
 export function planStaffPenaltyRecalculation(input: {
   attendanceRecords: AttendanceRecordLike[];
+  currentDateKey?: string;
+  currentTimeKey?: string;
   isAttendanceOnly?: boolean;
   isNssPersonnel: boolean;
   latenessEntries: LatenessEntryLike[];
@@ -172,12 +212,23 @@ export function planStaffPenaltyRecalculation(input: {
   const entriesByDate = new Map(input.latenessEntries.map((entry) => [normalizeDateKey(entry.date), entry]));
   const permissionsByDate = new Map(input.permissions.map((permission) => [normalizeDateKey(permission.date), permission]));
   const handledEntryIds = new Set<string>();
+  const currentClock = input.currentDateKey && input.currentTimeKey
+    ? { dateKey: input.currentDateKey, timeKey: input.currentTimeKey }
+    : getCurrentAccraClock();
 
   for (const attendance of input.attendanceRecords) {
     const date = normalizeDateKey(attendance.date);
     const existingEntry = entriesByDate.get(date) || null;
-    const didNotSignOut = existingEntry?.didNotSignOut === true;
     const arrivalTime = normalizeTime(attendance.checkInTime);
+    const didNotSignOut = shouldApplyNoSignOutPenalty({
+      checkInTime: arrivalTime,
+      currentDateKey: currentClock.dateKey,
+      currentTimeKey: currentClock.timeKey,
+      date,
+      existingDidNotSignOut: existingEntry?.didNotSignOut === true,
+      signOutKnown: 'signOutTime' in attendance,
+      signOutTime: normalizeTime(attendance.signOutTime),
+    });
     const next = resolvePenaltyState({
       arrivalTime,
       didNotSignOut,

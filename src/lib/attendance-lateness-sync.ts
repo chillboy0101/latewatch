@@ -3,7 +3,9 @@ import 'server-only';
 import { and, eq, gte, lte } from 'drizzle-orm';
 import { db } from '@/db';
 import { attendancePermission, attendanceRecord, latenessEntry, staff } from '@/db/schema';
+import { getAccraClock } from '@/lib/attendance';
 import { resolveManualPenalty } from '@/lib/manual-attendance-correction';
+import { shouldAlertNoSignOut } from '@/lib/work-hours';
 
 function normalizeDateKey(value: unknown) {
   if (value instanceof Date) return value.toISOString().slice(0, 10);
@@ -30,6 +32,21 @@ function rowKey(staffId: string, date: string) {
   return `${staffId}:${date}`;
 }
 
+function shouldApplyNoSignOutPenalty(input: {
+  checkInTime: string | null;
+  date: string;
+  existingDidNotSignOut: boolean;
+  signOutTime: string | null;
+}) {
+  if (!input.checkInTime || input.signOutTime) return false;
+  if (input.existingDidNotSignOut) return true;
+
+  const clock = getAccraClock();
+  if (input.date < clock.dateKey) return true;
+  if (input.date > clock.dateKey) return false;
+  return shouldAlertNoSignOut(clock.timeKey);
+}
+
 export async function syncLatenessEntriesFromAttendanceForDate(dateKey: string) {
   return syncLatenessEntriesFromAttendanceForRange(dateKey, dateKey);
 }
@@ -43,6 +60,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     reason: attendanceRecord.reason,
     isAttendanceOnly: staff.isAttendanceOnly,
     isNssPersonnel: staff.isNssPersonnel,
+    signOutTime: attendanceRecord.signOutTime,
     staffId: attendanceRecord.staffId,
     staffName: staff.fullName,
     status: attendanceRecord.status,
@@ -85,7 +103,12 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     const key = rowKey(row.staffId, date);
     const existing = existingByStaffDate.get(key);
     const activePermission = permissionsByStaffDate.get(key) || null;
-    const didNotSignOut = existing?.didNotSignOut === true;
+    const didNotSignOut = shouldApplyNoSignOutPenalty({
+      checkInTime: normalizeTimeKey(row.checkInTime),
+      date,
+      existingDidNotSignOut: existing?.didNotSignOut === true,
+      signOutTime: normalizeTimeKey(row.signOutTime),
+    });
     const penalty = resolveManualPenalty({
       activePermission,
       arrivalTime,

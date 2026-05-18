@@ -151,3 +151,38 @@ test('marking staff as attendance monitoring only clears stored penalties and la
   assert.deepEqual(plan.latenessCreates, []);
   assert.deepEqual(plan.latenessDeletes, [{ id: 'entry-1' }]);
 });
+
+test('staff penalty recalculation creates missing no-sign-out penalties from attendance records', () => {
+  const plan = planStaffPenaltyRecalculation({
+    attendanceRecords: [{
+      checkInTime: '08:05:00',
+      computedAmount: '0.00',
+      date: '2026-05-06',
+      id: 'attendance-1',
+      reason: null,
+      signOutTime: null,
+      status: 'present',
+    }],
+    currentDateKey: '2026-05-07',
+    currentTimeKey: '10:00',
+    isNssPersonnel: false,
+    latenessEntries: [],
+    permissions: [],
+    staffId: 'staff-1',
+  });
+
+  assert.deepEqual(plan.attendanceUpdates, [{
+    computedAmount: '2.00',
+    id: 'attendance-1',
+    reason: 'DID NOT SIGN OUT',
+    status: 'late',
+  }]);
+  assert.deepEqual(plan.latenessCreates, [{
+    arrivalTime: '08:05',
+    computedAmount: '2.00',
+    date: '2026-05-06',
+    didNotSignOut: true,
+    reason: 'DID NOT SIGN OUT',
+    staffId: 'staff-1',
+  }]);
+});
