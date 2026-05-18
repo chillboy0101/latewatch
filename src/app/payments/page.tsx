@@ -105,6 +105,19 @@ function sortPaymentRowsByBalance(rows: PaymentStaffRow[]) {
     .map(({ row }) => row);
 }
 
+function sortPaymentEntriesNewestFirst(entries: PaymentEntry[]) {
+  return entries
+    .map((entry, index) => ({ entry, index }))
+    .sort((left, right) => {
+      const dateDifference = right.entry.date.localeCompare(left.entry.date);
+      if (dateDifference !== 0) return dateDifference;
+
+      const timeDifference = (right.entry.arrivalTime || '').localeCompare(left.entry.arrivalTime || '');
+      return timeDifference !== 0 ? timeDifference : left.index - right.index;
+    })
+    .map(({ entry }) => entry);
+}
+
 export default function PenaltyPaymentsPage() {
   const [data, setData] = useState<PaymentsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -203,6 +216,9 @@ export default function PenaltyPaymentsPage() {
   const selectedRow = useMemo(() => {
     return (data?.staff || []).find((row) => row.id === selectedStaffId && row.isAttendanceOnly !== true) || null;
   }, [data?.staff, selectedStaffId]);
+  const selectedEntries = useMemo(() => {
+    return selectedRow ? sortPaymentEntriesNewestFirst(selectedRow.entries) : [];
+  }, [selectedRow]);
 
   function openPaymentDialog(row: PaymentStaffRow) {
     setSelectedStaffId(row.id);
@@ -387,7 +403,7 @@ export default function PenaltyPaymentsPage() {
 
                 <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">
                   <div className="space-y-2">
-                      {selectedRow.entries.map((entry) => (
+                      {selectedEntries.map((entry) => (
                         <div key={entry.entryId} className="rounded-md border border-border px-3 py-2">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
@@ -431,7 +447,7 @@ export default function PenaltyPaymentsPage() {
                           </div>
                         </div>
                       ))}
-                      {selectedRow.entries.length === 0 && (
+                      {selectedEntries.length === 0 && (
                         <div className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
                           No penalty days found.
                         </div>

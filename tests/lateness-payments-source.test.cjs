@@ -89,6 +89,8 @@ test('admin payments page and navigation expose payment management actions', () 
   assert.match(page, /statusFilter/);
   assert.match(page, /paymentStatusForRow/);
   assert.match(page, /sortPaymentRowsByBalance/);
+  assert.match(page, /sortPaymentEntriesNewestFirst/);
+  assert.match(page, /selectedEntries\.map/);
   assert.match(page, /subscribeRealtimeChannel/);
   assert.match(page, /'payments', 'entries', 'attendance'/);
   assert.match(page, /\/api\/payments\/lateness/);
