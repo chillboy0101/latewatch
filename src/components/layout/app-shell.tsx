@@ -8,7 +8,7 @@ const WORKSPACE_TITLES: Record<string, string> = {
   attendance: 'Attendance',
   calendar: 'Calendar',
   dashboard: 'Dashboard',
-  entries: 'Lateness Entries',
+  entries: 'Entries',
   'emergency-contacts': 'Emergency Contacts',
   exports: 'Lateness Exports',
   payments: 'Penalty Payments',

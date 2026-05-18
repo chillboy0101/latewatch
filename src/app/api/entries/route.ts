@@ -25,6 +25,7 @@ async function getAttendanceRowsForEntries(start: string, end: string) {
     date: attendanceRecord.date,
     checkInTime: attendanceRecord.checkInTime,
     reason: attendanceRecord.reason,
+    source: attendanceRecord.source,
     computedAmount: attendanceRecord.computedAmount,
     createdAt: attendanceRecord.createdAt,
     updatedAt: attendanceRecord.updatedAt,
@@ -57,6 +58,10 @@ async function getActivePermissionsForDate(date: string) {
     .where(and(eq(attendancePermission.date, date), eq(attendancePermission.status, 'approved')));
 
   return new Map(permissionRows.map((permission) => [permission.staffId, permission]));
+}
+
+function buildManualCheckInAt(date: string, time: string) {
+  return new Date(`${date}T${time}:00.000Z`);
 }
 
 export async function GET(request: NextRequest) {
@@ -191,6 +196,7 @@ export async function POST(request: NextRequest) {
 
     const results = [];
     let deletedCount = 0;
+    let attendanceChangedCount = 0;
 
     for (const entry of entries) {
       if (!entry || typeof entry.staffId !== 'string' || !allowedStaffIds.has(entry.staffId)) {
@@ -257,7 +263,42 @@ export async function POST(request: NextRequest) {
               actor: { email: actor.actorEmail, id: actor.actorUserId },
               reason: 'entries',
             });
+            attendanceChangedCount += 1;
           }
+        }
+      } else if (arrivalTime && activeStaffIds.has(entry.staffId)) {
+        const manualAttendanceValues = {
+          staffId: entry.staffId,
+          date,
+          checkInAt: buildManualCheckInAt(date, arrivalTime),
+          checkInTime: arrivalTime,
+          status: penalty.status,
+          source: 'entries_manual_check_in',
+          networkIp: 'manual_admin',
+          userAgent: request.headers.get('user-agent') || 'manual_entries',
+          computedAmount: penalty.amount.toFixed(2),
+          reason: penalty.reason,
+        };
+        const [createdAttendance] = await db.insert(attendanceRecord)
+          .values(manualAttendanceValues)
+          .returning();
+
+        if (createdAttendance) {
+          attendanceByStaffId.set(entry.staffId, createdAttendance);
+
+          await writeAuditEvent({
+            entityType: 'attendance',
+            entityId: createdAttendance.id,
+            action: 'CREATE',
+            before: null,
+            after: {
+              ...createdAttendance,
+              staff: { fullName: staffMap.get(entry.staffId) || 'Unknown' },
+            },
+            actor: { email: actor.actorEmail, id: actor.actorUserId },
+            reason: 'entries',
+          });
+          attendanceChangedCount += 1;
         }
       }
 
@@ -379,6 +420,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       count: results.length,
+      attendanceCount: attendanceChangedCount,
       deletedCount,
       submittedAt: submission?.submittedAt,
     });

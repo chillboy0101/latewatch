@@ -35,7 +35,7 @@ const navigation = [
   { name: 'Emergency', href: '/emergency-contacts', icon: PhoneCall },
   { name: 'Attendance', href: '/attendance', icon: ClipboardCheck },
   { name: 'Location', href: '/wifi', icon: MapPin },
-  { name: 'Lateness Entries', href: '/entries', icon: Table2 },
+  { name: 'Entries', href: '/entries', icon: Table2 },
   { name: 'Lateness Exports', href: '/exports', icon: Download },
   { name: 'Penalty Payments', href: '/payments', icon: ReceiptText },
   { name: 'Calendar', href: '/calendar', icon: Calendar },

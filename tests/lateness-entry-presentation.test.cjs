@@ -112,3 +112,28 @@ test('plain on-time attendance without a reason stays out of lateness entries', 
 
   assert.equal(rows.length, 0);
 });
+
+test('manual on-time check-ins stay visible on the entries page', () => {
+  const rows = mergeAttendanceRowsIntoEntryRows({
+    attendanceRows: [
+      {
+        id: 'attendance-1',
+        checkInTime: '08:10:00',
+        computedAmount: '0.00',
+        createdAt: new Date('2026-05-06T08:10:00.000Z'),
+        date: '2026-05-06',
+        reason: null,
+        source: 'entries_manual_check_in',
+        staffId: 'staff-1',
+        status: 'present',
+        updatedAt: new Date('2026-05-06T08:10:00.000Z'),
+      },
+    ],
+    entryRows: [],
+  });
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].arrivalTime, '08:10:00');
+  assert.equal(rows[0].computedAmount, '0.00');
+  assert.equal(rows[0].reason, null);
+});

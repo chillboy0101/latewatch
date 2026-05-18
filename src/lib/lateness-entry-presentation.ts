@@ -17,6 +17,7 @@ export type AttendanceEntryPresentationRow = {
   date: string;
   id: string;
   reason?: string | null;
+  source?: string | null;
   staffId: string;
   status?: string | null;
   updatedAt?: Date | string | null;
@@ -48,6 +49,7 @@ function hasVisibleAttendanceState(row: AttendanceEntryPresentationRow) {
   return (
     amountNumber(row.computedAmount) > 0 ||
     Boolean(row.reason) ||
+    row.source === 'entries_manual_check_in' ||
     row.status === 'late' ||
     row.status === 'excused'
   );

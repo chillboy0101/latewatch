@@ -111,6 +111,12 @@ function updateTable(tableName, values) {
 }
 
 function insertIntoTable(tableName, values) {
+  if (tableName === 'attendanceRecord') {
+    const nextRow = { id: `attendance-${fixture.attendanceRecord.length + 1}`, ...values };
+    fixture.attendanceRecord.push(nextRow);
+    return [cloneRow(nextRow)];
+  }
+
   if (tableName === 'entrySubmission') {
     const existing = fixture.entrySubmission.find((row) => row.date === values.date);
     const nextRow = existing
@@ -272,6 +278,38 @@ test('saving a corrected lateness entry also updates the linked attendance recor
   assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
   assert.equal(fixture.attendanceRecord[0].reason, null);
   assert.equal(fixture.attendanceRecord[0].status, 'present');
+});
+
+test('saving entries creates a manual attendance check-in when staff has no attendance record', async () => {
+  resetFixture();
+  fixture.attendanceRecord = [];
+  fixture.latenessEntry = [];
+
+  const response = await POST(new Request('http://localhost/api/entries', {
+    body: JSON.stringify({
+      date: '2026-05-06',
+      entries: [
+        {
+          arrivalTime: '08:05',
+          didNotSignOut: false,
+          staffId: 'staff-1',
+        },
+      ],
+    }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  }));
+
+  assert.equal(response.status, 200);
+  const responseBody = await response.json();
+  assert.equal(responseBody.attendanceCount, 1);
+  assert.equal(fixture.attendanceRecord.length, 1);
+  assert.equal(fixture.attendanceRecord[0].checkInTime, '08:05');
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
+  assert.equal(fixture.attendanceRecord[0].reason, null);
+  assert.equal(fixture.attendanceRecord[0].source, 'entries_manual_check_in');
+  assert.equal(fixture.attendanceRecord[0].status, 'present');
+  assert.equal(fixture.latenessEntry.length, 0);
 });
 
 test('saving a lateness entry uses the NSS flat late penalty', async () => {

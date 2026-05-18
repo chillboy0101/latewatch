@@ -18,9 +18,23 @@ test('entries page exposes an icon-only refresh button beside save entries', () 
   const source = fs.readFileSync(entriesPagePath, 'utf8');
 
   assert.match(source, /RefreshCw/);
-  assert.match(source, /aria-label="Refresh lateness entries"/);
+  assert.match(source, /aria-label="Refresh entries"/);
   assert.match(source, /onClick=\{\(\) => \{\s*setMessage\(null\);\s*void fetchStaffAndEntries\(\);\s*\}\}/);
   assert.match(source, /<RefreshCw className="h-4 w-4" \/>/);
+});
+
+test('entries page uses general entries wording instead of lateness-only labels', () => {
+  const pageSource = fs.readFileSync(entriesPagePath, 'utf8');
+  const sidebarSource = fs.readFileSync(path.join(__dirname, '../src/components/layout/sidebar.tsx'), 'utf8');
+  const shellSource = fs.readFileSync(path.join(__dirname, '../src/components/layout/app-shell.tsx'), 'utf8');
+
+  assert.match(pageSource, /DashboardLayout title="Entries"/);
+  assert.match(pageSource, /Save Entries/);
+  assert.match(sidebarSource, /name: 'Entries'/);
+  assert.match(shellSource, /entries: 'Entries'/);
+  assert.doesNotMatch(pageSource, /Save Lateness Entries/);
+  assert.doesNotMatch(sidebarSource, /Lateness Entries/);
+  assert.doesNotMatch(shellSource, /Lateness Entries/);
 });
 
 test('entries page omits removed manual message queue controls', () => {

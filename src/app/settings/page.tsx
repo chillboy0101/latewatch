@@ -68,7 +68,7 @@ export default function SettingsPage() {
             <h2 className="mb-4 text-lg font-semibold">Quick Links</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <QuickLink href="/dashboard" label="Dashboard" desc="View overview and stats" />
-              <QuickLink href="/entries" label="Lateness Entries" desc="Record lateness data" />
+              <QuickLink href="/entries" label="Entries" desc="Record manual check-ins and penalties" />
               <QuickLink href="/staff" label="Staff Management" desc="Manage staff members" />
               <QuickLink href="/exports" label="Lateness Exports" desc="Generate reports" />
               <QuickLink href="/calendar" label="Calendar" desc="View holidays" />

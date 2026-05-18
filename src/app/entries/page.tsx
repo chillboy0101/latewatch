@@ -196,8 +196,9 @@ export default function EntriesPage() {
       if (response.ok) {
         const data = await response.json();
         const savedCount = Number(data.count || 0);
+        const attendanceCount = Number(data.attendanceCount || 0);
         const deletedCount = Number(data.deletedCount || 0);
-        const totalChanges = savedCount + deletedCount;
+        const totalChanges = savedCount + attendanceCount + deletedCount;
         setMessage({
           type: 'success',
           text: totalChanges > 0
@@ -208,11 +209,11 @@ export default function EntriesPage() {
         setTimeout(() => fetchStaffAndEntries(), 50);
       } else {
         const errorData = await response.json();
-        setMessage({ type: 'error', text: errorData.error || 'Failed to save lateness entries' });
+        setMessage({ type: 'error', text: errorData.error || 'Failed to save entries' });
       }
     } catch (error) {
-      console.error('Failed to save lateness entries:', error);
-      setMessage({ type: 'error', text: 'Failed to save lateness entries' });
+      console.error('Failed to save entries:', error);
+      setMessage({ type: 'error', text: 'Failed to save entries' });
     } finally {
       setSaving(false);
       // Auto-dismiss message after 5 seconds
@@ -248,11 +249,11 @@ export default function EntriesPage() {
 
   if (loading) {
     return (
-      <DashboardLayout title="Lateness Entries">
+      <DashboardLayout title="Entries">
         <LoadingBuffer
           variant="page"
-          label="Loading lateness entries"
-          description="Checking staff, holidays, and saved lateness records."
+          label="Loading entries"
+          description="Checking staff, holidays, and saved records."
         />
       </DashboardLayout>
     );
@@ -260,12 +261,12 @@ export default function EntriesPage() {
 
   if (staff.length === 0) {
     return (
-      <DashboardLayout title="Lateness Entries">
+      <DashboardLayout title="Entries">
         <div className="space-y-6">
           <Card>
             <div className="p-8 text-center">
               <p className="text-lg mb-2">No staff members found</p>
-              <p className="text-sm text-muted-foreground mb-4">Please add staff members first before recording lateness entries</p>
+              <p className="text-sm text-muted-foreground mb-4">Please add staff members first before recording entries</p>
               <Button onClick={() => window.location.href = '/staff'}>
                 Go to Staff Management
               </Button>
@@ -277,7 +278,7 @@ export default function EntriesPage() {
   }
 
   return (
-    <DashboardLayout title="Lateness Entries">
+    <DashboardLayout title="Entries">
       <div className="space-y-6">
         {/* Success/Error Message */}
         {message && (
@@ -306,7 +307,7 @@ export default function EntriesPage() {
                 <div className="min-w-0">
                   <h2 className="text-base font-semibold">{isWeekend ? 'Weekend' : holidayName}</h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    No lateness entries can be recorded on {isWeekend ? 'weekends.' : 'public holidays.'}
+                    No entries can be recorded on {isWeekend ? 'weekends.' : 'public holidays.'}
                   </p>
                 </div>
               </div>
@@ -354,21 +355,21 @@ export default function EntriesPage() {
           </div>
           <div className="flex items-center gap-2 self-start sm:self-auto">
             <Button
-              aria-label="Refresh lateness entries"
+              aria-label="Refresh entries"
               disabled={saving}
               onClick={() => {
                 setMessage(null);
                 void fetchStaffAndEntries();
               }}
               size="icon"
-              title="Refresh lateness entries"
+              title="Refresh entries"
               variant="outline"
             >
               <RefreshCw className="h-4 w-4" />
             </Button>
             <Button onClick={handleSaveAll} disabled={saving || entriesDisabled}>
               <Save className="mr-2 h-4 w-4" />
-              {saving ? 'Saving...' : entriesDisabled ? 'Closed - No Entries' : 'Save Lateness Entries'}
+              {saving ? 'Saving...' : entriesDisabled ? 'Closed - No Entries' : 'Save Entries'}
             </Button>
           </div>
         </div>
