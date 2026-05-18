@@ -428,7 +428,7 @@ export default function StaffPage() {
     <DashboardLayout title="Staff">
       <div className="space-y-6">
         {/* Stats Bar */}
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid auto-cols-[minmax(10.5rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-6 xl:overflow-visible xl:pb-0">
           {staffFilterCards.map((card) => {
             const selected = staffFilter === card.key;
 

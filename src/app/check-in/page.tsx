@@ -2,7 +2,6 @@
 
 import { UserButton, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
-import type { ReactNode } from 'react';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, LogOut, MapPin, Moon, ReceiptText, ShieldCheck, Sun, XCircle } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
@@ -125,9 +124,10 @@ type LocationEvidence = {
 };
 
 type LiveLocation =
-  | { blocking: false; message: string; state: 'idle' | 'inside' }
+  | { blocking: false; message: string; state: 'idle' }
+  | { blocking: false; distanceMeters: number | null; message: string; state: 'inside' }
   | { blocking: false; message: string; state: 'checking' }
-  | { blocking: true; message: string; state: 'error' | 'outside' | 'weak' };
+  | { blocking: true; distanceMeters?: number | null; message: string; state: 'error' | 'outside' | 'weak' };
 type AttendanceAction = 'check_in' | 'sign_out';
 type AttendanceSource = 'auto_attendance' | 'staff_portal';
 
@@ -181,22 +181,34 @@ function locationValue(status: CheckInStatus | null, liveLocation: LiveLocation)
 
   if (liveLocation.state === 'checking') return 'Checking...';
   if (liveLocation.state === 'inside') {
+    const distanceLabel = locationDistanceLabel(liveLocation.distanceMeters);
+
     return (
       <span className="inline-flex min-w-0 items-center gap-1.5">
-        <VerifiedLocationBadge />
-        <span className="max-w-36 truncate">At office</span>
+        <span>At office</span>
+        {distanceLabel && (
+          <>
+            <span className="text-current/60">·</span>
+            <span>{distanceLabel}</span>
+          </>
+        )}
       </span>
     );
   }
-  if (liveLocation.state === 'outside') return 'Outside office';
-  if (liveLocation.state === 'weak') return 'Weak GPS';
+  if (liveLocation.state === 'outside') return 'Not at office';
+  if (liveLocation.state === 'weak') {
+    return (
+      <span className="inline-flex min-w-0 items-center gap-1.5">
+        <span>At office</span>
+        <span className="text-current/60">·</span>
+        <span>weak signal</span>
+      </span>
+    );
+  }
   if (liveLocation.state === 'error') return 'Location needed';
 
   return (
-    <span className="inline-flex min-w-0 items-center gap-1.5">
-      <MapPin className="h-3.5 w-3.5" />
-      <span className="max-w-36 truncate">{status.locationPolicy?.name || 'Office set'}</span>
-    </span>
+    <span className="max-w-36 truncate">{status.locationPolicy?.name || 'Office set'}</span>
   );
 }
 
@@ -270,17 +282,18 @@ function locationStateFromValidation(validation: LocationValidationResult): Live
   if (validation.ok) {
     return {
       blocking: false,
-      message: `Office location verified. Accuracy ${Math.round(validation.accuracy || 0)}m.`,
+      distanceMeters: validation.distanceMeters,
+      message: 'At office.',
       state: 'inside',
     };
   }
 
   if (validation.result === 'OUTSIDE_OFFICE_LOCATION') {
-    return { blocking: true, message: validation.message, state: 'outside' };
+    return { blocking: true, distanceMeters: validation.distanceMeters, message: validation.message, state: 'outside' };
   }
 
   if (validation.result === 'LOCATION_ACCURACY_WEAK') {
-    return { blocking: true, message: validation.message, state: 'weak' };
+    return { blocking: true, distanceMeters: validation.distanceMeters, message: validation.message, state: 'weak' };
   }
 
   return { blocking: true, message: validation.message, state: 'error' };
@@ -766,21 +779,7 @@ export default function CheckInPage() {
                         <span className="truncate">{status.staff.fullName}</span>
                       </div>
                     )}
-                    <StatusChip
-                      icon={<MapPin className="h-3.5 w-3.5" />}
-                      label="Location"
-                      labelClassName="font-medium text-foreground/85"
-                      tone={locationTone(liveLocation)}
-                      value={locationValue(status, liveLocation)}
-                    />
-                    {status?.locationConfigured && (
-                      <p className={cn(
-                        'max-w-sm text-xs leading-5',
-                        liveLocation.state === 'inside' ? 'text-success' : liveLocation.blocking ? 'text-danger' : 'text-muted-foreground',
-                      )}>
-                        {liveLocation.message}
-                      </p>
-                    )}
+                    <LocationStatusChip status={status} liveLocation={liveLocation} />
                   </div>
                 </div>
 
@@ -951,6 +950,19 @@ function PenaltyHistoryDialog({
   );
 }
 
+function locationDistanceLabel(distanceMeters: number | null | undefined) {
+  return typeof distanceMeters === 'number' && Number.isFinite(distanceMeters)
+    ? `~${Math.round(distanceMeters)}m`
+    : null;
+}
+
+function locationIcon(liveLocation: LiveLocation) {
+  if (liveLocation.state === 'checking') return <Loader2 className="h-4 w-4 animate-spin" />;
+  if (liveLocation.state === 'outside' || liveLocation.state === 'error') return <XCircle className="h-4 w-4" />;
+  if (liveLocation.state === 'weak') return <AlertTriangle className="h-4 w-4" />;
+  return <MapPin className="h-4 w-4" />;
+}
+
 function PenaltyHistoryStat({ highlight, label, value }: { highlight?: boolean; label: string; value: string }) {
   return (
     <div className="rounded-md border border-border bg-background p-2">
@@ -1091,52 +1103,25 @@ function AutoAttendanceToggle({
   );
 }
 
-function StatusChip({
-  icon,
-  label,
-  tone = 'neutral',
-  value,
-  labelClassName,
-  valueClassName,
+function LocationStatusChip({
+  liveLocation,
+  status,
 }: {
-  icon: ReactNode;
-  label: string;
-  tone?: 'danger' | 'neutral' | 'success' | 'warning';
-  value: ReactNode;
-  labelClassName?: string;
-  valueClassName?: string;
+  liveLocation: LiveLocation;
+  status: CheckInStatus | null;
 }) {
+  const tone = locationTone(liveLocation);
+
   return (
     <div className={cn(
-      'inline-flex h-9 min-w-0 items-center gap-2 rounded-full border px-3.5 text-sm',
+      'inline-flex h-9 min-w-0 items-center gap-2 rounded-full border px-3.5 text-sm font-semibold',
       tone === 'success' && 'border-success/25 bg-success/10 text-success',
       tone === 'warning' && 'border-warning/25 bg-warning/10 text-warning',
       tone === 'danger' && 'border-danger/25 bg-danger/10 text-danger',
       tone === 'neutral' && 'border-border/80 bg-background/65 text-foreground',
     )}>
-      <span className="shrink-0">{icon}</span>
-      <span className={cn('text-xs text-muted-foreground', labelClassName)}>{label}</span>
-      <span className={cn('flex items-center font-semibold', valueClassName)}>{value}</span>
+      <span className="shrink-0">{locationIcon(liveLocation)}</span>
+      <span className="flex min-w-0 items-center truncate">{locationValue(status, liveLocation)}</span>
     </div>
-  );
-}
-
-function VerifiedLocationBadge() {
-  return (
-    <svg
-      aria-label="Office location configured"
-      className="h-4 w-4 shrink-0"
-      role="img"
-      viewBox="0 0 24 24"
-    >
-      <path
-        d="M12 1.6 14.1 3.4 16.8 2.9 18.1 5.3 20.8 6.1 20.9 8.9 23 10.7 21.8 13.2 22.6 15.9 20.1 17.2 19.3 19.9 16.5 20 14.7 22.1 12 21 9.3 22.1 7.5 20 4.7 19.9 3.9 17.2 1.4 15.9 2.2 13.2 1 10.7 3.1 8.9 3.2 6.1 5.9 5.3 7.2 2.9 9.9 3.4 12 1.6Z"
-        fill="#1d9bf0"
-      />
-      <path
-        d="m10.35 14.55 5.55-6.05 1.55 1.42-6.95 7.58-4.05-4.05 1.48-1.48 2.42 2.58Z"
-        fill="#ffffff"
-      />
-    </svg>
   );
 }
