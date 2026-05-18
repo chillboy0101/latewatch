@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -46,14 +46,41 @@ interface ExistingEntry {
   reason: string | null;
 }
 
+type EntrySnapshot = Pick<Entry, 'arrivalTime' | 'didNotSignOut'>;
+
 function normalizeTimeValue(value: string | null | undefined) {
   return value ? value.slice(0, 5) : '';
+}
+
+function snapshotEntry(entry: Entry): EntrySnapshot {
+  return {
+    arrivalTime: normalizeTimeValue(entry.arrivalTime),
+    didNotSignOut: entry.didNotSignOut === true,
+  };
+}
+
+function entryMatchesSnapshot(entry: Entry, snapshot: EntrySnapshot | undefined) {
+  if (!snapshot) return false;
+
+  return (
+    normalizeTimeValue(entry.arrivalTime) === normalizeTimeValue(snapshot.arrivalTime) &&
+    entry.didNotSignOut === snapshot.didNotSignOut
+  );
+}
+
+function formatChangedEntriesMessage(names: string[], count: number) {
+  if (count <= 0) return 'No changes to save.';
+  if (count === 1 && names[0]) return `Updated ${names[0]}.`;
+  if (count === 2 && names.length >= 2) return `Updated ${names[0]} and ${names[1]}.`;
+  if (names[0]) return `Updated ${names[0]} and ${count - 1} ${count - 1 === 1 ? 'other' : 'others'}.`;
+  return `${count} entr${count === 1 ? 'y' : 'ies'} updated successfully`;
 }
 
 export default function EntriesPage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [selectedDate, setSelectedDate] = useState(() => parseISO(getAccraDateKey()));
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [originalEntrySnapshots, setOriginalEntrySnapshots] = useState<Record<string, EntrySnapshot>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isHoliday, setIsHoliday] = useState(false);
@@ -106,6 +133,9 @@ export default function EntriesPage() {
       });
 
       setEntries(mergedEntries);
+      setOriginalEntrySnapshots(Object.fromEntries(
+        mergedEntries.map((entry) => [entry.staffId, snapshotEntry(entry)]),
+      ));
     } catch (error) {
       console.error('Failed to fetch data:', error);
     } finally {
@@ -179,9 +209,21 @@ export default function EntriesPage() {
     );
   };
 
+  const changedEntries = useMemo(
+    () => entries.filter((entry) => !entryMatchesSnapshot(entry, originalEntrySnapshots[entry.staffId])),
+    [entries, originalEntrySnapshots],
+  );
+
   async function handleSaveAll() {
-    setSaving(true);
     setMessage(null);
+
+    if (changedEntries.length === 0) {
+      setMessage({ type: 'success', text: 'No changes to save.' });
+      setTimeout(() => setMessage(null), 5000);
+      return;
+    }
+
+    setSaving(true);
     try {
       const today = format(selectedDate, 'yyyy-MM-dd');
       const response = await fetch('/api/entries', {
@@ -189,7 +231,7 @@ export default function EntriesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           date: today,
-          entries: entries,
+          entries: changedEntries,
         }),
       });
 
@@ -199,11 +241,11 @@ export default function EntriesPage() {
         const attendanceCount = Number(data.attendanceCount || 0);
         const deletedCount = Number(data.deletedCount || 0);
         const totalChanges = savedCount + attendanceCount + deletedCount;
+        const changedStaffNames = Array.isArray(data.changedStaffNames) ? data.changedStaffNames as string[] : [];
+        const changedStaffCount = Number(data.changedStaffCount ?? changedStaffNames.length ?? totalChanges);
         setMessage({
           type: 'success',
-          text: totalChanges > 0
-            ? `${totalChanges} entr${totalChanges === 1 ? 'y' : 'ies'} updated successfully`
-            : 'Entries submitted for this date with no late arrivals',
+          text: formatChangedEntriesMessage(changedStaffNames, changedStaffCount),
         });
         // Re-fetch fresh data from DB so saved entries display immediately
         setTimeout(() => fetchStaffAndEntries(), 50);
@@ -369,7 +411,15 @@ export default function EntriesPage() {
             </Button>
             <Button onClick={handleSaveAll} disabled={saving || entriesDisabled}>
               <Save className="mr-2 h-4 w-4" />
-              {saving ? 'Saving...' : entriesDisabled ? 'Closed - No Entries' : 'Save Entries'}
+              {saving
+                ? 'Saving...'
+                : entriesDisabled
+                ? 'Closed - No Entries'
+                : changedEntries.length === 1
+                ? 'Save 1 Change'
+                : changedEntries.length > 1
+                ? `Save ${changedEntries.length} Changes`
+                : 'Save Entries'}
             </Button>
           </div>
         </div>

@@ -64,6 +64,38 @@ function buildManualCheckInAt(date: string, time: string) {
   return new Date(`${date}T${time}:00.000Z`);
 }
 
+function normalizeEntryTime(value: string | null | undefined) {
+  const time = value?.slice(0, 5) || '';
+  return /^\d{2}:\d{2}$/.test(time) ? time : null;
+}
+
+function normalizeEntryAmount(value: string | number | null | undefined) {
+  const amount = Number(value || 0);
+  return Number.isFinite(amount) ? amount.toFixed(2) : '0.00';
+}
+
+function latenessEntryChanged(input: {
+  existing: {
+    arrivalTime: string | null;
+    computedAmount: string | number | null;
+    didNotSignOut: boolean | null;
+    reason: string | null;
+  };
+  next: {
+    arrivalTime: string | null;
+    computedAmount: string;
+    didNotSignOut: boolean;
+    reason: string | null;
+  };
+}) {
+  return (
+    normalizeEntryTime(input.existing.arrivalTime) !== normalizeEntryTime(input.next.arrivalTime) ||
+    (input.existing.didNotSignOut === true) !== input.next.didNotSignOut ||
+    normalizeEntryAmount(input.existing.computedAmount) !== normalizeEntryAmount(input.next.computedAmount) ||
+    (input.existing.reason || null) !== (input.next.reason || null)
+  );
+}
+
 export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url);
@@ -197,6 +229,13 @@ export async function POST(request: NextRequest) {
     const results = [];
     let deletedCount = 0;
     let attendanceChangedCount = 0;
+    const changedStaff = new Map<string, { fullName: string; staffId: string }>();
+    const markStaffChanged = (staffId: string) => {
+      changedStaff.set(staffId, {
+        fullName: staffMap.get(staffId) || 'Unknown',
+        staffId,
+      });
+    };
 
     for (const entry of entries) {
       if (!entry || typeof entry.staffId !== 'string' || !allowedStaffIds.has(entry.staffId)) {
@@ -264,6 +303,7 @@ export async function POST(request: NextRequest) {
               reason: 'entries',
             });
             attendanceChangedCount += 1;
+            markStaffChanged(entry.staffId);
           }
         }
       } else if (arrivalTime && activeStaffIds.has(entry.staffId)) {
@@ -299,6 +339,7 @@ export async function POST(request: NextRequest) {
             reason: 'entries',
           });
           attendanceChangedCount += 1;
+          markStaffChanged(entry.staffId);
         }
       }
 
@@ -317,6 +358,7 @@ export async function POST(request: NextRequest) {
             reason: 'entries',
           });
           deletedCount += 1;
+          markStaffChanged(entry.staffId);
         }
         continue;
       }
@@ -324,28 +366,36 @@ export async function POST(request: NextRequest) {
       let result;
       if (existing) {
         const before = { ...existing };
-        [result] = await db.update(latenessEntry)
-          .set({
-            arrivalTime,
-            didNotSignOut: penalty.didNotSignOut,
-            computedAmount: penalty.amount.toString(),
-            reason: penalty.reason,
-            updatedAt: new Date(),
-          })
-          .where(eq(latenessEntry.id, existing.id))
-          .returning();
+        const nextValues = {
+          arrivalTime,
+          didNotSignOut: penalty.didNotSignOut,
+          computedAmount: penalty.amount.toString(),
+          reason: penalty.reason,
+        };
 
-        await writeAuditEvent({
-          entityType: 'entry',
-          entityId: result.id,
-          action: 'UPDATE',
-          before,
-          after: {
-            ...result,
-            staff: { fullName: staffMap.get(entry.staffId) || 'Unknown' },
-          },
-          reason: 'entries',
-        });
+        if (latenessEntryChanged({ existing, next: nextValues })) {
+          [result] = await db.update(latenessEntry)
+            .set({
+              ...nextValues,
+              updatedAt: new Date(),
+            })
+            .where(eq(latenessEntry.id, existing.id))
+            .returning();
+
+          await writeAuditEvent({
+            entityType: 'entry',
+            entityId: result.id,
+            action: 'UPDATE',
+            before,
+            after: {
+              ...result,
+              staff: { fullName: staffMap.get(entry.staffId) || 'Unknown' },
+            },
+            reason: 'entries',
+          });
+          results.push(result);
+          markStaffChanged(entry.staffId);
+        }
       } else {
         [result] = await db.insert(latenessEntry).values({
           staffId: entry.staffId,
@@ -367,9 +417,9 @@ export async function POST(request: NextRequest) {
           },
           reason: 'entries',
         });
+        results.push(result);
+        markStaffChanged(entry.staffId);
       }
-
-      results.push(result);
     }
 
     const [existingSubmission] = await db.select()
@@ -417,10 +467,15 @@ export async function POST(request: NextRequest) {
     publishRealtime('staff-penalty-history', 'invalidate', { date, reason: 'entries' });
     publishRealtime('audit-trail', 'invalidate', { reason: 'entries' });
 
+    const changedStaffList = Array.from(changedStaff.values());
+
     return NextResponse.json({
       success: true,
       count: results.length,
       attendanceCount: attendanceChangedCount,
+      changedStaff: changedStaffList,
+      changedStaffCount: changedStaffList.length,
+      changedStaffNames: changedStaffList.map((member) => member.fullName),
       deletedCount,
       submittedAt: submission?.submittedAt,
     });

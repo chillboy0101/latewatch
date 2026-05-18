@@ -273,11 +273,69 @@ test('saving a corrected lateness entry also updates the linked attendance recor
   }));
 
   assert.equal(response.status, 200);
+  const responseBody = await response.json();
+  assert.equal(responseBody.changedStaffCount, 1);
+  assert.deepEqual(responseBody.changedStaffNames, ['CARL CHRISTIAN QUIST']);
   assert.equal(fixture.latenessEntry.length, 0);
   assert.equal(fixture.attendanceRecord[0].checkInTime, '08:05');
   assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
   assert.equal(fixture.attendanceRecord[0].reason, null);
   assert.equal(fixture.attendanceRecord[0].status, 'present');
+});
+
+test('saving a no-op submitted row does not report a changed staff member', async () => {
+  resetFixture();
+  fixture.attendanceRecord[0].computedAmount = '15.00';
+  fixture.latenessEntry[0].computedAmount = '15';
+
+  const response = await POST(new Request('http://localhost/api/entries', {
+    body: JSON.stringify({
+      date: '2026-05-06',
+      entries: [
+        {
+          arrivalTime: '09:12',
+          didNotSignOut: false,
+          staffId: 'staff-1',
+        },
+      ],
+    }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  }));
+
+  assert.equal(response.status, 200);
+  const responseBody = await response.json();
+  assert.equal(responseBody.changedStaffCount, 0);
+  assert.deepEqual(responseBody.changedStaffNames, []);
+  assert.equal(responseBody.count, 0);
+  assert.equal(responseBody.attendanceCount, 0);
+  assert.equal(responseBody.deletedCount, 0);
+});
+
+test('saving attendance and lateness changes for one staff reports that staff once', async () => {
+  resetFixture();
+
+  const response = await POST(new Request('http://localhost/api/entries', {
+    body: JSON.stringify({
+      date: '2026-05-06',
+      entries: [
+        {
+          arrivalTime: '10:31',
+          didNotSignOut: true,
+          staffId: 'staff-1',
+        },
+      ],
+    }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  }));
+
+  assert.equal(response.status, 200);
+  const responseBody = await response.json();
+  assert.equal(responseBody.changedStaffCount, 1);
+  assert.deepEqual(responseBody.changedStaffNames, ['CARL CHRISTIAN QUIST']);
+  assert.equal(responseBody.attendanceCount, 1);
+  assert.equal(responseBody.count, 1);
 });
 
 test('saving entries creates a manual attendance check-in when staff has no attendance record', async () => {
@@ -303,6 +361,8 @@ test('saving entries creates a manual attendance check-in when staff has no atte
   assert.equal(response.status, 200);
   const responseBody = await response.json();
   assert.equal(responseBody.attendanceCount, 1);
+  assert.equal(responseBody.changedStaffCount, 1);
+  assert.deepEqual(responseBody.changedStaffNames, ['CARL CHRISTIAN QUIST']);
   assert.equal(fixture.attendanceRecord.length, 1);
   assert.equal(fixture.attendanceRecord[0].checkInTime, '08:05');
   assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');

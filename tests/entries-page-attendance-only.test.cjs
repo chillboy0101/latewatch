@@ -70,6 +70,18 @@ test('entries page shows general pardon in the amount column for pardoned rows',
   assert.match(source, />General pardon</);
 });
 
+test('entries page tracks changed rows and submits only precise updates', () => {
+  const source = fs.readFileSync(entriesPagePath, 'utf8');
+
+  assert.match(source, /originalEntrySnapshots/);
+  assert.match(source, /changedEntries/);
+  assert.match(source, /entries: changedEntries/);
+  assert.match(source, /No changes to save\./);
+  assert.match(source, /Save 1 Change/);
+  assert.match(source, /Save \$\{changedEntries\.length\} Changes/);
+  assert.match(source, /formatChangedEntriesMessage/);
+});
+
 test('entries API sources saved arrival times from attendance records', () => {
   const source = fs.readFileSync(entriesRoutePath, 'utf8');
 
