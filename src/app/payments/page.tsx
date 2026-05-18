@@ -267,36 +267,29 @@ export default function PenaltyPaymentsPage() {
 
         <Card className="overflow-hidden">
           <div className="border-b border-border p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold">Payment balances</h2>
-                <p className="text-sm text-muted-foreground">All penalty records</p>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex w-full rounded-md border border-border bg-background p-1 md:w-auto">
+                {paymentFilterOptions.map((option) => (
+                  <Button
+                    key={option.value}
+                    type="button"
+                    variant={statusFilter === option.value ? 'default' : 'ghost'}
+                    size="sm"
+                    className="h-8 flex-1 md:flex-none"
+                    onClick={() => setStatusFilter(option.value)}
+                  >
+                    {option.label}
+                  </Button>
+                ))}
               </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex rounded-md border border-border bg-background p-1">
-                  {paymentFilterOptions.map((option) => (
-                    <Button
-                      key={option.value}
-                      type="button"
-                      variant={statusFilter === option.value ? 'default' : 'ghost'}
-                      size="sm"
-                      className="h-8"
-                      onClick={() => setStatusFilter(option.value)}
-                    >
-                      {option.label}
-                    </Button>
-                  ))}
-                </div>
-                <div className="relative w-full min-w-64 sm:w-80">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Search staff or email"
-                    className="pl-9"
-                  />
-                </div>
+              <div className="relative w-full md:max-w-sm">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search staff or email"
+                  className="pl-9"
+                />
               </div>
             </div>
           </div>

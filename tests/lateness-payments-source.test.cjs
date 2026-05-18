@@ -88,7 +88,6 @@ test('admin payments page and navigation expose payment management actions', () 
   assert.match(page, /NSS Personnel/);
   assert.match(page, /statusFilter/);
   assert.match(page, /paymentStatusForRow/);
-  assert.match(page, /All penalty records/);
   assert.match(page, /sortPaymentRowsByBalance/);
   assert.match(page, /subscribeRealtimeChannel/);
   assert.match(page, /'payments', 'entries', 'attendance'/);
@@ -96,6 +95,8 @@ test('admin payments page and navigation expose payment management actions', () 
   assert.doesNotMatch(page, /Record full or partial lateness payments and keep staff balances transparent/);
   assert.doesNotMatch(page, />Roster</);
   assert.doesNotMatch(page, /<h1[^>]*>Penalty Payments<\/h1>/);
+  assert.doesNotMatch(page, /Payment balances/);
+  assert.doesNotMatch(page, /All penalty records/);
   assert.doesNotMatch(page, /DashboardLayout title="Penalty Payments"/);
   assert.doesNotMatch(page, /xl:grid-cols/);
   assert.doesNotMatch(page, />Owed<\/th>/);
