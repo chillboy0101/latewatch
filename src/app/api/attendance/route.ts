@@ -199,7 +199,8 @@ export async function GET(request: NextRequest) {
     }, () => resolveClientIpInfo(request));
     const currentIp = currentIpInfo.ip;
     const totals = rows.reduce((acc, row) => {
-      if (row.status === 'present') acc.present += 1;
+      if (row.attendance?.checkInTime) acc.present += 1;
+      if (row.status === 'present') acc.onTime += 1;
       else if (row.status === 'late') acc.late += 1;
       else if (row.status === 'excused') acc.excused += 1;
       else if (row.status === 'expected_late') acc.expectedLate += 1;
@@ -207,7 +208,7 @@ export async function GET(request: NextRequest) {
       else if (row.status === 'no_sign_out') acc.noSignOut += 1;
       else acc.notCheckedIn += 1;
       return acc;
-    }, { excused: 0, expectedLate: 0, late: 0, noSignOut: 0, notCheckedIn: 0, permissionOverdue: 0, present: 0 });
+    }, { excused: 0, expectedLate: 0, late: 0, noSignOut: 0, notCheckedIn: 0, onTime: 0, permissionOverdue: 0, present: 0 });
 
     return NextResponse.json({
       date,

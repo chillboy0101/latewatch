@@ -21,7 +21,7 @@ import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 
 type AttendanceStatus = 'present' | 'late' | 'excused' | 'expected_late' | 'permission_overdue' | 'no_sign_out' | 'not_checked_in';
-type AttendanceFilter = 'all' | AttendanceStatus;
+type AttendanceFilter = 'all' | 'on_time' | AttendanceStatus;
 type GeneralPardonType = 'absence' | 'late_arrival';
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -121,6 +121,7 @@ interface AttendanceResponse {
     late: number;
     noSignOut: number;
     notCheckedIn: number;
+    onTime: number;
     permissionOverdue: number;
     present: number;
     totalStaff: number;
@@ -198,7 +199,7 @@ function formatDateInput(value: string, previousValue = '') {
 }
 
 function statusLabel(status: AttendanceStatus) {
-  if (status === 'present') return 'Present';
+  if (status === 'present') return 'On Time';
   if (status === 'late') return 'Late';
   if (status === 'excused') return 'Excused';
   if (status === 'expected_late') return 'Expected later';
@@ -557,9 +558,12 @@ export default function AttendancePage() {
       present: 6,
     };
     const query = searchQuery.trim().toLowerCase();
-    const rows = activeFilter === 'all'
-      ? data?.rows || []
-      : (data?.rows || []).filter((row) => row.status === activeFilter);
+    const rows = (() => {
+      if (activeFilter === 'all') return data?.rows || [];
+      if (activeFilter === 'present') return (data?.rows || []).filter((row) => Boolean(row.attendance?.checkInTime));
+      if (activeFilter === 'on_time') return (data?.rows || []).filter((row) => row.status === 'present');
+      return (data?.rows || []).filter((row) => row.status === activeFilter);
+    })();
     const filteredRows = query
       ? rows.filter((row) => [
           row.staff.fullName,
@@ -588,7 +592,7 @@ export default function AttendancePage() {
   return (
     <DashboardLayout title="Attendance">
       <div className="space-y-5">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-8">
+        <div className="grid auto-cols-[minmax(7.75rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-9 xl:overflow-visible xl:pb-0">
           <SummaryCard
             active={activeFilter === 'all'}
             label="Total Staff"
@@ -601,6 +605,13 @@ export default function AttendancePage() {
             onClick={() => setActiveFilter('present')}
             tone="success"
             value={data?.totals.present ?? 0}
+          />
+          <SummaryCard
+            active={activeFilter === 'on_time'}
+            label="On Time"
+            onClick={() => setActiveFilter('on_time')}
+            tone="success"
+            value={data?.totals.onTime ?? 0}
           />
           <SummaryCard
             active={activeFilter === 'late'}
@@ -1099,13 +1110,13 @@ function SummaryCard({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        'min-h-24 rounded-lg border border-border bg-card text-foreground shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary/35',
+        'min-h-20 rounded-lg border border-border bg-card text-foreground shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary/35',
         active && 'border-primary/60 bg-primary/5',
       )}
     >
-      <div className="flex h-full min-h-24 flex-col items-center justify-center px-3 py-4 text-center">
+      <div className="flex h-full min-h-20 flex-col items-center justify-center px-3 py-3 text-center">
         <p className={cn(
-          'font-mono text-2xl font-bold leading-none',
+          'font-mono text-xl font-bold leading-none',
           tone === 'success' && 'text-success',
           tone === 'warning' && 'text-warning',
           tone === 'danger' && 'text-danger',
@@ -1113,7 +1124,7 @@ function SummaryCard({
         )}>
           {value}
         </p>
-        <p className="mt-2 min-h-8 max-w-24 text-balance text-xs leading-4 text-muted-foreground">{label}</p>
+        <p className="mt-1.5 min-h-8 max-w-24 text-balance text-xs leading-4 text-muted-foreground">{label}</p>
       </div>
     </button>
   );
