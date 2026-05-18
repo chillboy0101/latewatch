@@ -174,10 +174,16 @@ const fakeDb = {
       set(values) {
         return {
           where(condition) {
-            if (table.__table !== 'latenessEntry') throw new Error(`Unexpected update table: ${table.__table}`);
             const id = eqIdFromCondition(condition);
-            fixture.latenessEntry = fixture.latenessEntry.map((row) => row.id === id ? { ...row, ...values } : row);
-            return Promise.resolve();
+            if (table.__table === 'attendanceRecord') {
+              fixture.attendanceRecord = fixture.attendanceRecord.map((row) => row.id === id ? { ...row, ...values } : row);
+              return Promise.resolve();
+            }
+            if (table.__table === 'latenessEntry') {
+              fixture.latenessEntry = fixture.latenessEntry.map((row) => row.id === id ? { ...row, ...values } : row);
+              return Promise.resolve();
+            }
+            throw new Error(`Unexpected update table: ${table.__table}`);
           },
         };
       },
@@ -187,7 +193,7 @@ const fakeDb = {
 
 const schema = {
   attendancePermission: createTable('attendancePermission', ['date', 'staffId', 'status']),
-  attendanceRecord: createTable('attendanceRecord', ['checkInTime', 'computedAmount', 'date', 'reason', 'staffId', 'status']),
+  attendanceRecord: createTable('attendanceRecord', ['checkInTime', 'computedAmount', 'date', 'id', 'reason', 'staffId', 'status', 'updatedAt']),
   latenessEntry: createTable('latenessEntry', ['id', 'date', 'staffId']),
   staff: createTable('staff', ['id', 'fullName', 'isAttendanceOnly', 'isNssPersonnel']),
 };
@@ -215,12 +221,15 @@ test.after(() => {
   Module._load = originalLoad;
 });
 
-test('sync does not create a positive lateness entry when a general pardon clears late arrival', async () => {
+test('sync clears stale attendance penalty when a general pardon clears late arrival', async () => {
   resetFixture();
 
   await syncLatenessEntriesFromAttendanceForDate('2026-05-15');
 
   assert.equal(fixture.latenessEntry.length, 0);
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
+  assert.equal(fixture.attendanceRecord[0].status, 'present');
+  assert.match(fixture.attendanceRecord[0].reason, /general pardon/);
 });
 
 test('sync deletes an existing positive lateness entry when a general pardon clears late arrival', async () => {
@@ -240,6 +249,9 @@ test('sync deletes an existing positive lateness entry when a general pardon cle
   await syncLatenessEntriesFromAttendanceForDate('2026-05-15');
 
   assert.equal(fixture.latenessEntry.length, 0);
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
+  assert.equal(fixture.attendanceRecord[0].status, 'present');
+  assert.match(fixture.attendanceRecord[0].reason, /general pardon/);
 });
 
 test('sync keeps only the no-sign-out amount for a late-only general pardon', async () => {
@@ -262,4 +274,8 @@ test('sync keeps only the no-sign-out amount for a late-only general pardon', as
   assert.equal(fixture.latenessEntry[0].computedAmount, '2.00');
   assert.match(fixture.latenessEntry[0].reason, /DID NOT SIGN OUT/);
   assert.match(fixture.latenessEntry[0].reason, /general pardon/);
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '2.00');
+  assert.equal(fixture.attendanceRecord[0].status, 'late');
+  assert.match(fixture.attendanceRecord[0].reason, /DID NOT SIGN OUT/);
+  assert.match(fixture.attendanceRecord[0].reason, /general pardon/);
 });

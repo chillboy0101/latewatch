@@ -39,6 +39,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     checkInTime: attendanceRecord.checkInTime,
     computedAmount: attendanceRecord.computedAmount,
     date: attendanceRecord.date,
+    id: attendanceRecord.id,
     reason: attendanceRecord.reason,
     isAttendanceOnly: staff.isAttendanceOnly,
     isNssPersonnel: staff.isNssPersonnel,
@@ -73,6 +74,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
   const processedKeys = new Set<string>();
   let deleted = 0;
   let inserted = 0;
+  let attendanceUpdated = 0;
   let updated = 0;
 
   for (const row of attendanceRows) {
@@ -92,9 +94,28 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
       isNssPersonnel: row.isNssPersonnel === true,
     });
     const computedAmount = amountText(penalty.amount);
+    const attendanceReason = penalty.reason || null;
     const reason = penalty.reason || row.reason || 'Late arrival';
 
     processedKeys.add(key);
+
+    const attendanceAmount = amountText(amountNumber(row.computedAmount));
+    const needsAttendanceUpdate =
+      attendanceAmount !== computedAmount ||
+      (row.reason || null) !== attendanceReason ||
+      (row.status || null) !== penalty.status;
+
+    if (needsAttendanceUpdate) {
+      await db.update(attendanceRecord)
+        .set({
+          computedAmount,
+          reason: attendanceReason,
+          status: penalty.status,
+          updatedAt: new Date(),
+        })
+        .where(eq(attendanceRecord.id, row.id));
+      attendanceUpdated += 1;
+    }
 
     if (penalty.amount <= 0) {
       if (existing) {
@@ -181,5 +202,5 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     updated += 1;
   }
 
-  return { deleted, inserted, updated };
+  return { attendanceUpdated, deleted, inserted, updated };
 }

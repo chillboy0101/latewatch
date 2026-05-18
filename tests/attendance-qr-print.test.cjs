@@ -97,6 +97,7 @@ test('general pardon reconciliation clears late records and keeps late-only miss
   assert.match(reconciliationSource, /status: 'excused'/);
   assert.match(reconciliationSource, /publishRealtime\('payments'/);
   assert.match(reconciliationSource, /publishRealtime\('staff-penalty-history'/);
+  assert.match(attendanceApiSource, /syncLatenessEntriesFromAttendanceForDate\(date\)/);
   assert.match(attendanceApiSource, /isGeneralPardonReason\(permission\.reason\)/);
   assert.match(attendanceApiSource, /return 'not_checked_in'/);
 });
