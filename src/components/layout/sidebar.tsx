@@ -34,7 +34,7 @@ const navigation = [
   { name: 'Staff', href: '/staff', icon: Users },
   { name: 'Emergency', href: '/emergency-contacts', icon: PhoneCall },
   { name: 'Attendance', href: '/attendance', icon: ClipboardCheck },
-  { name: 'Location', href: '/wifi', icon: MapPin },
+  { name: 'Location', href: '/location', icon: MapPin },
   { name: 'Entries', href: '/entries', icon: Table2 },
   { name: 'Exports', href: '/exports', icon: Download },
   { name: 'Payments', href: '/payments', icon: ReceiptText },

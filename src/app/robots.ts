@@ -6,7 +6,7 @@ const privateRoutes = [
   "/dashboard/",
   "/staff/",
   "/attendance/",
-  "/wifi/",
+  "/location/",
   "/entries/",
   "/exports/",
   "/audit-trail/",

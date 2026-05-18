@@ -134,7 +134,7 @@ function getNotificationHref(entityType: string) {
     case 'staff_device':
       return '/attendance';
     case 'office_network':
-      return '/wifi';
+      return '/location';
     case 'calendar':
       return '/calendar';
     case 'export':
