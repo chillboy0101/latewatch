@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { attendanceAttempt, attendancePermission, attendanceRecord, deviceTransferRequest, staff, staffDevice } from '@/db/schema';
 import { getAccraClock, getActiveOfficeNetwork, getOfficeLocationsForAttendance, isOfficeIp, resolveClientIpInfo } from '@/lib/attendance';
+import { syncLatenessEntriesFromAttendanceForDate } from '@/lib/attendance-lateness-sync';
 import { isGeneralPardonReason, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
 import { resolveOfficeLocationForDate } from '@/lib/office-location-policy';
 import { shouldAlertNoSignOut } from '@/lib/work-hours';
@@ -40,6 +41,8 @@ export async function GET(request: NextRequest) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
     }
+
+    await requiredAttendanceQuery('attendance-lateness-sync', () => syncLatenessEntriesFromAttendanceForDate(date));
 
     const [staffRows, attendanceRows, permissionRows] = await Promise.all([
       requiredAttendanceQuery('staff', () => db.select({
