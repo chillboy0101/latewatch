@@ -251,7 +251,7 @@ export default function PenaltyPaymentsPage() {
   const manualAmount = moneyNumber(amount);
 
   return (
-    <DashboardLayout title="Penalty Payments">
+    <DashboardLayout title="Payments">
       <div className="space-y-5">
         {message && (
           <div className={cn(

@@ -70,7 +70,7 @@ export default function SettingsPage() {
               <QuickLink href="/dashboard" label="Dashboard" desc="View overview and stats" />
               <QuickLink href="/entries" label="Entries" desc="Record manual check-ins and penalties" />
               <QuickLink href="/staff" label="Staff Management" desc="Manage staff members" />
-              <QuickLink href="/exports" label="Lateness Exports" desc="Generate reports" />
+              <QuickLink href="/exports" label="Exports" desc="Generate lateness and attendance reports" />
               <QuickLink href="/calendar" label="Calendar" desc="View holidays" />
             </div>
           </div>

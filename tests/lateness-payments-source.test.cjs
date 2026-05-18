@@ -13,6 +13,7 @@ const dashboardApiPath = path.join(root, 'src/app/api/dashboard/route.ts');
 const paymentsPagePath = path.join(root, 'src/app/payments/page.tsx');
 const checkInPagePath = path.join(root, 'src/app/check-in/page.tsx');
 const sidebarPath = path.join(root, 'src/components/layout/sidebar.tsx');
+const appShellPath = path.join(root, 'src/components/layout/app-shell.tsx');
 const proxyPath = path.join(root, 'src/proxy.ts');
 
 test('payment tables and migration are defined separately from lateness entries', () => {
@@ -68,9 +69,10 @@ test('admin payments page and navigation expose payment management actions', () 
   assert.equal(fs.existsSync(paymentsPagePath), true);
   const page = fs.readFileSync(paymentsPagePath, 'utf8');
   const sidebar = fs.readFileSync(sidebarPath, 'utf8');
+  const appShell = fs.readFileSync(appShellPath, 'utf8');
   const proxy = fs.readFileSync(proxyPath, 'utf8');
 
-  assert.match(page, /Penalty Payments/);
+  assert.match(page, /DashboardLayout title="Payments"/);
   assert.match(page, /Record amount/);
   assert.match(page, /Pay full balance/);
   assert.match(page, /inputMode="decimal"/);
@@ -94,6 +96,7 @@ test('admin payments page and navigation expose payment management actions', () 
   assert.doesNotMatch(page, /Record full or partial lateness payments and keep staff balances transparent/);
   assert.doesNotMatch(page, />Roster</);
   assert.doesNotMatch(page, /<h1[^>]*>Penalty Payments<\/h1>/);
+  assert.doesNotMatch(page, /DashboardLayout title="Penalty Payments"/);
   assert.doesNotMatch(page, /xl:grid-cols/);
   assert.doesNotMatch(page, />Owed<\/th>/);
   assert.doesNotMatch(page, />Paid<\/th>/);
@@ -109,8 +112,11 @@ test('admin payments page and navigation expose payment management actions', () 
   assert.doesNotMatch(page, />Pay balance</);
   assert.doesNotMatch(page, />Record payment</);
   assert.doesNotMatch(page, /rounded-full bg-muted\/40 px-2 py-0\.5">\{staffKind\(row\)\}/);
-  assert.match(sidebar, /Penalty Payments/);
+  assert.match(sidebar, /name: 'Payments'/);
   assert.match(sidebar, /href: '\/payments'/);
+  assert.doesNotMatch(sidebar, /Penalty Payments/);
+  assert.match(appShell, /payments: 'Payments'/);
+  assert.doesNotMatch(appShell, /payments: 'Penalty Payments'/);
   assert.match(proxy, /\/payments\(\.\*\)/);
   assert.match(proxy, /\/api\/payments\(\.\*\)/);
 });
