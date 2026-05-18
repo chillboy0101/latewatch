@@ -1,12 +1,14 @@
 import { computePenalty } from '@/lib/penalty-calculator';
 import { formatAbsencePermissionReason, getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/attendance-permissions';
-import { WORKDAY_START_TIME } from '@/lib/work-hours';
+import { WORKDAY_END_TIME, WORKDAY_START_TIME } from '@/lib/work-hours';
 
 type AttendanceLike = {
   checkInAt: Date | string | null;
   checkInTime: string | null;
   computedAmount?: string | number | null;
   reason?: string | null;
+  signOutAt?: Date | string | null;
+  signOutTime?: string | null;
   status?: string | null;
 };
 
@@ -15,6 +17,8 @@ type ManualAttendanceCorrection = {
   checkInTime: string;
   computedAmount: string;
   reason: string | null;
+  signOutAt?: Date | null;
+  signOutTime?: string | null;
   status: 'excused' | 'late' | 'present';
 };
 
@@ -54,6 +58,10 @@ function parseExistingDate(value: Date | string | null) {
 
 function buildCheckInAt(date: string, time: string) {
   return new Date(`${date}T${time}:00.000Z`);
+}
+
+function hasOwn(object: object, property: string) {
+  return Object.prototype.hasOwnProperty.call(object, property);
 }
 
 function approvedLateArrivalReason(permission: ManualPermissionLike) {
@@ -145,9 +153,11 @@ export function resolveManualAttendanceCorrection(input: {
   didNotSignOut: boolean;
   isAttendanceOnly?: boolean;
   isNssPersonnel?: boolean;
+  signOutCorrection?: 'clear' | 'manual' | 'preserve';
 }): ManualAttendanceCorrection {
   const currentArrivalTime = normalizeTime(input.attendance.checkInTime) || WORKDAY_START_TIME;
   const nextArrivalTime = input.arrivalTime || currentArrivalTime;
+  const signOutCorrection = input.signOutCorrection || 'preserve';
   const nextPenalty = resolveManualPenalty({
     activePermission: input.activePermission,
     arrivalTime: nextArrivalTime,
@@ -159,14 +169,27 @@ export function resolveManualAttendanceCorrection(input: {
   const nextCheckInAt = input.arrivalTime
     ? buildCheckInAt(input.date, nextArrivalTime)
     : existingCheckInAt || buildCheckInAt(input.date, nextArrivalTime);
-
-  return {
+  const correction: ManualAttendanceCorrection = {
     checkInAt: nextCheckInAt,
     checkInTime: nextArrivalTime,
     computedAmount: nextPenalty.amount.toFixed(2),
     reason: nextPenalty.reason,
     status: nextPenalty.status,
   };
+
+  if (signOutCorrection === 'clear') {
+    correction.signOutAt = null;
+    correction.signOutTime = null;
+  } else if (signOutCorrection === 'manual') {
+    const existingSignOutTime = normalizeTime(input.attendance.signOutTime);
+    const existingSignOutAt = parseExistingDate(input.attendance.signOutAt || null);
+    const nextSignOutTime = existingSignOutTime || WORKDAY_END_TIME;
+
+    correction.signOutAt = existingSignOutAt || buildCheckInAt(input.date, nextSignOutTime);
+    correction.signOutTime = nextSignOutTime;
+  }
+
+  return correction;
 }
 
 export function manualAttendanceCorrectionChanged(input: {
@@ -175,12 +198,18 @@ export function manualAttendanceCorrectionChanged(input: {
 }) {
   const existingCheckInAt = parseExistingDate(input.attendance.checkInAt);
   const nextCheckInAt = input.correction.checkInAt;
+  const shouldCompareSignOutTime = hasOwn(input.correction, 'signOutTime');
+  const shouldCompareSignOutAt = hasOwn(input.correction, 'signOutAt');
+  const existingSignOutAt = parseExistingDate(input.attendance.signOutAt || null);
+  const nextSignOutAt = input.correction.signOutAt;
 
   return (
     normalizeTime(input.attendance.checkInTime) !== input.correction.checkInTime ||
     normalizeAmount(input.attendance.computedAmount) !== input.correction.computedAmount ||
     (input.attendance.reason || null) !== input.correction.reason ||
     (input.attendance.status || null) !== input.correction.status ||
+    (shouldCompareSignOutTime && normalizeTime(input.attendance.signOutTime) !== normalizeTime(input.correction.signOutTime)) ||
+    (shouldCompareSignOutAt && (existingSignOutAt?.getTime() || null) !== (nextSignOutAt?.getTime() || null)) ||
     !existingCheckInAt ||
     existingCheckInAt.getTime() !== nextCheckInAt.getTime()
   );

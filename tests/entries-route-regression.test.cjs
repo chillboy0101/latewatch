@@ -36,6 +36,8 @@ function resetFixture() {
       computedAmount: '10.00',
       date: '2026-05-06',
       reason: "DIDN'T COME BEFORE 8:30AM",
+      signOutAt: null,
+      signOutTime: null,
       staffId: 'staff-1',
       status: 'late',
       updatedAt: new Date('2026-05-06T09:12:00.000Z'),
@@ -73,6 +75,7 @@ function cloneRow(row) {
     ...row,
     checkInAt: row.checkInAt instanceof Date ? new Date(row.checkInAt.getTime()) : row.checkInAt,
     createdAt: row.createdAt instanceof Date ? new Date(row.createdAt.getTime()) : row.createdAt,
+    signOutAt: row.signOutAt instanceof Date ? new Date(row.signOutAt.getTime()) : row.signOutAt,
     submittedAt: row.submittedAt instanceof Date ? new Date(row.submittedAt.getTime()) : row.submittedAt,
     updatedAt: row.updatedAt instanceof Date ? new Date(row.updatedAt.getTime()) : row.updatedAt,
   };
@@ -336,6 +339,95 @@ test('saving attendance and lateness changes for one staff reports that staff on
   assert.deepEqual(responseBody.changedStaffNames, ['CARL CHRISTIAN QUIST']);
   assert.equal(responseBody.attendanceCount, 1);
   assert.equal(responseBody.count, 1);
+});
+
+test('clearing no-sign-out from entries records a manual attendance sign-out', async () => {
+  resetFixture();
+  fixture.attendanceRecord[0] = {
+    ...fixture.attendanceRecord[0],
+    checkInAt: new Date('2026-05-06T08:05:00.000Z'),
+    checkInTime: '08:05:00',
+    computedAmount: '2.00',
+    reason: 'DID NOT SIGN OUT',
+    signOutAt: null,
+    signOutTime: null,
+    status: 'late',
+  };
+  fixture.latenessEntry[0] = {
+    ...fixture.latenessEntry[0],
+    arrivalTime: '08:05:00',
+    computedAmount: '2.00',
+    didNotSignOut: true,
+    reason: 'DID NOT SIGN OUT',
+  };
+
+  const response = await POST(new Request('http://localhost/api/entries', {
+    body: JSON.stringify({
+      date: '2026-05-06',
+      entries: [
+        {
+          arrivalTime: '08:05',
+          didNotSignOut: false,
+          didNotSignOutChanged: true,
+          staffId: 'staff-1',
+        },
+      ],
+    }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  }));
+
+  assert.equal(response.status, 200);
+  const responseBody = await response.json();
+  assert.equal(responseBody.changedStaffCount, 1);
+  assert.equal(fixture.attendanceRecord[0].signOutTime, '17:00');
+  assert.deepEqual(fixture.attendanceRecord[0].signOutAt, new Date('2026-05-06T17:00:00.000Z'));
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
+  assert.equal(fixture.attendanceRecord[0].reason, null);
+  assert.equal(fixture.attendanceRecord[0].status, 'present');
+  assert.equal(fixture.latenessEntry.length, 0);
+});
+
+test('checking no-sign-out from entries clears the attendance sign-out', async () => {
+  resetFixture();
+  fixture.attendanceRecord[0] = {
+    ...fixture.attendanceRecord[0],
+    checkInAt: new Date('2026-05-06T08:05:00.000Z'),
+    checkInTime: '08:05:00',
+    computedAmount: '0.00',
+    reason: null,
+    signOutAt: new Date('2026-05-06T16:45:00.000Z'),
+    signOutTime: '16:45:00',
+    status: 'present',
+  };
+  fixture.latenessEntry = [];
+
+  const response = await POST(new Request('http://localhost/api/entries', {
+    body: JSON.stringify({
+      date: '2026-05-06',
+      entries: [
+        {
+          arrivalTime: '08:05',
+          didNotSignOut: true,
+          didNotSignOutChanged: true,
+          staffId: 'staff-1',
+        },
+      ],
+    }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  }));
+
+  assert.equal(response.status, 200);
+  const responseBody = await response.json();
+  assert.equal(responseBody.changedStaffCount, 1);
+  assert.equal(fixture.attendanceRecord[0].signOutTime, null);
+  assert.equal(fixture.attendanceRecord[0].signOutAt, null);
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '2.00');
+  assert.equal(fixture.attendanceRecord[0].reason, 'DID NOT SIGN OUT');
+  assert.equal(fixture.attendanceRecord[0].status, 'late');
+  assert.equal(fixture.latenessEntry.length, 1);
+  assert.equal(fixture.latenessEntry[0].didNotSignOut, true);
 });
 
 test('saving entries creates a manual attendance check-in when staff has no attendance record', async () => {

@@ -231,7 +231,10 @@ export default function EntriesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           date: today,
-          entries: changedEntries,
+          entries: changedEntries.map((entry) => ({
+            ...entry,
+            didNotSignOutChanged: entry.didNotSignOut !== originalEntrySnapshots[entry.staffId]?.didNotSignOut,
+          })),
         }),
       });
 

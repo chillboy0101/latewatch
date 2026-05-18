@@ -258,6 +258,12 @@ export async function POST(request: NextRequest) {
       const existing = existingByStaffId.get(entry.staffId);
       const existingAttendance = attendanceByStaffId.get(entry.staffId);
       const shouldStoreEntry = penalty.didNotSignOut || penalty.amount > 0;
+      const didNotSignOutChanged =
+        entry.didNotSignOutChanged === true ||
+        (existing?.didNotSignOut === true) !== didNotSignOut;
+      const signOutCorrection = didNotSignOutChanged
+        ? didNotSignOut ? 'clear' : 'manual'
+        : 'preserve';
 
       if (existingAttendance) {
         const correction = resolveManualAttendanceCorrection({
@@ -268,21 +274,33 @@ export async function POST(request: NextRequest) {
           didNotSignOut,
           isAttendanceOnly: staffAttendanceOnlyMap.get(entry.staffId) === true,
           isNssPersonnel: staffPenaltyMap.get(entry.staffId) === true,
+          signOutCorrection,
         });
 
         if (manualAttendanceCorrectionChanged({
           attendance: existingAttendance,
           correction,
         })) {
+          const attendanceUpdateValues: Partial<typeof attendanceRecord.$inferInsert> = {
+            checkInAt: correction.checkInAt,
+            checkInTime: correction.checkInTime,
+            computedAmount: correction.computedAmount,
+            reason: correction.reason,
+            status: correction.status,
+            updatedAt: new Date(),
+          };
+
+          if (Object.prototype.hasOwnProperty.call(correction, 'signOutTime')) {
+            attendanceUpdateValues.signOutAt = correction.signOutAt;
+            attendanceUpdateValues.signOutTime = correction.signOutTime;
+            attendanceUpdateValues.signOutNetworkIp = correction.signOutTime ? 'manual_admin' : null;
+            attendanceUpdateValues.signOutUserAgent = correction.signOutTime
+              ? request.headers.get('user-agent') || 'manual_entries'
+              : null;
+          }
+
           const [updatedAttendance] = await db.update(attendanceRecord)
-            .set({
-              checkInAt: correction.checkInAt,
-              checkInTime: correction.checkInTime,
-              computedAmount: correction.computedAmount,
-              reason: correction.reason,
-              status: correction.status,
-              updatedAt: new Date(),
-            })
+            .set(attendanceUpdateValues)
             .where(eq(attendanceRecord.id, existingAttendance.id))
             .returning();
 
