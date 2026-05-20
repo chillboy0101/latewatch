@@ -566,7 +566,7 @@ export default function EntriesPage() {
                               onClick={() => toggleNoSignOutWaiver(entry.staffId)}
                             >
                               {entry.noSignOutWaived ? (
-                                <>Recharge</>
+                                <>Remove waiver</>
                               ) : (
                                 <>Mark as waived</>
                               )}

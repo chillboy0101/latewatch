@@ -106,7 +106,7 @@ test('entries page separates real sign-out time from waiver state', () => {
   assert.match(source, /updateSignOutTime/);
   assert.match(source, /toggleNoSignOutWaiver/);
   assert.match(source, />Mark as waived</);
-  assert.match(source, />Recharge</);
+  assert.match(source, />Remove waiver</);
   assert.doesNotMatch(source, /No Sign Out<\/th>/);
 });
 
