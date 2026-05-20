@@ -136,6 +136,26 @@ function canSignOut(status: CheckInStatus | null) {
   return Boolean(status?.attendance && !status.attendance.signOutTime && status.time?.slice(0, 5) >= '16:30');
 }
 
+function attendanceReasonIncludes(status: CheckInStatus | null, text: string) {
+  return status?.attendance?.reason?.toUpperCase().includes(text) === true;
+}
+
+function hasNoSignOutPenalty(status: CheckInStatus | null) {
+  return Boolean(
+    status?.attendance &&
+    !status.attendance.signOutTime &&
+    Number(status.attendance.computedAmount || 0) > 0 &&
+    attendanceReasonIncludes(status, 'DID NOT SIGN OUT'),
+  );
+}
+
+function hasLateCheckInPenalty(status: CheckInStatus | null) {
+  if (!status?.attendance || status.attendance.signOutTime) return false;
+  if (attendanceReasonIncludes(status, "DIDN'T COME BEFORE")) return true;
+
+  return status.attendance.status === 'late' && !hasNoSignOutPenalty(status);
+}
+
 function statusCopy(status: CheckInStatus | null) {
   if (!status) return 'Checking your attendance status';
   if (!status.locationConfigured) return 'Office location not configured';
@@ -145,14 +165,15 @@ function statusCopy(status: CheckInStatus | null) {
   if (status.isHoliday) return status.holidayName || 'Public holiday';
   if (status.isWeekend) return 'Weekend';
   if (status.attendance?.signOutTime) return 'Checked out';
-  if (status.attendance?.status === 'late') return 'Late check-in recorded';
+  if (hasLateCheckInPenalty(status) && hasNoSignOutPenalty(status)) return 'Late + no sign-out recorded';
+  if (hasNoSignOutPenalty(status)) return 'No sign-out recorded';
+  if (hasLateCheckInPenalty(status)) return 'Late check-in recorded';
   if (status.attendance?.status === 'present') return 'Checked in';
   if (status.isAfterWorkdayEnd) return 'Check-ins closed';
   return 'Ready to check in';
 }
 
-function statusDetail(status: CheckInStatus | null, fallbackName: string | null | undefined) {
-  const person = status?.staff?.fullName || fallbackName || 'Signed-in user';
+function statusDetail(status: CheckInStatus | null) {
   if (!status) return 'Verifying your account, location, and today\'s work calendar.';
   if (!status.locationConfigured) return 'Ask an admin to save the office location before staff check in.';
   if (!status.staff) return 'Your login could not be matched to a staff profile yet. Ask an admin to confirm your staff email or staff name.';
@@ -162,10 +183,9 @@ function statusDetail(status: CheckInStatus | null, fallbackName: string | null 
   if (status.permission?.permissionType === 'absence') return 'You have an approved absence for today. No check-in is required.';
   if (status.isHoliday) return 'Check-ins are disabled today in observance of the public holiday.';
   if (status.isWeekend) return 'You cannot check in today because attendance check-in is closed on weekends.';
-  if (status.attendance?.signOutTime) return `${person}, you have checked out for today.`;
+  if (status.attendance?.signOutTime) return null;
   if (status.attendance && !canSignOut(status)) return `You can check out from ${status.signOutStartLabel}.`;
-  if (status.attendance?.status === 'late') return `${person}, your late check-in has been recorded.`;
-  if (status.attendance?.status === 'present') return `${person}, you are checked in for today.`;
+  if (status.attendance) return null;
   if (status.isAfterWorkdayEnd) return `Check-ins are closed after ${status.workdayEndLabel}. Ask an admin to correct attendance if needed.`;
   if (status.permission?.permissionType === 'late_arrival') {
     const window = getPermissionWindowBounds(status.permission);
@@ -174,7 +194,7 @@ function statusDetail(status: CheckInStatus | null, fallbackName: string | null 
       ? `Your approved ${window.label.toLowerCase()} window has passed. Checking in now will be recorded as late.`
       : `Your late arrival is approved for ${window.label.toLowerCase()}.`;
   }
-  return `${person}, you can check in now.`;
+  return null;
 }
 
 function locationValue(status: CheckInStatus | null, liveLocation: LiveLocation) {
@@ -242,8 +262,8 @@ function attendanceButtonLabel(status: CheckInStatus | null, submitting: boolean
 function statusTone(status: CheckInStatus | null) {
   if (!status) return 'border-border bg-card text-muted-foreground';
   if (status.attendance?.signOutTime) return 'border-success/25 bg-success/10 text-success';
+  if (hasNoSignOutPenalty(status) || hasLateCheckInPenalty(status)) return 'border-warning/25 bg-warning/10 text-warning';
   if (status.attendance?.status === 'present') return 'border-success/25 bg-success/10 text-success';
-  if (status.attendance?.status === 'late') return 'border-warning/25 bg-warning/10 text-warning';
   if (status.permission?.permissionType === 'absence') return 'border-primary/25 bg-primary/10 text-primary';
   if (!status.locationConfigured || !status.staff || (status.device?.registered && !status.device.trusted) || status.isHoliday || status.isWeekend) {
     return 'border-warning/25 bg-warning/10 text-warning';
@@ -665,6 +685,7 @@ export default function CheckInPage() {
   const accessNotSetUp = Boolean(status && !status.staff);
   const locationBlocksAction = Boolean(status?.locationConfigured && liveLocation.blocking);
   const autoDeviceReady = Boolean(status?.staff && status.device?.registered && status.device.trusted);
+  const statusDetailText = statusDetail(status);
 
   useEffect(() => {
     if (!autoDeviceReady || checkingIn || autoAttendanceAction || savingAutoSettings) return;
@@ -771,9 +792,11 @@ export default function CheckInPage() {
                     )}
                   </div>
                   <h2 className="text-lg font-semibold sm:text-xl">{statusCopy(status)}</h2>
-                  <p className="mx-auto mt-1.5 max-w-sm text-sm leading-5 text-muted-foreground">
-                    {statusDetail(status, user?.primaryEmailAddress?.emailAddress)}
-                  </p>
+                  {statusDetailText && (
+                    <p className="mx-auto mt-1.5 max-w-sm text-sm leading-5 text-muted-foreground">
+                      {statusDetailText}
+                    </p>
+                  )}
                   <div className="mt-3 flex flex-col items-center gap-2">
                     {status?.staff?.fullName && (
                       <div className="inline-flex h-9 max-w-full items-center rounded-full border border-border/70 bg-background/60 px-3.5 text-sm font-medium text-foreground">

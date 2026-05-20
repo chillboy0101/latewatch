@@ -8,7 +8,12 @@ const { computePenalty } = require('../src/lib/penalty-calculator.ts');
 const { getAuditFieldChanges, getAuditTargetName } = require('../src/lib/audit-display.ts');
 const { DEFAULT_OFFICE_RADIUS_METERS, validateAttendanceLocation } = require('../src/lib/geo-location.ts');
 const { getClientIp, getClientIpInfo, isLoopbackIp } = require('../src/lib/request-ip.ts');
-const { isAfterWorkdayEnd } = require('../src/lib/work-hours.ts');
+const {
+  isAfterWorkdayEnd,
+  NO_SIGN_OUT_ALERT_LABEL,
+  NO_SIGN_OUT_ALERT_TIME,
+  shouldAlertNoSignOut,
+} = require('../src/lib/work-hours.ts');
 const {
   ABSENCE_PERMISSION_REASONS,
   formatAbsencePermissionReason,
@@ -60,6 +65,13 @@ test('regular staff penalties increase at one minute past each clock hour', () =
       `${arrivalTime} should be GHC ${amount}`,
     );
   }
+});
+
+test('no sign-out alert starts at 8:00 PM', () => {
+  assert.equal(NO_SIGN_OUT_ALERT_TIME, '20:00');
+  assert.equal(NO_SIGN_OUT_ALERT_LABEL, '8:00 PM');
+  assert.equal(shouldAlertNoSignOut('19:59:59'), false);
+  assert.equal(shouldAlertNoSignOut('20:00:00'), true);
 });
 
 test('NSS personnel late penalty stays flat while regular staff use the clock-hour rule', () => {

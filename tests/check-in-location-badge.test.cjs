@@ -26,3 +26,16 @@ test('check-in page keeps location blocking states intact', () => {
   assert.match(source, /locationBlocksAction/);
   assert.match(source, /Improve GPS Accuracy/);
 });
+
+test('check-in page uses concise attendance status copy', () => {
+  const source = fs.readFileSync(checkInPagePath, 'utf8');
+
+  assert.doesNotMatch(source, /your late check-in has been recorded/);
+  assert.doesNotMatch(source, /you are checked in for today/);
+  assert.doesNotMatch(source, /you have checked out for today/);
+  assert.doesNotMatch(source, /You can check in now/);
+  assert.match(source, /No sign-out recorded/);
+  assert.match(source, /Late \+ no sign-out recorded/);
+  assert.match(source, /hasNoSignOutPenalty/);
+  assert.match(source, /hasLateCheckInPenalty/);
+});
