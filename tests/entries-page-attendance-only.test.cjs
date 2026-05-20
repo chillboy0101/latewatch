@@ -74,7 +74,7 @@ test('entries page shows waived no-sign-out rows without a charge', () => {
   const source = fs.readFileSync(entriesPagePath, 'utf8');
 
   assert.match(source, /noSignOutWaived/);
-  assert.match(source, />No sign-out waived</);
+  assert.match(source, />Waived</);
 });
 
 test('entries page tracks changed rows and submits only precise updates', () => {
@@ -83,6 +83,8 @@ test('entries page tracks changed rows and submits only precise updates', () => 
   assert.match(source, /originalEntrySnapshots/);
   assert.match(source, /changedEntries/);
   assert.match(source, /entries: changedEntries/);
+  assert.match(source, /signOutTime/);
+  assert.match(source, /noSignOutWaivedChanged/);
   assert.match(source, /No changes to save\./);
   assert.match(source, /Save 1 Change/);
   assert.match(source, /Save \$\{changedEntries\.length\} Changes/);
@@ -93,7 +95,19 @@ test('entries API sources saved arrival times from attendance records', () => {
   const source = fs.readFileSync(entriesRoutePath, 'utf8');
 
   assert.match(source, /checkInTime: attendanceRecord\.checkInTime/);
+  assert.match(source, /signOutTime: attendanceRecord\.signOutTime/);
   assert.match(source, /mergeAttendanceRowsIntoEntryRows\(\{ attendanceRows, entryRows: entries, permissionRows \}\)/);
+});
+
+test('entries page separates real sign-out time from waiver state', () => {
+  const source = fs.readFileSync(entriesPagePath, 'utf8');
+
+  assert.match(source, /Sign Out/);
+  assert.match(source, /updateSignOutTime/);
+  assert.match(source, /toggleNoSignOutWaiver/);
+  assert.match(source, />Mark as waived</);
+  assert.match(source, />Recharge</);
+  assert.doesNotMatch(source, /No Sign Out<\/th>/);
 });
 
 test('regular staff recalculation apply notifies live pages to refetch entries', () => {

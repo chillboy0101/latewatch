@@ -60,6 +60,10 @@ function buildCheckInAt(date: string, time: string) {
   return new Date(`${date}T${time}:00.000Z`);
 }
 
+function buildSignOutAt(date: string, time: string) {
+  return new Date(`${date}T${time}:00.000Z`);
+}
+
 function hasOwn(object: object, property: string) {
   return Object.prototype.hasOwnProperty.call(object, property);
 }
@@ -153,7 +157,8 @@ export function resolveManualAttendanceCorrection(input: {
   didNotSignOut: boolean;
   isAttendanceOnly?: boolean;
   isNssPersonnel?: boolean;
-  signOutCorrection?: 'clear' | 'preserve';
+  signOutCorrection?: 'clear' | 'preserve' | 'set';
+  signOutTime?: string | null;
 }): ManualAttendanceCorrection {
   const currentArrivalTime = normalizeTime(input.attendance.checkInTime) || WORKDAY_START_TIME;
   const nextArrivalTime = input.arrivalTime || currentArrivalTime;
@@ -180,6 +185,12 @@ export function resolveManualAttendanceCorrection(input: {
   if (signOutCorrection === 'clear') {
     correction.signOutAt = null;
     correction.signOutTime = null;
+  } else if (signOutCorrection === 'set') {
+    const nextSignOutTime = normalizeTime(input.signOutTime);
+    if (nextSignOutTime) {
+      correction.signOutAt = buildSignOutAt(input.date, nextSignOutTime);
+      correction.signOutTime = nextSignOutTime;
+    }
   }
 
   return correction;

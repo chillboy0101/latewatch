@@ -5,7 +5,6 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { DateField } from '@/components/ui/date-field';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Card } from '@/components/ui/card';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { addDays, format, isValid, parseISO } from 'date-fns';
@@ -27,6 +26,7 @@ interface StaffMember {
 interface Entry {
   staffId: string;
   arrivalTime: string;
+  signOutTime: string;
   didNotSignOut: boolean;
   amount: number;
   isGeneralPardon: boolean;
@@ -43,6 +43,7 @@ interface CalendarDay {
 interface ExistingEntry {
   staffId: string;
   arrivalTime: string | null;
+  signOutTime?: string | null;
   didNotSignOut: boolean | null;
   computedAmount: string | number | null;
   isGeneralPardon?: boolean | null;
@@ -50,7 +51,7 @@ interface ExistingEntry {
   reason: string | null;
 }
 
-type EntrySnapshot = Pick<Entry, 'arrivalTime' | 'didNotSignOut'>;
+type EntrySnapshot = Pick<Entry, 'arrivalTime' | 'didNotSignOut' | 'signOutTime' | 'noSignOutWaived'>;
 
 function normalizeTimeValue(value: string | null | undefined) {
   return value ? value.slice(0, 5) : '';
@@ -60,6 +61,8 @@ function snapshotEntry(entry: Entry): EntrySnapshot {
   return {
     arrivalTime: normalizeTimeValue(entry.arrivalTime),
     didNotSignOut: entry.didNotSignOut === true,
+    noSignOutWaived: entry.noSignOutWaived === true,
+    signOutTime: normalizeTimeValue(entry.signOutTime),
   };
 }
 
@@ -68,7 +71,9 @@ function entryMatchesSnapshot(entry: Entry, snapshot: EntrySnapshot | undefined)
 
   return (
     normalizeTimeValue(entry.arrivalTime) === normalizeTimeValue(snapshot.arrivalTime) &&
-    entry.didNotSignOut === snapshot.didNotSignOut
+    entry.didNotSignOut === snapshot.didNotSignOut &&
+    entry.noSignOutWaived === snapshot.noSignOutWaived &&
+    normalizeTimeValue(entry.signOutTime) === normalizeTimeValue(snapshot.signOutTime)
   );
 }
 
@@ -129,6 +134,7 @@ export default function EntriesPage() {
         return {
           staffId: s.id,
           arrivalTime: normalizeTimeValue(existing?.arrivalTime),
+          signOutTime: normalizeTimeValue(existing?.signOutTime),
           didNotSignOut: existing?.didNotSignOut || false,
           amount: existing ? parseFloat(String(existing.computedAmount || '0')) : 0,
           isGeneralPardon: existing?.isGeneralPardon === true,
@@ -181,49 +187,99 @@ export default function EntriesPage() {
   }, [fetchStaffAndEntries]);
 
   
+  function applyPenaltyDisplay(entry: Entry, member: StaffMember | undefined): Entry {
+    const hasSignOutTime = Boolean(normalizeTimeValue(entry.signOutTime));
+    const noSignOutWaived = hasSignOutTime ? false : entry.noSignOutWaived;
+    const didNotSignOut = hasSignOutTime || noSignOutWaived ? false : entry.didNotSignOut;
+    const normalizedEntry = {
+      ...entry,
+      didNotSignOut,
+      noSignOutWaived,
+      signOutTime: normalizeTimeValue(entry.signOutTime),
+    };
+
+    if (normalizedEntry.isGeneralPardon && !didNotSignOut) {
+      return {
+        ...normalizedEntry,
+        amount: 0,
+        reason: normalizedEntry.reason || 'General pardon',
+      };
+    }
+
+    if (noSignOutWaived && !didNotSignOut) {
+      return {
+        ...normalizedEntry,
+        amount: 0,
+        isGeneralPardon: false,
+        reason: 'No sign-out waived',
+      };
+    }
+
+    const penalty = computePenalty({
+      arrivalTime: normalizedEntry.arrivalTime || null,
+      didNotSignOut,
+      isAttendanceOnly: member?.isAttendanceOnly === true,
+      isNssPersonnel: member?.isNssPersonnel === true,
+      isHoliday,
+    });
+
+    return {
+      ...normalizedEntry,
+      amount: penalty.amount,
+      isGeneralPardon: false,
+      noSignOutWaived: false,
+      reason: penalty.reason,
+    };
+  }
+
   const updateEntry = <K extends keyof Entry>(staffId: string, field: K, value: Entry[K]) => {
     setEntries((prev) =>
       prev.map((entry) => {
         if (entry.staffId === staffId) {
           const updated = { ...entry, [field]: value };
           const member = staff.find((s) => s.id === staffId);
-          if (entry.isGeneralPardon && updated.didNotSignOut !== true) {
-            return {
-              ...updated,
-              amount: 0,
-              isGeneralPardon: true,
-              noSignOutWaived: false,
-              reason: updated.reason || 'General pardon',
-            };
-          }
-          if (entry.noSignOutWaived && updated.didNotSignOut !== true) {
-            return {
-              ...updated,
-              amount: 0,
-              isGeneralPardon: false,
-              noSignOutWaived: true,
-              reason: updated.reason || 'No sign-out waived',
-            };
-          }
-          const penalty = computePenalty({
-            arrivalTime: updated.arrivalTime || null,
-            didNotSignOut: updated.didNotSignOut,
-            isAttendanceOnly: member?.isAttendanceOnly === true,
-            isNssPersonnel: member?.isNssPersonnel === true,
-            isHoliday,
-          });
-          return {
-            ...updated,
-            amount: penalty.amount,
-            isGeneralPardon: false,
-            noSignOutWaived: false,
-            reason: penalty.reason,
-          };
+          return applyPenaltyDisplay(updated, member);
         }
         return entry;
       })
     );
   };
+
+  function updateSignOutTime(staffId: string, value: string) {
+    setEntries((prev) =>
+      prev.map((entry) => {
+        if (entry.staffId !== staffId) return entry;
+
+        const signOutTime = normalizeTimeValue(value);
+        const updated = {
+          ...entry,
+          didNotSignOut: signOutTime ? false : true,
+          noSignOutWaived: false,
+          signOutTime,
+        };
+        const member = staff.find((s) => s.id === staffId);
+        return applyPenaltyDisplay(updated, member);
+      }),
+    );
+  }
+
+  function toggleNoSignOutWaiver(staffId: string) {
+    setEntries((prev) =>
+      prev.map((entry) => {
+        if (entry.staffId !== staffId) return entry;
+
+        const nextWaived = !entry.noSignOutWaived;
+        const updated = {
+          ...entry,
+          didNotSignOut: nextWaived ? false : !normalizeTimeValue(entry.signOutTime),
+          noSignOutWaived: nextWaived,
+          signOutTime: '',
+        };
+        const member = staff.find((s) => s.id === staffId);
+        return applyPenaltyDisplay(updated, member);
+      }),
+    );
+  }
 
   const changedEntries = useMemo(
     () => entries.filter((entry) => !entryMatchesSnapshot(entry, originalEntrySnapshots[entry.staffId])),
@@ -250,6 +306,10 @@ export default function EntriesPage() {
           entries: changedEntries.map((entry) => ({
             ...entry,
             didNotSignOutChanged: entry.didNotSignOut !== originalEntrySnapshots[entry.staffId]?.didNotSignOut,
+            noSignOutWaivedChanged: entry.noSignOutWaived !== originalEntrySnapshots[entry.staffId]?.noSignOutWaived,
+            signOutTimeChanged:
+              normalizeTimeValue(entry.signOutTime) !==
+              normalizeTimeValue(originalEntrySnapshots[entry.staffId]?.signOutTime),
           })),
         }),
       });
@@ -452,9 +512,9 @@ export default function EntriesPage() {
                   <th className="w-12 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">#</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</th>
                   <th className="w-44 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Time</th>
+                  <th className="w-56 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Sign Out</th>
                   <th className="w-28 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Amount</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Reason</th>
-                  <th className="w-24 px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wide">No Sign Out</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -480,7 +540,44 @@ export default function EntriesPage() {
                           value={entry.arrivalTime}
                           onChange={(value) => updateEntry(entry.staffId, 'arrivalTime', value)}
                           disabled={entriesDisabled}
+                          label="Arrival time"
                         />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <TimeSelector
+                            value={entry.signOutTime}
+                            onChange={(value) => updateSignOutTime(entry.staffId, value)}
+                            disabled={entriesDisabled}
+                            label="Sign-out time"
+                            max="23:59"
+                          />
+                          {entry.signOutTime ? (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">
+                              <CheckCircle className="h-3 w-3" />
+                              Signed out
+                            </span>
+                          ) : (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={entriesDisabled}
+                              onClick={() => toggleNoSignOutWaiver(entry.staffId)}
+                            >
+                              {entry.noSignOutWaived ? (
+                                <>Recharge</>
+                              ) : (
+                                <>Mark as waived</>
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                        {!entry.signOutTime && (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {entry.noSignOutWaived ? 'Waived' : entry.didNotSignOut ? 'No sign-out' : 'Missing'}
+                          </p>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm font-mono">
                         {entry.amount > 0 ? (
@@ -488,22 +585,13 @@ export default function EntriesPage() {
                         ) : entry.isGeneralPardon ? (
                           <span className="rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">General pardon</span>
                         ) : entry.noSignOutWaived ? (
-                          <span className="rounded-full border border-warning/30 bg-warning/10 px-2 py-1 text-xs font-semibold text-warning">No sign-out waived</span>
+                          <span className="rounded-full border border-warning/30 bg-warning/10 px-2 py-1 text-xs font-semibold text-warning">Waived</span>
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">
                         {entry.reason || '-'}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Checkbox
-                          checked={entry.didNotSignOut}
-                          onCheckedChange={(checked) =>
-                            updateEntry(entry.staffId, 'didNotSignOut', checked === true)
-                          }
-                          disabled={entriesDisabled}
-                        />
                       </td>
                     </tr>
                   );
@@ -545,10 +633,16 @@ export default function EntriesPage() {
 
 function TimeSelector({
   disabled,
+  label = 'Time',
+  max = '18:00',
+  min = '06:00',
   onChange,
   value,
 }: {
   disabled?: boolean;
+  label?: string;
+  max?: string;
+  min?: string;
   onChange: (value: string) => void;
   value: string;
 }) {
@@ -570,11 +664,11 @@ function TimeSelector({
     <div className="relative w-36">
       <Input
         ref={inputRef}
-        aria-label="Arrival time"
+        aria-label={label}
         className="latewatch-native-time-input h-9 w-full pr-9 font-mono text-sm font-medium [color-scheme:light] dark:[color-scheme:dark]"
         disabled={disabled}
-        max="18:00"
-        min="06:00"
+        max={max}
+        min={min}
         step={300}
         type="time"
         value={normalizeTimeValue(value)}

@@ -69,6 +69,7 @@ test('stored lateness entries win over attendance fallback rows', () => {
         createdAt: new Date('2026-05-06T10:01:00.000Z'),
         date: '2026-05-06',
         reason: "DIDN'T COME BEFORE 8:30AM",
+        signOutTime: '16:45:00',
         staffId: 'staff-1',
         status: 'late',
         updatedAt: new Date('2026-05-06T10:02:00.000Z'),
@@ -90,6 +91,7 @@ test('stored lateness entries win over attendance fallback rows', () => {
 
   assert.equal(rows.length, 1);
   assert.equal(rows[0].id, 'entry-1');
+  assert.equal(rows[0].signOutTime, '16:45:00');
 });
 
 test('plain on-time attendance without a reason appears on the entries page', () => {
@@ -167,4 +169,5 @@ test('waived no-sign-out attendance rows stay visible without a charge', () => {
   assert.equal(rows[0].didNotSignOut, false);
   assert.equal(rows[0].noSignOutWaived, true);
   assert.equal(rows[0].reason, 'No sign-out waived');
+  assert.equal(rows[0].signOutTime, null);
 });

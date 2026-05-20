@@ -28,6 +28,7 @@ async function getAttendanceRowsForEntries(start: string, end: string) {
     noSignOutWaived: attendanceRecord.noSignOutWaived,
     noSignOutWaivedAt: attendanceRecord.noSignOutWaivedAt,
     noSignOutWaivedReason: attendanceRecord.noSignOutWaivedReason,
+    signOutTime: attendanceRecord.signOutTime,
     source: attendanceRecord.source,
     computedAmount: attendanceRecord.computedAmount,
     createdAt: attendanceRecord.createdAt,
@@ -67,9 +68,17 @@ function buildManualCheckInAt(date: string, time: string) {
   return new Date(`${date}T${time}:00.000Z`);
 }
 
+function buildManualSignOutAt(date: string, time: string) {
+  return new Date(`${date}T${time}:00.000Z`);
+}
+
 function normalizeEntryTime(value: string | null | undefined) {
   const time = value?.slice(0, 5) || '';
   return /^\d{2}:\d{2}$/.test(time) ? time : null;
+}
+
+function hasOwn(object: object, property: string) {
+  return Object.prototype.hasOwnProperty.call(object, property);
 }
 
 function normalizeEntryAmount(value: string | number | null | undefined) {
@@ -248,7 +257,32 @@ export async function POST(request: NextRequest) {
       const arrivalTime = typeof entry.arrivalTime === 'string' && /^\d{2}:\d{2}$/.test(entry.arrivalTime)
         ? entry.arrivalTime
         : null;
-      const didNotSignOut = entry.didNotSignOut === true;
+      const existing = existingByStaffId.get(entry.staffId);
+      const existingAttendance = attendanceByStaffId.get(entry.staffId);
+      const hasSubmittedSignOutTime = hasOwn(entry, 'signOutTime');
+      if (
+        hasSubmittedSignOutTime &&
+        typeof entry.signOutTime === 'string' &&
+        entry.signOutTime.trim() !== '' &&
+        !normalizeEntryTime(entry.signOutTime)
+      ) {
+        return NextResponse.json({ error: 'Invalid sign-out time format' }, { status: 400 });
+      }
+
+      const legacyNoSignOutToggle = entry.didNotSignOut === true && !hasSubmittedSignOutTime;
+      const submittedSignOutTime = legacyNoSignOutToggle
+        ? null
+        : hasSubmittedSignOutTime
+          ? normalizeEntryTime(entry.signOutTime)
+          : normalizeEntryTime(existingAttendance?.signOutTime);
+      const requestedNoSignOutWaived = legacyNoSignOutToggle
+        ? false
+        : hasOwn(entry, 'noSignOutWaived')
+          ? entry.noSignOutWaived === true
+          : existingAttendance?.noSignOutWaived === true;
+      const didNotSignOut = submittedSignOutTime || requestedNoSignOutWaived
+        ? false
+        : entry.didNotSignOut === true;
       const activePermission = activePermissionsByStaffId.get(entry.staffId) || null;
       const penalty = resolveManualPenalty({
         activePermission,
@@ -258,20 +292,37 @@ export async function POST(request: NextRequest) {
         isNssPersonnel: staffPenaltyMap.get(entry.staffId) === true,
       });
 
-      const existing = existingByStaffId.get(entry.staffId);
-      const existingAttendance = attendanceByStaffId.get(entry.staffId);
       const shouldStoreEntry = penalty.didNotSignOut || penalty.amount > 0;
+      const signOutTimeChanged =
+        entry.signOutTimeChanged === true ||
+        (hasSubmittedSignOutTime &&
+          normalizeEntryTime(existingAttendance?.signOutTime) !== submittedSignOutTime);
+      const noSignOutWaivedChanged =
+        entry.noSignOutWaivedChanged === true ||
+        (hasOwn(entry, 'noSignOutWaived') &&
+          (existingAttendance?.noSignOutWaived === true) !== requestedNoSignOutWaived);
       const didNotSignOutChanged =
         entry.didNotSignOutChanged === true ||
         (existing?.didNotSignOut === true) !== didNotSignOut;
-      const signOutCorrection = didNotSignOutChanged && didNotSignOut
-        ? 'clear'
-        : 'preserve';
+      const signOutCorrection = submittedSignOutTime
+        ? 'set'
+        : (
+          signOutTimeChanged ||
+          (didNotSignOutChanged && didNotSignOut) ||
+          (requestedNoSignOutWaived && Boolean(normalizeEntryTime(existingAttendance?.signOutTime)))
+        )
+          ? 'clear'
+          : 'preserve';
       const shouldWaiveNoSignOut =
-        didNotSignOutChanged &&
-        !didNotSignOut &&
-        !normalizeEntryTime(existingAttendance?.signOutTime);
-      const shouldClearNoSignOutWaiver = didNotSignOutChanged && didNotSignOut;
+        !submittedSignOutTime &&
+        (
+          requestedNoSignOutWaived ||
+          (didNotSignOutChanged && !didNotSignOut && !normalizeEntryTime(existingAttendance?.signOutTime))
+        );
+      const shouldClearNoSignOutWaiver = Boolean(submittedSignOutTime) || (
+        !requestedNoSignOutWaived &&
+        (noSignOutWaivedChanged || (didNotSignOutChanged && didNotSignOut))
+      );
 
       if (existingAttendance) {
         const correction = resolveManualAttendanceCorrection({
@@ -283,6 +334,7 @@ export async function POST(request: NextRequest) {
           isAttendanceOnly: staffAttendanceOnlyMap.get(entry.staffId) === true,
           isNssPersonnel: staffPenaltyMap.get(entry.staffId) === true,
           signOutCorrection,
+          signOutTime: submittedSignOutTime,
         });
         const noSignOutWaiverChanged = (
           shouldWaiveNoSignOut &&
@@ -374,6 +426,19 @@ export async function POST(request: NextRequest) {
           userAgent: request.headers.get('user-agent') || 'manual_entries',
           computedAmount: penalty.amount.toFixed(2),
           reason: penalty.reason,
+          ...(submittedSignOutTime ? {
+            signOutAt: buildManualSignOutAt(date, submittedSignOutTime),
+            signOutTime: submittedSignOutTime,
+            signOutNetworkIp: 'manual_admin',
+            signOutUserAgent: request.headers.get('user-agent') || 'manual_entries',
+          } : {}),
+          ...(shouldWaiveNoSignOut ? {
+            noSignOutWaived: true,
+            noSignOutWaivedAt: new Date(),
+            noSignOutWaivedByEmail: actor.actorEmail,
+            noSignOutWaivedByUserId: actor.actorUserId,
+            noSignOutWaivedReason: 'entries_no_sign_out_cleared',
+          } : {}),
         };
         const [createdAttendance] = await db.insert(attendanceRecord)
           .values(manualAttendanceValues)

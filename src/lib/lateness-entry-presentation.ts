@@ -8,6 +8,7 @@ export type LatenessEntryPresentationRow = {
   isGeneralPardon?: boolean | null;
   noSignOutWaived?: boolean | null;
   reason?: string | null;
+  signOutTime?: string | null;
   staffId: string;
 };
 
@@ -21,6 +22,7 @@ export type AttendanceEntryPresentationRow = {
   noSignOutWaivedAt?: Date | string | null;
   noSignOutWaivedReason?: string | null;
   reason?: string | null;
+  signOutTime?: string | null;
   source?: string | null;
   staffId: string;
   status?: string | null;
@@ -52,6 +54,7 @@ export function isGeneralPardonEntryReason(value: string | null | undefined) {
 function hasVisibleAttendanceState(row: AttendanceEntryPresentationRow) {
   return (
     Boolean(row.checkInTime) ||
+    Boolean(row.signOutTime) ||
     amountNumber(row.computedAmount) > 0 ||
     Boolean(row.reason) ||
     row.noSignOutWaived === true ||
@@ -66,10 +69,19 @@ export function mergeAttendanceRowsIntoEntryRows(input: {
   entryRows: LatenessEntryPresentationRow[];
   permissionRows?: PermissionEntryPresentationRow[];
 }) {
-  const entryRows = input.entryRows.map((entry) => ({
-    ...entry,
-    isGeneralPardon: entry.isGeneralPardon ?? isGeneralPardonEntryReason(entry.reason),
-  }));
+  const attendanceByKey = new Map(
+    input.attendanceRows.map((row) => [`${row.staffId}:${dateKey(row.date)}`, row]),
+  );
+  const entryRows = input.entryRows.map((entry) => {
+    const attendance = attendanceByKey.get(`${entry.staffId}:${dateKey(entry.date)}`);
+
+    return {
+      ...entry,
+      isGeneralPardon: entry.isGeneralPardon ?? isGeneralPardonEntryReason(entry.reason),
+      noSignOutWaived: entry.noSignOutWaived ?? (attendance?.noSignOutWaived === true),
+      signOutTime: entry.signOutTime ?? attendance?.signOutTime ?? null,
+    };
+  });
   const existingEntryKeys = new Set(
     entryRows.map((entry) => `${entry.staffId}:${dateKey(entry.date)}`),
   );
@@ -86,6 +98,7 @@ export function mergeAttendanceRowsIntoEntryRows(input: {
       isGeneralPardon: isGeneralPardonEntryReason(row.reason),
       noSignOutWaived: row.noSignOutWaived === true,
       reason: row.reason || (row.noSignOutWaived === true ? 'No sign-out waived' : null),
+      signOutTime: row.signOutTime || null,
       staffId: row.staffId,
     }));
   const occupiedKeys = new Set([
@@ -104,6 +117,7 @@ export function mergeAttendanceRowsIntoEntryRows(input: {
       id: `permission:${row.id}`,
       isGeneralPardon: true,
       reason: 'General pardon',
+      signOutTime: null,
       staffId: row.staffId,
     }));
 

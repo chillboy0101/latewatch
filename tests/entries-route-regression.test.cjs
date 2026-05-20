@@ -158,6 +158,8 @@ const schema = {
     'noSignOutWaivedByEmail',
     'noSignOutWaivedByUserId',
     'noSignOutWaivedReason',
+    'signOutAt',
+    'signOutTime',
   ]),
   entrySubmission: createTable('entrySubmission', ['date']),
   latenessEntry: createTable('latenessEntry', ['id', 'date']),
@@ -265,7 +267,7 @@ Module._load = function patchedLoad(request, ...args) {
 
 require('tsx/cjs');
 
-const { POST } = require('../src/app/api/entries/route.ts');
+const { GET, POST } = require('../src/app/api/entries/route.ts');
 
 test.after(() => {
   Module._load = originalLoad;
@@ -402,6 +404,122 @@ test('clearing no-sign-out from entries stores a waiver instead of a fake sign-o
   assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
   assert.equal(fixture.attendanceRecord[0].reason, null);
   assert.equal(fixture.attendanceRecord[0].status, 'present');
+  assert.equal(fixture.latenessEntry.length, 0);
+});
+
+test('entries GET includes attendance sign-out time even when a lateness row wins', async () => {
+  resetFixture();
+  fixture.attendanceRecord[0].signOutAt = new Date('2026-05-06T16:45:00.000Z');
+  fixture.attendanceRecord[0].signOutTime = '16:45:00';
+
+  const response = await GET(new Request('http://localhost/api/entries?date=2026-05-06'));
+
+  assert.equal(response.status, 200);
+  const responseBody = await response.json();
+  assert.equal(responseBody.length, 1);
+  assert.equal(responseBody[0].id, 'entry-1');
+  assert.equal(responseBody[0].signOutTime, '16:45:00');
+});
+
+test('setting a real sign-out time from entries clears no-sign-out debt and waiver', async () => {
+  resetFixture();
+  fixture.attendanceRecord[0] = {
+    ...fixture.attendanceRecord[0],
+    checkInAt: new Date('2026-05-06T08:05:00.000Z'),
+    checkInTime: '08:05:00',
+    computedAmount: '2.00',
+    reason: 'DID NOT SIGN OUT',
+    signOutAt: null,
+    signOutTime: null,
+    noSignOutWaived: true,
+    noSignOutWaivedAt: new Date('2026-05-07T09:00:00.000Z'),
+    noSignOutWaivedByEmail: 'admin@example.com',
+    noSignOutWaivedByUserId: null,
+    noSignOutWaivedReason: 'entries_no_sign_out_cleared',
+    status: 'late',
+  };
+  fixture.latenessEntry[0] = {
+    ...fixture.latenessEntry[0],
+    arrivalTime: '08:05:00',
+    computedAmount: '2.00',
+    didNotSignOut: true,
+    reason: 'DID NOT SIGN OUT',
+  };
+
+  const response = await POST(new Request('http://localhost/api/entries', {
+    body: JSON.stringify({
+      date: '2026-05-06',
+      entries: [
+        {
+          arrivalTime: '08:05',
+          didNotSignOut: false,
+          noSignOutWaived: false,
+          noSignOutWaivedChanged: true,
+          signOutTime: '16:50',
+          signOutTimeChanged: true,
+          staffId: 'staff-1',
+        },
+      ],
+    }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  }));
+
+  assert.equal(response.status, 200);
+  const responseBody = await response.json();
+  assert.equal(responseBody.changedStaffCount, 1);
+  assert.equal(fixture.attendanceRecord[0].signOutTime, '16:50');
+  assert.deepEqual(fixture.attendanceRecord[0].signOutAt, new Date('2026-05-06T16:50:00.000Z'));
+  assert.equal(fixture.attendanceRecord[0].noSignOutWaived, false);
+  assert.equal(fixture.attendanceRecord[0].noSignOutWaivedAt, null);
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
+  assert.equal(fixture.attendanceRecord[0].reason, null);
+  assert.equal(fixture.latenessEntry.length, 0);
+});
+
+test('waiving a missing sign-out from entries clears debt without saving a sign-out time', async () => {
+  resetFixture();
+  fixture.attendanceRecord[0] = {
+    ...fixture.attendanceRecord[0],
+    checkInAt: new Date('2026-05-06T08:05:00.000Z'),
+    checkInTime: '08:05:00',
+    computedAmount: '2.00',
+    reason: 'DID NOT SIGN OUT',
+    signOutAt: null,
+    signOutTime: null,
+    status: 'late',
+  };
+  fixture.latenessEntry[0] = {
+    ...fixture.latenessEntry[0],
+    arrivalTime: '08:05:00',
+    computedAmount: '2.00',
+    didNotSignOut: true,
+    reason: 'DID NOT SIGN OUT',
+  };
+
+  const response = await POST(new Request('http://localhost/api/entries', {
+    body: JSON.stringify({
+      date: '2026-05-06',
+      entries: [
+        {
+          arrivalTime: '08:05',
+          didNotSignOut: false,
+          noSignOutWaived: true,
+          noSignOutWaivedChanged: true,
+          signOutTime: '',
+          staffId: 'staff-1',
+        },
+      ],
+    }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(fixture.attendanceRecord[0].signOutTime, null);
+  assert.equal(fixture.attendanceRecord[0].signOutAt, null);
+  assert.equal(fixture.attendanceRecord[0].noSignOutWaived, true);
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
   assert.equal(fixture.latenessEntry.length, 0);
 });
 

@@ -66,6 +66,58 @@ test('manual attendance correction keeps an on-time check-in but adds the no-sig
   });
 });
 
+test('manual attendance correction records a real sign-out time', () => {
+  const correction = resolveManualAttendanceCorrection({
+    attendance: {
+      checkInAt: new Date('2026-05-06T08:05:00.000Z'),
+      checkInTime: '08:05:00',
+      computedAmount: '2.00',
+      reason: 'DID NOT SIGN OUT',
+      signOutAt: null,
+      signOutTime: null,
+      status: 'late',
+    },
+    arrivalTime: '08:05',
+    date: '2026-05-06',
+    didNotSignOut: false,
+    signOutCorrection: 'set',
+    signOutTime: '16:50',
+  });
+
+  assert.deepEqual(correction, {
+    checkInAt: new Date('2026-05-06T08:05:00.000Z'),
+    checkInTime: '08:05',
+    computedAmount: '0.00',
+    reason: null,
+    signOutAt: new Date('2026-05-06T16:50:00.000Z'),
+    signOutTime: '16:50',
+    status: 'present',
+  });
+});
+
+test('manual attendance correction clears a sign-out time without creating a fake fallback', () => {
+  const correction = resolveManualAttendanceCorrection({
+    attendance: {
+      checkInAt: new Date('2026-05-06T08:05:00.000Z'),
+      checkInTime: '08:05:00',
+      computedAmount: '0.00',
+      reason: null,
+      signOutAt: new Date('2026-05-06T16:45:00.000Z'),
+      signOutTime: '16:45:00',
+      status: 'present',
+    },
+    arrivalTime: '08:05',
+    date: '2026-05-06',
+    didNotSignOut: true,
+    signOutCorrection: 'clear',
+  });
+
+  assert.equal(correction.signOutTime, null);
+  assert.equal(correction.signOutAt, null);
+  assert.equal(correction.computedAmount, '2.00');
+  assert.equal(correction.reason, 'DID NOT SIGN OUT');
+});
+
 test('manual attendance correction applies the NSS flat late penalty', () => {
   const correction = resolveManualAttendanceCorrection({
     attendance: {
