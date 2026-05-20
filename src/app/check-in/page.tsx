@@ -132,6 +132,8 @@ type LiveLocation =
 type AttendanceAction = 'check_in' | 'sign_out';
 type AttendanceSource = 'auto_attendance' | 'staff_portal';
 
+const CHECK_IN_FEEDBACK_DISMISS_MS = 4_000;
+
 function canSignOut(status: CheckInStatus | null) {
   return Boolean(status?.attendance && !status.attendance.signOutTime && status.time?.slice(0, 5) >= '16:30');
 }
@@ -397,6 +399,16 @@ export default function CheckInPage() {
   useEffect(() => {
     setDeviceToken(getOrCreateDeviceToken());
   }, []);
+
+  useEffect(() => {
+    if (!message) return;
+
+    const timeout = window.setTimeout(() => {
+      setMessage(null);
+    }, CHECK_IN_FEEDBACK_DISMISS_MS);
+
+    return () => window.clearTimeout(timeout);
+  }, [message]);
 
   const fetchStatus = useCallback(async (options?: { preserveMessage?: boolean; silent?: boolean }) => {
     if (!deviceToken) return;

@@ -39,3 +39,12 @@ test('check-in page uses concise attendance status copy', () => {
   assert.match(source, /hasNoSignOutPenalty/);
   assert.match(source, /hasLateCheckInPenalty/);
 });
+
+test('check-in page auto-dismisses response feedback', () => {
+  const source = fs.readFileSync(checkInPagePath, 'utf8');
+
+  assert.match(source, /CHECK_IN_FEEDBACK_DISMISS_MS = 4_000/);
+  assert.match(source, /window\.setTimeout\(\(\) => \{/);
+  assert.match(source, /setMessage\(null\);/);
+  assert.match(source, /window\.clearTimeout\(timeout\)/);
+});
