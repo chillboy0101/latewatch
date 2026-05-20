@@ -900,6 +900,18 @@ function priorityRank(priority: NotificationPriority) {
   }
 }
 
+async function safeNotificationTask(label: 'audit' | 'system', task: () => Promise<Notification[]>) {
+  try {
+    return await task();
+  } catch (error) {
+    const message = label === 'audit'
+      ? 'Failed to build audit notifications:'
+      : 'Failed to build system notifications:';
+    console.error(message, error);
+    return [];
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const user = await getNotificationUser();
@@ -910,11 +922,18 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url);
     const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '40', 10), 1), 100);
     const status = url.searchParams.get('status');
-    const { dismissedIds, readIds } = await getNotificationState(user.id);
+    let dismissedIds = new Set<string>();
+    let readIds = new Set<string>();
+
+    try {
+      ({ dismissedIds, readIds } = await getNotificationState(user.id));
+    } catch (error) {
+      console.error('Failed to load notification state:', error);
+    }
 
     const [auditNotifications, systemNotifications] = await Promise.all([
-      getAuditNotifications(limit, readIds),
-      getSystemNotifications(readIds),
+      safeNotificationTask('audit', () => getAuditNotifications(limit, readIds)),
+      safeNotificationTask('system', () => getSystemNotifications(readIds)),
     ]);
 
     const seen = new Set<string>();

@@ -527,7 +527,7 @@ export default function EntriesPage() {
                 <tr>
                   <th className="w-12 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">#</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</th>
-                  <th className="w-44 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Time</th>
+                  <th className="w-44 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Sign In</th>
                   <th className="w-56 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Sign Out</th>
                   <th className="w-28 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Amount</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Reason</th>
@@ -556,7 +556,7 @@ export default function EntriesPage() {
                           value={entry.arrivalTime}
                           onChange={(value) => updateEntry(entry.staffId, 'arrivalTime', value)}
                           disabled={entriesDisabled}
-                          label="Arrival time"
+                          label="Sign-in time"
                         />
                       </td>
                       <td className="px-4 py-3">
