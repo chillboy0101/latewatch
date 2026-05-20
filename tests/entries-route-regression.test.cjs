@@ -36,6 +36,11 @@ function resetFixture() {
       computedAmount: '10.00',
       date: '2026-05-06',
       reason: "DIDN'T COME BEFORE 8:30AM",
+      noSignOutWaived: false,
+      noSignOutWaivedAt: null,
+      noSignOutWaivedByEmail: null,
+      noSignOutWaivedByUserId: null,
+      noSignOutWaivedReason: null,
       signOutAt: null,
       signOutTime: null,
       staffId: 'staff-1',
@@ -144,7 +149,16 @@ function insertIntoTable(tableName, values) {
 
 const schema = {
   attendancePermission: createTable('attendancePermission', ['date', 'staffId', 'status']),
-  attendanceRecord: createTable('attendanceRecord', ['id', 'staffId', 'date']),
+  attendanceRecord: createTable('attendanceRecord', [
+    'id',
+    'staffId',
+    'date',
+    'noSignOutWaived',
+    'noSignOutWaivedAt',
+    'noSignOutWaivedByEmail',
+    'noSignOutWaivedByUserId',
+    'noSignOutWaivedReason',
+  ]),
   entrySubmission: createTable('entrySubmission', ['date']),
   latenessEntry: createTable('latenessEntry', ['id', 'date']),
   staff: createTable('staff', ['id', 'fullName', 'active', 'archived', 'isAttendanceOnly', 'isNssPersonnel']),
@@ -341,7 +355,7 @@ test('saving attendance and lateness changes for one staff reports that staff on
   assert.equal(responseBody.count, 1);
 });
 
-test('clearing no-sign-out from entries does not create a fake attendance sign-out', async () => {
+test('clearing no-sign-out from entries stores a waiver instead of a fake sign-out', async () => {
   resetFixture();
   fixture.attendanceRecord[0] = {
     ...fixture.attendanceRecord[0],
@@ -382,13 +396,16 @@ test('clearing no-sign-out from entries does not create a fake attendance sign-o
   assert.equal(responseBody.changedStaffCount, 1);
   assert.equal(fixture.attendanceRecord[0].signOutTime, null);
   assert.equal(fixture.attendanceRecord[0].signOutAt, null);
+  assert.equal(fixture.attendanceRecord[0].noSignOutWaived, true);
+  assert.equal(fixture.attendanceRecord[0].noSignOutWaivedByEmail, 'admin@example.com');
+  assert.equal(fixture.attendanceRecord[0].noSignOutWaivedReason, 'entries_no_sign_out_cleared');
   assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
   assert.equal(fixture.attendanceRecord[0].reason, null);
   assert.equal(fixture.attendanceRecord[0].status, 'present');
   assert.equal(fixture.latenessEntry.length, 0);
 });
 
-test('checking no-sign-out from entries clears the attendance sign-out', async () => {
+test('checking no-sign-out from entries clears sign-out and removes an existing waiver', async () => {
   resetFixture();
   fixture.attendanceRecord[0] = {
     ...fixture.attendanceRecord[0],
@@ -398,6 +415,11 @@ test('checking no-sign-out from entries clears the attendance sign-out', async (
     reason: null,
     signOutAt: new Date('2026-05-06T16:45:00.000Z'),
     signOutTime: '16:45:00',
+    noSignOutWaived: true,
+    noSignOutWaivedAt: new Date('2026-05-07T09:00:00.000Z'),
+    noSignOutWaivedByEmail: 'admin@example.com',
+    noSignOutWaivedByUserId: null,
+    noSignOutWaivedReason: 'entries_no_sign_out_cleared',
     status: 'present',
   };
   fixture.latenessEntry = [];
@@ -423,11 +445,58 @@ test('checking no-sign-out from entries clears the attendance sign-out', async (
   assert.equal(responseBody.changedStaffCount, 1);
   assert.equal(fixture.attendanceRecord[0].signOutTime, null);
   assert.equal(fixture.attendanceRecord[0].signOutAt, null);
+  assert.equal(fixture.attendanceRecord[0].noSignOutWaived, false);
+  assert.equal(fixture.attendanceRecord[0].noSignOutWaivedAt, null);
+  assert.equal(fixture.attendanceRecord[0].noSignOutWaivedByEmail, null);
+  assert.equal(fixture.attendanceRecord[0].noSignOutWaivedReason, null);
   assert.equal(fixture.attendanceRecord[0].computedAmount, '2.00');
   assert.equal(fixture.attendanceRecord[0].reason, 'DID NOT SIGN OUT');
   assert.equal(fixture.attendanceRecord[0].status, 'late');
   assert.equal(fixture.latenessEntry.length, 1);
   assert.equal(fixture.latenessEntry[0].didNotSignOut, true);
+});
+
+test('arrival edits preserve an existing no-sign-out waiver', async () => {
+  resetFixture();
+  fixture.attendanceRecord[0] = {
+    ...fixture.attendanceRecord[0],
+    checkInAt: new Date('2026-05-06T08:05:00.000Z'),
+    checkInTime: '08:05:00',
+    computedAmount: '0.00',
+    reason: null,
+    noSignOutWaived: true,
+    noSignOutWaivedAt: new Date('2026-05-07T09:00:00.000Z'),
+    noSignOutWaivedByEmail: 'admin@example.com',
+    noSignOutWaivedByUserId: null,
+    noSignOutWaivedReason: 'entries_no_sign_out_cleared',
+    signOutAt: null,
+    signOutTime: null,
+    status: 'present',
+  };
+  fixture.latenessEntry = [];
+
+  const response = await POST(new Request('http://localhost/api/entries', {
+    body: JSON.stringify({
+      date: '2026-05-06',
+      entries: [
+        {
+          arrivalTime: '08:10',
+          didNotSignOut: false,
+          didNotSignOutChanged: false,
+          staffId: 'staff-1',
+        },
+      ],
+    }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(fixture.attendanceRecord[0].checkInTime, '08:10');
+  assert.equal(fixture.attendanceRecord[0].noSignOutWaived, true);
+  assert.equal(fixture.attendanceRecord[0].noSignOutWaivedReason, 'entries_no_sign_out_cleared');
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
+  assert.equal(fixture.latenessEntry.length, 0);
 });
 
 test('saving entries creates a manual attendance check-in when staff has no attendance record', async () => {

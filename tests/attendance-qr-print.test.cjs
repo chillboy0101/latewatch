@@ -161,3 +161,10 @@ test('system notifications sync lateness before reading weekly penalty totals', 
   assert.match(source, /syncLatenessEntriesFromAttendanceForRange/);
   assert.match(source, /await syncLatenessEntriesFromAttendanceForRange\(weekStart, todayStr\)[\s\S]*const weekEntries/);
 });
+
+test('system no-sign-out notifications ignore waived rows', () => {
+  const source = fs.readFileSync(notificationsApiPath, 'utf8');
+
+  assert.match(source, /noSignOutWaived:\s*attendanceRecord\.noSignOutWaived/);
+  assert.match(source, /!row\.signOutTime && row\.noSignOutWaived !== true/);
+});

@@ -70,6 +70,13 @@ test('entries page shows general pardon in the amount column for pardoned rows',
   assert.match(source, />General pardon</);
 });
 
+test('entries page shows waived no-sign-out rows without a charge', () => {
+  const source = fs.readFileSync(entriesPagePath, 'utf8');
+
+  assert.match(source, /noSignOutWaived/);
+  assert.match(source, />No sign-out waived</);
+});
+
 test('entries page tracks changed rows and submits only precise updates', () => {
   const source = fs.readFileSync(entriesPagePath, 'utf8');
 

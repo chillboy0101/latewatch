@@ -7,6 +7,7 @@ type AttendanceRecordLike = {
   computedAmount: string | number | null;
   date: Date | string;
   id: string;
+  noSignOutWaived?: boolean | null;
   reason: string | null;
   signOutTime?: string | null;
   status: string;
@@ -114,10 +115,12 @@ function shouldApplyNoSignOutPenalty(input: {
   currentTimeKey: string;
   date: string;
   existingDidNotSignOut: boolean;
+  noSignOutWaived: boolean;
   signOutKnown: boolean;
   signOutTime: string | null;
 }) {
   if (!input.signOutKnown) return input.existingDidNotSignOut;
+  if (input.noSignOutWaived) return false;
   if (!input.checkInTime || input.signOutTime) return false;
   if (input.existingDidNotSignOut) return true;
   if (input.date < input.currentDateKey) return true;
@@ -209,7 +212,13 @@ export function planStaffPenaltyRecalculation(input: {
     latenessDeletes: [],
     latenessUpdates: [],
   };
-  const entriesByDate = new Map(input.latenessEntries.map((entry) => [normalizeDateKey(entry.date), entry]));
+  const entriesByDate = new Map<string, LatenessEntryLike[]>();
+  for (const entry of input.latenessEntries) {
+    const date = normalizeDateKey(entry.date);
+    const entries = entriesByDate.get(date) || [];
+    entries.push(entry);
+    entriesByDate.set(date, entries);
+  }
   const permissionsByDate = new Map(input.permissions.map((permission) => [normalizeDateKey(permission.date), permission]));
   const handledEntryIds = new Set<string>();
   const currentClock = input.currentDateKey && input.currentTimeKey
@@ -218,7 +227,8 @@ export function planStaffPenaltyRecalculation(input: {
 
   for (const attendance of input.attendanceRecords) {
     const date = normalizeDateKey(attendance.date);
-    const existingEntry = entriesByDate.get(date) || null;
+    const existingEntries = entriesByDate.get(date) || [];
+    const existingEntry = existingEntries[0] || null;
     const arrivalTime = normalizeTime(attendance.checkInTime);
     const didNotSignOut = shouldApplyNoSignOutPenalty({
       checkInTime: arrivalTime,
@@ -226,6 +236,7 @@ export function planStaffPenaltyRecalculation(input: {
       currentTimeKey: currentClock.timeKey,
       date,
       existingDidNotSignOut: existingEntry?.didNotSignOut === true,
+      noSignOutWaived: attendance.noSignOutWaived === true,
       signOutKnown: 'signOutTime' in attendance,
       signOutTime: normalizeTime(attendance.signOutTime),
     });
@@ -250,8 +261,8 @@ export function planStaffPenaltyRecalculation(input: {
       });
     }
 
-    if (existingEntry) {
-      handledEntryIds.add(existingEntry.id);
+    for (const existingEntryForDate of existingEntries) {
+      handledEntryIds.add(existingEntryForDate.id);
     }
 
     if (next.amount > 0) {
@@ -269,6 +280,9 @@ export function planStaffPenaltyRecalculation(input: {
             ...entryValues,
           });
         }
+        for (const duplicateEntry of existingEntries.slice(1)) {
+          plan.latenessDeletes.push({ id: duplicateEntry.id });
+        }
       } else {
         plan.latenessCreates.push({
           ...entryValues,
@@ -277,7 +291,9 @@ export function planStaffPenaltyRecalculation(input: {
         });
       }
     } else if (existingEntry) {
-      plan.latenessDeletes.push({ id: existingEntry.id });
+      for (const entryToDelete of existingEntries) {
+        plan.latenessDeletes.push({ id: entryToDelete.id });
+      }
     }
   }
 

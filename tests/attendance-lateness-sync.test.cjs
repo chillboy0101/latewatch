@@ -45,6 +45,11 @@ function resetFixture() {
       computedAmount: '15.00',
       date: '2026-05-15',
       reason: "DIDN'T COME BEFORE 8:30AM",
+      noSignOutWaived: false,
+      noSignOutWaivedAt: null,
+      noSignOutWaivedByEmail: null,
+      noSignOutWaivedByUserId: null,
+      noSignOutWaivedReason: null,
       signOutTime: '16:45:00',
       staffId: 'staff-1',
       status: 'late',
@@ -194,7 +199,23 @@ const fakeDb = {
 
 const schema = {
   attendancePermission: createTable('attendancePermission', ['date', 'staffId', 'status']),
-  attendanceRecord: createTable('attendanceRecord', ['checkInTime', 'computedAmount', 'date', 'id', 'reason', 'signOutNetworkIp', 'signOutTime', 'staffId', 'status', 'updatedAt']),
+  attendanceRecord: createTable('attendanceRecord', [
+    'checkInTime',
+    'computedAmount',
+    'date',
+    'id',
+    'noSignOutWaived',
+    'noSignOutWaivedAt',
+    'noSignOutWaivedByEmail',
+    'noSignOutWaivedByUserId',
+    'noSignOutWaivedReason',
+    'reason',
+    'signOutNetworkIp',
+    'signOutTime',
+    'staffId',
+    'status',
+    'updatedAt',
+  ]),
   latenessEntry: createTable('latenessEntry', ['id', 'date', 'staffId']),
   staff: createTable('staff', ['id', 'fullName', 'isAttendanceOnly', 'isNssPersonnel']),
 };
@@ -354,7 +375,7 @@ test('sync clears stale no-sign-out penalties after a sign-out is recorded', asy
   assert.equal(fixture.attendanceRecord[0].status, 'present');
 });
 
-test('sync repairs legacy entries fallback sign-out and applies no-sign-out rules', async () => {
+test('sync respects waived missing sign-outs and deletes regenerated penalties', async () => {
   resetFixture();
   fixture.attendancePermission = [];
   fixture.attendanceRecord = [
@@ -364,6 +385,100 @@ test('sync repairs legacy entries fallback sign-out and applies no-sign-out rule
       computedAmount: '0.00',
       date: '2026-05-14',
       reason: null,
+      noSignOutWaived: true,
+      noSignOutWaivedAt: new Date('2026-05-15T09:00:00.000Z'),
+      noSignOutWaivedByEmail: 'admin@example.com',
+      noSignOutWaivedByUserId: null,
+      noSignOutWaivedReason: 'entries_no_sign_out_cleared',
+      signOutTime: null,
+      staffId: 'staff-1',
+      status: 'present',
+    },
+  ];
+  fixture.latenessEntry = [
+    {
+      id: 'entry-1',
+      arrivalTime: '08:05:00',
+      computedAmount: '2.00',
+      date: '2026-05-14',
+      didNotSignOut: true,
+      reason: 'DID NOT SIGN OUT',
+      staffId: 'staff-1',
+    },
+  ];
+
+  await syncLatenessEntriesFromAttendanceForDate('2026-05-14');
+
+  assert.equal(fixture.latenessEntry.length, 0);
+  assert.equal(fixture.attendanceRecord[0].noSignOutWaived, true);
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
+  assert.equal(fixture.attendanceRecord[0].reason, null);
+  assert.equal(fixture.attendanceRecord[0].status, 'present');
+});
+
+test('sync deletes duplicate no-sign-out lateness rows for waived attendance', async () => {
+  resetFixture();
+  fixture.attendancePermission = [];
+  fixture.attendanceRecord = [
+    {
+      id: 'attendance-1',
+      checkInTime: '08:05:00',
+      computedAmount: '2.00',
+      date: '2026-05-14',
+      reason: 'DID NOT SIGN OUT',
+      noSignOutWaived: true,
+      noSignOutWaivedAt: new Date('2026-05-15T09:00:00.000Z'),
+      noSignOutWaivedByEmail: 'admin@example.com',
+      noSignOutWaivedByUserId: null,
+      noSignOutWaivedReason: 'entries_no_sign_out_cleared',
+      signOutTime: null,
+      staffId: 'staff-1',
+      status: 'late',
+    },
+  ];
+  fixture.latenessEntry = [
+    {
+      id: 'entry-1',
+      arrivalTime: '08:05:00',
+      computedAmount: '2.00',
+      date: '2026-05-14',
+      didNotSignOut: true,
+      reason: 'DID NOT SIGN OUT',
+      staffId: 'staff-1',
+    },
+    {
+      id: 'entry-duplicate',
+      arrivalTime: '08:05:00',
+      computedAmount: '2.00',
+      date: '2026-05-14',
+      didNotSignOut: true,
+      reason: 'DID NOT SIGN OUT',
+      staffId: 'staff-1',
+    },
+  ];
+
+  await syncLatenessEntriesFromAttendanceForDate('2026-05-14');
+
+  assert.equal(fixture.latenessEntry.length, 0);
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
+  assert.equal(fixture.attendanceRecord[0].reason, null);
+});
+
+test('sync converts legacy entries fallback sign-outs into waivers instead of debt', async () => {
+  resetFixture();
+  fixture.attendancePermission = [];
+  fixture.attendanceRecord = [
+    {
+      id: 'attendance-1',
+      checkInTime: '08:05:00',
+      computedAmount: '0.00',
+      date: '2026-05-14',
+      reason: null,
+      noSignOutWaived: false,
+      noSignOutWaivedAt: null,
+      noSignOutWaivedByEmail: null,
+      noSignOutWaivedByUserId: null,
+      noSignOutWaivedReason: null,
       signOutNetworkIp: 'manual_admin',
       signOutTime: '17:00:00',
       staffId: 'staff-1',
@@ -375,10 +490,10 @@ test('sync repairs legacy entries fallback sign-out and applies no-sign-out rule
 
   assert.equal(fixture.attendanceRecord[0].signOutTime, null);
   assert.equal(fixture.attendanceRecord[0].signOutNetworkIp, null);
-  assert.equal(fixture.attendanceRecord[0].computedAmount, '2.00');
-  assert.equal(fixture.attendanceRecord[0].reason, 'DID NOT SIGN OUT');
-  assert.equal(fixture.attendanceRecord[0].status, 'late');
-  assert.equal(fixture.latenessEntry.length, 1);
-  assert.equal(fixture.latenessEntry[0].computedAmount, '2.00');
-  assert.equal(fixture.latenessEntry[0].didNotSignOut, true);
+  assert.equal(fixture.attendanceRecord[0].noSignOutWaived, true);
+  assert.equal(fixture.attendanceRecord[0].noSignOutWaivedReason, 'legacy_entries_fallback_sign_out');
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
+  assert.equal(fixture.attendanceRecord[0].reason, null);
+  assert.equal(fixture.attendanceRecord[0].status, 'present');
+  assert.equal(fixture.latenessEntry.length, 0);
 });

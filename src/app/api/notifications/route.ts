@@ -694,6 +694,7 @@ async function getSystemNotifications(readIds: Set<string>): Promise<Notificatio
   if (isWeekday && !holidayCheck && activeStaffCount > 0) {
     const attendanceRows = await db.select({
       id: attendanceRecord.id,
+      noSignOutWaived: attendanceRecord.noSignOutWaived,
       signOutTime: attendanceRecord.signOutTime,
       staffId: attendanceRecord.staffId,
       staffName: staff.fullName,
@@ -786,7 +787,7 @@ async function getSystemNotifications(readIds: Set<string>): Promise<Notificatio
       }
 
       if (shouldAlertNoSignOut(clock.timeKey)) {
-        const noSignOutRows = attendanceRows.filter((row) => !row.signOutTime);
+        const noSignOutRows = attendanceRows.filter((row) => !row.signOutTime && row.noSignOutWaived !== true);
         for (const row of noSignOutRows) {
           const alertId = `system-no-sign-out-${todayStr}-${row.staffId}`;
           notifications.push(makeNotification(

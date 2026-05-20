@@ -345,6 +345,11 @@ async function clearLegacyEntriesFallbackSignOut(input: {
       signOutTime: null,
       signOutUserAgent: null,
       signOutVerificationResult: null,
+      noSignOutWaived: true,
+      noSignOutWaivedAt: new Date(),
+      noSignOutWaivedByEmail: input.actor.email,
+      noSignOutWaivedByUserId: input.actor.id || null,
+      noSignOutWaivedReason: 'legacy_entries_fallback_sign_out',
       updatedAt: new Date(),
     })
     .where(eq(attendanceRecord.id, input.attendance.id))

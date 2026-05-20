@@ -246,6 +246,7 @@ for (const staffMember of staffRows) {
         date,
         check_in_time as "checkInTime",
         sign_out_time as "signOutTime",
+        no_sign_out_waived as "noSignOutWaived",
         computed_amount as "computedAmount",
         reason,
         status

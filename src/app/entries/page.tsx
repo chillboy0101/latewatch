@@ -30,6 +30,7 @@ interface Entry {
   didNotSignOut: boolean;
   amount: number;
   isGeneralPardon: boolean;
+  noSignOutWaived: boolean;
   reason: string;
 }
 
@@ -45,6 +46,7 @@ interface ExistingEntry {
   didNotSignOut: boolean | null;
   computedAmount: string | number | null;
   isGeneralPardon?: boolean | null;
+  noSignOutWaived?: boolean | null;
   reason: string | null;
 }
 
@@ -130,6 +132,7 @@ export default function EntriesPage() {
           didNotSignOut: existing?.didNotSignOut || false,
           amount: existing ? parseFloat(String(existing.computedAmount || '0')) : 0,
           isGeneralPardon: existing?.isGeneralPardon === true,
+          noSignOutWaived: existing?.noSignOutWaived === true,
           reason: existing?.reason || '',
         };
       });
@@ -189,7 +192,17 @@ export default function EntriesPage() {
               ...updated,
               amount: 0,
               isGeneralPardon: true,
+              noSignOutWaived: false,
               reason: updated.reason || 'General pardon',
+            };
+          }
+          if (entry.noSignOutWaived && updated.didNotSignOut !== true) {
+            return {
+              ...updated,
+              amount: 0,
+              isGeneralPardon: false,
+              noSignOutWaived: true,
+              reason: updated.reason || 'No sign-out waived',
             };
           }
           const penalty = computePenalty({
@@ -203,6 +216,7 @@ export default function EntriesPage() {
             ...updated,
             amount: penalty.amount,
             isGeneralPardon: false,
+            noSignOutWaived: false,
             reason: penalty.reason,
           };
         }
@@ -473,6 +487,8 @@ export default function EntriesPage() {
                           <span className="text-danger">GHC {entry.amount}</span>
                         ) : entry.isGeneralPardon ? (
                           <span className="rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">General pardon</span>
+                        ) : entry.noSignOutWaived ? (
+                          <span className="rounded-full border border-warning/30 bg-warning/10 px-2 py-1 text-xs font-semibold text-warning">No sign-out waived</span>
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}

@@ -25,6 +25,9 @@ async function getAttendanceRowsForEntries(start: string, end: string) {
     date: attendanceRecord.date,
     checkInTime: attendanceRecord.checkInTime,
     reason: attendanceRecord.reason,
+    noSignOutWaived: attendanceRecord.noSignOutWaived,
+    noSignOutWaivedAt: attendanceRecord.noSignOutWaivedAt,
+    noSignOutWaivedReason: attendanceRecord.noSignOutWaivedReason,
     source: attendanceRecord.source,
     computedAmount: attendanceRecord.computedAmount,
     createdAt: attendanceRecord.createdAt,
@@ -264,6 +267,11 @@ export async function POST(request: NextRequest) {
       const signOutCorrection = didNotSignOutChanged && didNotSignOut
         ? 'clear'
         : 'preserve';
+      const shouldWaiveNoSignOut =
+        didNotSignOutChanged &&
+        !didNotSignOut &&
+        !normalizeEntryTime(existingAttendance?.signOutTime);
+      const shouldClearNoSignOutWaiver = didNotSignOutChanged && didNotSignOut;
 
       if (existingAttendance) {
         const correction = resolveManualAttendanceCorrection({
@@ -276,11 +284,27 @@ export async function POST(request: NextRequest) {
           isNssPersonnel: staffPenaltyMap.get(entry.staffId) === true,
           signOutCorrection,
         });
+        const noSignOutWaiverChanged = (
+          shouldWaiveNoSignOut &&
+          (
+            existingAttendance.noSignOutWaived !== true ||
+            existingAttendance.noSignOutWaivedReason !== 'entries_no_sign_out_cleared'
+          )
+        ) || (
+          shouldClearNoSignOutWaiver &&
+          (
+            existingAttendance.noSignOutWaived === true ||
+            existingAttendance.noSignOutWaivedAt ||
+            existingAttendance.noSignOutWaivedByEmail ||
+            existingAttendance.noSignOutWaivedByUserId ||
+            existingAttendance.noSignOutWaivedReason
+          )
+        );
 
         if (manualAttendanceCorrectionChanged({
           attendance: existingAttendance,
           correction,
-        })) {
+        }) || noSignOutWaiverChanged) {
           const attendanceUpdateValues: Partial<typeof attendanceRecord.$inferInsert> = {
             checkInAt: correction.checkInAt,
             checkInTime: correction.checkInTime,
@@ -297,6 +321,20 @@ export async function POST(request: NextRequest) {
             attendanceUpdateValues.signOutUserAgent = correction.signOutTime
               ? request.headers.get('user-agent') || 'manual_entries'
               : null;
+          }
+
+          if (shouldWaiveNoSignOut) {
+            attendanceUpdateValues.noSignOutWaived = true;
+            attendanceUpdateValues.noSignOutWaivedAt = new Date();
+            attendanceUpdateValues.noSignOutWaivedByEmail = actor.actorEmail;
+            attendanceUpdateValues.noSignOutWaivedByUserId = actor.actorUserId;
+            attendanceUpdateValues.noSignOutWaivedReason = 'entries_no_sign_out_cleared';
+          } else if (shouldClearNoSignOutWaiver) {
+            attendanceUpdateValues.noSignOutWaived = false;
+            attendanceUpdateValues.noSignOutWaivedAt = null;
+            attendanceUpdateValues.noSignOutWaivedByEmail = null;
+            attendanceUpdateValues.noSignOutWaivedByUserId = null;
+            attendanceUpdateValues.noSignOutWaivedReason = null;
           }
 
           const [updatedAttendance] = await db.update(attendanceRecord)

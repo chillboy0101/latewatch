@@ -186,3 +186,92 @@ test('staff penalty recalculation creates missing no-sign-out penalties from att
     staffId: 'staff-1',
   }]);
 });
+
+test('staff penalty recalculation does not recreate waived no-sign-out penalties', () => {
+  const plan = planStaffPenaltyRecalculation({
+    attendanceRecords: [{
+      checkInTime: '08:05:00',
+      computedAmount: '2.00',
+      date: '2026-05-06',
+      id: 'attendance-1',
+      noSignOutWaived: true,
+      reason: 'DID NOT SIGN OUT',
+      signOutTime: null,
+      status: 'late',
+    }],
+    currentDateKey: '2026-05-07',
+    currentTimeKey: '10:00',
+    isNssPersonnel: false,
+    latenessEntries: [{
+      arrivalTime: '08:05',
+      computedAmount: '2.00',
+      date: '2026-05-06',
+      didNotSignOut: true,
+      id: 'entry-1',
+      reason: 'DID NOT SIGN OUT',
+      staffId: 'staff-1',
+    }],
+    permissions: [],
+    staffId: 'staff-1',
+  });
+
+  assert.deepEqual(plan.attendanceUpdates, [{
+    computedAmount: '0.00',
+    id: 'attendance-1',
+    reason: null,
+    status: 'present',
+  }]);
+  assert.deepEqual(plan.latenessCreates, []);
+  assert.deepEqual(plan.latenessUpdates, []);
+  assert.deepEqual(plan.latenessDeletes, [{ id: 'entry-1' }]);
+});
+
+test('staff penalty recalculation deletes duplicate no-sign-out rows for waived attendance', () => {
+  const plan = planStaffPenaltyRecalculation({
+    attendanceRecords: [{
+      checkInTime: '08:05:00',
+      computedAmount: '2.00',
+      date: '2026-05-06',
+      id: 'attendance-1',
+      noSignOutWaived: true,
+      reason: 'DID NOT SIGN OUT',
+      signOutTime: null,
+      status: 'late',
+    }],
+    currentDateKey: '2026-05-07',
+    currentTimeKey: '10:00',
+    isNssPersonnel: false,
+    latenessEntries: [
+      {
+        arrivalTime: '08:05',
+        computedAmount: '2.00',
+        date: '2026-05-06',
+        didNotSignOut: true,
+        id: 'entry-1',
+        reason: 'DID NOT SIGN OUT',
+        staffId: 'staff-1',
+      },
+      {
+        arrivalTime: '08:05',
+        computedAmount: '2.00',
+        date: '2026-05-06',
+        didNotSignOut: true,
+        id: 'entry-duplicate',
+        reason: 'DID NOT SIGN OUT',
+        staffId: 'staff-1',
+      },
+    ],
+    permissions: [],
+    staffId: 'staff-1',
+  });
+
+  assert.deepEqual(plan.attendanceUpdates, [{
+    computedAmount: '0.00',
+    id: 'attendance-1',
+    reason: null,
+    status: 'present',
+  }]);
+  assert.deepEqual(plan.latenessCreates, []);
+  assert.deepEqual(plan.latenessUpdates, []);
+  assert.deepEqual(plan.latenessDeletes, [{ id: 'entry-1' }, { id: 'entry-duplicate' }]);
+});

@@ -141,3 +141,30 @@ test('manual on-time check-ins stay visible on the entries page', () => {
   assert.equal(rows[0].computedAmount, '0.00');
   assert.equal(rows[0].reason, null);
 });
+
+test('waived no-sign-out attendance rows stay visible without a charge', () => {
+  const rows = mergeAttendanceRowsIntoEntryRows({
+    attendanceRows: [
+      {
+        id: 'attendance-1',
+        checkInTime: '08:10:00',
+        computedAmount: '0.00',
+        createdAt: new Date('2026-05-06T08:10:00.000Z'),
+        date: '2026-05-06',
+        noSignOutWaived: true,
+        reason: null,
+        staffId: 'staff-1',
+        status: 'present',
+        updatedAt: new Date('2026-05-07T09:00:00.000Z'),
+      },
+    ],
+    entryRows: [],
+  });
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, 'attendance:attendance-1');
+  assert.equal(rows[0].computedAmount, '0.00');
+  assert.equal(rows[0].didNotSignOut, false);
+  assert.equal(rows[0].noSignOutWaived, true);
+  assert.equal(rows[0].reason, 'No sign-out waived');
+});

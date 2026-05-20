@@ -43,8 +43,10 @@ function shouldApplyNoSignOutPenalty(input: {
   checkInTime: string | null;
   date: string;
   existingDidNotSignOut: boolean;
+  noSignOutWaived: boolean;
   signOutTime: string | null;
 }) {
+  if (input.noSignOutWaived) return false;
   if (!input.checkInTime || input.signOutTime) return false;
   if (input.existingDidNotSignOut) return true;
 
@@ -67,6 +69,11 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     reason: attendanceRecord.reason,
     isAttendanceOnly: staff.isAttendanceOnly,
     isNssPersonnel: staff.isNssPersonnel,
+    noSignOutWaived: attendanceRecord.noSignOutWaived,
+    noSignOutWaivedAt: attendanceRecord.noSignOutWaivedAt,
+    noSignOutWaivedByEmail: attendanceRecord.noSignOutWaivedByEmail,
+    noSignOutWaivedByUserId: attendanceRecord.noSignOutWaivedByUserId,
+    noSignOutWaivedReason: attendanceRecord.noSignOutWaivedReason,
     signOutNetworkIp: attendanceRecord.signOutNetworkIp,
     signOutTime: attendanceRecord.signOutTime,
     staffId: attendanceRecord.staffId,
@@ -93,9 +100,13 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
   const existingRows = await db.select()
     .from(latenessEntry)
     .where(and(gte(latenessEntry.date, startDate), lte(latenessEntry.date, endDate)));
-  const existingByStaffDate = new Map(
-    existingRows.map((entry) => [rowKey(entry.staffId, normalizeDateKey(entry.date)), entry]),
-  );
+  const existingByStaffDate = new Map<string, typeof existingRows>();
+  for (const entry of existingRows) {
+    const key = rowKey(entry.staffId, normalizeDateKey(entry.date));
+    const list = existingByStaffDate.get(key) || [];
+    list.push(entry);
+    existingByStaffDate.set(key, list);
+  }
 
   const processedKeys = new Set<string>();
   let deleted = 0;
@@ -109,9 +120,11 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     if (!date || !row.staffId) continue;
 
     const key = rowKey(row.staffId, date);
-    const existing = existingByStaffDate.get(key);
+    const existingEntriesForKey = existingByStaffDate.get(key) || [];
+    const existing = existingEntriesForKey[0] || null;
     const activePermission = permissionsByStaffDate.get(key) || null;
     const hasLegacyEntriesFallbackSignOut = isLegacyEntriesFallbackSignOut(row);
+    const noSignOutWaived = row.noSignOutWaived === true || hasLegacyEntriesFallbackSignOut;
     const signOutTime = hasLegacyEntriesFallbackSignOut
       ? null
       : normalizeTimeKey(row.signOutTime);
@@ -119,6 +132,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
       checkInTime: normalizeTimeKey(row.checkInTime),
       date,
       existingDidNotSignOut: existing?.didNotSignOut === true,
+      noSignOutWaived,
       signOutTime,
     });
     const penalty = resolveManualPenalty({
@@ -138,9 +152,20 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     const needsPenaltyAttendanceUpdate =
       attendanceAmount !== computedAmount ||
       (row.reason || null) !== attendanceReason ||
-      (row.status || null) !== penalty.status;
+      (row.status || null) !== penalty.status ||
+      (hasLegacyEntriesFallbackSignOut && row.noSignOutWaived !== true);
 
     if (needsPenaltyAttendanceUpdate || hasLegacyEntriesFallbackSignOut) {
+      const waiverValues = hasLegacyEntriesFallbackSignOut
+        ? {
+            noSignOutWaived: true,
+            noSignOutWaivedAt: new Date(),
+            noSignOutWaivedByEmail: 'system',
+            noSignOutWaivedByUserId: null,
+            noSignOutWaivedReason: 'legacy_entries_fallback_sign_out',
+          }
+        : {};
+
       await db.update(attendanceRecord)
         .set({
           computedAmount,
@@ -159,6 +184,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
                 signOutTime: null,
                 signOutUserAgent: null,
                 signOutVerificationResult: null,
+                ...waiverValues,
               }
             : {}),
           status: penalty.status,
@@ -169,14 +195,18 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     }
 
     if (penalty.amount <= 0) {
-      if (existing) {
-        await db.delete(latenessEntry).where(eq(latenessEntry.id, existing.id));
+      for (const staleEntry of existingEntriesForKey) {
+        await db.delete(latenessEntry).where(eq(latenessEntry.id, staleEntry.id));
         deleted += 1;
       }
       continue;
     }
 
     if (existing) {
+      for (const duplicateEntry of existingEntriesForKey.slice(1)) {
+        await db.delete(latenessEntry).where(eq(latenessEntry.id, duplicateEntry.id));
+        deleted += 1;
+      }
       const existingAmount = amountText(amountNumber(existing.computedAmount));
       const needsUpdate =
         normalizeTimeKey(existing.arrivalTime) !== arrivalTime ||

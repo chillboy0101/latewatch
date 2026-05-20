@@ -6,6 +6,7 @@ export type LatenessEntryPresentationRow = {
   didNotSignOut?: boolean | null;
   id: string;
   isGeneralPardon?: boolean | null;
+  noSignOutWaived?: boolean | null;
   reason?: string | null;
   staffId: string;
 };
@@ -16,6 +17,9 @@ export type AttendanceEntryPresentationRow = {
   createdAt?: Date | string | null;
   date: string;
   id: string;
+  noSignOutWaived?: boolean | null;
+  noSignOutWaivedAt?: Date | string | null;
+  noSignOutWaivedReason?: string | null;
   reason?: string | null;
   source?: string | null;
   staffId: string;
@@ -50,6 +54,7 @@ function hasVisibleAttendanceState(row: AttendanceEntryPresentationRow) {
     Boolean(row.checkInTime) ||
     amountNumber(row.computedAmount) > 0 ||
     Boolean(row.reason) ||
+    row.noSignOutWaived === true ||
     row.source === 'entries_manual_check_in' ||
     row.status === 'late' ||
     row.status === 'excused'
@@ -79,7 +84,8 @@ export function mergeAttendanceRowsIntoEntryRows(input: {
       didNotSignOut: false,
       id: `attendance:${row.id}`,
       isGeneralPardon: isGeneralPardonEntryReason(row.reason),
-      reason: row.reason || null,
+      noSignOutWaived: row.noSignOutWaived === true,
+      reason: row.reason || (row.noSignOutWaived === true ? 'No sign-out waived' : null),
       staffId: row.staffId,
     }));
   const occupiedKeys = new Set([

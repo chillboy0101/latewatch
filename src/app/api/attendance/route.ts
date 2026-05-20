@@ -134,6 +134,7 @@ export async function GET(request: NextRequest) {
       const device = deviceByStaffId.get(member.id) || null;
       const noSignOut = Boolean(
         attendance &&
+        attendance.noSignOutWaived !== true &&
         !attendance.signOutTime &&
         (date < clock.dateKey || (date === clock.dateKey && shouldAlertNoSignOut(clock.timeKey))),
       );
@@ -153,6 +154,7 @@ export async function GET(request: NextRequest) {
               checkInTime: attendance.checkInTime,
               computedAmount: attendance.computedAmount,
               reason: attendance.reason,
+              noSignOutWaived: attendance.noSignOutWaived,
               signOutAt: attendance.signOutAt,
               signOutTime: attendance.signOutTime,
               status: attendance.status,
