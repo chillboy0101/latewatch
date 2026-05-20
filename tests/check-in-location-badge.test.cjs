@@ -34,6 +34,7 @@ test('check-in page uses concise attendance status copy', () => {
   assert.doesNotMatch(source, /you are checked in for today/);
   assert.doesNotMatch(source, /you have checked out for today/);
   assert.doesNotMatch(source, /You can check in now/);
+  assert.doesNotMatch(source, /statusDetailText &&/);
   assert.match(source, /No sign-out recorded/);
   assert.match(source, /Late \+ no sign-out recorded/);
   assert.match(source, /hasNoSignOutPenalty/);

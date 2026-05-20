@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
-import { getPermissionWindowBounds, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
 import { resolveAutoAttendanceAction } from '@/lib/auto-attendance';
 import { formatDisplayDate } from '@/lib/date-format';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
@@ -173,30 +172,6 @@ function statusCopy(status: CheckInStatus | null) {
   if (status.attendance?.status === 'present') return 'Checked in';
   if (status.isAfterWorkdayEnd) return 'Check-ins closed';
   return 'Ready to check in';
-}
-
-function statusDetail(status: CheckInStatus | null) {
-  if (!status) return 'Verifying your account, location, and today\'s work calendar.';
-  if (!status.locationConfigured) return 'Ask an admin to save the office location before staff check in.';
-  if (!status.staff) return 'Your login could not be matched to a staff profile yet. Ask an admin to confirm your staff email or staff name.';
-  if (status.device?.registered && !status.device.trusted) return status.transferRequest
-    ? 'Your device transfer request is waiting for admin approval.'
-    : 'This account is linked to another device. Request a device transfer from this browser.';
-  if (status.permission?.permissionType === 'absence') return 'You have an approved absence for today. No check-in is required.';
-  if (status.isHoliday) return 'Check-ins are disabled today in observance of the public holiday.';
-  if (status.isWeekend) return 'You cannot check in today because attendance check-in is closed on weekends.';
-  if (status.attendance?.signOutTime) return null;
-  if (status.attendance && !canSignOut(status)) return `You can check out from ${status.signOutStartLabel}.`;
-  if (status.attendance) return null;
-  if (status.isAfterWorkdayEnd) return `Check-ins are closed after ${status.workdayEndLabel}. Ask an admin to correct attendance if needed.`;
-  if (status.permission?.permissionType === 'late_arrival') {
-    const window = getPermissionWindowBounds(status.permission);
-    const overdue = isPermissionWindowOverdue(status.permission, status.date, status.date, status.time);
-    return overdue
-      ? `Your approved ${window.label.toLowerCase()} window has passed. Checking in now will be recorded as late.`
-      : `Your late arrival is approved for ${window.label.toLowerCase()}.`;
-  }
-  return null;
 }
 
 function locationValue(status: CheckInStatus | null, liveLocation: LiveLocation) {
@@ -697,7 +672,6 @@ export default function CheckInPage() {
   const accessNotSetUp = Boolean(status && !status.staff);
   const locationBlocksAction = Boolean(status?.locationConfigured && liveLocation.blocking);
   const autoDeviceReady = Boolean(status?.staff && status.device?.registered && status.device.trusted);
-  const statusDetailText = statusDetail(status);
 
   useEffect(() => {
     if (!autoDeviceReady || checkingIn || autoAttendanceAction || savingAutoSettings) return;
@@ -804,11 +778,6 @@ export default function CheckInPage() {
                     )}
                   </div>
                   <h2 className="text-lg font-semibold sm:text-xl">{statusCopy(status)}</h2>
-                  {statusDetailText && (
-                    <p className="mx-auto mt-1.5 max-w-sm text-sm leading-5 text-muted-foreground">
-                      {statusDetailText}
-                    </p>
-                  )}
                   <div className="mt-3 flex flex-col items-center gap-2">
                     {status?.staff?.fullName && (
                       <div className="inline-flex h-9 max-w-full items-center rounded-full border border-border/70 bg-background/60 px-3.5 text-sm font-medium text-foreground">
