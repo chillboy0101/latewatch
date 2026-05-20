@@ -9,6 +9,7 @@ const { getAuditFieldChanges, getAuditTargetName } = require('../src/lib/audit-d
 const { DEFAULT_OFFICE_RADIUS_METERS, validateAttendanceLocation } = require('../src/lib/geo-location.ts');
 const { getClientIp, getClientIpInfo, isLoopbackIp } = require('../src/lib/request-ip.ts');
 const {
+  isOnTimeCheckIn,
   isAfterWorkdayEnd,
   NO_SIGN_OUT_ALERT_LABEL,
   NO_SIGN_OUT_ALERT_TIME,
@@ -65,6 +66,14 @@ test('regular staff penalties increase at one minute past each clock hour', () =
       `${arrivalTime} should be GHC ${amount}`,
     );
   }
+});
+
+test('on-time attendance is based on actual check-in time', () => {
+  assert.equal(isOnTimeCheckIn('08:29'), true);
+  assert.equal(isOnTimeCheckIn('08:30'), true);
+  assert.equal(isOnTimeCheckIn('08:31'), false);
+  assert.equal(isOnTimeCheckIn('09:00'), false);
+  assert.equal(isOnTimeCheckIn(null), false);
 });
 
 test('no sign-out alert starts at 8:00 PM', () => {

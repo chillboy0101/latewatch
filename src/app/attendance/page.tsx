@@ -21,6 +21,7 @@ import { formatDisplayDate, formatDisplayDateTime, isIsoDateKey } from '@/lib/da
 import { getAccraDateKey } from '@/lib/date-key';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
+import { isOnTimeCheckIn } from '@/lib/work-hours';
 
 type AttendanceStatus = 'present' | 'late' | 'excused' | 'expected_late' | 'permission_overdue' | 'no_sign_out' | 'not_checked_in';
 type AttendanceFilter = 'all' | 'on_time' | AttendanceStatus;
@@ -165,6 +166,10 @@ function permissionSummary(permission: AttendancePermission) {
   }
 
   return `Late arrival / ${getPermissionWindowBounds(permission).label} / ${formatLateArrivalPermissionReason(permission.reason)}`;
+}
+
+function isOnTimeAttendanceRow(row: AttendanceRow) {
+  return isOnTimeCheckIn(row.attendance?.checkInTime);
 }
 
 export default function AttendancePage() {
@@ -502,7 +507,7 @@ export default function AttendancePage() {
     const rows = (() => {
       if (activeFilter === 'all') return data?.rows || [];
       if (activeFilter === 'present') return (data?.rows || []).filter((row) => Boolean(row.attendance?.checkInTime));
-      if (activeFilter === 'on_time') return (data?.rows || []).filter((row) => row.status === 'present');
+      if (activeFilter === 'on_time') return (data?.rows || []).filter((row) => isOnTimeAttendanceRow(row));
       return (data?.rows || []).filter((row) => row.status === activeFilter);
     })();
     const filteredRows = query

@@ -27,3 +27,8 @@ export function shouldAlertNoSignOut(value: string | null | undefined) {
   const time = toMinuteTime(value);
   return MINUTE_TIME_PATTERN.test(time) && time >= NO_SIGN_OUT_ALERT_TIME;
 }
+
+export function isOnTimeCheckIn(value: string | null | undefined) {
+  const time = toMinuteTime(value);
+  return MINUTE_TIME_PATTERN.test(time) && time <= WORKDAY_START_TIME;
+}

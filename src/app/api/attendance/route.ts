@@ -6,7 +6,7 @@ import { getAccraClock, getActiveOfficeNetwork, getOfficeLocationsForAttendance,
 import { syncLatenessEntriesFromAttendanceForDate } from '@/lib/attendance-lateness-sync';
 import { isGeneralPardonReason, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
 import { resolveOfficeLocationForDate } from '@/lib/office-location-policy';
-import { shouldAlertNoSignOut } from '@/lib/work-hours';
+import { isOnTimeCheckIn, shouldAlertNoSignOut } from '@/lib/work-hours';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +31,10 @@ async function optionalAttendanceQuery<T>(label: string, fallback: T, query: () 
     console.error(`Optional attendance query failed (${label}); using fallback:`, error);
     return fallback;
   }
+}
+
+function isOnTimeAttendanceRow(row: { attendance: { checkInTime: string | null } | null }) {
+  return isOnTimeCheckIn(row.attendance?.checkInTime);
 }
 
 export async function GET(request: NextRequest) {
@@ -202,8 +206,8 @@ export async function GET(request: NextRequest) {
     const currentIp = currentIpInfo.ip;
     const totals = rows.reduce((acc, row) => {
       if (row.attendance?.checkInTime) acc.present += 1;
-      if (row.status === 'present') acc.onTime += 1;
-      else if (row.status === 'late') acc.late += 1;
+      if (isOnTimeAttendanceRow(row)) acc.onTime += 1;
+      if (row.status === 'late') acc.late += 1;
       else if (row.status === 'excused') acc.excused += 1;
       else if (row.status === 'expected_late') acc.expectedLate += 1;
       else if (row.status === 'permission_overdue') acc.permissionOverdue += 1;

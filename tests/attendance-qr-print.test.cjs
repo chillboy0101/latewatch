@@ -136,12 +136,14 @@ test('attendance present and on-time filters stay distinct', () => {
   assert.match(pageSource, /label="Present"[\s\S]*onClick=\{\(\) => setActiveFilter\('present'\)\}[\s\S]*value=\{data\?\.totals\.present \?\? 0\}/);
   assert.match(pageSource, /label="On Time"[\s\S]*onClick=\{\(\) => setActiveFilter\('on_time'\)\}[\s\S]*value=\{data\?\.totals\.onTime \?\? 0\}/);
   assert.match(pageSource, /activeFilter === 'present'[\s\S]*row\.attendance\?\.checkInTime/);
-  assert.match(pageSource, /activeFilter === 'on_time'[\s\S]*row\.status === 'present'/);
+  assert.match(pageSource, /activeFilter === 'on_time'[\s\S]*isOnTimeAttendanceRow\(row\)/);
   assert.match(pageSource, /if \(status === 'present'\) return 'On Time'/);
   assert.match(pageSource, /auto-cols-\[minmax\(7\.75rem,1fr\)\][\s\S]*xl:grid-cols-9/);
 
   assert.match(apiSource, /if \(row\.attendance\?\.checkInTime\) acc\.present \+= 1/);
-  assert.match(apiSource, /if \(row\.status === 'present'\) acc\.onTime \+= 1/);
+  assert.match(apiSource, /if \(isOnTimeAttendanceRow\(row\)\) acc\.onTime \+= 1/);
+  assert.match(apiSource, /if \(isOnTimeAttendanceRow\(row\)\) acc\.onTime \+= 1;\s*if \(row\.status === 'late'\) acc\.late \+= 1/);
+  assert.doesNotMatch(apiSource, /if \(row\.status === 'present'\) acc\.onTime \+= 1/);
   assert.match(apiSource, /onTime: 0/);
 });
 
