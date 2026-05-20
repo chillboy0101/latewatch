@@ -96,18 +96,32 @@ test('entries API sources saved arrival times from attendance records', () => {
 
   assert.match(source, /checkInTime: attendanceRecord\.checkInTime/);
   assert.match(source, /signOutTime: attendanceRecord\.signOutTime/);
+  assert.match(source, /arrivalWindow: attendancePermission\.arrivalWindow/);
+  assert.match(source, /expectedEndTime: attendancePermission\.expectedEndTime/);
+  assert.match(source, /expectedStartTime: attendancePermission\.expectedStartTime/);
   assert.match(source, /mergeAttendanceRowsIntoEntryRows\(\{ attendanceRows, entryRows: entries, permissionRows \}\)/);
 });
 
 test('entries page separates real sign-out time from waiver state', () => {
   const source = fs.readFileSync(entriesPagePath, 'utf8');
 
+  assert.match(source, /Sign In/);
   assert.match(source, /Sign Out/);
   assert.match(source, /updateSignOutTime/);
   assert.match(source, /toggleNoSignOutWaiver/);
   assert.match(source, />Mark as waived</);
   assert.match(source, />Remove waiver</);
+  assert.doesNotMatch(source, />Time<\/th>/);
   assert.doesNotMatch(source, /No Sign Out<\/th>/);
+});
+
+test('entries page renders excused absence permissions without missing sign-out controls', () => {
+  const source = fs.readFileSync(entriesPagePath, 'utf8');
+
+  assert.match(source, /isExcusedAbsence/);
+  assert.match(source, />Excused</);
+  assert.match(source, /!entry\.isExcusedAbsence/);
+  assert.match(source, /entry\.isExcusedAbsence \? 'Excused'/);
 });
 
 test('regular staff recalculation apply notifies live pages to refetch entries', () => {

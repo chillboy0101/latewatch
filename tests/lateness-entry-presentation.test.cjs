@@ -59,6 +59,59 @@ test('general pardon permissions appear even when staff has no attendance row ye
   assert.equal(rows[0].reason, 'General pardon');
 });
 
+test('approved absence permissions appear even when staff has no attendance row yet', () => {
+  const rows = mergeAttendanceRowsIntoEntryRows({
+    attendanceRows: [],
+    entryRows: [],
+    permissionRows: [
+      {
+        id: 'permission-1',
+        date: '2026-05-19',
+        permissionType: 'absence',
+        reason: 'official duty',
+        staffId: 'staff-1',
+        status: 'approved',
+      },
+    ],
+  });
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, 'permission:permission-1');
+  assert.equal(rows[0].staffId, 'staff-1');
+  assert.equal(rows[0].arrivalTime, null);
+  assert.equal(rows[0].computedAmount, '0.00');
+  assert.equal(rows[0].didNotSignOut, false);
+  assert.equal(rows[0].isExcusedAbsence, true);
+  assert.equal(rows[0].isGeneralPardon, false);
+  assert.equal(rows[0].reason, 'Excused absence: Official duty');
+  assert.equal(rows[0].signOutTime, null);
+});
+
+test('approved late-arrival permissions appear even when staff has no attendance row yet', () => {
+  const rows = mergeAttendanceRowsIntoEntryRows({
+    attendanceRows: [],
+    entryRows: [],
+    permissionRows: [
+      {
+        arrivalWindow: 'any_time_today',
+        id: 'permission-1',
+        date: '2026-05-19',
+        permissionType: 'late_arrival',
+        reason: 'official duty',
+        staffId: 'staff-1',
+        status: 'approved',
+      },
+    ],
+  });
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, 'permission:permission-1');
+  assert.equal(rows[0].computedAmount, '0.00');
+  assert.equal(rows[0].isExcusedAbsence, false);
+  assert.equal(rows[0].isGeneralPardon, false);
+  assert.equal(rows[0].reason, 'Approved late arrival (Any time today): Official duty');
+});
+
 test('stored lateness entries win over attendance fallback rows', () => {
   const rows = mergeAttendanceRowsIntoEntryRows({
     attendanceRows: [

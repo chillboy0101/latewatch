@@ -87,7 +87,7 @@ test('admin payments page and navigation expose payment management actions', () 
   assert.match(page, /Main Staff/);
   assert.match(page, /NSS Personnel/);
   assert.match(page, /statusFilter/);
-  assert.match(page, /paymentStatusForRow/);
+  assert.match(page, /staffPaymentStatusForRow/);
   assert.match(page, /sortPaymentRowsByBalance/);
   assert.match(page, /sortPaymentEntriesNewestFirst/);
   assert.match(page, /selectedEntries\.map/);
@@ -122,6 +122,20 @@ test('admin payments page and navigation expose payment management actions', () 
   assert.doesNotMatch(appShell, /payments: 'Penalty Payments'/);
   assert.match(proxy, /\/payments\(\.\*\)/);
   assert.match(proxy, /\/api\/payments\(\.\*\)/);
+});
+
+test('payments list uses binary paid or unpaid status with toolbar money totals', () => {
+  const page = fs.readFileSync(paymentsPagePath, 'utf8');
+
+  assert.match(page, /type PaymentStatus = 'paid' \| 'partially_paid' \| 'unpaid'/);
+  assert.match(page, /type StaffPaymentStatus = 'paid' \| 'unpaid'/);
+  assert.match(page, /function staffPaymentStatusForRow/);
+  assert.doesNotMatch(page, /\{ label: 'Partial', value: 'partially_paid' \}/);
+  assert.match(page, /StaffPaymentStatusBadge status=\{staffPaymentStatusForRow\(row\)\}/);
+  assert.match(page, /PaymentStatusBadge status=\{entry\.status\}/);
+  assert.match(page, /const paymentTotals = useMemo/);
+  assert.match(page, /paymentTotals\.paidAmount/);
+  assert.match(page, /paymentTotals\.unpaidAmount/);
 });
 
 test('check-in page exposes an icon-only penalty history modal', () => {

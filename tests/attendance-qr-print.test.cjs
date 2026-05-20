@@ -162,6 +162,15 @@ test('system notifications sync lateness before reading weekly penalty totals', 
   assert.match(source, /await syncLatenessEntriesFromAttendanceForRange\(weekStart, todayStr\)[\s\S]*const weekEntries/);
 });
 
+test('notifications endpoint isolates audit and system notification failures', () => {
+  const source = fs.readFileSync(notificationsApiPath, 'utf8');
+
+  assert.match(source, /safeNotificationTask/);
+  assert.match(source, /Failed to build audit notifications/);
+  assert.match(source, /Failed to build system notifications/);
+  assert.doesNotMatch(source, /Promise\.all\(\[\s*getAuditNotifications/);
+});
+
 test('system no-sign-out notifications ignore waived rows', () => {
   const source = fs.readFileSync(notificationsApiPath, 'utf8');
 

@@ -13,7 +13,8 @@ import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 
 type PaymentStatus = 'paid' | 'partially_paid' | 'unpaid';
-type PaymentFilter = 'all' | PaymentStatus;
+type StaffPaymentStatus = 'paid' | 'unpaid';
+type PaymentFilter = 'all' | StaffPaymentStatus;
 
 interface PaymentEntry {
   arrivalTime: string | null;
@@ -46,7 +47,6 @@ interface PaymentsResponse {
 const paymentFilterOptions: Array<{ label: string; value: PaymentFilter }> = [
   { label: 'All', value: 'all' },
   { label: 'Unpaid', value: 'unpaid' },
-  { label: 'Partial', value: 'partially_paid' },
   { label: 'Paid', value: 'paid' },
 ];
 
@@ -79,14 +79,8 @@ function staffKind(row: PaymentStaffRow) {
   return 'Main Staff';
 }
 
-function paymentStatusForRow(row: PaymentStaffRow): PaymentStatus {
-  const totalPenalty = moneyNumber(row.totalPenalty);
-  const paidAmount = moneyNumber(row.paidAmount);
-  const outstandingBalance = moneyNumber(row.outstandingBalance);
-
-  if (totalPenalty <= 0 || outstandingBalance <= 0) return 'paid';
-  if (paidAmount > 0) return 'partially_paid';
-  return 'unpaid';
+function staffPaymentStatusForRow(row: PaymentStaffRow): StaffPaymentStatus {
+  return moneyNumber(row.outstandingBalance) > 0 ? 'unpaid' : 'paid';
 }
 
 function compactPenaltyLine(entry: PaymentEntry) {
@@ -198,9 +192,20 @@ export default function PenaltyPaymentsPage() {
 
     return statusFilter === 'all'
       ? searchedRows
-      : searchedRows.filter((row) => paymentStatusForRow(row) === statusFilter);
+      : searchedRows.filter((row) => staffPaymentStatusForRow(row) === statusFilter);
   }, [data?.staff, search, statusFilter]);
   const filteredRows = useMemo(() => sortPaymentRowsByBalance(matchingRows), [matchingRows]);
+  const paymentTotals = useMemo(() => {
+    const rows = (data?.staff || []).filter((row) => row.isAttendanceOnly !== true);
+
+    return rows.reduce(
+      (totals, row) => ({
+        paidAmount: totals.paidAmount + moneyNumber(row.paidAmount),
+        unpaidAmount: totals.unpaidAmount + moneyNumber(row.outstandingBalance),
+      }),
+      { paidAmount: 0, unpaidAmount: 0 },
+    );
+  }, [data?.staff]);
   const paymentRosterSections = useMemo(() => {
     return [
       {
@@ -284,7 +289,7 @@ export default function PenaltyPaymentsPage() {
 
         <Card className="overflow-hidden">
           <div className="border-b border-border p-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="grid gap-3 lg:grid-cols-[auto_1fr_minmax(240px,24rem)] lg:items-center">
               <div className="flex w-full rounded-md border border-border bg-background p-1 md:w-auto">
                 {paymentFilterOptions.map((option) => (
                   <Button
@@ -298,6 +303,10 @@ export default function PenaltyPaymentsPage() {
                     {option.label}
                   </Button>
                 ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 lg:justify-center">
+                <PaymentToolbarTotal label="Paid" value={currency(paymentTotals.paidAmount)} tone="paid" />
+                <PaymentToolbarTotal label="Unpaid" value={currency(paymentTotals.unpaidAmount)} tone="unpaid" />
               </div>
               <div className="relative w-full md:max-w-sm">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -346,7 +355,7 @@ export default function PenaltyPaymentsPage() {
                             <div className="mt-1 text-xs text-muted-foreground">{row.email || 'No email'}</div>
                           </td>
                           <td className="px-4 py-3">
-                            <PaymentStatusBadge status={paymentStatusForRow(row)} />
+                            <StaffPaymentStatusBadge status={staffPaymentStatusForRow(row)} />
                           </td>
                           <td className={cn(
                             'px-4 py-3 text-right font-mono font-semibold',
@@ -525,6 +534,35 @@ function BalanceStat({ highlight, label, value }: { highlight?: boolean; label: 
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className={cn('mt-1 truncate font-mono text-sm font-semibold', highlight && 'text-warning')}>{value}</div>
     </div>
+  );
+}
+
+function PaymentToolbarTotal({ label, tone, value }: { label: string; tone: 'paid' | 'unpaid'; value: string }) {
+  return (
+    <div className={cn(
+      'flex min-w-0 items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm',
+      tone === 'paid' ? 'border-success/20' : 'border-warning/25',
+    )}>
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className={cn(
+        'font-mono font-semibold',
+        tone === 'paid' ? 'text-success' : 'text-warning',
+      )}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function StaffPaymentStatusBadge({ status }: { status: StaffPaymentStatus }) {
+  return (
+    <span className={cn(
+      'inline-flex h-6 shrink-0 items-center rounded-full border px-2 text-xs font-medium',
+      status === 'paid' && 'border-success/25 bg-success/10 text-success',
+      status === 'unpaid' && 'border-danger/25 bg-danger/10 text-danger',
+    )}>
+      {status === 'paid' ? 'Paid' : 'Unpaid'}
+    </span>
   );
 }
 

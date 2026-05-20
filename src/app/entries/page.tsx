@@ -29,6 +29,7 @@ interface Entry {
   signOutTime: string;
   didNotSignOut: boolean;
   amount: number;
+  isExcusedAbsence: boolean;
   isGeneralPardon: boolean;
   noSignOutWaived: boolean;
   reason: string;
@@ -46,6 +47,7 @@ interface ExistingEntry {
   signOutTime?: string | null;
   didNotSignOut: boolean | null;
   computedAmount: string | number | null;
+  isExcusedAbsence?: boolean | null;
   isGeneralPardon?: boolean | null;
   noSignOutWaived?: boolean | null;
   reason: string | null;
@@ -137,6 +139,7 @@ export default function EntriesPage() {
           signOutTime: normalizeTimeValue(existing?.signOutTime),
           didNotSignOut: existing?.didNotSignOut || false,
           amount: existing ? parseFloat(String(existing.computedAmount || '0')) : 0,
+          isExcusedAbsence: existing?.isExcusedAbsence === true,
           isGeneralPardon: existing?.isGeneralPardon === true,
           noSignOutWaived: existing?.noSignOutWaived === true,
           reason: existing?.reason || '',
@@ -189,11 +192,13 @@ export default function EntriesPage() {
   
   function applyPenaltyDisplay(entry: Entry, member: StaffMember | undefined): Entry {
     const hasSignOutTime = Boolean(normalizeTimeValue(entry.signOutTime));
-    const noSignOutWaived = hasSignOutTime ? false : entry.noSignOutWaived;
-    const didNotSignOut = hasSignOutTime || noSignOutWaived ? false : entry.didNotSignOut;
+    const isExcusedAbsence = entry.isExcusedAbsence === true;
+    const noSignOutWaived = hasSignOutTime || isExcusedAbsence ? false : entry.noSignOutWaived;
+    const didNotSignOut = hasSignOutTime || isExcusedAbsence || noSignOutWaived ? false : entry.didNotSignOut;
     const normalizedEntry = {
       ...entry,
       didNotSignOut,
+      isExcusedAbsence,
       noSignOutWaived,
       signOutTime: normalizeTimeValue(entry.signOutTime),
     };
@@ -203,6 +208,15 @@ export default function EntriesPage() {
         ...normalizedEntry,
         amount: 0,
         reason: normalizedEntry.reason || 'General pardon',
+      };
+    }
+
+    if (normalizedEntry.isExcusedAbsence && !didNotSignOut) {
+      return {
+        ...normalizedEntry,
+        amount: 0,
+        isGeneralPardon: false,
+        reason: normalizedEntry.reason || 'Excused absence',
       };
     }
 
@@ -226,6 +240,7 @@ export default function EntriesPage() {
     return {
       ...normalizedEntry,
       amount: penalty.amount,
+      isExcusedAbsence: false,
       isGeneralPardon: false,
       noSignOutWaived: false,
       reason: penalty.reason,
@@ -253,7 +268,7 @@ export default function EntriesPage() {
         const signOutTime = normalizeTimeValue(value);
         const updated = {
           ...entry,
-          didNotSignOut: signOutTime ? false : true,
+          didNotSignOut: signOutTime ? false : !entry.isExcusedAbsence,
           noSignOutWaived: false,
           signOutTime,
         };
@@ -267,6 +282,7 @@ export default function EntriesPage() {
     setEntries((prev) =>
       prev.map((entry) => {
         if (entry.staffId !== staffId) return entry;
+        if (entry.isExcusedAbsence) return entry;
 
         const nextWaived = !entry.noSignOutWaived;
         const updated = {
@@ -557,7 +573,7 @@ export default function EntriesPage() {
                               <CheckCircle className="h-3 w-3" />
                               Signed out
                             </span>
-                          ) : (
+                          ) : !entry.isExcusedAbsence && (
                             <Button
                               type="button"
                               size="sm"
@@ -575,7 +591,7 @@ export default function EntriesPage() {
                         </div>
                         {!entry.signOutTime && (
                           <p className="mt-1 text-xs text-muted-foreground">
-                            {entry.noSignOutWaived ? 'Waived' : entry.didNotSignOut ? 'No sign-out' : 'Missing'}
+                            {entry.isExcusedAbsence ? 'Excused' : entry.noSignOutWaived ? 'Waived' : entry.didNotSignOut ? 'No sign-out' : 'Missing'}
                           </p>
                         )}
                       </td>
@@ -584,6 +600,8 @@ export default function EntriesPage() {
                           <span className="text-danger">GHC {entry.amount}</span>
                         ) : entry.isGeneralPardon ? (
                           <span className="rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">General pardon</span>
+                        ) : entry.isExcusedAbsence ? (
+                          <span className="rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">Excused</span>
                         ) : entry.noSignOutWaived ? (
                           <span className="rounded-full border border-warning/30 bg-warning/10 px-2 py-1 text-xs font-semibold text-warning">Waived</span>
                         ) : (

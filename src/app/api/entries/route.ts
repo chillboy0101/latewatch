@@ -41,6 +41,9 @@ async function getAttendanceRowsForEntries(start: string, end: string) {
 
 async function getPermissionRowsForEntries(start: string, end: string) {
   return db.select({
+    arrivalWindow: attendancePermission.arrivalWindow,
+    expectedEndTime: attendancePermission.expectedEndTime,
+    expectedStartTime: attendancePermission.expectedStartTime,
     id: attendancePermission.id,
     staffId: attendancePermission.staffId,
     date: attendancePermission.date,
