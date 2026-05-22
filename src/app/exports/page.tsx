@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { ChevronDown, Download, FileSpreadsheet, Loader2 } from 'lucide-react';
-import { endOfMonth, format, startOfMonth } from 'date-fns';
-import { getMonthWorkingWeeks, type WorkingWeekRange } from '@/lib/export-weeks';
+import { format } from 'date-fns';
+import { type WorkingWeekRange } from '@/lib/export-weeks';
 import {
   type AttendanceExportGroup,
   type AttendanceExportTemplate,
@@ -22,30 +22,11 @@ interface WeekSummary extends WorkingWeekRange {
   totalAmount: number;
 }
 
-interface ExportEntry {
-  date: string;
-  didNotSignOut: boolean | null;
-  computedAmount: string | number | null;
-  reason: string | null;
+interface LatenessSummaryResponse {
+  weeks: WeekSummary[];
 }
 
 type ExportTarget = { type: 'attendance' } | { type: 'monthly' } | { type: 'weekly'; key: string } | null;
-
-function normalizeDateKey(value: string) {
-  return value.includes('T') ? value.slice(0, 10) : value;
-}
-
-function countLateArrivals(entries: ExportEntry[]) {
-  return entries.length;
-}
-
-function countSignOutEntries(entries: ExportEntry[]) {
-  return entries.filter((entry) => entry.didNotSignOut).length;
-}
-
-function sumAmounts(entries: ExportEntry[]) {
-  return entries.reduce((sum, entry) => sum + parseFloat(String(entry.computedAmount || '0')), 0);
-}
 
 function exportKeyForWeek(week: WorkingWeekRange) {
   return `weekly-${week.weekNumber}-${week.exportStart}-${week.exportEnd}`;
@@ -82,36 +63,11 @@ export default function ExportsPage() {
     setError(null);
 
     try {
-      const monthStart = startOfMonth(selectedMonth);
-      const monthEnd = endOfMonth(selectedMonth);
-      const startStr = format(monthStart, 'yyyy-MM-dd');
-      const endStr = format(monthEnd, 'yyyy-MM-dd');
+      const response = await fetch(`/api/export/lateness-summary?year=${selectedYear}&month=${selectedMonthIndex}`, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`Could not load export summary (${response.status})`);
 
-      const response = await fetch(`/api/entries?start=${startStr}&end=${endStr}`, { cache: 'no-store' });
-      if (!response.ok) throw new Error(`Could not load entries (${response.status})`);
-
-      const allEntries = await response.json();
-      const entriesList = Array.isArray(allEntries) ? allEntries as ExportEntry[] : [];
-
-      const entriesByDate = new Map<string, ExportEntry[]>();
-      for (const entry of entriesList) {
-        const dateKey = normalizeDateKey(entry.date);
-        const entries = entriesByDate.get(dateKey) || [];
-        entries.push(entry);
-        entriesByDate.set(dateKey, entries);
-      }
-
-      const summaries = getMonthWorkingWeeks(selectedYear, selectedMonthIndex).map((week) => {
-        const weekEntries = week.dates.flatMap((dateKey) => entriesByDate.get(dateKey) || []);
-
-        return {
-          ...week,
-          weekLabel: `Week ${week.weekNumber}`,
-          totalLateArrivals: countLateArrivals(weekEntries),
-          totalSignOut: countSignOutEntries(weekEntries),
-          totalAmount: sumAmounts(weekEntries),
-        };
-      });
+      const data = await response.json() as LatenessSummaryResponse;
+      const summaries = Array.isArray(data.weeks) ? data.weeks : [];
 
       setWeekSummaries(summaries);
     } catch (err) {
@@ -121,7 +77,7 @@ export default function ExportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedMonth, selectedMonthIndex, selectedYear]);
+  }, [selectedMonthIndex, selectedYear]);
 
   useEffect(() => {
     fetchExportData();

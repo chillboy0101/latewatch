@@ -913,7 +913,7 @@ function PenaltyHistoryDialog({
             <div>
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-sm font-semibold">Current week</h3>
+                  <h3 className="text-sm font-semibold">Current week totals</h3>
                   <p className="text-xs text-muted-foreground">{formatDisplayDate(currentWeek.startDate)} to {formatDisplayDate(currentWeek.endDate)}</p>
                 </div>
                 <Button type="button" variant="outline" size="sm" onClick={onRefresh}>
@@ -921,9 +921,9 @@ function PenaltyHistoryDialog({
                 </Button>
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2">
-                <PenaltyHistoryStat label="Penalty" value={ghc(currentWeek.totalPenalty)} />
-                <PenaltyHistoryStat label="Paid" value={ghc(currentWeek.paidAmount)} />
-                <PenaltyHistoryStat label="Outstanding balance" value={ghc(currentWeek.outstandingBalance)} highlight />
+                <PenaltyHistoryStat label="Current week penalty" value={ghc(currentWeek.totalPenalty)} />
+                <PenaltyHistoryStat label="Current week paid" value={ghc(currentWeek.paidAmount)} />
+                <PenaltyHistoryStat label="Current week balance" value={ghc(currentWeek.outstandingBalance)} highlight />
               </div>
             </div>
 

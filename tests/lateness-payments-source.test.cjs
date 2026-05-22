@@ -144,6 +144,8 @@ test('check-in page exposes an icon-only penalty history modal', () => {
   assert.match(source, /Penalty History/);
   assert.match(source, /aria-label="Penalty History"/);
   assert.match(source, /\/api\/attendance\/check-in\/penalty-history/);
-  assert.match(source, /Current week/);
-  assert.match(source, /Outstanding balance/);
+  assert.match(source, /Current week totals/);
+  assert.match(source, /Current week penalty/);
+  assert.match(source, /Current week paid/);
+  assert.match(source, /Current week balance/);
 });
