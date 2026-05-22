@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth, currentUser } from '@clerk/nextjs/server';
-import { and, count, desc, eq, gte, ne } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, ne } from 'drizzle-orm';
 import { format, subDays } from 'date-fns';
 import { db } from '@/db';
-import { attendancePermission, attendanceRecord, auditEvent, latenessEntry, notificationRead, staff, workCalendar } from '@/db/schema';
+import { attendancePermission, attendanceRecord, auditEvent, latenessEntry, notificationRead, staff, staffDevice, workCalendar } from '@/db/schema';
 import { getAccraClock } from '@/lib/attendance';
 import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 import { getPermissionWindowBounds, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
@@ -463,10 +463,10 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
         return makeNotification(
           event,
           read,
-          'Attendance device reset',
-          `${beforeData?.staffName || afterData?.staffName || 'Staff member'} can link a new check-in device.`,
-          'warning',
-          'high',
+          'Attendance device updated',
+          `${beforeData?.staffName || afterData?.staffName || 'Staff member'} check-in device was updated.`,
+          'info',
+          'normal',
           { href: '/attendance' },
         );
       }
@@ -624,6 +624,79 @@ async function getNotificationState(userId: string) {
   return { dismissedIds, readIds };
 }
 
+function toDateTime(value: Date | string | null | undefined) {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : null;
+}
+
+function isStaffDeviceAutoSettingsEvent(event: AuditNotificationEvent) {
+  if (event.entityType !== 'staff_device') return false;
+  const beforeData = toAuditJson(event.beforeJson);
+  const afterData = toAuditJson(event.afterJson);
+  const operation = getAuditOperation(event.action, event.entityType, beforeData, afterData);
+
+  if (operation !== 'UPDATE') return false;
+
+  return (
+    typeof beforeData?.autoCheckInEnabled === 'boolean'
+    || typeof beforeData?.autoSignOutEnabled === 'boolean'
+    || typeof afterData?.autoCheckInEnabled === 'boolean'
+    || typeof afterData?.autoSignOutEnabled === 'boolean'
+  );
+}
+
+function shouldSkipAuditNotificationEvent(event: AuditNotificationEvent) {
+  return isStaffDeviceAutoSettingsEvent(event);
+}
+
+function getStaffDeviceResetStaffId(event: AuditNotificationEvent) {
+  if (event.entityType !== 'staff_device') return null;
+  const beforeData = toAuditJson(event.beforeJson);
+  const afterData = toAuditJson(event.afterJson);
+  const operation = getAuditOperation(event.action, event.entityType, beforeData, afterData);
+
+  if (operation !== 'DELETE') return null;
+
+  const staffId = [beforeData?.staffId, afterData?.staffId, event.entityId]
+    .find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  return staffId?.trim() || null;
+}
+
+async function getResolvedDeviceResetEventIds(events: AuditNotificationEvent[]) {
+  const resetEvents = events
+    .map((event) => ({ event, staffId: getStaffDeviceResetStaffId(event) }))
+    .filter((item): item is { event: AuditNotificationEvent; staffId: string } => Boolean(item.staffId));
+  const staffIds = Array.from(new Set(resetEvents.map((item) => item.staffId)));
+
+  if (staffIds.length === 0) return new Set<string>();
+
+  const linkedDevices = await db.select({
+    registeredAt: staffDevice.registeredAt,
+    staffId: staffDevice.staffId,
+    updatedAt: staffDevice.updatedAt,
+  })
+    .from(staffDevice)
+    .where(inArray(staffDevice.staffId, staffIds));
+  const deviceByStaffId = new Map(linkedDevices.map((device) => [device.staffId, device]));
+  const resolvedIds = new Set<string>();
+
+  for (const { event, staffId } of resetEvents) {
+    const device = deviceByStaffId.get(staffId);
+    if (!device) continue;
+
+    const resetTime = toDateTime(event.timestamp);
+    const linkedTime = toDateTime(device.registeredAt) ?? toDateTime(device.updatedAt);
+
+    if (resetTime === null || linkedTime === null || linkedTime >= resetTime) {
+      resolvedIds.add(event.id);
+    }
+  }
+
+  return resolvedIds;
+}
+
 async function getAuditNotifications(limit: number, readIds: Set<string>) {
   const since = subDays(new Date(), 30);
 
@@ -641,8 +714,12 @@ async function getAuditNotifications(limit: number, readIds: Set<string>) {
     .where(and(gte(auditEvent.timestamp, since), ne(auditEvent.entityType, 'notification')))
     .orderBy(desc(auditEvent.timestamp))
     .limit(limit);
+  const resolvedDeviceResetEventIds = await getResolvedDeviceResetEventIds(events);
 
-  return events.map((event) => formatNotification(event, readIds.has(event.id)));
+  return events
+    .filter((event) => !shouldSkipAuditNotificationEvent(event))
+    .filter((event) => !resolvedDeviceResetEventIds.has(event.id))
+    .map((event) => formatNotification(event, readIds.has(event.id)));
 }
 
 async function getSystemNotifications(readIds: Set<string>): Promise<Notification[]> {

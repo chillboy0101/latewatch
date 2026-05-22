@@ -179,3 +179,23 @@ test('system no-sign-out notifications ignore waived rows', () => {
   assert.match(source, /noSignOutWaived:\s*attendanceRecord\.noSignOutWaived/);
   assert.match(source, /!row\.signOutTime && row\.noSignOutWaived !== true/);
 });
+
+test('staff device update notifications are not shown as device resets', () => {
+  const source = fs.readFileSync(notificationsApiPath, 'utf8');
+
+  assert.match(source, /shouldSkipAuditNotificationEvent/);
+  assert.match(source, /autoCheckInEnabled/);
+  assert.match(source, /autoSignOutEnabled/);
+  assert.match(source, /filter\(\(event\) => !shouldSkipAuditNotificationEvent\(event\)\)/);
+  assert.match(source, /Attendance device updated/);
+  assert.doesNotMatch(source, /case 'UPDATE':[\s\S]*Attendance device reset[\s\S]*can link a new check-in device[\s\S]*case 'DELETE':/);
+});
+
+test('notifications suppress device reset notices after the staff device is relinked', () => {
+  const source = fs.readFileSync(notificationsApiPath, 'utf8');
+
+  assert.match(source, /staffDevice/);
+  assert.match(source, /getResolvedDeviceResetEventIds/);
+  assert.match(source, /inArray\(staffDevice\.staffId, staffIds\)/);
+  assert.match(source, /resolvedDeviceResetEventIds\.has\(event\.id\)/);
+});
