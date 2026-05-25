@@ -209,6 +209,31 @@ test('attendance export remarks call missing attendance absent with permission',
   assert.doesNotMatch(String(week1.getCell('K8').value), /Absent without permission/);
 });
 
+test('attendance exports format sick permissions consistently', async () => {
+  const permissions = [
+    { date: '2026-04-01', permissionType: 'absence', reason: 'sick', staffId: 'main-excused' },
+  ];
+
+  const dailyWorkbook = await workbookFor({ permissions });
+  assert.match(String(dailyWorkbook.worksheets[0].getCell('G6').value), /Sick - 1/);
+
+  const monthlyWorkbook = await workbookFor({
+    permissions,
+    template: 'monthly-matrix',
+  });
+  const monthlySheet = monthlyWorkbook.worksheets[0];
+  assert.equal(monthlySheet.getCell('G11').value, 'AP');
+  assert.equal(monthlySheet.getCell('AS11').value, 'Sick');
+
+  const weeklyWorkbook = await workbookFor({
+    permissions,
+    template: 'weekly-validation',
+  });
+  const week1 = weeklyWorkbook.getWorksheet('WEEK 1');
+  assert.equal(week1.getCell('F9').value, CROSS);
+  assert.equal(week1.getCell('K9').value, 'Sick');
+});
+
 test('monthly attendance matrix marks P, AP, blank unapproved absences, and keeps NSS staff id/rank cells blank', async () => {
   const mainWorkbook = await workbookFor({
     attendanceRecords: [
