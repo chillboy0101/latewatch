@@ -134,12 +134,13 @@ export function Sidebar() {
     'min-w-0 overflow-hidden whitespace-nowrap transition-[opacity,transform] will-change-[opacity,transform]',
     SIDEBAR_LABEL_MOTION_CLASS,
     isExpanded
-      ? 'translate-x-0 opacity-100'
-      : 'pointer-events-none -translate-x-1 opacity-0',
+      ? 'w-auto translate-x-0 opacity-100'
+      : 'pointer-events-none w-0 -translate-x-1 opacity-0',
   );
 
   const itemClassName = cn(
-    'flex h-10 w-full items-center justify-start gap-3 rounded-md px-3 text-sm font-medium transition-colors duration-150 ease-out',
+    'flex h-10 items-center rounded-md text-sm font-medium transition-colors duration-150 ease-out',
+    isExpanded ? 'w-full justify-start gap-3 px-3' : 'w-12 justify-center gap-0 px-0',
   );
 
   const toggleButtonClassName = cn(
@@ -196,7 +197,7 @@ export function Sidebar() {
             );
           })}
         </nav>
-        <div className="space-y-2 border-t border-border px-2 pb-16 pt-3">
+        <div className="space-y-2 border-t border-border px-2 pb-14 pt-3">
           <Link
             href="/"
             aria-label="Main Portal"

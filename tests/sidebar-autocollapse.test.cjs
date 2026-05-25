@@ -63,6 +63,15 @@ test('sidebar mode toggle is icon-only and glides with the rail edge', () => {
   assert.doesNotMatch(source, /<span className=\{labelClassName\}>\{toggleLabel\}<\/span>/);
 });
 
+test('collapsed sidebar centers rail icons and keeps footer controls tight', () => {
+  const source = fs.readFileSync(sidebarPath, 'utf8');
+
+  assert.match(source, /isExpanded \? 'w-full justify-start gap-3 px-3' : 'w-12 justify-center gap-0 px-0'/);
+  assert.match(source, /pointer-events-none w-0 -translate-x-1 opacity-0/);
+  assert.match(source, /border-t border-border px-2 pb-14 pt-3/);
+  assert.doesNotMatch(source, /pb-16/);
+});
+
 test('auto-hide sidebar collapses when the browser loses focus', () => {
   const source = fs.readFileSync(sidebarPath, 'utf8');
 
