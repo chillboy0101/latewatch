@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Loader2, ReceiptText, Search } from 'lucide-react';
+import { CheckCircle2, Loader2, Plus, ReceiptText, Save, Search, Trash2 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -44,11 +44,39 @@ interface PaymentsResponse {
   staff: PaymentStaffRow[];
 }
 
+interface OffenceBookStoredItem {
+  amount: string;
+  displayOrder: number;
+  id: string;
+  itemType: 'external_money' | 'expenditure';
+  label: string;
+  monthKey: string;
+}
+
+interface OffenceBookItemsResponse {
+  expenditure: OffenceBookStoredItem[];
+  externalMoney: OffenceBookStoredItem[];
+  month: number;
+  monthKey: string;
+  year: number;
+}
+
+interface OffenceBookDraftItem {
+  amount: string;
+  clientId: string;
+  label: string;
+}
+
 const paymentFilterOptions: Array<{ label: string; value: PaymentFilter }> = [
   { label: 'All', value: 'all' },
   { label: 'Unpaid', value: 'unpaid' },
   { label: 'Paid', value: 'paid' },
 ];
+
+const offenceBookLimits = {
+  expenditure: 9,
+  externalMoney: 4,
+};
 
 function currency(value: string | number | null | undefined) {
   return `GHC ${Number(value || 0).toFixed(2)}`;
@@ -66,6 +94,27 @@ function normalizePaymentAmountInput(value: string) {
   if (decimalParts.length === 0) return whole;
 
   return `${whole}.${decimalParts.join('').slice(0, 2)}`;
+}
+
+function createOffenceBookDraftItem(): OffenceBookDraftItem {
+  return {
+    amount: '',
+    clientId: `item-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    label: '',
+  };
+}
+
+function offenceBookDraftsFromRows(rows: OffenceBookStoredItem[]) {
+  const drafts = rows
+    .slice()
+    .sort((left, right) => left.displayOrder - right.displayOrder)
+    .map((row) => ({
+      amount: row.amount || '',
+      clientId: row.id,
+      label: row.label || '',
+    }));
+
+  return drafts.length > 0 ? drafts : [createOffenceBookDraftItem()];
 }
 
 function statusLabel(status: PaymentStatus) {
@@ -124,6 +173,13 @@ export default function PenaltyPaymentsPage() {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'error' | 'success' } | null>(null);
+  const [offenceBookMonth, setOffenceBookMonth] = useState(new Date().getMonth());
+  const [offenceBookYear, setOffenceBookYear] = useState(new Date().getFullYear());
+  const [offenceBookLoading, setOffenceBookLoading] = useState(true);
+  const [offenceBookSaving, setOffenceBookSaving] = useState(false);
+  const [offenceBookMessage, setOffenceBookMessage] = useState<{ text: string; type: 'error' | 'success' } | null>(null);
+  const [externalMoneyDrafts, setExternalMoneyDrafts] = useState<OffenceBookDraftItem[]>(() => [createOffenceBookDraftItem()]);
+  const [expenditureDrafts, setExpenditureDrafts] = useState<OffenceBookDraftItem[]>(() => [createOffenceBookDraftItem()]);
 
   const loadPayments = useCallback(async () => {
     setLoading(true);
@@ -145,9 +201,36 @@ export default function PenaltyPaymentsPage() {
     }
   }, []);
 
+  const loadOffenceBookItems = useCallback(async () => {
+    setOffenceBookLoading(true);
+    setOffenceBookMessage(null);
+
+    try {
+      const response = await fetch(`/api/payments/offence-book-items?year=${offenceBookYear}&month=${offenceBookMonth}`, {
+        cache: 'no-store',
+      });
+      const body = await response.json().catch(() => ({})) as Partial<OffenceBookItemsResponse> & { error?: string };
+      if (!response.ok) throw new Error(body.error || `Offence book request failed (${response.status})`);
+
+      setExternalMoneyDrafts(offenceBookDraftsFromRows(body.externalMoney || []));
+      setExpenditureDrafts(offenceBookDraftsFromRows(body.expenditure || []));
+    } catch (error) {
+      console.error('Failed to load offence book inputs:', error);
+      setExternalMoneyDrafts([createOffenceBookDraftItem()]);
+      setExpenditureDrafts([createOffenceBookDraftItem()]);
+      setOffenceBookMessage({ type: 'error', text: error instanceof Error ? error.message : 'Could not load offence book inputs' });
+    } finally {
+      setOffenceBookLoading(false);
+    }
+  }, [offenceBookMonth, offenceBookYear]);
+
   useEffect(() => {
     void loadPayments();
   }, [loadPayments]);
+
+  useEffect(() => {
+    void loadOffenceBookItems();
+  }, [loadOffenceBookItems]);
 
   useEffect(() => {
     let cleanups: Array<() => void> = [];
@@ -161,6 +244,7 @@ export default function PenaltyPaymentsPage() {
             events: ['invalidate'],
             onEvent: () => {
               void loadPayments();
+              void loadOffenceBookItems();
             },
           }),
         ),
@@ -177,7 +261,7 @@ export default function PenaltyPaymentsPage() {
       mounted = false;
       cleanups.forEach((unsubscribe) => unsubscribe());
     };
-  }, [loadPayments]);
+  }, [loadOffenceBookItems, loadPayments]);
 
   const matchingRows = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -233,6 +317,65 @@ export default function PenaltyPaymentsPage() {
     setPaymentDialogOpen(true);
   }
 
+  function updateOffenceBookDraft(
+    list: 'externalMoney' | 'expenditure',
+    clientId: string,
+    field: 'amount' | 'label',
+    value: string,
+  ) {
+    const setter = list === 'externalMoney' ? setExternalMoneyDrafts : setExpenditureDrafts;
+    setter((current) => current.map((item) => (
+      item.clientId === clientId
+        ? { ...item, [field]: field === 'amount' ? normalizePaymentAmountInput(value) : value }
+        : item
+    )));
+  }
+
+  function addOffenceBookDraft(list: 'externalMoney' | 'expenditure') {
+    const limit = list === 'externalMoney' ? offenceBookLimits.externalMoney : offenceBookLimits.expenditure;
+    const setter = list === 'externalMoney' ? setExternalMoneyDrafts : setExpenditureDrafts;
+    setter((current) => current.length >= limit ? current : [...current, createOffenceBookDraftItem()]);
+  }
+
+  function removeOffenceBookDraft(list: 'externalMoney' | 'expenditure', clientId: string) {
+    const setter = list === 'externalMoney' ? setExternalMoneyDrafts : setExpenditureDrafts;
+    setter((current) => {
+      const next = current.filter((item) => item.clientId !== clientId);
+      return next.length > 0 ? next : [createOffenceBookDraftItem()];
+    });
+  }
+
+  async function saveOffenceBookItems() {
+    if (offenceBookSaving) return;
+
+    setOffenceBookSaving(true);
+    setOffenceBookMessage(null);
+
+    try {
+      const response = await fetch('/api/payments/offence-book-items', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          expenditure: expenditureDrafts.map(({ amount, label }) => ({ amount, label })),
+          externalMoney: externalMoneyDrafts.map(({ amount, label }) => ({ amount, label })),
+          month: offenceBookMonth,
+          year: offenceBookYear,
+        }),
+      });
+      const body = await response.json().catch(() => ({})) as Partial<OffenceBookItemsResponse> & { error?: string };
+      if (!response.ok) throw new Error(body.error || `Offence book save failed (${response.status})`);
+
+      setExternalMoneyDrafts(offenceBookDraftsFromRows(body.externalMoney || []));
+      setExpenditureDrafts(offenceBookDraftsFromRows(body.expenditure || []));
+      setOffenceBookMessage({ type: 'success', text: 'Offence book inputs saved.' });
+    } catch (error) {
+      console.error('Offence book save failed:', error);
+      setOffenceBookMessage({ type: 'error', text: error instanceof Error ? error.message : 'Could not save offence book inputs' });
+    } finally {
+      setOffenceBookSaving(false);
+    }
+  }
+
   async function recordPayment(input: {
     actionKey: string;
     amount: number;
@@ -286,6 +429,94 @@ export default function PenaltyPaymentsPage() {
             {message.text}
           </div>
         )}
+
+        <Card className="overflow-hidden">
+          <div className="border-b border-border p-4">
+            <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+              <div>
+                <h2 className="text-base font-semibold">Offence book inputs</h2>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Month</label>
+                    <select
+                      className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      value={offenceBookMonth}
+                      onChange={(event) => setOffenceBookMonth(parseInt(event.target.value, 10))}
+                    >
+                      {Array.from({ length: 12 }, (_, index) => (
+                        <option key={index} value={index}>
+                          {new Date(offenceBookYear, index, 1).toLocaleString(undefined, { month: 'long' })}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Year</label>
+                    <select
+                      className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      value={offenceBookYear}
+                      onChange={(event) => setOffenceBookYear(parseInt(event.target.value, 10))}
+                    >
+                      {Array.from({ length: 11 }, (_, index) => {
+                        const year = 2024 + index;
+                        return (
+                          <option key={year} value={year}>
+                            {year}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <Button
+                type="button"
+                className="h-10 gap-2"
+                disabled={offenceBookLoading || offenceBookSaving}
+                onClick={saveOffenceBookItems}
+              >
+                {offenceBookSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Save inputs
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-px bg-border lg:grid-cols-2">
+            <OffenceBookInputSection
+              addLabel="Add source"
+              amountLabel="Amount"
+              disabled={offenceBookLoading || offenceBookSaving}
+              label="External Money"
+              labelPlaceholder="Source"
+              limit={offenceBookLimits.externalMoney}
+              rows={externalMoneyDrafts}
+              onAdd={() => addOffenceBookDraft('externalMoney')}
+              onRemove={(clientId) => removeOffenceBookDraft('externalMoney', clientId)}
+              onUpdate={(clientId, field, value) => updateOffenceBookDraft('externalMoney', clientId, field, value)}
+            />
+            <OffenceBookInputSection
+              addLabel="Add item"
+              amountLabel="Amount"
+              disabled={offenceBookLoading || offenceBookSaving}
+              label="Expenditure"
+              labelPlaceholder="Item"
+              limit={offenceBookLimits.expenditure}
+              rows={expenditureDrafts}
+              onAdd={() => addOffenceBookDraft('expenditure')}
+              onRemove={(clientId) => removeOffenceBookDraft('expenditure', clientId)}
+              onUpdate={(clientId, field, value) => updateOffenceBookDraft('expenditure', clientId, field, value)}
+            />
+          </div>
+
+          {offenceBookMessage && (
+            <div className={cn(
+              'border-t border-border px-4 py-2 text-sm',
+              offenceBookMessage.type === 'success' ? 'text-success' : 'text-danger',
+            )}>
+              {offenceBookMessage.text}
+            </div>
+          )}
+        </Card>
 
         <Card className="overflow-hidden">
           <div className="border-b border-border p-4">
@@ -576,5 +807,80 @@ function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
     )}>
       {statusLabel(status)}
     </span>
+  );
+}
+
+function OffenceBookInputSection({
+  addLabel,
+  amountLabel,
+  disabled,
+  label,
+  labelPlaceholder,
+  limit,
+  rows,
+  onAdd,
+  onRemove,
+  onUpdate,
+}: {
+  addLabel: string;
+  amountLabel: string;
+  disabled: boolean;
+  label: string;
+  labelPlaceholder: string;
+  limit: number;
+  rows: OffenceBookDraftItem[];
+  onAdd: () => void;
+  onRemove: (clientId: string) => void;
+  onUpdate: (clientId: string, field: 'amount' | 'label', value: string) => void;
+}) {
+  return (
+    <div className="bg-card p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold">{label}</h3>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 gap-1.5"
+          disabled={disabled || rows.length >= limit}
+          onClick={onAdd}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {addLabel}
+        </Button>
+      </div>
+
+      <div className="space-y-2">
+        {rows.map((row) => (
+          <div key={row.clientId} className="grid gap-2 sm:grid-cols-[1fr_8rem_auto]">
+            <Input
+              value={row.label}
+              onChange={(event) => onUpdate(row.clientId, 'label', event.target.value)}
+              placeholder={labelPlaceholder}
+              disabled={disabled}
+            />
+            <Input
+              value={row.amount}
+              onChange={(event) => onUpdate(row.clientId, 'amount', event.target.value)}
+              placeholder={amountLabel}
+              inputMode="decimal"
+              disabled={disabled}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 text-danger"
+              disabled={disabled}
+              title="Remove row"
+              aria-label="Remove row"
+              onClick={() => onRemove(row.clientId)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

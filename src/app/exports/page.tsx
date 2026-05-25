@@ -33,6 +33,7 @@ type ExportTarget =
   | { type: 'attendance' }
   | { type: 'contributions' }
   | { type: 'monthly' }
+  | { type: 'offence-book' }
   | { type: 'weekly'; key: string }
   | null;
 
@@ -66,6 +67,7 @@ export default function ExportsPage() {
   const isMonthlyExporting = exporting?.type === 'monthly';
   const isAttendanceExporting = exporting?.type === 'attendance';
   const isContributionExporting = exporting?.type === 'contributions';
+  const isOffenceBookExporting = exporting?.type === 'offence-book';
   const attendanceTemplateOptions = useMemo(
     () => getAttendanceExportTemplatesForGroup(attendanceGroup),
     [attendanceGroup],
@@ -240,6 +242,36 @@ export default function ExportsPage() {
     } catch (err) {
       console.error('Contribution export failed:', err);
       setError(err instanceof Error ? err.message : 'Contribution export failed');
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  async function handleOffenceBookExport() {
+    if (exporting) return;
+
+    setExporting({ type: 'offence-book' });
+    setError(null);
+
+    try {
+      const response = await fetch('/api/export/offence-book', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          month: selectedMonthIndex,
+          year: selectedYear,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `OFFENCE BOOK export failed (${response.status})`);
+      }
+
+      await downloadWorkbook(response, `OFFENCE_BOOK_${format(selectedMonth, 'MMMM_yyyy')}.xlsx`);
+    } catch (err) {
+      console.error('OFFENCE BOOK export failed:', err);
+      setError(err instanceof Error ? err.message : 'OFFENCE BOOK export failed');
     } finally {
       setExporting(null);
     }
@@ -464,6 +496,70 @@ export default function ExportsPage() {
                 >
                   {isAttendanceExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                   {isAttendanceExporting ? 'Downloading' : 'Download'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <div className="border-b border-border px-6 py-5">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-background text-primary">
+                  <FileSpreadsheet className="h-5 w-5" />
+                </div>
+                <h2 className="text-lg font-semibold leading-none">OFFENCE BOOK EXPORT</h2>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-[minmax(9rem,1fr)_7rem_auto] sm:items-end">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-muted-foreground">Month</label>
+                  <div className="relative">
+                    <select
+                      className="h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-9 text-sm leading-none outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      value={selectedMonthIndex}
+                      onChange={(event) => setSelectedMonth(new Date(selectedYear, parseInt(event.target.value, 10), 1))}
+                    >
+                      {Array.from({ length: 12 }, (_, index) => (
+                        <option key={index} value={index}>
+                          {format(new Date(selectedYear, index, 1), 'MMMM')}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-muted-foreground">Year</label>
+                  <div className="relative">
+                    <select
+                      className="h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-9 text-sm leading-none outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      value={selectedYear}
+                      onChange={(event) => setSelectedMonth(new Date(parseInt(event.target.value, 10), selectedMonthIndex, 1))}
+                    >
+                      {Array.from({ length: 11 }, (_, index) => {
+                        const year = 2024 + index;
+                        return (
+                          <option key={year} value={year}>
+                            {year}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </div>
+
+                <Button
+                  className="h-10 gap-2"
+                  onClick={handleOffenceBookExport}
+                  disabled={exporting !== null && !isOffenceBookExporting}
+                  aria-busy={isOffenceBookExporting}
+                >
+                  {isOffenceBookExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                  {isOffenceBookExporting ? 'Downloading' : 'Download'}
                 </Button>
               </div>
             </div>

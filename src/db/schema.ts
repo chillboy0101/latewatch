@@ -166,6 +166,21 @@ export const latenessPaymentAllocationRelations = relations(latenessPaymentAlloc
   }),
 }));
 
+export const offenceBookItem = pgTable('offence_book_item', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  monthKey: date('month_key').notNull(),
+  itemType: text('item_type').notNull(),
+  label: text('label').notNull(),
+  amount: decimal('amount', { precision: 10, scale: 2 }).notNull(),
+  displayOrder: integer('display_order').default(0).notNull(),
+  createdByEmail: text('created_by_email').notNull().default('system'),
+  updatedByEmail: text('updated_by_email'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => [
+  index('offence_book_item_month_type_order_idx').on(table.monthKey, table.itemType, table.displayOrder),
+]);
+
 export const entrySubmission = pgTable('entry_submission', {
   id: uuid('id').primaryKey().defaultRandom(),
   date: date('date').unique().notNull(),

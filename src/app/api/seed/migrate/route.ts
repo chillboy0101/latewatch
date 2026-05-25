@@ -372,6 +372,21 @@ export async function POST() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS lateness_payment_recorded_at_idx ON lateness_payment(recorded_at)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS lateness_payment_allocation_payment_idx ON lateness_payment_allocation(payment_id)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS lateness_payment_allocation_entry_idx ON lateness_payment_allocation(entry_id)`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS offence_book_item (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        month_key date NOT NULL,
+        item_type text NOT NULL,
+        label text NOT NULL,
+        amount numeric(10, 2) NOT NULL,
+        display_order integer DEFAULT 0 NOT NULL,
+        created_by_email text DEFAULT 'system' NOT NULL,
+        updated_by_email text,
+        created_at timestamp DEFAULT now(),
+        updated_at timestamp DEFAULT now()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS offence_book_item_month_type_order_idx ON offence_book_item(month_key, item_type, display_order)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS attendance_record_date_idx ON attendance_record(date)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS attendance_attempt_date_idx ON attendance_attempt(date)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS attendance_attempt_staff_date_idx ON attendance_attempt(staff_id, date)`);
@@ -410,6 +425,7 @@ export async function POST() {
           'device_transfer_request',
           'lateness_payment',
           'lateness_payment_allocation',
+          'offence_book_item',
         ],
       },
       reason: 'schema-maintenance',
