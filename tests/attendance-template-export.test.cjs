@@ -179,7 +179,7 @@ test('daily attendance summary uses 8:30 cutoff, leave, exempt counts, and main 
   assert.equal(sheet.getCell('D6').value, 1);
   assert.equal(sheet.getCell('E6').value, 1);
   assert.match(String(sheet.getCell('G6').value), /Leave - 1/);
-  assert.match(String(sheet.getCell('G6').value), /Exempt \(Field Work\) - 1/);
+  assert.match(String(sheet.getCell('G6').value), /Official duty - 1/);
 });
 
 test('daily attendance summary counts only approved exempt reasons', async () => {
@@ -225,13 +225,14 @@ test('daily attendance summary counts only approved exempt reasons', async () =>
 
   assert.equal(sheet.getCell('E6').value, 4);
   assert.match(remarks, /Exempt \(Training\) - 1/);
-  assert.match(remarks, /Exempt \(Field Work\) - 2/);
+  assert.match(remarks, /Official duty - 1/);
+  assert.match(remarks, /Exempt \(Field Work\) - 1/);
   assert.match(remarks, /Sick - 1/);
   assert.doesNotMatch(remarks, /General pardon/);
   assert.doesNotMatch(remarks, /Personal excuse/);
 });
 
-test('missing attendance is not written to daily or weekly remarks but stays in monthly exports', async () => {
+test('missing attendance is not written to daily remarks but is explained in monthly and weekly exports', async () => {
   const attendanceRecords = [
     { checkInTime: '08:30', date: '2026-04-01', staffId: 'main-on-time' },
   ];
@@ -259,12 +260,11 @@ test('missing attendance is not written to daily or weekly remarks but stays in 
     template: 'weekly-validation',
   });
   const week1 = weeklyWorkbook.getWorksheet('WEEK 1');
-  assert.equal(week1.getCell('K8').value, '');
+  assert.equal(week1.getCell('K8').value, 'Official duty - 1');
   assert.doesNotMatch(String(week1.getCell('K8').value), /Absent without permission/);
-  assert.doesNotMatch(String(week1.getCell('K8').value), /Absent with permission/);
 });
 
-test('attendance exports display legacy personal excuse permissions as sick', async () => {
+test('attendance exports display personal excuse permissions as official duty', async () => {
   const permissions = [
     { date: '2026-04-01', permissionType: 'absence', reason: 'personal excuse', staffId: 'main-excused' },
   ];
@@ -272,22 +272,23 @@ test('attendance exports display legacy personal excuse permissions as sick', as
   const dailyWorkbook = await workbookFor({ permissions });
   const dailyRemarks = String(dailyWorkbook.worksheets[0].getCell('G6').value);
   assert.equal(dailyWorkbook.worksheets[0].getCell('E6').value, 1);
-  assert.match(dailyRemarks, /Sick - 1/);
+  assert.match(dailyRemarks, /Official duty - 1/);
   assert.doesNotMatch(dailyRemarks, /Personal excuse/);
+  assert.doesNotMatch(dailyRemarks, /Sick/);
 
   const monthlyWorkbook = await workbookFor({
     permissions,
     template: 'monthly-matrix',
   });
   const monthlySheet = monthlyWorkbook.worksheets[0];
-  assert.equal(monthlySheet.getCell('AS11').value, 'Sick');
+  assert.equal(monthlySheet.getCell('AS11').value, 'Official duty');
 
   const weeklyWorkbook = await workbookFor({
     permissions,
     template: 'weekly-validation',
   });
   const week1 = weeklyWorkbook.getWorksheet('WEEK 1');
-  assert.equal(week1.getCell('K9').value, 'Sick - 1');
+  assert.equal(week1.getCell('K9').value, 'Official duty - 1');
 });
 
 test('attendance exports format sick permissions consistently', async () => {
@@ -386,7 +387,7 @@ test('attendance exports use historical leave periods without adding sheet rows'
   assert.equal(week1.getCell('C11').value, null);
 });
 
-test('weekly validation uses daily summary remark labels and keeps NSS staff number cells blank', async () => {
+test('weekly validation uses daily summary-style remark labels and keeps NSS staff number cells blank', async () => {
   const workbook = await workbookFor({
     attendanceRecords: [
       { checkInTime: '08:30', date: '2026-04-01', staffId: 'main-on-time' },
@@ -400,7 +401,7 @@ test('weekly validation uses daily summary remark labels and keeps NSS staff num
 
   assert.equal(week1.getCell('F7').value, CHECK);
   assert.equal(week1.getCell('F8').value, CROSS);
-  assert.equal(week1.getCell('K8').value, '');
+  assert.equal(week1.getCell('K8').value, 'Official duty - 1');
   assert.equal(week1.getCell('F9').value, CROSS);
   assert.equal(week1.getCell('I7').value, 1);
   assert.equal(week1.getCell('K9').value, 'Exempt (Field Work) - 1');

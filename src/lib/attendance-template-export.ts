@@ -91,6 +91,7 @@ const TEMPLATE_FILES: Record<AttendanceExportTemplate, string> = {
 const PRESENT_MARK = '\u2713';
 const ABSENT_MARK = '\u2717';
 const MISSING_ATTENDANCE_REMARK = 'Absent with permission';
+const WEEKLY_MISSING_ATTENDANCE_REMARK = 'Official duty';
 const DAILY_EXEMPT_REASONS = new Set(['training', 'official duty', 'sick', 'workshop']);
 
 function templatePath(template: AttendanceExportTemplate) {
@@ -301,7 +302,7 @@ function setCell(cell: ExcelJS.Cell, value: ExcelJS.CellValue) {
 
 function normalizedAbsenceReason(reason: string | null | undefined) {
   const normalized = (reason || '').trim().toLowerCase();
-  return normalized === 'personal excuse' ? 'sick' : normalized;
+  return normalized === 'personal excuse' ? 'official duty' : normalized;
 }
 
 function isDailyExemptReason(reason: string | null | undefined) {
@@ -311,19 +312,25 @@ function isDailyExemptReason(reason: string | null | undefined) {
 function absenceRemarkLabel(reason: string | null | undefined) {
   const normalized = normalizedAbsenceReason(reason);
   if (normalized === 'training') return 'Exempt (Training)';
-  if (normalized === 'official duty' || normalized === 'workshop') return 'Exempt (Field Work)';
+  if (normalized === 'official duty') return 'Official duty';
+  if (normalized === 'workshop') return 'Exempt (Field Work)';
   return formatAbsencePermissionReason(reason);
 }
 
 function weeklyRemarkLabel(status: DayStatus) {
   if (status.kind === 'leave') return 'On Leave';
-  if (status.kind === 'approved_absence') return formatAbsencePermissionReason(status.reason);
+  if (status.kind === 'approved_absence') {
+    return normalizedAbsenceReason(status.reason) === 'official duty'
+      ? 'Official duty'
+      : formatAbsencePermissionReason(status.reason);
+  }
   if (status.kind === 'unapproved_absence') return MISSING_ATTENDANCE_REMARK;
   return '';
 }
 
-function dailySummaryRemarkLabel(status: DayStatus) {
+function weeklyValidationRemarkLabel(status: DayStatus) {
   if (status.kind === 'leave') return 'Leave';
+  if (status.kind === 'unapproved_absence') return WEEKLY_MISSING_ATTENDANCE_REMARK;
   if (status.kind === 'approved_absence' && isDailyExemptReason(status.reason)) {
     return absenceRemarkLabel(status.reason);
   }
@@ -555,7 +562,7 @@ function fillWeeklySheet(
         presentCount += 1;
       } else {
         row.getCell(column).value = ABSENT_MARK;
-        remarks.push(dailySummaryRemarkLabel(status));
+        remarks.push(weeklyValidationRemarkLabel(status));
       }
     });
 

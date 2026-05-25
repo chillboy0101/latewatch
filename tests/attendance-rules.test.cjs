@@ -116,16 +116,16 @@ test('attendance monitoring only staff are never charged penalties', () => {
 test('excused absence permission reasons are restricted to the approved list', () => {
   assert.deepEqual(
     ABSENCE_PERMISSION_REASONS.map((option) => option.value),
-    ['training', 'official duty', 'sick', 'workshop', 'general pardon'],
+    ['training', 'official duty', 'personal excuse', 'sick', 'workshop', 'general pardon'],
   );
   assert.equal(isValidAbsencePermissionReason('training'), true);
   assert.equal(isValidAbsencePermissionReason(' official duty '), true);
   assert.equal(isValidAbsencePermissionReason('Workshop'), true);
   assert.equal(isValidAbsencePermissionReason('General pardon'), true);
   assert.equal(isValidAbsencePermissionReason('Sick'), true);
-  assert.equal(isValidAbsencePermissionReason('personal excuse'), false);
+  assert.equal(isValidAbsencePermissionReason('personal excuse'), true);
   assert.equal(isValidAbsencePermissionReason('meeting'), false);
-  assert.equal(formatAbsencePermissionReason('personal excuse'), 'Sick');
+  assert.equal(formatAbsencePermissionReason('personal excuse'), 'Personal excuse');
   assert.equal(formatAbsencePermissionReason('sick'), 'Sick');
   assert.equal(formatAbsencePermissionReason('workshop'), 'Workshop');
   assert.equal(formatAbsencePermissionReason('general pardon'), 'General pardon');
@@ -137,10 +137,10 @@ test('late arrival permission reasons use the same approved list', () => {
   assert.equal(isValidLateArrivalPermissionReason('Official duty'), true);
   assert.equal(isValidLateArrivalPermissionReason('General pardon'), true);
   assert.equal(isValidLateArrivalPermissionReason('Sick'), true);
-  assert.equal(isValidLateArrivalPermissionReason('personal excuse'), false);
+  assert.equal(isValidLateArrivalPermissionReason('personal excuse'), true);
   assert.equal(isValidLateArrivalPermissionReason('custom reason'), false);
   assert.equal(formatLateArrivalPermissionReason('training'), 'Training');
-  assert.equal(formatLateArrivalPermissionReason('personal excuse'), 'Sick');
+  assert.equal(formatLateArrivalPermissionReason('personal excuse'), 'Personal excuse');
   assert.equal(formatLateArrivalPermissionReason('sick'), 'Sick');
   assert.equal(formatLateArrivalPermissionReason('general pardon'), 'General pardon');
   assert.equal(isGeneralPardonReason(' General pardon '), true);
