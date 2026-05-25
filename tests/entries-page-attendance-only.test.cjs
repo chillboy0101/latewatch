@@ -37,6 +37,28 @@ test('entries page filters visible rows with a toolbar search without changing s
   assert.match(source, /entries: changedEntries\.map/);
 });
 
+test('entries page search includes staff fields and flexible time tokens', () => {
+  const source = fs.readFileSync(entriesPagePath, 'utf8');
+
+  assert.match(source, /member\?\.fullName/);
+  assert.match(source, /member\?\.email/);
+  assert.match(source, /member\?\.staffNo/);
+  assert.match(source, /member\?\.department/);
+  assert.match(source, /member\?\.unit/);
+  assert.match(source, /member\?\.rank/);
+  assert.match(source, /entry\.arrivalTime/);
+  assert.match(source, /entry\.signOutTime/);
+  assert.match(source, /function getTimeSearchTokens/);
+  assert.match(source, /function getSearchNeedleGroups/);
+  assert.match(source, /\$\{paddedHour\}:\$\{minute\}/);
+  assert.match(source, /\$\{unpaddedHour\}:\$\{minute\}/);
+  assert.match(source, /\$\{paddedHour\}\$\{minute\}/);
+  assert.match(source, /\$\{unpaddedHour\}\$\{minute\}/);
+  assert.match(source, /\.\.\.getTimeSearchTokens\(entry\.arrivalTime\)/);
+  assert.match(source, /\.\.\.getTimeSearchTokens\(entry\.signOutTime\)/);
+  assert.match(source, /entries: changedEntries\.map/);
+});
+
 test('entries page uses general entries wording instead of lateness-only labels', () => {
   const pageSource = fs.readFileSync(entriesPagePath, 'utf8');
   const sidebarSource = fs.readFileSync(path.join(__dirname, '../src/components/layout/sidebar.tsx'), 'utf8');

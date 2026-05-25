@@ -59,9 +59,46 @@ interface ExistingEntry {
 }
 
 type EntrySnapshot = Pick<Entry, 'arrivalTime' | 'didNotSignOut' | 'signOutTime' | 'noSignOutWaived'>;
+type SearchableValue = string | number | null | undefined;
 
 function normalizeTimeValue(value: string | null | undefined) {
   return value ? value.slice(0, 5) : '';
+}
+
+function normalizeSearchValue(value: SearchableValue) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function getTimeSearchTokens(value: string | null | undefined) {
+  const raw = String(value ?? '').trim();
+  const timeMatch = raw.match(/^(\d{1,2}):(\d{2})/) ?? raw.match(/^(\d{1,2})(\d{2})$/);
+
+  if (!timeMatch) return [];
+
+  const [, hour, minute] = timeMatch;
+  const hourNumber = Number.parseInt(hour, 10);
+
+  if (Number.isNaN(hourNumber)) return [];
+
+  const paddedHour = String(hourNumber).padStart(2, '0');
+  const unpaddedHour = String(hourNumber);
+
+  return Array.from(new Set([
+    `${paddedHour}:${minute}`,
+    `${unpaddedHour}:${minute}`,
+    `${paddedHour}${minute}`,
+    `${unpaddedHour}${minute}`,
+  ]));
+}
+
+function getSearchNeedleGroups(query: string) {
+  return normalizeSearchValue(query)
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((token) => Array.from(new Set([
+      token,
+      ...getTimeSearchTokens(token),
+    ].map(normalizeSearchValue).filter(Boolean))));
 }
 
 function snapshotEntry(entry: Entry): EntrySnapshot {
@@ -310,13 +347,13 @@ export default function EntriesPage() {
 
   const visibleEntries = useMemo(() => {
     const indexedEntries = entries.map((entry, index) => ({ entry, index }));
-    const query = searchQuery.trim().toLowerCase();
+    const needleGroups = getSearchNeedleGroups(searchQuery);
 
-    if (!query) return indexedEntries;
+    if (needleGroups.length === 0) return indexedEntries;
 
     return indexedEntries.filter(({ entry }) => {
       const member = staff.find((s) => s.id === entry.staffId);
-      return [
+      const searchableText = [
         member?.fullName,
         member?.email,
         member?.staffNo,
@@ -324,15 +361,20 @@ export default function EntriesPage() {
         member?.unit,
         member?.rank,
         entry.arrivalTime,
+        ...getTimeSearchTokens(entry.arrivalTime),
         entry.signOutTime,
+        ...getTimeSearchTokens(entry.signOutTime),
         entry.reason,
         entry.amount,
         entry.amount > 0 ? `GHC ${entry.amount}` : '',
       ]
-        .filter((value) => value !== null && value !== undefined && value !== '')
+        .map(normalizeSearchValue)
+        .filter(Boolean)
         .join(' ')
-        .toLowerCase()
-        .includes(query);
+
+      return needleGroups.every((needles) =>
+        needles.some((needle) => searchableText.includes(needle))
+      );
     });
   }, [entries, searchQuery, staff]);
 
