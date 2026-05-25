@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { addDays, format, isValid, parseISO } from 'date-fns';
-import { Save, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Clock, RefreshCw } from 'lucide-react';
+import { Save, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Clock, RefreshCw, Search } from 'lucide-react';
 import { computePenalty } from '@/lib/penalty-calculator';
 import { getAccraDateKey } from '@/lib/date-key';
 import { formatLongDisplayDate } from '@/lib/date-format';
@@ -19,8 +19,13 @@ interface StaffMember {
   fullName: string;
   active?: boolean | null;
   archived?: boolean | null;
+  department?: string | null;
+  email?: string | null;
   isAttendanceOnly?: boolean | null;
   isNssPersonnel?: boolean | null;
+  rank?: string | null;
+  staffNo?: string | null;
+  unit?: string | null;
 }
 
 interface Entry {
@@ -97,6 +102,7 @@ export default function EntriesPage() {
   const [isHoliday, setIsHoliday] = useState(false);
   const [holidayName, setHolidayName] = useState('');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const fetchStaffAndEntries = useCallback(async () => {
     try {
@@ -302,6 +308,34 @@ export default function EntriesPage() {
     [entries, originalEntrySnapshots],
   );
 
+  const visibleEntries = useMemo(() => {
+    const indexedEntries = entries.map((entry, index) => ({ entry, index }));
+    const query = searchQuery.trim().toLowerCase();
+
+    if (!query) return indexedEntries;
+
+    return indexedEntries.filter(({ entry }) => {
+      const member = staff.find((s) => s.id === entry.staffId);
+      return [
+        member?.fullName,
+        member?.email,
+        member?.staffNo,
+        member?.department,
+        member?.unit,
+        member?.rank,
+        entry.arrivalTime,
+        entry.signOutTime,
+        entry.reason,
+        entry.amount,
+        entry.amount > 0 ? `GHC ${entry.amount}` : '',
+      ]
+        .filter((value) => value !== null && value !== undefined && value !== '')
+        .join(' ')
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [entries, searchQuery, staff]);
+
   async function handleSaveAll() {
     setMessage(null);
 
@@ -453,8 +487,8 @@ export default function EntriesPage() {
         )}
 
         {/* Date and Save Action */}
-        <div className="flex flex-col gap-3 rounded-md border border-border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-col gap-3 rounded-md border border-border bg-card px-4 py-3 lg:flex-row lg:items-center">
+          <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center">
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
@@ -490,7 +524,17 @@ export default function EntriesPage() {
               {formatLongDisplayDate(selectedDate)}
             </span>
           </div>
-          <div className="flex items-center gap-2 self-start sm:self-auto">
+          <div className="relative w-full lg:max-w-sm xl:max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              aria-label="Search entries"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search staff or entry"
+              className="pl-9"
+            />
+          </div>
+          <div className="flex items-center gap-2 self-start sm:self-auto lg:ml-auto">
             <Button
               aria-label="Refresh entries"
               disabled={saving}
@@ -534,7 +578,13 @@ export default function EntriesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {entries.map((entry, index) => {
+                {visibleEntries.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                      No entries match your search.
+                    </td>
+                  </tr>
+                ) : visibleEntries.map(({ entry, index }) => {
                   const member = staff.find((s) => s.id === entry.staffId);
                   return (
                     <tr key={entry.staffId} className="hover:bg-card/50 transition-colors">

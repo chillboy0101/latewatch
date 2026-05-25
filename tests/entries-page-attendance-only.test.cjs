@@ -24,6 +24,19 @@ test('entries page exposes an icon-only refresh button beside save entries', () 
   assert.match(source, /<RefreshCw className="h-4 w-4" \/>/);
 });
 
+test('entries page filters visible rows with a toolbar search without changing saved rows', () => {
+  const source = fs.readFileSync(entriesPagePath, 'utf8');
+
+  assert.match(source, /Search/);
+  assert.match(source, /const \[searchQuery, setSearchQuery\] = useState\(''\)/);
+  assert.match(source, /placeholder="Search staff or entry"/);
+  assert.match(source, /aria-label="Search entries"/);
+  assert.match(source, /const visibleEntries = useMemo/);
+  assert.match(source, /visibleEntries\.map/);
+  assert.doesNotMatch(source, /\{entries\.map\(\(entry, index\) =>/);
+  assert.match(source, /entries: changedEntries\.map/);
+});
+
 test('entries page uses general entries wording instead of lateness-only labels', () => {
   const pageSource = fs.readFileSync(entriesPagePath, 'utf8');
   const sidebarSource = fs.readFileSync(path.join(__dirname, '../src/components/layout/sidebar.tsx'), 'utf8');
