@@ -320,6 +320,14 @@ function weeklyRemarkLabel(status: DayStatus) {
   return '';
 }
 
+function dailySummaryRemarkLabel(status: DayStatus) {
+  if (status.kind === 'leave') return 'Leave';
+  if (status.kind === 'approved_absence' && isDailyExemptReason(status.reason)) {
+    return absenceRemarkLabel(status.reason);
+  }
+  return '';
+}
+
 function exportStaffNo(input: AttendanceWorkbookInput, member: RosterStaff) {
   return input.group === 'nss' ? null : member.staffNo || null;
 }
@@ -545,12 +553,12 @@ function fillWeeklySheet(
         presentCount += 1;
       } else {
         row.getCell(column).value = ABSENT_MARK;
-        remarks.push(weeklyRemarkLabel(status));
+        remarks.push(dailySummaryRemarkLabel(status));
       }
     });
 
     row.getCell(9).value = presentCount;
-    row.getCell(11).value = countLabels(remarks);
+    row.getCell(11).value = dailyRemark(remarks);
     row.commit();
   });
 }
