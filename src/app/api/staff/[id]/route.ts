@@ -8,6 +8,7 @@ import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { normalizeStaffEmail } from '@/lib/attendance';
 import { syncStaffEmailIdentity, unlinkStaffEmailIdentity } from '@/lib/clerk-organization';
+import { recordStaffLeaveTransition } from '@/lib/staff-leave-periods';
 import { recalculateStaffStoredPenalties } from '@/lib/staff-penalty-recalculation-server';
 
 type StaffUpdateBody = {
@@ -142,6 +143,13 @@ export async function PUT(
       before,
       after: updated[0],
       reason: 'staff',
+    });
+
+    await recordStaffLeaveTransition({
+      action: auditAction,
+      actorEmail: actor?.emailAddresses[0]?.emailAddress,
+      after: updated[0],
+      before,
     });
 
     if (penaltyTypeChanged) {

@@ -7,6 +7,10 @@ const test = require('node:test');
 const staffPagePath = path.join(__dirname, '../src/app/staff/page.tsx');
 const staffRoutePath = path.join(__dirname, '../src/app/api/staff/route.ts');
 const staffUpdateRoutePath = path.join(__dirname, '../src/app/api/staff/[id]/route.ts');
+const staffActionsPath = path.join(__dirname, '../src/actions/staff.ts');
+const schemaPath = path.join(__dirname, '../src/db/schema.ts');
+const migrationPath = path.join(__dirname, '../drizzle/0022_staff_leave_periods.sql');
+const seedMigrationPath = path.join(__dirname, '../src/app/api/seed/migrate/route.ts');
 
 test('staff page exposes a top-level NSS personnel filter', () => {
   const source = fs.readFileSync(staffPagePath, 'utf8');
@@ -70,4 +74,25 @@ test('staff API omits removed manual message fields', () => {
   assert.doesNotMatch(updateSource, new RegExp(`${lowerFeature}Phone`));
   assert.doesNotMatch(updateSource, new RegExp(`${lowerFeature}NotificationsEnabled`));
   assert.doesNotMatch(updateSource, new RegExp(`valid ${displayFeature} number`));
+});
+
+test('staff leave periods are stored for deactivate and activate transitions', () => {
+  const schemaSource = fs.readFileSync(schemaPath, 'utf8');
+  const updateSource = fs.readFileSync(staffUpdateRoutePath, 'utf8');
+  const actionsSource = fs.readFileSync(staffActionsPath, 'utf8');
+  const migrationSource = fs.readFileSync(migrationPath, 'utf8');
+  const seedMigrationSource = fs.readFileSync(seedMigrationPath, 'utf8');
+
+  assert.match(schemaSource, /export const staffLeavePeriod = pgTable\('staff_leave_period'/);
+  assert.match(schemaSource, /startDate: date\('start_date'\)\.notNull\(\)/);
+  assert.match(schemaSource, /endDate: date\('end_date'\)/);
+  assert.match(migrationSource, /CREATE TABLE IF NOT EXISTS staff_leave_period/);
+  assert.match(seedMigrationSource, /CREATE TABLE IF NOT EXISTS staff_leave_period/);
+
+  assert.match(updateSource, /recordStaffLeaveTransition/);
+  assert.match(updateSource, /action: auditAction/);
+  assert.match(updateSource, /before,/);
+  assert.match(updateSource, /after: updated\[0\]/);
+  assert.match(actionsSource, /recordStaffLeaveTransition/);
+  assert.match(actionsSource, /actorEmail: user\.email/);
 });

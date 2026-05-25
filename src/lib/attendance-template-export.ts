@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import { addDays, endOfMonth, format, startOfMonth } from 'date-fns';
 import path from 'path';
-import { and, asc, eq, gte, lte } from 'drizzle-orm';
+import { and, asc, eq, gte, isNull, lte, or } from 'drizzle-orm';
 import {
   type AttendanceExportGroup,
   type AttendanceExportTemplate,
@@ -41,6 +41,12 @@ type PermissionRow = {
   status?: string | null;
 };
 
+type LeavePeriodRow = {
+  endDate?: string | null;
+  staffId: string;
+  startDate: string;
+};
+
 type HolidayRow = {
   date: string;
   isHoliday?: boolean | null;
@@ -52,6 +58,7 @@ export type AttendanceWorkbookInput = {
   asOfDate?: string;
   group: AttendanceExportGroup;
   holidays: HolidayRow[];
+  leavePeriods?: LeavePeriodRow[];
   month: number;
   permissions: PermissionRow[];
   roster: RosterStaff[];
@@ -193,13 +200,34 @@ function permissionMap(rows: PermissionRow[]) {
   return map;
 }
 
+function leavePeriodMap(rows: LeavePeriodRow[]) {
+  const map = new Map<string, LeavePeriodRow[]>();
+  for (const row of rows) {
+    const list = map.get(row.staffId) || [];
+    list.push(row);
+    map.set(row.staffId, list);
+  }
+  return map;
+}
+
+function hasLeavePeriod(staffId: string, key: string, leavePeriodsByStaff: Map<string, LeavePeriodRow[]>) {
+  const periods = leavePeriodsByStaff.get(staffId) || [];
+  return periods.some((period) => {
+    const start = normalizeDateKey(period.startDate);
+    const end = normalizeDateKey(period.endDate);
+    if (!start || key < start) return false;
+    return !end || key <= end;
+  });
+}
+
 function resolveDayStatus(
   member: RosterStaff,
   key: string,
   attendanceByStaffDate: Map<string, AttendanceRow>,
+  leavePeriodsByStaff: Map<string, LeavePeriodRow[]>,
   permissionsByStaffDate: Map<string, PermissionRow>,
 ): DayStatus {
-  if (member.active === false) return { kind: 'leave' };
+  if (member.active === false || hasLeavePeriod(member.id, key, leavePeriodsByStaff)) return { kind: 'leave' };
 
   const permission = permissionsByStaffDate.get(`${member.id}:${key}`);
   if (permission) {
@@ -332,6 +360,7 @@ async function buildDailySummary(input: AttendanceWorkbookInput, roster: RosterS
   const workbook = await loadTemplate('daily-summary');
   const sheet = workbook.worksheets[0];
   const attendanceByStaffDate = attendanceMap(input.attendanceRecords);
+  const leavePeriodsByStaff = leavePeriodMap(input.leavePeriods || []);
   const permissionsByStaffDate = permissionMap(input.permissions);
   const asOfDate = getExportAsOfDate(input);
   const templateCapacity = 19;
@@ -355,7 +384,7 @@ async function buildDailySummary(input: AttendanceWorkbookInput, roster: RosterS
     const remarks: string[] = [];
 
     for (const member of roster) {
-      const status = resolveDayStatus(member, key, attendanceByStaffDate, permissionsByStaffDate);
+      const status = resolveDayStatus(member, key, attendanceByStaffDate, leavePeriodsByStaff, permissionsByStaffDate);
       if (status.kind === 'present') {
         if (status.isLate) after += 1;
         else before += 1;
@@ -391,6 +420,7 @@ function writeMonthlyMatrixValues(
   holidaySet: Set<string>,
 ) {
   const attendanceByStaffDate = attendanceMap(input.attendanceRecords);
+  const leavePeriodsByStaff = leavePeriodMap(input.leavePeriods || []);
   const permissionsByStaffDate = permissionMap(input.permissions);
   const weeks = monthCalendarWeeks(input.year, input.month);
   const weekStartColumns = [5, 12, 19, 26, 33];
@@ -410,7 +440,6 @@ function writeMonthlyMatrixValues(
     let presentCount = 0;
     let lateCount = 0;
     let absentWithPermission = 0;
-    let absentWithoutPermission = 0;
     const remarks: string[] = [];
 
     row.getCell(1).value = exportStaffNo(input, member);
@@ -430,7 +459,7 @@ function writeMonthlyMatrixValues(
           return;
         }
 
-        const status = resolveDayStatus(member, key, attendanceByStaffDate, permissionsByStaffDate);
+        const status = resolveDayStatus(member, key, attendanceByStaffDate, leavePeriodsByStaff, permissionsByStaffDate);
         if (status.kind === 'present') {
           row.getCell(column).value = 'P';
           presentCount += 1;
@@ -445,17 +474,17 @@ function writeMonthlyMatrixValues(
           return;
         }
 
-        row.getCell(column).value = null;
-        absentWithoutPermission += 1;
+        row.getCell(column).value = 'AP';
+        absentWithPermission += 1;
         remarks.push(MISSING_ATTENDANCE_REMARK);
       });
     });
 
     row.getCell(40).value = presentCount;
     row.getCell(41).value = lateCount;
-    row.getCell(42).value = absentWithPermission + absentWithoutPermission;
+    row.getCell(42).value = absentWithPermission;
     row.getCell(43).value = absentWithPermission;
-    row.getCell(44).value = absentWithoutPermission;
+    row.getCell(44).value = 0;
     row.getCell(45).value = countLabels(remarks);
     row.commit();
   });
@@ -478,6 +507,7 @@ function fillWeeklySheet(
   holidaySet: Set<string>,
 ) {
   const attendanceByStaffDate = attendanceMap(input.attendanceRecords);
+  const leavePeriodsByStaff = leavePeriodMap(input.leavePeriods || []);
   const permissionsByStaffDate = permissionMap(input.permissions);
   const dataStartRow = 7;
   const templateCapacity = 15;
@@ -509,7 +539,7 @@ function fillWeeklySheet(
         return;
       }
 
-      const status = resolveDayStatus(member, key, attendanceByStaffDate, permissionsByStaffDate);
+      const status = resolveDayStatus(member, key, attendanceByStaffDate, leavePeriodsByStaff, permissionsByStaffDate);
       if (status.kind === 'present') {
         row.getCell(column).value = PRESENT_MARK;
         presentCount += 1;
@@ -571,7 +601,7 @@ export async function buildAttendanceExportWorkbook({
 
   const monthStart = format(startOfMonth(new Date(year, month, 1)), 'yyyy-MM-dd');
   const monthEnd = format(endOfMonth(new Date(year, month, 1)), 'yyyy-MM-dd');
-  const [roster, attendanceRecords, permissions, holidays] = await Promise.all([
+  const [roster, attendanceRecords, permissions, leavePeriods, holidays] = await Promise.all([
     db.select({
       active: schema.staff.active,
       archived: schema.staff.archived,
@@ -607,6 +637,19 @@ export async function buildAttendanceExportWorkbook({
         eq(schema.attendancePermission.status, 'approved'),
       )),
     db.select({
+      endDate: schema.staffLeavePeriod.endDate,
+      staffId: schema.staffLeavePeriod.staffId,
+      startDate: schema.staffLeavePeriod.startDate,
+    })
+      .from(schema.staffLeavePeriod)
+      .where(and(
+        lte(schema.staffLeavePeriod.startDate, monthEnd),
+        or(
+          isNull(schema.staffLeavePeriod.endDate),
+          gte(schema.staffLeavePeriod.endDate, monthStart),
+        ),
+      )),
+    db.select({
       date: schema.workCalendar.date,
       isHoliday: schema.workCalendar.isHoliday,
       isRemoved: schema.workCalendar.isRemoved,
@@ -624,6 +667,7 @@ export async function buildAttendanceExportWorkbook({
     asOfDate: getAccraDateKey(),
     group,
     holidays,
+    leavePeriods,
     month,
     permissions,
     roster,

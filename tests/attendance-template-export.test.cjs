@@ -247,6 +247,10 @@ test('missing attendance is not written to daily summary remarks but stays in mo
     template: 'monthly-matrix',
   });
   const monthlySheet = monthlyWorkbook.worksheets[0];
+  assert.equal(monthlySheet.getCell('G10').value, 'AP');
+  assert.equal(monthlySheet.getCell('AP10').value, 1);
+  assert.equal(monthlySheet.getCell('AQ10').value, 1);
+  assert.equal(monthlySheet.getCell('AR10').value, 0);
   assert.equal(monthlySheet.getCell('AS10').value, 'Absent with permission');
   assert.doesNotMatch(String(monthlySheet.getCell('AS10').value), /Absent without permission/);
 
@@ -310,7 +314,7 @@ test('attendance exports format sick permissions consistently', async () => {
   assert.equal(week1.getCell('K9').value, 'Sick');
 });
 
-test('monthly attendance matrix marks P, AP, blank unapproved absences, and keeps NSS staff id/rank cells blank', async () => {
+test('monthly attendance matrix marks all absences as with permission and keeps NSS staff id/rank cells blank', async () => {
   const mainWorkbook = await workbookFor({
     attendanceRecords: [
       { checkInTime: '08:30', date: '2026-04-01', staffId: 'main-on-time' },
@@ -324,9 +328,10 @@ test('monthly attendance matrix marks P, AP, blank unapproved absences, and keep
 
   assert.equal(mainSheet.getCell('G9').value, 'P');
   assert.equal(mainSheet.getCell('G11').value, 'AP');
-  assert.equal(mainSheet.getCell('G10').value, null);
+  assert.equal(mainSheet.getCell('G10').value, 'AP');
   assert.equal(mainSheet.getCell('AP10').value, 1);
-  assert.equal(mainSheet.getCell('AR10').value, 1);
+  assert.equal(mainSheet.getCell('AQ10').value, 1);
+  assert.equal(mainSheet.getCell('AR10').value, 0);
   assert.equal(mainSheet.getCell('AS10').value, 'Absent with permission');
 
   const nssWorkbook = await workbookFor({
@@ -346,6 +351,45 @@ test('monthly attendance matrix marks P, AP, blank unapproved absences, and keep
   assert.equal(nssSheet.getCell('C9').value, 'FEMALE');
   assert.equal(nssSheet.getCell('D9').value, null);
   assert.equal(nssSheet.getCell('G9').value, 'P');
+});
+
+test('attendance exports use historical leave periods without adding sheet rows', async () => {
+  const roster = baseStaff.map((member) => (
+    member.id === 'main-leave' ? { ...member, active: true } : member
+  ));
+  const leavePeriods = [
+    { endDate: '2026-04-01', staffId: 'main-leave', startDate: '2026-04-01' },
+  ];
+
+  const dailyWorkbook = await workbookFor({ leavePeriods, roster });
+  const dailySheet = dailyWorkbook.worksheets[0];
+  assert.equal(dailySheet.getCell('D6').value, 1);
+  assert.match(String(dailySheet.getCell('G6').value), /Leave - 1/);
+
+  const monthlyWorkbook = await workbookFor({
+    leavePeriods,
+    roster,
+    template: 'monthly-matrix',
+  });
+  const monthlySheet = monthlyWorkbook.worksheets[0];
+  assert.equal(monthlySheet.getCell('B12').value, 'MAIN ON LEAVE');
+  assert.equal(monthlySheet.getCell('G12').value, 'AP');
+  assert.equal(monthlySheet.getCell('AP12').value, 1);
+  assert.equal(monthlySheet.getCell('AQ12').value, 1);
+  assert.equal(monthlySheet.getCell('AR12').value, 0);
+  assert.equal(monthlySheet.getCell('AS12').value, 'On Leave');
+  assert.equal(monthlySheet.getCell('B13').value, null);
+
+  const weeklyWorkbook = await workbookFor({
+    leavePeriods,
+    roster,
+    template: 'weekly-validation',
+  });
+  const week1 = weeklyWorkbook.getWorksheet('WEEK 1');
+  assert.equal(week1.getCell('C10').value, 'MAIN ON LEAVE');
+  assert.equal(week1.getCell('F10').value, CROSS);
+  assert.equal(week1.getCell('K10').value, 'On Leave');
+  assert.equal(week1.getCell('C11').value, null);
 });
 
 test('weekly validation marks present and absence statuses and keeps NSS staff number cells blank', async () => {

@@ -7,6 +7,7 @@ import { staff as staffTable } from '@/db/schema';
 import { updateTag } from 'next/cache';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
+import { recordStaffLeaveTransition } from '@/lib/staff-leave-periods';
 import { eq } from 'drizzle-orm';
 
 type StaffWriteData = {
@@ -107,6 +108,13 @@ export async function updateStaff(id: string, data: StaffWriteData) {
     after: updated[0],
     actor: user,
     reason: 'staff',
+  });
+
+  await recordStaffLeaveTransition({
+    action: auditAction,
+    actorEmail: user.email,
+    after: updated[0],
+    before,
   });
   
   updateTag('staff');

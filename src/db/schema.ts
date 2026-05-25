@@ -32,6 +32,30 @@ export const staffRelations = relations(staff, ({ many }) => ({
   emergencyContacts: many(emergencyContact),
   entries: many(latenessEntry),
   latenessPayments: many(latenessPayment),
+  leavePeriods: many(staffLeavePeriod),
+}));
+
+export const staffLeavePeriod = pgTable('staff_leave_period', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  staffId: uuid('staff_id').notNull().references(() => staff.id, { onDelete: 'cascade' }),
+  startDate: date('start_date').notNull(),
+  endDate: date('end_date'),
+  source: text('source').notNull().default('staff_status'),
+  createdByEmail: text('created_by_email').notNull().default('system'),
+  closedByEmail: text('closed_by_email'),
+  createdAt: timestamp('created_at').defaultNow(),
+  closedAt: timestamp('closed_at'),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => [
+  index('staff_leave_period_staff_date_idx').on(table.staffId, table.startDate, table.endDate),
+  unique().on(table.staffId, table.startDate),
+]);
+
+export const staffLeavePeriodRelations = relations(staffLeavePeriod, ({ one }) => ({
+  staff: one(staff, {
+    fields: [staffLeavePeriod.staffId],
+    references: [staff.id],
+  }),
 }));
 
 export const latenessEntry = pgTable('lateness_entry', {
