@@ -82,6 +82,7 @@ const TEMPLATE_FILES: Record<AttendanceExportTemplate, string> = {
 const PRESENT_MARK = '\u2713';
 const ABSENT_MARK = '\u2717';
 const MISSING_ATTENDANCE_REMARK = 'Absent with permission';
+const DAILY_EXEMPT_REASONS = new Set(['training', 'official duty', 'sick', 'workshop']);
 
 function templatePath(template: AttendanceExportTemplate) {
   return path.join(process.cwd(), 'src', 'attendance-templates', TEMPLATE_FILES[template]);
@@ -268,11 +269,19 @@ function setCell(cell: ExcelJS.Cell, value: ExcelJS.CellValue) {
   };
 }
 
-function absenceRemarkLabel(reason: string | null | undefined) {
+function normalizedAbsenceReason(reason: string | null | undefined) {
   const normalized = (reason || '').trim().toLowerCase();
+  return normalized === 'personal excuse' ? 'sick' : normalized;
+}
+
+function isDailyExemptReason(reason: string | null | undefined) {
+  return DAILY_EXEMPT_REASONS.has(normalizedAbsenceReason(reason));
+}
+
+function absenceRemarkLabel(reason: string | null | undefined) {
+  const normalized = normalizedAbsenceReason(reason);
   if (normalized === 'training') return 'Exempt (Training)';
   if (normalized === 'official duty' || normalized === 'workshop') return 'Exempt (Field Work)';
-  if (normalized === 'personal excuse') return 'Personal excuse';
   return formatAbsencePermissionReason(reason);
 }
 
@@ -354,10 +363,10 @@ async function buildDailySummary(input: AttendanceWorkbookInput, roster: RosterS
         leave += 1;
         remarks.push('Leave');
       } else if (status.kind === 'approved_absence') {
-        exempt += 1;
-        remarks.push(absenceRemarkLabel(status.reason));
-      } else if (status.kind === 'unapproved_absence') {
-        remarks.push(MISSING_ATTENDANCE_REMARK);
+        if (isDailyExemptReason(status.reason)) {
+          exempt += 1;
+          remarks.push(absenceRemarkLabel(status.reason));
+        }
       }
     }
 

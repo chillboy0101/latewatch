@@ -182,14 +182,64 @@ test('daily attendance summary uses 8:30 cutoff, leave, exempt counts, and main 
   assert.match(String(sheet.getCell('G6').value), /Exempt \(Field Work\) - 1/);
 });
 
-test('attendance export remarks call missing attendance absent with permission', async () => {
+test('daily attendance summary counts only approved exempt reasons', async () => {
+  const roster = [
+    ...baseStaff,
+    {
+      active: true,
+      archived: false,
+      displayOrder: 7,
+      fullName: 'MAIN WORKSHOP',
+      gender: 'FEMALE',
+      id: 'main-workshop',
+      isAttendanceOnly: false,
+      isNssPersonnel: false,
+      rank: 'RO',
+      staffNo: 'GRA000005',
+    },
+    {
+      active: true,
+      archived: false,
+      displayOrder: 8,
+      fullName: 'MAIN GENERAL PARDON',
+      gender: 'MALE',
+      id: 'main-general-pardon',
+      isAttendanceOnly: false,
+      isNssPersonnel: false,
+      rank: 'RO',
+      staffNo: 'GRA000006',
+    },
+  ];
+  const workbook = await workbookFor({
+    permissions: [
+      { date: '2026-04-01', permissionType: 'absence', reason: 'training', staffId: 'main-on-time' },
+      { date: '2026-04-01', permissionType: 'absence', reason: 'official duty', staffId: 'main-late' },
+      { date: '2026-04-01', permissionType: 'absence', reason: 'sick', staffId: 'main-excused' },
+      { date: '2026-04-01', permissionType: 'absence', reason: 'workshop', staffId: 'main-workshop' },
+      { date: '2026-04-01', permissionType: 'absence', reason: 'general pardon', staffId: 'main-general-pardon' },
+    ],
+    roster,
+  });
+  const sheet = workbook.worksheets[0];
+  const remarks = String(sheet.getCell('G6').value);
+
+  assert.equal(sheet.getCell('E6').value, 4);
+  assert.match(remarks, /Exempt \(Training\) - 1/);
+  assert.match(remarks, /Exempt \(Field Work\) - 2/);
+  assert.match(remarks, /Sick - 1/);
+  assert.doesNotMatch(remarks, /General pardon/);
+  assert.doesNotMatch(remarks, /Personal excuse/);
+});
+
+test('missing attendance is not written to daily summary remarks but stays in monthly and weekly exports', async () => {
   const attendanceRecords = [
     { checkInTime: '08:30', date: '2026-04-01', staffId: 'main-on-time' },
   ];
 
   const dailyWorkbook = await workbookFor({ attendanceRecords });
   const dailyRemarks = String(dailyWorkbook.worksheets[0].getCell('G6').value);
-  assert.match(dailyRemarks, /Absent with permission - 2/);
+  assert.match(dailyRemarks, /Leave - 1/);
+  assert.doesNotMatch(dailyRemarks, /Absent with permission/);
   assert.doesNotMatch(dailyRemarks, /Absent without permission/);
 
   const monthlyWorkbook = await workbookFor({
@@ -207,6 +257,32 @@ test('attendance export remarks call missing attendance absent with permission',
   const week1 = weeklyWorkbook.getWorksheet('WEEK 1');
   assert.equal(week1.getCell('K8').value, 'Absent with permission');
   assert.doesNotMatch(String(week1.getCell('K8').value), /Absent without permission/);
+});
+
+test('attendance exports display legacy personal excuse permissions as sick', async () => {
+  const permissions = [
+    { date: '2026-04-01', permissionType: 'absence', reason: 'personal excuse', staffId: 'main-excused' },
+  ];
+
+  const dailyWorkbook = await workbookFor({ permissions });
+  const dailyRemarks = String(dailyWorkbook.worksheets[0].getCell('G6').value);
+  assert.equal(dailyWorkbook.worksheets[0].getCell('E6').value, 1);
+  assert.match(dailyRemarks, /Sick - 1/);
+  assert.doesNotMatch(dailyRemarks, /Personal excuse/);
+
+  const monthlyWorkbook = await workbookFor({
+    permissions,
+    template: 'monthly-matrix',
+  });
+  const monthlySheet = monthlyWorkbook.worksheets[0];
+  assert.equal(monthlySheet.getCell('AS11').value, 'Sick');
+
+  const weeklyWorkbook = await workbookFor({
+    permissions,
+    template: 'weekly-validation',
+  });
+  const week1 = weeklyWorkbook.getWorksheet('WEEK 1');
+  assert.equal(week1.getCell('K9').value, 'Sick');
 });
 
 test('attendance exports format sick permissions consistently', async () => {
