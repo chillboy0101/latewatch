@@ -343,6 +343,27 @@ test('monthly attendance matrix marks all absences as with permission', async ()
   assert.equal(mainSheet.getCell('AS10').value, 'Absent with permission');
 });
 
+test('monthly attendance matrix applies general pardon without printing it in remarks', async () => {
+  const workbook = await workbookFor({
+    attendanceRecords: [
+      { checkInTime: '08:30', date: '2026-04-01', staffId: 'main-on-time' },
+    ],
+    permissions: [
+      { date: '2026-04-01', permissionType: 'absence', reason: 'general pardon', staffId: 'main-late' },
+    ],
+    template: 'monthly-matrix',
+  });
+  const sheet = workbook.worksheets[0];
+  const remarks = String(sheet.getCell('AS10').value || '');
+
+  assert.equal(sheet.getCell('G10').value, 'AP');
+  assert.equal(sheet.getCell('AP10').value, 1);
+  assert.equal(sheet.getCell('AQ10').value, 1);
+  assert.equal(sheet.getCell('AR10').value, 0);
+  assert.equal(remarks, '');
+  assert.doesNotMatch(remarks, /General pardon/);
+});
+
 test('NSS attendance workbooks are limited to weekly validation', async () => {
   await assert.rejects(
     () => workbookFor({ group: 'nss', template: 'daily-summary' }),

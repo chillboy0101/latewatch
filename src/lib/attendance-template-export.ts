@@ -320,9 +320,9 @@ function absenceRemarkLabel(reason: string | null | undefined) {
 function weeklyRemarkLabel(status: DayStatus) {
   if (status.kind === 'leave') return 'On Leave';
   if (status.kind === 'approved_absence') {
-    return normalizedAbsenceReason(status.reason) === 'official duty'
-      ? OFFICIAL_DUTY_EXPORT_REMARK
-      : formatAbsencePermissionReason(status.reason);
+    const normalized = normalizedAbsenceReason(status.reason);
+    if (normalized === 'general pardon') return '';
+    return normalized === 'official duty' ? OFFICIAL_DUTY_EXPORT_REMARK : formatAbsencePermissionReason(status.reason);
   }
   if (status.kind === 'unapproved_absence') return MISSING_ATTENDANCE_REMARK;
   return '';
