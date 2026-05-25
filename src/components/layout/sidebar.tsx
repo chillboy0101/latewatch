@@ -20,6 +20,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ReceiptText,
+  HandCoins,
 } from 'lucide-react';
 
 type SidebarMode = 'auto' | 'fixed';
@@ -38,6 +39,7 @@ const navigation = [
   { name: 'Entries', href: '/entries', icon: Table2 },
   { name: 'Exports', href: '/exports', icon: Download },
   { name: 'Payments', href: '/payments', icon: ReceiptText },
+  { name: 'Contributions', href: '/contributions', icon: HandCoins },
   { name: 'Calendar', href: '/calendar', icon: Calendar },
   { name: 'Audit Trail', href: '/audit-trail', icon: Shield },
 ];

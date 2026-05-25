@@ -7,6 +7,7 @@ const WORKSPACE_TITLES: Record<string, string> = {
   'audit-trail': 'Audit Trail',
   attendance: 'Attendance',
   calendar: 'Calendar',
+  contributions: 'Contributions',
   dashboard: 'Dashboard',
   entries: 'Entries',
   'emergency-contacts': 'Emergency Contacts',

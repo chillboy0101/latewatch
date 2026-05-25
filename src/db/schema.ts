@@ -58,6 +58,41 @@ export const staffLeavePeriodRelations = relations(staffLeavePeriod, ({ one }) =
   }),
 }));
 
+export const contributionSection = pgTable('contribution_section', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  title: text('title').notNull(),
+  displayOrder: integer('display_order').default(0).notNull(),
+  active: boolean('active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => [
+  index('contribution_section_display_order_idx').on(table.displayOrder),
+]);
+
+export const contributionEntry = pgTable('contribution_entry', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sectionId: uuid('section_id').notNull().references(() => contributionSection.id, { onDelete: 'cascade' }),
+  contributorName: text('contributor_name').notNull(),
+  amount: decimal('amount', { precision: 10, scale: 2 }).notNull(),
+  note: text('note'),
+  displayOrder: integer('display_order').default(0).notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => [
+  index('contribution_entry_section_order_idx').on(table.sectionId, table.displayOrder),
+]);
+
+export const contributionSectionRelations = relations(contributionSection, ({ many }) => ({
+  entries: many(contributionEntry),
+}));
+
+export const contributionEntryRelations = relations(contributionEntry, ({ one }) => ({
+  section: one(contributionSection, {
+    fields: [contributionEntry.sectionId],
+    references: [contributionSection.id],
+  }),
+}));
+
 export const latenessEntry = pgTable('lateness_entry', {
   id: uuid('id').primaryKey().defaultRandom(),
   staffId: uuid('staff_id').notNull().references(() => staff.id),

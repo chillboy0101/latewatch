@@ -230,6 +230,69 @@ export async function POST() {
     `);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS staff_leave_period_staff_date_idx ON staff_leave_period(staff_id, start_date, end_date)`);
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS contribution_section (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        title text NOT NULL,
+        display_order integer DEFAULT 0 NOT NULL,
+        active boolean DEFAULT true NOT NULL,
+        created_at timestamp DEFAULT now(),
+        updated_at timestamp DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS contribution_entry (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        section_id uuid NOT NULL REFERENCES contribution_section(id) ON DELETE CASCADE,
+        contributor_name text NOT NULL,
+        amount numeric(10, 2) NOT NULL,
+        note text,
+        display_order integer DEFAULT 0 NOT NULL,
+        created_at timestamp DEFAULT now(),
+        updated_at timestamp DEFAULT now()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS contribution_section_display_order_idx ON contribution_section(display_order)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS contribution_entry_section_order_idx ON contribution_entry(section_id, display_order)`);
+    await db.execute(sql`
+      INSERT INTO contribution_section (id, title, display_order, active)
+      VALUES
+        ('11111111-1111-4111-8111-111111111111', $contribution$WISDOM'S CONTRIBUTION$contribution$, 1, true),
+        ('22222222-2222-4222-8222-222222222222', $contribution$RAPHAEL'S CONTRIBUTION$contribution$, 2, true),
+        ('33333333-3333-4333-8333-333333333333', $contribution$MADAM SOPHIA'S CONTRIBUTION$contribution$, 3, true)
+      ON CONFLICT (id) DO NOTHING
+    `);
+    await db.execute(sql`
+      INSERT INTO contribution_entry (id, section_id, contributor_name, amount, note, display_order)
+      VALUES
+        ('11111111-0001-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', 'Charles Dogbatse', 200.00, NULL, 1),
+        ('11111111-0002-4000-8000-000000000002', '11111111-1111-4111-8111-111111111111', 'Eyram Mensah-Gbagbo', 200.00, NULL, 2),
+        ('11111111-0003-4000-8000-000000000003', '11111111-1111-4111-8111-111111111111', 'Anna-Lisa E. A. Hammond', 200.00, NULL, 3),
+        ('11111111-0004-4000-8000-000000000004', '11111111-1111-4111-8111-111111111111', 'Claude Kwasi Boadi', 200.00, NULL, 4),
+        ('11111111-0005-4000-8000-000000000005', '11111111-1111-4111-8111-111111111111', 'Eunice Tweneboaa Adu', 200.00, NULL, 5),
+        ('11111111-0006-4000-8000-000000000006', '11111111-1111-4111-8111-111111111111', 'Esther Adjorkor Adjei', 100.00, NULL, 6),
+        ('11111111-0007-4000-8000-000000000007', '11111111-1111-4111-8111-111111111111', 'Raphael Adjei Mensah', 200.00, NULL, 7),
+        ('11111111-0008-4000-8000-000000000008', '11111111-1111-4111-8111-111111111111', 'Dennis Akuetteh Aryeetey', 100.00, NULL, 8),
+        ('11111111-0009-4000-8000-000000000009', '11111111-1111-4111-8111-111111111111', 'Daniel Asare Kwarteng', 100.00, NULL, 9),
+        ('22222222-0001-4000-8000-000000000001', '22222222-2222-4222-8222-222222222222', 'Charles Dogbatse', 200.00, NULL, 1),
+        ('22222222-0002-4000-8000-000000000002', '22222222-2222-4222-8222-222222222222', 'Eyram Mensah-Gbagbo', 200.00, NULL, 2),
+        ('22222222-0003-4000-8000-000000000003', '22222222-2222-4222-8222-222222222222', 'Anna-Lisa E. A. Hammond', 200.00, NULL, 3),
+        ('22222222-0004-4000-8000-000000000004', '22222222-2222-4222-8222-222222222222', 'Claude Kwasi Boadi', 100.00, 'to be reimbursed', 4),
+        ('22222222-0005-4000-8000-000000000005', '22222222-2222-4222-8222-222222222222', 'Eunice Tweneboaa Adu', 200.00, NULL, 5),
+        ('22222222-0006-4000-8000-000000000006', '22222222-2222-4222-8222-222222222222', 'Esther Adjorkor Adjei', 200.00, NULL, 6),
+        ('22222222-0007-4000-8000-000000000007', '22222222-2222-4222-8222-222222222222', 'Dennis Akuetteh Aryeetey', 150.00, NULL, 7),
+        ('22222222-0008-4000-8000-000000000008', '22222222-2222-4222-8222-222222222222', 'Daniel Asare Kwarteng', 100.00, NULL, 8),
+        ('33333333-0001-4000-8000-000000000001', '33333333-3333-4333-8333-333333333333', 'Charles Dogbatse', 300.00, NULL, 1),
+        ('33333333-0002-4000-8000-000000000002', '33333333-3333-4333-8333-333333333333', 'Eyram Mensah-Gbagbo', 100.00, NULL, 2),
+        ('33333333-0003-4000-8000-000000000003', '33333333-3333-4333-8333-333333333333', 'Anna-Lisa E. A. Hammond', 300.00, NULL, 3),
+        ('33333333-0004-4000-8000-000000000004', '33333333-3333-4333-8333-333333333333', 'Claude Kwasi Boadi', 100.00, 'to be reimbursed', 4),
+        ('33333333-0005-4000-8000-000000000005', '33333333-3333-4333-8333-333333333333', 'Eunice Tweneboaa Adu', 100.00, NULL, 5),
+        ('33333333-0006-4000-8000-000000000006', '33333333-3333-4333-8333-333333333333', 'Esther Adjorkor Adjei', 100.00, NULL, 6),
+        ('33333333-0007-4000-8000-000000000007', '33333333-3333-4333-8333-333333333333', 'Raphael Adjei Mensah', 200.00, 'to be reimbursed', 7),
+        ('33333333-0008-4000-8000-000000000008', '33333333-3333-4333-8333-333333333333', 'Dennis Akuetteh Aryeetey', 150.00, NULL, 8),
+        ('33333333-0009-4000-8000-000000000009', '33333333-3333-4333-8333-333333333333', 'Daniel Asare Kwarteng', 100.00, NULL, 9)
+      ON CONFLICT (id) DO NOTHING
+    `);
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS staff_device (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
         staff_id uuid NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
@@ -315,6 +378,8 @@ export async function POST() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS attendance_permission_date_idx ON attendance_permission(date)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS attendance_permission_staff_id_idx ON attendance_permission(staff_id)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS staff_leave_period_staff_date_idx ON staff_leave_period(staff_id, start_date, end_date)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS contribution_section_display_order_idx ON contribution_section(display_order)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS contribution_entry_section_order_idx ON contribution_entry(section_id, display_order)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS emergency_contact_active_idx ON emergency_contact(active)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS emergency_contact_staff_id_idx ON emergency_contact(staff_id)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS audit_event_entity_idx ON audit_event(entity_type, entity_id)`);
@@ -339,6 +404,8 @@ export async function POST() {
           'emergency_contact',
           'attendance_permission',
           'staff_leave_period',
+          'contribution_section',
+          'contribution_entry',
           'staff_device',
           'device_transfer_request',
           'lateness_payment',
