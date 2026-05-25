@@ -29,7 +29,12 @@ interface LatenessSummaryResponse {
   weeks: WeekSummary[];
 }
 
-type ExportTarget = { type: 'attendance' } | { type: 'monthly' } | { type: 'weekly'; key: string } | null;
+type ExportTarget =
+  | { type: 'attendance' }
+  | { type: 'contributions' }
+  | { type: 'monthly' }
+  | { type: 'weekly'; key: string }
+  | null;
 
 function exportKeyForWeek(week: WorkingWeekRange) {
   return `weekly-${week.weekNumber}-${week.exportStart}-${week.exportEnd}`;
@@ -60,6 +65,7 @@ export default function ExportsPage() {
   const selectedMonthIndex = selectedMonth.getMonth();
   const isMonthlyExporting = exporting?.type === 'monthly';
   const isAttendanceExporting = exporting?.type === 'attendance';
+  const isContributionExporting = exporting?.type === 'contributions';
   const attendanceTemplateOptions = useMemo(
     () => getAttendanceExportTemplatesForGroup(attendanceGroup),
     [attendanceGroup],
@@ -211,6 +217,29 @@ export default function ExportsPage() {
     } catch (err) {
       console.error('Attendance export failed:', err);
       setError(err instanceof Error ? err.message : 'Attendance export failed');
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  async function handleContributionExport() {
+    if (exporting) return;
+
+    setExporting({ type: 'contributions' });
+    setError(null);
+
+    try {
+      const response = await fetch('/api/export/contributions', { cache: 'no-store' });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Contribution export failed (${response.status})`);
+      }
+
+      await downloadWorkbook(response, 'Contributions.xlsx');
+    } catch (err) {
+      console.error('Contribution export failed:', err);
+      setError(err instanceof Error ? err.message : 'Contribution export failed');
     } finally {
       setExporting(null);
     }
@@ -437,6 +466,29 @@ export default function ExportsPage() {
                   {isAttendanceExporting ? 'Downloading' : 'Download'}
                 </Button>
               </div>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <div className="border-b border-border px-6 py-5">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-background text-primary">
+                  <FileSpreadsheet className="h-5 w-5" />
+                </div>
+                <h2 className="text-lg font-semibold leading-none">Contributions Exports</h2>
+              </div>
+
+              <Button
+                className="h-10 gap-2 sm:w-auto"
+                onClick={handleContributionExport}
+                disabled={exporting !== null && !isContributionExporting}
+                aria-busy={isContributionExporting}
+              >
+                {isContributionExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {isContributionExporting ? 'Downloading' : 'Download Contributions'}
+              </Button>
             </div>
           </div>
         </Card>

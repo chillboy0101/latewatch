@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle2,
   ChevronDown,
-  Download,
   Loader2,
   Plus,
   RefreshCw,
@@ -65,7 +64,6 @@ type Message = { text: string; type: 'error' | 'success' };
 type SectionSortMode = 'default' | 'az' | 'za' | 'newest' | 'oldest';
 type SavingAction =
   | 'create-section'
-  | 'export'
   | 'refresh'
   | `section:${string}`
   | `delete-section:${string}`
@@ -128,22 +126,6 @@ function normalizeDraftAmount(value: string | number | null | undefined) {
 function sectionTimestamp(section: ContributionSection) {
   const parsed = Date.parse(section.createdAt || '');
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function downloadBlob(response: Response, fallbackFileName: string) {
-  return response.blob().then((blob) => {
-    const disposition = response.headers.get('Content-Disposition') || '';
-    const fileNameMatch = disposition.match(/filename="([^"]+)"/);
-    const fileName = fileNameMatch?.[1] || fallbackFileName;
-    const url = window.URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = fileName;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    window.URL.revokeObjectURL(url);
-  });
 }
 
 function entryDraftFromEntry(entry: ContributionEntry): EntryDraft {
@@ -523,29 +505,6 @@ export default function ContributionsPage() {
     await loadContributions();
   }
 
-  async function exportContributions() {
-    setSavingAction('export');
-    setMessage(null);
-
-    try {
-      const response = await fetch('/api/export/contributions', { cache: 'no-store' });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Export failed (${response.status})`);
-      }
-      await downloadBlob(response, 'Contributions.xlsx');
-      setMessage({ text: 'Export downloaded.', type: 'success' });
-    } catch (error) {
-      console.error('Contribution export failed:', error);
-      setMessage({
-        text: error instanceof Error ? error.message : 'Could not download export',
-        type: 'error',
-      });
-    } finally {
-      setSavingAction(null);
-    }
-  }
-
   const totals = data?.totals || { entryCount: 0, sectionCount: 0, totalAmount: '0.00' };
 
   return (
@@ -619,17 +578,6 @@ export default function ContributionsPage() {
                 onClick={() => loadContributions('refresh')}
               >
                 {savingAction === 'refresh' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                title="Export"
-                aria-label="Export contributions"
-                disabled={savingAction === 'export' || loading}
-                onClick={exportContributions}
-              >
-                {savingAction === 'export' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               </Button>
             </div>
           </div>

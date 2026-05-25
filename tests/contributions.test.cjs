@@ -15,6 +15,7 @@ const migrationPath = path.join(__dirname, '../drizzle/0023_contributions.sql');
 const seedMigrationPath = path.join(__dirname, '../src/app/api/seed/migrate/route.ts');
 const apiPath = path.join(__dirname, '../src/app/api/contributions/route.ts');
 const exportRoutePath = path.join(__dirname, '../src/app/api/export/contributions/route.ts');
+const exportsPagePath = path.join(__dirname, '../src/app/exports/page.tsx');
 const libPath = path.join(__dirname, '../src/lib/contributions.ts');
 const pagePath = path.join(__dirname, '../src/app/contributions/page.tsx');
 const sidebarPath = path.join(__dirname, '../src/components/layout/sidebar.tsx');
@@ -61,6 +62,7 @@ test('contributions schema, migration, and seed repair are defined', () => {
 test('contributions page and API expose database CRUD and export wiring', () => {
   const apiSource = fs.readFileSync(apiPath, 'utf8');
   const exportRouteSource = fs.readFileSync(exportRoutePath, 'utf8');
+  const exportsPageSource = fs.readFileSync(exportsPagePath, 'utf8');
   const libSource = fs.readFileSync(libPath, 'utf8');
   const pageSource = fs.readFileSync(pagePath, 'utf8');
   const sidebarSource = fs.readFileSync(sidebarPath, 'utf8');
@@ -76,7 +78,12 @@ test('contributions page and API expose database CRUD and export wiring', () => 
   assert.match(apiSource, /entries: updatedEntries/);
   assert.match(exportRouteSource, /buildContributionExportWorkbook/);
   assert.match(pageSource, /fetch\('\/api\/contributions'/);
-  assert.match(pageSource, /\/api\/export\/contributions/);
+  assert.doesNotMatch(pageSource, /\/api\/export\/contributions/);
+  assert.doesNotMatch(pageSource, /Export contributions/);
+  assert.match(exportsPageSource, /Contributions Exports/);
+  assert.match(exportsPageSource, /handleContributionExport/);
+  assert.match(exportsPageSource, /\/api\/export\/contributions/);
+  assert.match(exportsPageSource, /type: 'contributions'/);
   assert.match(pageSource, /Save/);
   assert.match(pageSource, /Delete/);
   assert.match(sidebarSource, /Contributions/);
