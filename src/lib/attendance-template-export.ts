@@ -81,6 +81,7 @@ const TEMPLATE_FILES: Record<AttendanceExportTemplate, string> = {
 
 const PRESENT_MARK = '\u2713';
 const ABSENT_MARK = '\u2717';
+const MISSING_ATTENDANCE_REMARK = 'Absent with permission';
 
 function templatePath(template: AttendanceExportTemplate) {
   return path.join(process.cwd(), 'src', 'attendance-templates', TEMPLATE_FILES[template]);
@@ -278,7 +279,7 @@ function absenceRemarkLabel(reason: string | null | undefined) {
 function weeklyRemarkLabel(status: DayStatus) {
   if (status.kind === 'leave') return 'On Leave';
   if (status.kind === 'approved_absence') return formatAbsencePermissionReason(status.reason);
-  if (status.kind === 'unapproved_absence') return 'Absent without permission';
+  if (status.kind === 'unapproved_absence') return MISSING_ATTENDANCE_REMARK;
   return '';
 }
 
@@ -356,7 +357,7 @@ async function buildDailySummary(input: AttendanceWorkbookInput, roster: RosterS
         exempt += 1;
         remarks.push(absenceRemarkLabel(status.reason));
       } else if (status.kind === 'unapproved_absence') {
-        remarks.push('Absent without permission');
+        remarks.push(MISSING_ATTENDANCE_REMARK);
       }
     }
 
@@ -437,7 +438,7 @@ function writeMonthlyMatrixValues(
 
         row.getCell(column).value = null;
         absentWithoutPermission += 1;
-        remarks.push('Absent without permission');
+        remarks.push(MISSING_ATTENDANCE_REMARK);
       });
     });
 

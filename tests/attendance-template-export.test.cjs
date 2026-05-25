@@ -182,6 +182,33 @@ test('daily attendance summary uses 8:30 cutoff, leave, exempt counts, and main 
   assert.match(String(sheet.getCell('G6').value), /Exempt \(Field Work\) - 1/);
 });
 
+test('attendance export remarks call missing attendance absent with permission', async () => {
+  const attendanceRecords = [
+    { checkInTime: '08:30', date: '2026-04-01', staffId: 'main-on-time' },
+  ];
+
+  const dailyWorkbook = await workbookFor({ attendanceRecords });
+  const dailyRemarks = String(dailyWorkbook.worksheets[0].getCell('G6').value);
+  assert.match(dailyRemarks, /Absent with permission - 2/);
+  assert.doesNotMatch(dailyRemarks, /Absent without permission/);
+
+  const monthlyWorkbook = await workbookFor({
+    attendanceRecords,
+    template: 'monthly-matrix',
+  });
+  const monthlySheet = monthlyWorkbook.worksheets[0];
+  assert.equal(monthlySheet.getCell('AS10').value, 'Absent with permission');
+  assert.doesNotMatch(String(monthlySheet.getCell('AS10').value), /Absent without permission/);
+
+  const weeklyWorkbook = await workbookFor({
+    attendanceRecords,
+    template: 'weekly-validation',
+  });
+  const week1 = weeklyWorkbook.getWorksheet('WEEK 1');
+  assert.equal(week1.getCell('K8').value, 'Absent with permission');
+  assert.doesNotMatch(String(week1.getCell('K8').value), /Absent without permission/);
+});
+
 test('monthly attendance matrix marks P, AP, blank unapproved absences, and keeps NSS staff id/rank cells blank', async () => {
   const mainWorkbook = await workbookFor({
     attendanceRecords: [
@@ -199,7 +226,7 @@ test('monthly attendance matrix marks P, AP, blank unapproved absences, and keep
   assert.equal(mainSheet.getCell('G10').value, null);
   assert.equal(mainSheet.getCell('AP10').value, 1);
   assert.equal(mainSheet.getCell('AR10').value, 1);
-  assert.equal(mainSheet.getCell('AS10').value, 'Absent without permission');
+  assert.equal(mainSheet.getCell('AS10').value, 'Absent with permission');
 
   const nssWorkbook = await workbookFor({
     attendanceRecords: [
@@ -233,6 +260,8 @@ test('weekly validation marks present and absence statuses and keeps NSS staff n
   const week1 = workbook.getWorksheet('WEEK 1');
 
   assert.equal(week1.getCell('F7').value, CHECK);
+  assert.equal(week1.getCell('F8').value, CROSS);
+  assert.equal(week1.getCell('K8').value, 'Absent with permission');
   assert.equal(week1.getCell('F9').value, CROSS);
   assert.equal(week1.getCell('I7').value, 1);
   assert.equal(week1.getCell('K9').value, 'Workshop');
