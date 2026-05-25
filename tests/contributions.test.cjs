@@ -15,6 +15,7 @@ const migrationPath = path.join(__dirname, '../drizzle/0023_contributions.sql');
 const seedMigrationPath = path.join(__dirname, '../src/app/api/seed/migrate/route.ts');
 const apiPath = path.join(__dirname, '../src/app/api/contributions/route.ts');
 const exportRoutePath = path.join(__dirname, '../src/app/api/export/contributions/route.ts');
+const libPath = path.join(__dirname, '../src/lib/contributions.ts');
 const pagePath = path.join(__dirname, '../src/app/contributions/page.tsx');
 const sidebarPath = path.join(__dirname, '../src/components/layout/sidebar.tsx');
 
@@ -60,6 +61,7 @@ test('contributions schema, migration, and seed repair are defined', () => {
 test('contributions page and API expose database CRUD and export wiring', () => {
   const apiSource = fs.readFileSync(apiPath, 'utf8');
   const exportRouteSource = fs.readFileSync(exportRoutePath, 'utf8');
+  const libSource = fs.readFileSync(libPath, 'utf8');
   const pageSource = fs.readFileSync(pagePath, 'utf8');
   const sidebarSource = fs.readFileSync(sidebarPath, 'utf8');
 
@@ -68,14 +70,42 @@ test('contributions page and API expose database CRUD and export wiring', () => 
   assert.match(apiSource, /export async function PATCH/);
   assert.match(apiSource, /export async function DELETE/);
   assert.match(apiSource, /publishRealtime\('contributions'/);
+  assert.match(libSource, /createdAt: contributionSection\.createdAt/);
+  assert.match(libSource, /updatedAt: contributionSection\.updatedAt/);
+  assert.match(apiSource, /type === 'section_batch'/);
+  assert.match(apiSource, /entries: updatedEntries/);
   assert.match(exportRouteSource, /buildContributionExportWorkbook/);
   assert.match(pageSource, /fetch\('\/api\/contributions'/);
   assert.match(pageSource, /\/api\/export\/contributions/);
-  assert.match(pageSource, /Create section/);
   assert.match(pageSource, /Save/);
   assert.match(pageSource, /Delete/);
   assert.match(sidebarSource, /Contributions/);
   assert.match(sidebarSource, /href: '\/contributions'/);
+});
+
+test('contributions page uses modal creation, section sorting, and section-level saving', () => {
+  const pageSource = fs.readFileSync(pagePath, 'utf8');
+
+  assert.match(pageSource, /type SectionSortMode = 'default' \| 'az' \| 'za' \| 'newest' \| 'oldest'/);
+  assert.match(pageSource, /aria-label="Sort contribution sections"/);
+  assert.match(pageSource, /Default order/);
+  assert.match(pageSource, /A-Z/);
+  assert.match(pageSource, /Newest first/);
+  assert.match(pageSource, /Oldest first/);
+  assert.match(pageSource, /createSectionOpen/);
+  assert.match(pageSource, /Dialog open=\{createSectionOpen\}/);
+  assert.match(pageSource, /aria-label="Create contribution section"/);
+  assert.match(pageSource, /title="Create section"/);
+  assert.match(pageSource, /pendingSectionId/);
+  assert.match(pageSource, /highlightedSectionId/);
+  assert.match(pageSource, /sectionRefs/);
+  assert.match(pageSource, /scrollIntoView/);
+  assert.match(pageSource, /sectionDrafts/);
+  assert.match(pageSource, /saveSectionChanges/);
+  assert.match(pageSource, /Unsaved changes/);
+  assert.match(pageSource, /type: 'section_batch'/);
+  assert.doesNotMatch(pageSource, /function saveEntry/);
+  assert.doesNotMatch(pageSource, /actionKey: `entry:\$\{entry\.id\}`/);
 });
 
 test('contribution export workbook preserves sections, totals, and notes', async () => {

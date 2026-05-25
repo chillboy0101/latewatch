@@ -14,11 +14,13 @@ export type ContributionEntryRecord = {
 };
 
 export type ContributionSectionRecord = {
+  createdAt?: string | null;
   displayOrder: number;
   entries: ContributionEntryRecord[];
   id: string;
   title: string;
   totalAmount: string;
+  updatedAt?: string | null;
 };
 
 export function formatContributionAmount(value: number | string | null | undefined) {
@@ -32,12 +34,18 @@ export function contributionTotal(entries: Array<Pick<ContributionEntryRecord, '
   );
 }
 
+function timestampString(value: Date | null | undefined) {
+  return value ? value.toISOString() : null;
+}
+
 export async function getContributionSections(): Promise<ContributionSectionRecord[]> {
   const [sectionRows, entryRows] = await Promise.all([
     db.select({
+      createdAt: contributionSection.createdAt,
       displayOrder: contributionSection.displayOrder,
       id: contributionSection.id,
       title: contributionSection.title,
+      updatedAt: contributionSection.updatedAt,
     })
       .from(contributionSection)
       .where(eq(contributionSection.active, true))
@@ -69,8 +77,10 @@ export async function getContributionSections(): Promise<ContributionSectionReco
 
     return {
       ...section,
+      createdAt: timestampString(section.createdAt),
       entries,
       totalAmount: contributionTotal(entries),
+      updatedAt: timestampString(section.updatedAt),
     };
   });
 }

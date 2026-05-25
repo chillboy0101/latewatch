@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle2,
+  ChevronDown,
   Download,
   Loader2,
   Plus,
@@ -15,6 +16,14 @@ import {
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
@@ -30,12 +39,18 @@ interface ContributionEntry {
 }
 
 interface ContributionSection {
+  createdAt?: string | null;
   displayOrder: number;
   entries: ContributionEntry[];
   id: string;
   title: string;
   totalAmount: string;
+  updatedAt?: string | null;
 }
+
+type VisibleContributionSection = ContributionSection & {
+  visibleEntries: ContributionEntry[];
+};
 
 interface ContributionsResponse {
   sections: ContributionSection[];
@@ -47,15 +62,26 @@ interface ContributionsResponse {
 }
 
 type Message = { text: string; type: 'error' | 'success' };
+type SectionSortMode = 'default' | 'az' | 'za' | 'newest' | 'oldest';
 type SavingAction =
   | 'create-section'
   | 'export'
   | 'refresh'
   | `section:${string}`
   | `delete-section:${string}`
-  | `entry:${string}`
   | `delete-entry:${string}`
   | `create-entry:${string}`;
+
+type EntryDraft = {
+  amount: string;
+  contributorName: string;
+  note: string;
+};
+
+type SectionDraft = {
+  entries: Record<string, EntryDraft>;
+  title: string;
+};
 
 type NewEntryDraft = {
   amount: string;
@@ -69,6 +95,14 @@ const emptyNewEntry: NewEntryDraft = {
   note: '',
 };
 
+const sortOptions: Array<{ label: string; value: SectionSortMode }> = [
+  { label: 'Default order', value: 'default' },
+  { label: 'A-Z', value: 'az' },
+  { label: 'Z-A', value: 'za' },
+  { label: 'Newest first', value: 'newest' },
+  { label: 'Oldest first', value: 'oldest' },
+];
+
 function money(value: string | number | null | undefined) {
   return `GHC ${Number(value || 0).toFixed(2)}`;
 }
@@ -80,6 +114,20 @@ function normalizeMoneyInput(value: string) {
   if (decimalParts.length === 0) return whole;
 
   return `${whole}.${decimalParts.join('').slice(0, 2)}`;
+}
+
+function normalizeDraftText(value: string | null | undefined) {
+  return String(value ?? '').trim();
+}
+
+function normalizeDraftAmount(value: string | number | null | undefined) {
+  const amount = Number(value || 0);
+  return Number.isFinite(amount) ? amount.toFixed(2) : '0.00';
+}
+
+function sectionTimestamp(section: ContributionSection) {
+  const parsed = Date.parse(section.createdAt || '');
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function downloadBlob(response: Response, fallbackFileName: string) {
@@ -98,28 +146,104 @@ function downloadBlob(response: Response, fallbackFileName: string) {
   });
 }
 
-function sectionMatchesSearch(section: ContributionSection, query: string) {
+function entryDraftFromEntry(entry: ContributionEntry): EntryDraft {
+  return {
+    amount: entry.amount,
+    contributorName: entry.contributorName,
+    note: entry.note || '',
+  };
+}
+
+function sectionDraftFromSection(section: ContributionSection): SectionDraft {
+  return {
+    entries: Object.fromEntries(section.entries.map((entry) => [entry.id, entryDraftFromEntry(entry)])),
+    title: section.title,
+  };
+}
+
+function buildSectionDrafts(sections: ContributionSection[]) {
+  return Object.fromEntries(sections.map((section) => [section.id, sectionDraftFromSection(section)]));
+}
+
+function sectionMatchesSearch(section: ContributionSection, draft: SectionDraft, query: string) {
   const text = [
-    section.title,
+    draft.title,
     section.totalAmount,
-    ...section.entries.flatMap((entry) => [
-      entry.contributorName,
-      entry.amount,
-      entry.note || '',
-    ]),
+    ...section.entries.flatMap((entry) => {
+      const entryDraft = draft.entries[entry.id] || entryDraftFromEntry(entry);
+      return [
+        entryDraft.contributorName,
+        entryDraft.amount,
+        entryDraft.note,
+      ];
+    }),
   ].join(' ').toLowerCase();
 
   return text.includes(query);
 }
 
+function entryMatchesSearch(section: ContributionSection, entry: ContributionEntry, draft: SectionDraft, query: string) {
+  const entryDraft = draft.entries[entry.id] || entryDraftFromEntry(entry);
+  return [
+    draft.title,
+    entryDraft.contributorName,
+    entryDraft.amount,
+    entryDraft.note,
+  ].join(' ').toLowerCase().includes(query);
+}
+
+function sectionIsDirty(section: ContributionSection, draft: SectionDraft) {
+  if (normalizeDraftText(draft.title) !== normalizeDraftText(section.title)) return true;
+
+  return section.entries.some((entry) => {
+    const entryDraft = draft.entries[entry.id] || entryDraftFromEntry(entry);
+
+    return (
+      normalizeDraftText(entryDraft.contributorName) !== normalizeDraftText(entry.contributorName) ||
+      normalizeDraftAmount(entryDraft.amount) !== normalizeDraftAmount(entry.amount) ||
+      normalizeDraftText(entryDraft.note) !== normalizeDraftText(entry.note)
+    );
+  });
+}
+
+function sortSections(sections: ContributionSection[], sortMode: SectionSortMode) {
+  return sections
+    .map((section, index) => ({ index, section }))
+    .sort((left, right) => {
+      switch (sortMode) {
+        case 'az':
+          return left.section.title.localeCompare(right.section.title) || left.index - right.index;
+        case 'za':
+          return right.section.title.localeCompare(left.section.title) || left.index - right.index;
+        case 'newest': {
+          const dateDifference = sectionTimestamp(right.section) - sectionTimestamp(left.section);
+          return dateDifference || (right.section.displayOrder - left.section.displayOrder) || left.index - right.index;
+        }
+        case 'oldest': {
+          const dateDifference = sectionTimestamp(left.section) - sectionTimestamp(right.section);
+          return dateDifference || (left.section.displayOrder - right.section.displayOrder) || left.index - right.index;
+        }
+        default:
+          return left.section.displayOrder - right.section.displayOrder || left.index - right.index;
+      }
+    })
+    .map(({ section }) => section);
+}
+
 export default function ContributionsPage() {
   const [data, setData] = useState<ContributionsResponse | null>(null);
+  const [sectionDrafts, setSectionDrafts] = useState<Record<string, SectionDraft>>({});
   const [loading, setLoading] = useState(true);
   const [savingAction, setSavingAction] = useState<SavingAction | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
   const [search, setSearch] = useState('');
+  const [sectionSort, setSectionSort] = useState<SectionSortMode>('default');
+  const [createSectionOpen, setCreateSectionOpen] = useState(false);
   const [newSectionTitle, setNewSectionTitle] = useState('');
   const [newEntryDrafts, setNewEntryDrafts] = useState<Record<string, NewEntryDraft>>({});
+  const [pendingSectionId, setPendingSectionId] = useState<string | null>(null);
+  const [highlightedSectionId, setHighlightedSectionId] = useState<string | null>(null);
+  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const loadContributions = useCallback(async (action: SavingAction | null = null) => {
     if (action) setSavingAction(action);
@@ -127,16 +251,26 @@ export default function ContributionsPage() {
 
     try {
       const response = await fetch('/api/contributions', { cache: 'no-store' });
-      const body = await response.json().catch(() => ({}));
+      const body = await response.json().catch(() => ({})) as Partial<ContributionsResponse> & { error?: string };
       if (!response.ok) throw new Error(body.error || `Contributions request failed (${response.status})`);
-      setData(body);
+      const sections = Array.isArray(body.sections) ? body.sections : [];
+      const nextData = {
+        sections,
+        totals: body.totals || { entryCount: 0, sectionCount: 0, totalAmount: '0.00' },
+      };
+
+      setData(nextData);
+      setSectionDrafts(buildSectionDrafts(nextData.sections));
+      return nextData;
     } catch (error) {
       console.error('Failed to load contributions:', error);
       setData(null);
+      setSectionDrafts({});
       setMessage({
         text: error instanceof Error ? error.message : 'Could not load contributions',
         type: 'error',
       });
+      return null;
     } finally {
       setLoading(false);
       if (action) setSavingAction(null);
@@ -170,41 +304,81 @@ export default function ContributionsPage() {
     };
   }, [loadContributions]);
 
+  useEffect(() => {
+    if (!pendingSectionId || !data?.sections.some((section) => section.id === pendingSectionId)) return;
+
+    const timeout = window.setTimeout(() => {
+      sectionRefs.current[pendingSectionId]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setHighlightedSectionId(pendingSectionId);
+    }, 80);
+    const clearHighlight = window.setTimeout(() => {
+      setHighlightedSectionId(null);
+      setPendingSectionId(null);
+    }, 2600);
+
+    return () => {
+      window.clearTimeout(timeout);
+      window.clearTimeout(clearHighlight);
+    };
+  }, [data?.sections, pendingSectionId]);
+
   const visibleSections = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const sections = data?.sections || [];
-    if (!query) return sections;
-
-    return sections
-      .filter((section) => sectionMatchesSearch(section, query))
-      .map((section) => ({
+    const sortedSections = sortSections(data?.sections || [], sectionSort);
+    if (!query) {
+      return sortedSections.map((section) => ({
         ...section,
-        entries: section.entries.filter((entry) => [
-          section.title,
-          entry.contributorName,
-          entry.amount,
-          entry.note || '',
-        ].join(' ').toLowerCase().includes(query)),
+        visibleEntries: section.entries,
       }));
-  }, [data?.sections, search]);
+    }
 
-  function updateSectionTitle(id: string, title: string) {
-    setData((current) => current ? {
-      ...current,
-      sections: current.sections.map((section) => section.id === id ? { ...section, title } : section),
-    } : current);
+    return sortedSections
+      .filter((section) => {
+        const draft = sectionDrafts[section.id] || sectionDraftFromSection(section);
+        return sectionMatchesSearch(section, draft, query);
+      })
+      .map((section) => {
+        const draft = sectionDrafts[section.id] || sectionDraftFromSection(section);
+        return {
+          ...section,
+          visibleEntries: section.entries.filter((entry) => entryMatchesSearch(section, entry, draft, query)),
+        };
+      }) satisfies VisibleContributionSection[];
+  }, [data?.sections, search, sectionDrafts, sectionSort]);
+
+  function getSectionDraft(section: ContributionSection) {
+    return sectionDrafts[section.id] || sectionDraftFromSection(section);
   }
 
-  function updateEntry(sectionId: string, entryId: string, patch: Partial<ContributionEntry>) {
-    setData((current) => current ? {
+  function updateSectionTitle(id: string, title: string) {
+    setSectionDrafts((current) => ({
       ...current,
-      sections: current.sections.map((section) => section.id === sectionId
-        ? {
-          ...section,
-          entries: section.entries.map((entry) => entry.id === entryId ? { ...entry, ...patch } : entry),
-        }
-        : section),
-    } : current);
+      [id]: {
+        ...(current[id] || { entries: {}, title: '' }),
+        title,
+      },
+    }));
+  }
+
+  function updateEntry(section: ContributionSection, entry: ContributionEntry, patch: Partial<EntryDraft>) {
+    setSectionDrafts((current) => {
+      const currentSection = current[section.id] || sectionDraftFromSection(section);
+      const currentEntry = currentSection.entries[entry.id] || entryDraftFromEntry(entry);
+
+      return {
+        ...current,
+        [section.id]: {
+          ...currentSection,
+          entries: {
+            ...currentSection.entries,
+            [entry.id]: {
+              ...currentEntry,
+              ...patch,
+            },
+          },
+        },
+      };
+    });
   }
 
   function updateNewEntryDraft(sectionId: string, patch: Partial<NewEntryDraft>) {
@@ -221,7 +395,6 @@ export default function ContributionsPage() {
     actionKey: SavingAction;
     body: Record<string, unknown>;
     method: 'DELETE' | 'PATCH' | 'POST';
-    successMessage: string;
   }) {
     setSavingAction(input.actionKey);
     setMessage(null);
@@ -234,14 +407,14 @@ export default function ContributionsPage() {
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || `Contribution update failed (${response.status})`);
-      setMessage({ text: input.successMessage, type: 'success' });
-      await loadContributions();
+      return body;
     } catch (error) {
       console.error('Contribution update failed:', error);
       setMessage({
         text: error instanceof Error ? error.message : 'Contribution update failed',
         type: 'error',
       });
+      return null;
     } finally {
       setSavingAction(null);
     }
@@ -251,40 +424,71 @@ export default function ContributionsPage() {
     const title = newSectionTitle.trim();
     if (!title) return;
 
-    await requestContributions({
+    const body = await requestContributions({
       actionKey: 'create-section',
       body: { title, type: 'section' },
       method: 'POST',
-      successMessage: 'Section created.',
     });
+
+    if (!body?.section?.id) return;
+
+    setPendingSectionId(body.section.id);
+    setCreateSectionOpen(false);
     setNewSectionTitle('');
+    setMessage({ text: 'Section created.', type: 'success' });
+    await loadContributions();
   }
 
-  async function saveSection(section: ContributionSection) {
-    await requestContributions({
+  async function saveSectionChanges(section: ContributionSection) {
+    const draft = getSectionDraft(section);
+    if (!sectionIsDirty(section, draft)) return;
+
+    const body = await requestContributions({
       actionKey: `section:${section.id}`,
-      body: { id: section.id, title: section.title, type: 'section' },
+      body: {
+        entries: section.entries.map((entry) => {
+          const entryDraft = draft.entries[entry.id] || entryDraftFromEntry(entry);
+          return {
+            amount: entryDraft.amount,
+            contributorName: entryDraft.contributorName,
+            id: entry.id,
+            note: entryDraft.note,
+          };
+        }),
+        id: section.id,
+        title: draft.title,
+        type: 'section_batch',
+      },
       method: 'PATCH',
-      successMessage: 'Section saved.',
     });
+
+    if (!body?.success) return;
+
+    setMessage({ text: 'Section saved.', type: 'success' });
+    await loadContributions();
   }
 
   async function deleteSection(section: ContributionSection) {
-    if (!window.confirm(`Delete ${section.title}?`)) return;
+    const draft = getSectionDraft(section);
+    if (!window.confirm(`Delete ${draft.title || section.title}?`)) return;
 
-    await requestContributions({
+    const body = await requestContributions({
       actionKey: `delete-section:${section.id}`,
       body: { id: section.id, type: 'section' },
       method: 'DELETE',
-      successMessage: 'Section deleted.',
     });
+
+    if (!body?.success) return;
+
+    setMessage({ text: 'Section deleted.', type: 'success' });
+    await loadContributions();
   }
 
   async function createEntry(section: ContributionSection) {
     const draft = newEntryDrafts[section.id] || emptyNewEntry;
     if (!draft.contributorName.trim() || !draft.amount.trim()) return;
 
-    await requestContributions({
+    const body = await requestContributions({
       actionKey: `create-entry:${section.id}`,
       body: {
         amount: draft.amount,
@@ -294,35 +498,29 @@ export default function ContributionsPage() {
         type: 'entry',
       },
       method: 'POST',
-      successMessage: 'Entry added.',
     });
-    setNewEntryDrafts((current) => ({ ...current, [section.id]: emptyNewEntry }));
-  }
 
-  async function saveEntry(entry: ContributionEntry) {
-    await requestContributions({
-      actionKey: `entry:${entry.id}`,
-      body: {
-        amount: entry.amount,
-        contributorName: entry.contributorName,
-        id: entry.id,
-        note: entry.note,
-        type: 'entry',
-      },
-      method: 'PATCH',
-      successMessage: 'Entry saved.',
-    });
+    if (!body?.success) return;
+
+    setNewEntryDrafts((current) => ({ ...current, [section.id]: emptyNewEntry }));
+    setMessage({ text: 'Entry added.', type: 'success' });
+    await loadContributions();
   }
 
   async function deleteEntry(entry: ContributionEntry) {
-    if (!window.confirm(`Delete ${entry.contributorName}?`)) return;
+    const draftName = sectionDrafts[entry.sectionId]?.entries[entry.id]?.contributorName || entry.contributorName;
+    if (!window.confirm(`Delete ${draftName}?`)) return;
 
-    await requestContributions({
+    const body = await requestContributions({
       actionKey: `delete-entry:${entry.id}`,
       body: { id: entry.id, type: 'entry' },
       method: 'DELETE',
-      successMessage: 'Entry deleted.',
     });
+
+    if (!body?.success) return;
+
+    setMessage({ text: 'Entry deleted.', type: 'success' });
+    await loadContributions();
   }
 
   async function exportContributions() {
@@ -372,25 +570,7 @@ export default function ContributionsPage() {
             <ContributionStat label="Total" value={money(totals.totalAmount)} mono />
           </div>
 
-          <div className="grid gap-3 border-b border-border p-4 lg:grid-cols-[minmax(220px,1fr)_minmax(280px,28rem)_auto] lg:items-center">
-            <div className="flex min-w-0 gap-2">
-              <Input
-                aria-label="New contribution section"
-                value={newSectionTitle}
-                onChange={(event) => setNewSectionTitle(event.target.value)}
-                placeholder="Section title"
-              />
-              <Button
-                type="button"
-                className="shrink-0 gap-2"
-                disabled={savingAction === 'create-section' || !newSectionTitle.trim()}
-                onClick={createSection}
-              >
-                {savingAction === 'create-section' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                Create section
-              </Button>
-            </div>
-
+          <div className="grid gap-3 border-b border-border p-4 lg:grid-cols-[minmax(240px,1fr)_minmax(180px,14rem)_auto] lg:items-center">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -402,7 +582,33 @@ export default function ContributionsPage() {
               />
             </div>
 
+            <div className="relative">
+              <select
+                aria-label="Sort contribution sections"
+                className="h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-9 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                value={sectionSort}
+                onChange={(event) => setSectionSort(event.target.value as SectionSortMode)}
+              >
+                {sortOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            </div>
+
             <div className="flex gap-2 lg:justify-end">
+              <Button
+                type="button"
+                size="icon"
+                title="Create section"
+                aria-label="Create section"
+                disabled={Boolean(savingAction)}
+                onClick={() => setCreateSectionOpen(true)}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
               <Button
                 type="button"
                 variant="outline"
@@ -416,12 +622,14 @@ export default function ContributionsPage() {
               </Button>
               <Button
                 type="button"
-                className="gap-2"
+                variant="outline"
+                size="icon"
+                title="Export"
+                aria-label="Export contributions"
                 disabled={savingAction === 'export' || loading}
                 onClick={exportContributions}
               >
                 {savingAction === 'export' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                Export
               </Button>
             </div>
           </div>
@@ -432,17 +640,34 @@ export default function ContributionsPage() {
         ) : (
           <div className="space-y-4">
             {visibleSections.map((section) => {
+              const sectionDraft = getSectionDraft(section);
+              const isDirty = sectionIsDirty(section, sectionDraft);
               const draft = newEntryDrafts[section.id] || emptyNewEntry;
+              const displayedEntries = section.visibleEntries;
 
               return (
-                <Card key={section.id} className="overflow-hidden">
+                <Card
+                  key={section.id}
+                  ref={(element) => {
+                    sectionRefs.current[section.id] = element;
+                  }}
+                  className={cn(
+                    'scroll-mt-20 overflow-hidden transition-[box-shadow,border-color,background-color] duration-500',
+                    highlightedSectionId === section.id && 'border-primary/70 bg-primary/5 shadow-md shadow-primary/10',
+                  )}
+                >
                   <div className="grid gap-3 border-b border-border p-4 lg:grid-cols-[minmax(260px,1fr)_auto_auto] lg:items-center">
-                    <Input
-                      aria-label={`${section.title} title`}
-                      className="font-semibold"
-                      value={section.title}
-                      onChange={(event) => updateSectionTitle(section.id, event.target.value)}
-                    />
+                    <div className="min-w-0">
+                      <Input
+                        aria-label={`${section.title} title`}
+                        className="font-semibold"
+                        value={sectionDraft.title}
+                        onChange={(event) => updateSectionTitle(section.id, event.target.value)}
+                      />
+                      {isDirty && (
+                        <div className="mt-1 text-xs font-medium text-warning">Unsaved changes</div>
+                      )}
+                    </div>
                     <div className="rounded-md border border-border bg-background px-3 py-2 text-sm">
                       <span className="text-muted-foreground">Total</span>
                       <span className="ml-2 font-mono font-semibold">{money(section.totalAmount)}</span>
@@ -450,11 +675,15 @@ export default function ContributionsPage() {
                     <div className="flex gap-2 lg:justify-end">
                       <Button
                         type="button"
-                        variant="outline"
+                        variant={isDirty ? 'default' : 'outline'}
                         size="sm"
                         className="gap-2"
-                        disabled={savingAction === `section:${section.id}` || !section.title.trim()}
-                        onClick={() => saveSection(section)}
+                        disabled={
+                          savingAction === `section:${section.id}` ||
+                          !isDirty ||
+                          !sectionDraft.title.trim()
+                        }
+                        onClick={() => saveSectionChanges(section)}
                       >
                         {savingAction === `section:${section.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         Save
@@ -462,84 +691,78 @@ export default function ContributionsPage() {
                       <Button
                         type="button"
                         variant="outline"
-                        size="sm"
-                        className="gap-2 text-danger hover:text-danger"
+                        size="icon"
+                        title="Delete section"
+                        aria-label={`Delete ${sectionDraft.title || section.title}`}
+                        className="h-9 w-9 text-danger hover:text-danger"
                         disabled={savingAction === `delete-section:${section.id}`}
                         onClick={() => deleteSection(section)}
                       >
                         {savingAction === `delete-section:${section.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                        Delete
                       </Button>
                     </div>
                   </div>
 
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[860px] text-sm">
+                    <table className="w-full min-w-[780px] text-sm">
                       <thead className="border-b border-border bg-muted/20 text-left text-xs uppercase text-muted-foreground">
                         <tr>
                           <th className="w-16 px-4 py-3 font-medium">No.</th>
                           <th className="px-4 py-3 font-medium">Name</th>
                           <th className="w-40 px-4 py-3 font-medium">Amount</th>
                           <th className="px-4 py-3 font-medium">Note</th>
-                          <th className="w-48 px-4 py-3 text-right font-medium">Action</th>
+                          <th className="w-20 px-4 py-3 text-right font-medium">Action</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {section.entries.map((entry, index) => (
-                          <tr key={entry.id} className="border-b border-border">
-                            <td className="px-4 py-3 text-muted-foreground">{index + 1}</td>
-                            <td className="px-4 py-3">
-                              <Input
-                                aria-label="Contributor name"
-                                value={entry.contributorName}
-                                onChange={(event) => updateEntry(section.id, entry.id, { contributorName: event.target.value })}
-                              />
-                            </td>
-                            <td className="px-4 py-3">
-                              <Input
-                                aria-label="Contribution amount"
-                                inputMode="decimal"
-                                value={entry.amount}
-                                onChange={(event) => updateEntry(section.id, entry.id, { amount: normalizeMoneyInput(event.target.value) })}
-                              />
-                            </td>
-                            <td className="px-4 py-3">
-                              <Input
-                                aria-label="Contribution note"
-                                value={entry.note || ''}
-                                onChange={(event) => updateEntry(section.id, entry.id, { note: event.target.value })}
-                                placeholder="Note"
-                              />
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex justify-end gap-2">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  className="gap-2"
-                                  disabled={savingAction === `entry:${entry.id}` || !entry.contributorName.trim() || !entry.amount.trim()}
-                                  onClick={() => saveEntry(entry)}
-                                >
-                                  {savingAction === `entry:${entry.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                                  Save
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="icon"
-                                  title="Delete"
-                                  aria-label={`Delete ${entry.contributorName}`}
-                                  className="h-9 w-9 text-danger hover:text-danger"
-                                  disabled={savingAction === `delete-entry:${entry.id}`}
-                                  onClick={() => deleteEntry(entry)}
-                                >
-                                  {savingAction === `delete-entry:${entry.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                        {displayedEntries.map((entry, index) => {
+                          const entryDraft = sectionDraft.entries[entry.id] || entryDraftFromEntry(entry);
+
+                          return (
+                            <tr key={entry.id} className="border-b border-border">
+                              <td className="px-4 py-3 text-muted-foreground">{index + 1}</td>
+                              <td className="px-4 py-3">
+                                <Input
+                                  aria-label="Contributor name"
+                                  value={entryDraft.contributorName}
+                                  onChange={(event) => updateEntry(section, entry, { contributorName: event.target.value })}
+                                />
+                              </td>
+                              <td className="px-4 py-3">
+                                <Input
+                                  aria-label="Contribution amount"
+                                  inputMode="decimal"
+                                  value={entryDraft.amount}
+                                  onChange={(event) => updateEntry(section, entry, { amount: normalizeMoneyInput(event.target.value) })}
+                                />
+                              </td>
+                              <td className="px-4 py-3">
+                                <Input
+                                  aria-label="Contribution note"
+                                  value={entryDraft.note}
+                                  onChange={(event) => updateEntry(section, entry, { note: event.target.value })}
+                                  placeholder="Note"
+                                />
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex justify-end">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    title="Delete"
+                                    aria-label={`Delete ${entryDraft.contributorName || entry.contributorName}`}
+                                    className="h-9 w-9 text-danger hover:text-danger"
+                                    disabled={savingAction === `delete-entry:${entry.id}`}
+                                    onClick={() => deleteEntry(entry)}
+                                  >
+                                    {savingAction === `delete-entry:${entry.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
 
                         <tr className="border-b border-border bg-muted/10">
                           <td className="px-4 py-3 text-muted-foreground">New</td>
@@ -586,7 +809,7 @@ export default function ContributionsPage() {
                           </td>
                         </tr>
 
-                        {section.entries.length === 0 && (
+                        {displayedEntries.length === 0 && (
                           <tr>
                             <td className="px-4 py-8 text-center text-muted-foreground" colSpan={5}>
                               No contribution entries found.
@@ -607,6 +830,48 @@ export default function ContributionsPage() {
             )}
           </div>
         )}
+
+        <Dialog open={createSectionOpen} onOpenChange={setCreateSectionOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Create section</DialogTitle>
+              <DialogDescription className="sr-only">
+                Create a new contribution section.
+              </DialogDescription>
+            </DialogHeader>
+            <Input
+              aria-label="Create contribution section"
+              value={newSectionTitle}
+              onChange={(event) => setNewSectionTitle(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  void createSection();
+                }
+              }}
+              placeholder="Section title"
+              autoFocus
+            />
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCreateSectionOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="gap-2"
+                disabled={savingAction === 'create-section' || !newSectionTitle.trim()}
+                onClick={createSection}
+              >
+                {savingAction === 'create-section' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                Create
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );

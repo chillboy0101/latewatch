@@ -1,5 +1,5 @@
 import { currentUser } from '@clerk/nextjs/server';
-import { desc, eq } from 'drizzle-orm';
+import { asc, desc, eq } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { contributionEntry, contributionSection } from '@/db/schema';
@@ -32,6 +32,20 @@ function normalizeNullableText(value: unknown, maxLength = 200) {
 function normalizeAmount(value: unknown) {
   const amount = typeof value === 'number' ? value : Number.parseFloat(String(value ?? '').replace(/[^\d.-]/g, ''));
   return Number.isFinite(amount) && amount >= 0 ? amount : null;
+}
+
+function normalizeBatchEntries(value: unknown) {
+  if (!Array.isArray(value)) return null;
+
+  return value.map((item) => {
+    const record = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+    return {
+      amount: normalizeAmount(record.amount),
+      contributorName: normalizeText(record.contributorName),
+      id: normalizeText(record.id, 80),
+      note: normalizeNullableText(record.note),
+    };
+  });
 }
 
 async function nextSectionOrder() {
@@ -201,6 +215,66 @@ export async function PATCH(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json({ error: 'Contribution record is required' }, { status: 400 });
+    }
+
+    if (body?.type === 'section_batch') {
+      const title = normalizeText(body?.title);
+      const entries = normalizeBatchEntries(body?.entries);
+
+      if (!title || !entries || entries.some((entry) => !entry.id || !entry.contributorName || entry.amount === null)) {
+        return NextResponse.json({ error: 'Section title and valid contribution entries are required' }, { status: 400 });
+      }
+
+      const [beforeSection] = await db.select()
+        .from(contributionSection)
+        .where(eq(contributionSection.id, id))
+        .limit(1);
+
+      if (!beforeSection) {
+        return NextResponse.json({ error: 'Contribution section was not found' }, { status: 404 });
+      }
+
+      const beforeEntries = await db.select()
+        .from(contributionEntry)
+        .where(eq(contributionEntry.sectionId, id))
+        .orderBy(asc(contributionEntry.displayOrder), asc(contributionEntry.contributorName));
+      const beforeEntryIds = new Set(beforeEntries.map((entry) => entry.id));
+
+      if (entries.some((entry) => !beforeEntryIds.has(entry.id))) {
+        return NextResponse.json({ error: 'One or more contribution entries were not found in this section' }, { status: 404 });
+      }
+
+      const updatedAt = new Date();
+      const [updatedSection] = await db.update(contributionSection)
+        .set({ title, updatedAt })
+        .where(eq(contributionSection.id, id))
+        .returning();
+      const updatedEntries = [];
+
+      for (const entry of entries) {
+        const [updatedEntry] = await db.update(contributionEntry)
+          .set({
+            amount: formatContributionAmount(entry.amount),
+            contributorName: entry.contributorName,
+            note: entry.note,
+            updatedAt,
+          })
+          .where(eq(contributionEntry.id, entry.id))
+          .returning();
+
+        if (updatedEntry) updatedEntries.push(updatedEntry);
+      }
+
+      await publishContributionChange({
+        action: 'UPDATE',
+        actor,
+        after: { entries: updatedEntries, section: updatedSection },
+        before: { entries: beforeEntries, section: beforeSection },
+        entityId: updatedSection.id,
+        entityType: 'contribution_section',
+      });
+
+      return NextResponse.json({ entries: updatedEntries, section: updatedSection, success: true });
     }
 
     if (body?.type === 'section') {
