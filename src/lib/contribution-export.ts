@@ -47,7 +47,6 @@ export async function buildContributionWorkbookFromData({
 
   const worksheet = workbook.addWorksheet(`${year} CONTRIBUTIONS`);
   worksheet.properties.defaultRowHeight = 22;
-  worksheet.views = [{ state: 'frozen', ySplit: 0 }];
   worksheet.columns = [
     { key: 'number', width: 8 },
     { key: 'name', width: 34 },

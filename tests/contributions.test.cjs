@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const JSZip = require('jszip');
 
 require('tsx/cjs');
 
@@ -41,6 +42,15 @@ const contributionSections = [
     totalAmount: '100.00',
   },
 ];
+
+async function workbookXmlEntry(workbook, entryPath) {
+  const buffer = await workbook.xlsx.writeBuffer();
+  const zip = await JSZip.loadAsync(Buffer.from(buffer));
+  const entry = zip.file(entryPath);
+
+  assert.ok(entry, `${entryPath} should exist in workbook`);
+  return entry.async('string');
+}
 
 test('contributions schema, migration, and seed repair are defined', () => {
   const schemaSource = fs.readFileSync(schemaPath, 'utf8');
@@ -134,4 +144,14 @@ test('contribution export workbook preserves sections, totals, and notes', async
   assert.deepEqual(sheet.getCell('C9').value, { formula: 'SUM(C6:C7)' });
   assert.equal(sheet.getCell('B13').value, "RAPHAEL'S CONTRIBUTION");
   assert.equal(sheet.getCell('D17').value, 'to be reimbursed');
+});
+
+test('contribution export workbook does not include an invalid frozen pane', async () => {
+  const workbook = await buildContributionWorkbookFromData({
+    sections: contributionSections,
+    year: 2026,
+  });
+  const sheetXml = await workbookXmlEntry(workbook, 'xl/worksheets/sheet1.xml');
+
+  assert.doesNotMatch(sheetXml, /<pane[^>]*state="frozen"/);
 });
