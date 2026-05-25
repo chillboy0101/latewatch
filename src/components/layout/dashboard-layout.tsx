@@ -59,7 +59,8 @@ export function DashboardLayout({ children, title, userRole }: DashboardLayoutPr
           </div>
         </div>
       </div>
-      <div className="hidden h-screen w-full overflow-hidden lg:flex">
+      <div className="relative hidden h-screen w-full overflow-hidden lg:flex">
+        <div aria-hidden="true" className="pointer-events-none absolute left-0 right-0 top-16 z-50 h-px bg-border" />
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col">
           <Header title={title} userRole={userRole} />

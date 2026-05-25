@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
+const dashboardLayoutPath = path.join(__dirname, '../src/components/layout/dashboard-layout.tsx');
+const headerPath = path.join(__dirname, '../src/components/layout/header.tsx');
 const sidebarPath = path.join(__dirname, '../src/components/layout/sidebar.tsx');
 
 test('sidebar supports MongoDB-style auto-hide and fixed modes', () => {
@@ -63,13 +65,30 @@ test('sidebar mode toggle is icon-only and glides with the rail edge', () => {
   assert.doesNotMatch(source, /<span className=\{labelClassName\}>\{toggleLabel\}<\/span>/);
 });
 
-test('collapsed sidebar centers rail icons and keeps footer controls tight', () => {
+test('sidebar uses a fixed icon rail so icons do not shift while expanding', () => {
   const source = fs.readFileSync(sidebarPath, 'utf8');
 
-  assert.match(source, /isExpanded \? 'w-full justify-start gap-3 px-3' : 'w-12 justify-center gap-0 px-0'/);
+  assert.match(source, /const itemIconClassName = 'flex h-10 w-12 shrink-0 items-center justify-center'/);
+  assert.match(source, /isExpanded \? 'w-full justify-start' : 'w-12 justify-start'/);
+  assert.match(source, /<span className=\{itemIconClassName\} aria-hidden="true">/);
+  assert.match(source, /<span className=\{itemIconClassName\} aria-hidden="true">[\s\S]*<Home className="h-5 w-5 shrink-0" \/>/);
   assert.match(source, /pointer-events-none w-0 -translate-x-1 opacity-0/);
   assert.match(source, /border-t border-border px-2 pb-14 pt-3/);
   assert.doesNotMatch(source, /pb-16/);
+});
+
+test('dashboard shell draws one continuous header divider', () => {
+  const dashboardLayoutSource = fs.readFileSync(dashboardLayoutPath, 'utf8');
+  const headerSource = fs.readFileSync(headerPath, 'utf8');
+  const sidebarSource = fs.readFileSync(sidebarPath, 'utf8');
+
+  assert.match(dashboardLayoutSource, /absolute left-0 right-0 top-16 z-50 h-px bg-border/);
+  assert.match(headerSource, /className="flex h-16 items-center justify-between bg-card px-6"/);
+  assert.match(sidebarSource, /className="flex h-16 items-center px-4"/);
+  assert.match(sidebarSource, /!isExpanded && 'border-r border-border'/);
+  assert.match(sidebarSource, /isExpanded && 'border-r border-border'/);
+  assert.doesNotMatch(headerSource, /justify-between border-b border-border bg-card/);
+  assert.doesNotMatch(sidebarSource, /h-16 items-center border-b border-border/);
 });
 
 test('auto-hide sidebar collapses when the browser loses focus', () => {

@@ -135,7 +135,7 @@ export function Header({ title, userRole }: HeaderProps) {
   }
 
   return (
-    <header className="flex h-16 items-center justify-between border-b border-border bg-card px-6">
+    <header className="flex h-16 items-center justify-between bg-card px-6">
       <div className="flex items-center gap-4">
         {title && <h1 className="text-xl font-semibold">{title}</h1>}
       </div>

@@ -140,8 +140,10 @@ export function Sidebar() {
 
   const itemClassName = cn(
     'flex h-10 items-center rounded-md text-sm font-medium transition-colors duration-150 ease-out',
-    isExpanded ? 'w-full justify-start gap-3 px-3' : 'w-12 justify-center gap-0 px-0',
+    isExpanded ? 'w-full justify-start' : 'w-12 justify-start',
   );
+
+  const itemIconClassName = 'flex h-10 w-12 shrink-0 items-center justify-center';
 
   const toggleButtonClassName = cn(
     'absolute bottom-3 left-[14px] flex h-9 w-9 items-center justify-center rounded-md border border-border/80 bg-card text-muted shadow-sm transition-[transform,background-color,color] will-change-transform hover:bg-background hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/35',
@@ -150,7 +152,14 @@ export function Sidebar() {
   );
 
   return (
-    <div className={cn('relative h-full shrink-0 transition-[width] will-change-[width]', SIDEBAR_MOTION_CLASS, isFixed ? 'w-64' : 'w-16')}>
+    <div
+      className={cn(
+        'relative h-full shrink-0 border-border transition-[width] will-change-[width]',
+        SIDEBAR_MOTION_CLASS,
+        isFixed ? 'w-64' : 'w-16',
+        !isExpanded && 'border-r border-border',
+      )}
+    >
       <div
         onMouseEnter={expandAutoSidebar}
         onMouseLeave={collapseAutoSidebar}
@@ -160,12 +169,13 @@ export function Sidebar() {
           clipPath: isExpanded ? 'inset(0 0 0 0)' : 'inset(0 12rem 0 0)',
         }}
         className={cn(
-          'absolute inset-y-0 left-0 z-40 flex h-full w-64 flex-col overflow-hidden border-r border-border bg-card transition-[clip-path,box-shadow] will-change-[clip-path]',
+          'absolute inset-y-0 left-0 z-40 flex h-full w-64 flex-col overflow-hidden bg-card transition-[clip-path,box-shadow] will-change-[clip-path]',
           SIDEBAR_MOTION_CLASS,
+          isExpanded && 'border-r border-border',
           !isFixed && isAutoExpanded && 'shadow-xl',
         )}
       >
-        <div className="flex h-16 items-center border-b border-border px-4">
+        <div className="flex h-16 items-center px-4">
           <div className="flex min-w-0 items-center gap-2.5">
             <LateWatchMark size="sm" />
             <span className={cn('text-lg font-semibold leading-tight', labelClassName)}>
@@ -191,7 +201,9 @@ export function Sidebar() {
                     : 'text-muted hover:bg-background hover:text-foreground',
                 )}
               >
-                <item.icon className="h-5 w-5 shrink-0" />
+                <span className={itemIconClassName} aria-hidden="true">
+                  <item.icon className="h-5 w-5 shrink-0" />
+                </span>
                 <span className={labelClassName}>{item.name}</span>
               </Link>
             );
@@ -207,7 +219,9 @@ export function Sidebar() {
               'text-muted hover:bg-background hover:text-foreground',
             )}
           >
-            <Home className="h-5 w-5 shrink-0" />
+            <span className={itemIconClassName} aria-hidden="true">
+              <Home className="h-5 w-5 shrink-0" />
+            </span>
             <span className={labelClassName}>Main Portal</span>
           </Link>
         </div>
