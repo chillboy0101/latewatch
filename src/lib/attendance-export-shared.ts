@@ -14,12 +14,36 @@ export const ATTENDANCE_EXPORT_GROUPS = [
 export type AttendanceExportTemplate = typeof ATTENDANCE_EXPORT_TEMPLATES[number];
 export type AttendanceExportGroup = typeof ATTENDANCE_EXPORT_GROUPS[number];
 
+export const NSS_ATTENDANCE_EXPORT_RESTRICTION_MESSAGE = 'NSS personnel attendance exports use Weekly Validation only';
+
+const NSS_ATTENDANCE_EXPORT_TEMPLATES = ['weekly-validation'] as const satisfies readonly AttendanceExportTemplate[];
+
+const DEFAULT_ATTENDANCE_EXPORT_TEMPLATE_BY_GROUP: Record<AttendanceExportGroup, AttendanceExportTemplate> = {
+  main: 'daily-summary',
+  nss: 'weekly-validation',
+};
+
 export function isAttendanceExportTemplate(value: unknown): value is AttendanceExportTemplate {
   return typeof value === 'string' && ATTENDANCE_EXPORT_TEMPLATES.includes(value as AttendanceExportTemplate);
 }
 
 export function isAttendanceExportGroup(value: unknown): value is AttendanceExportGroup {
   return typeof value === 'string' && ATTENDANCE_EXPORT_GROUPS.includes(value as AttendanceExportGroup);
+}
+
+export function getAttendanceExportTemplatesForGroup(group: AttendanceExportGroup): readonly AttendanceExportTemplate[] {
+  return group === 'nss' ? NSS_ATTENDANCE_EXPORT_TEMPLATES : ATTENDANCE_EXPORT_TEMPLATES;
+}
+
+export function getDefaultAttendanceExportTemplateForGroup(group: AttendanceExportGroup) {
+  return DEFAULT_ATTENDANCE_EXPORT_TEMPLATE_BY_GROUP[group];
+}
+
+export function isAttendanceExportTemplateAllowedForGroup(
+  group: AttendanceExportGroup,
+  template: AttendanceExportTemplate,
+) {
+  return getAttendanceExportTemplatesForGroup(group).includes(template);
 }
 
 export function getAttendanceExportTemplateLabel(template: AttendanceExportTemplate) {

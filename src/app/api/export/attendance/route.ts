@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   isAttendanceExportGroup,
+  isAttendanceExportTemplateAllowedForGroup,
   isAttendanceExportTemplate,
+  NSS_ATTENDANCE_EXPORT_RESTRICTION_MESSAGE,
 } from '@/lib/attendance-export-shared';
 import { getAuditActor, tryWriteAuditEvent } from '@/lib/audit';
 import { buildAttendanceExportWorkbook } from '@/lib/attendance-template-export';
@@ -26,6 +28,10 @@ export async function POST(request: NextRequest) {
 
     if (!isAttendanceExportGroup(group)) {
       return NextResponse.json({ error: 'Valid attendance roster group is required' }, { status: 400 });
+    }
+
+    if (!isAttendanceExportTemplateAllowedForGroup(group, template)) {
+      return NextResponse.json({ error: NSS_ATTENDANCE_EXPORT_RESTRICTION_MESSAGE }, { status: 400 });
     }
 
     const actor = await getAuditActor();

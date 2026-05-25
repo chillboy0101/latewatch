@@ -11,7 +11,10 @@ import { type WorkingWeekRange } from '@/lib/export-weeks';
 import {
   type AttendanceExportGroup,
   type AttendanceExportTemplate,
+  getDefaultAttendanceExportTemplateForGroup,
   getAttendanceExportFileName,
+  getAttendanceExportTemplateLabel,
+  getAttendanceExportTemplatesForGroup,
 } from '@/lib/attendance-export-shared';
 import { formatShortDisplayDate } from '@/lib/date-format';
 
@@ -57,6 +60,13 @@ export default function ExportsPage() {
   const selectedMonthIndex = selectedMonth.getMonth();
   const isMonthlyExporting = exporting?.type === 'monthly';
   const isAttendanceExporting = exporting?.type === 'attendance';
+  const attendanceTemplateOptions = useMemo(
+    () => getAttendanceExportTemplatesForGroup(attendanceGroup),
+    [attendanceGroup],
+  );
+  const selectedAttendanceTemplate = attendanceTemplateOptions.includes(attendanceTemplate)
+    ? attendanceTemplate
+    : getDefaultAttendanceExportTemplateForGroup(attendanceGroup);
 
   const fetchExportData = useCallback(async () => {
     setLoading(true);
@@ -82,6 +92,12 @@ export default function ExportsPage() {
   useEffect(() => {
     fetchExportData();
   }, [fetchExportData]);
+
+  useEffect(() => {
+    if (attendanceTemplate !== selectedAttendanceTemplate) {
+      setAttendanceTemplate(selectedAttendanceTemplate);
+    }
+  }, [attendanceTemplate, selectedAttendanceTemplate]);
 
   const monthlyTotals = useMemo(
     () => weekSummaries.reduce(
@@ -173,7 +189,7 @@ export default function ExportsPage() {
         body: JSON.stringify({
           group: attendanceGroup,
           month: selectedMonthIndex,
-          template: attendanceTemplate,
+          template: selectedAttendanceTemplate,
           year: selectedYear,
         }),
       });
@@ -188,7 +204,7 @@ export default function ExportsPage() {
         getAttendanceExportFileName({
           group: attendanceGroup,
           month: selectedMonthIndex,
-          template: attendanceTemplate,
+          template: selectedAttendanceTemplate,
           year: selectedYear,
         }),
       );
@@ -398,12 +414,14 @@ export default function ExportsPage() {
                   <div className="relative">
                     <select
                       className="h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-9 text-sm leading-none outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-                      value={attendanceTemplate}
+                      value={selectedAttendanceTemplate}
                       onChange={(event) => setAttendanceTemplate(event.target.value as AttendanceExportTemplate)}
                     >
-                      <option value="daily-summary">Daily Summary</option>
-                      <option value="monthly-matrix">Monthly Matrix</option>
-                      <option value="weekly-validation">Weekly Validation</option>
+                      {attendanceTemplateOptions.map((template) => (
+                        <option key={template} value={template}>
+                          {getAttendanceExportTemplateLabel(template)}
+                        </option>
+                      ))}
                     </select>
                     <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   </div>

@@ -15,6 +15,12 @@ const {
 
 const exportsPagePath = path.join(__dirname, '../src/app/exports/page.tsx');
 const summaryRoutePath = path.join(__dirname, '../src/app/api/export/lateness-summary/route.ts');
+const attendanceExportRoutePath = path.join(__dirname, '../src/app/api/export/attendance/route.ts');
+
+const {
+  getAttendanceExportTemplatesForGroup,
+  isAttendanceExportTemplateAllowedForGroup,
+} = require('../src/lib/attendance-export-shared.ts');
 
 test('lateness export summary ignores non-penalty presentation rows', () => {
   const rows = [
@@ -130,4 +136,27 @@ test('exports page fetches database-backed lateness summary instead of entries p
   assert.match(source, /\/api\/export\/lateness-summary\?year=\$\{selectedYear\}&month=\$\{selectedMonthIndex\}/);
   assert.doesNotMatch(source, /\/api\/entries\?start=/);
   assert.doesNotMatch(source, /function countLateArrivals\(entries: ExportEntry\[\]\) \{\s*return entries\.length;\s*\}/);
+});
+
+test('attendance export templates limit NSS personnel to weekly validation', () => {
+  assert.deepEqual(getAttendanceExportTemplatesForGroup('main'), [
+    'daily-summary',
+    'monthly-matrix',
+    'weekly-validation',
+  ]);
+  assert.deepEqual(getAttendanceExportTemplatesForGroup('nss'), ['weekly-validation']);
+  assert.equal(isAttendanceExportTemplateAllowedForGroup('nss', 'weekly-validation'), true);
+  assert.equal(isAttendanceExportTemplateAllowedForGroup('nss', 'daily-summary'), false);
+  assert.equal(isAttendanceExportTemplateAllowedForGroup('nss', 'monthly-matrix'), false);
+});
+
+test('exports page and API enforce weekly validation for NSS personnel', () => {
+  const pageSource = fs.readFileSync(exportsPagePath, 'utf8');
+  const routeSource = fs.readFileSync(attendanceExportRoutePath, 'utf8');
+
+  assert.match(pageSource, /getAttendanceExportTemplatesForGroup\(attendanceGroup\)/);
+  assert.match(pageSource, /selectedAttendanceTemplate/);
+  assert.match(pageSource, /setAttendanceTemplate\(selectedAttendanceTemplate\)/);
+  assert.match(routeSource, /isAttendanceExportTemplateAllowedForGroup\(group, template\)/);
+  assert.match(routeSource, /NSS_ATTENDANCE_EXPORT_RESTRICTION_MESSAGE/);
 });

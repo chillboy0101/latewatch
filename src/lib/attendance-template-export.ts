@@ -6,6 +6,8 @@ import {
   type AttendanceExportGroup,
   type AttendanceExportTemplate,
   getAttendanceExportFileName,
+  isAttendanceExportTemplateAllowedForGroup,
+  NSS_ATTENDANCE_EXPORT_RESTRICTION_MESSAGE,
 } from '@/lib/attendance-export-shared';
 import { formatAbsencePermissionReason } from '@/lib/attendance-permissions';
 import { getAccraDateKey } from '@/lib/date-key';
@@ -577,6 +579,10 @@ async function buildWeeklyValidation(input: AttendanceWorkbookInput, roster: Ros
 }
 
 export async function buildAttendanceWorkbookFromData(input: AttendanceWorkbookInput) {
+  if (!isAttendanceExportTemplateAllowedForGroup(input.group, input.template)) {
+    throw new Error(NSS_ATTENDANCE_EXPORT_RESTRICTION_MESSAGE);
+  }
+
   const roster = sortedRoster(input.roster, input.group);
   const holidaySet = getHolidaySet(input.holidays);
 

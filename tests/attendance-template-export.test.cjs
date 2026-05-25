@@ -315,7 +315,7 @@ test('attendance exports format sick permissions consistently', async () => {
   assert.equal(week1.getCell('K9').value, 'Sick - 1');
 });
 
-test('monthly attendance matrix marks all absences as with permission and keeps NSS staff id/rank cells blank', async () => {
+test('monthly attendance matrix marks all absences as with permission', async () => {
   const mainWorkbook = await workbookFor({
     attendanceRecords: [
       { checkInTime: '08:30', date: '2026-04-01', staffId: 'main-on-time' },
@@ -334,24 +334,17 @@ test('monthly attendance matrix marks all absences as with permission and keeps 
   assert.equal(mainSheet.getCell('AQ10').value, 1);
   assert.equal(mainSheet.getCell('AR10').value, 0);
   assert.equal(mainSheet.getCell('AS10').value, 'Absent with permission');
+});
 
-  const nssWorkbook = await workbookFor({
-    attendanceRecords: [
-      { checkInTime: '08:30', date: '2026-04-01', staffId: 'nss-1' },
-    ],
-    group: 'nss',
-    template: 'monthly-matrix',
-  });
-  const nssSheet = nssWorkbook.worksheets[0];
-
-  assert.equal(nssSheet.getCell('A7').value, 'STAFF ID');
-  assert.equal(nssSheet.getCell('B8').value, 'NAME');
-  assert.equal(nssSheet.getCell('D8').value, 'RANK');
-  assert.equal(nssSheet.getCell('A9').value, null);
-  assert.equal(nssSheet.getCell('B9').value, 'NSS PERSON');
-  assert.equal(nssSheet.getCell('C9').value, 'FEMALE');
-  assert.equal(nssSheet.getCell('D9').value, null);
-  assert.equal(nssSheet.getCell('G9').value, 'P');
+test('NSS attendance workbooks are limited to weekly validation', async () => {
+  await assert.rejects(
+    () => workbookFor({ group: 'nss', template: 'daily-summary' }),
+    /NSS personnel attendance exports use Weekly Validation only/,
+  );
+  await assert.rejects(
+    () => workbookFor({ group: 'nss', template: 'monthly-matrix' }),
+    /NSS personnel attendance exports use Weekly Validation only/,
+  );
 });
 
 test('attendance exports use historical leave periods without adding sheet rows', async () => {
@@ -437,7 +430,7 @@ test('attendance export filenames include group, month, year, and template label
     'Attendance_Main_Staff_April_2026_Weekly_Validation.xlsx',
   );
   assert.equal(
-    getAttendanceExportFileName({ group: 'nss', month: 3, template: 'monthly-matrix', year: 2026 }),
-    'Attendance_NSS_April_2026_Monthly_Matrix.xlsx',
+    getAttendanceExportFileName({ group: 'nss', month: 3, template: 'weekly-validation', year: 2026 }),
+    'Attendance_NSS_April_2026_Weekly_Validation.xlsx',
   );
 });
