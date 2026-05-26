@@ -1,6 +1,12 @@
 import 'server-only';
 
 import { createClerkClient } from '@clerk/backend';
+import {
+  CLERK_PRIVATE_STAFF_METADATA_KEYS,
+  CLERK_PUBLIC_STAFF_METADATA_KEYS,
+  clerkStaffPrivateMetadata,
+  clerkStaffPublicMetadata,
+} from '@/lib/clerk-staff-metadata';
 import { normalizeStaffEmail } from '@/lib/staff-normalize';
 import { getSiteUrl } from '@/lib/site-metadata';
 
@@ -12,6 +18,8 @@ type OrganizationMembershipRole = Parameters<ClerkClient['organizations']['creat
 type SyncStaffIdentityInput = {
   actorUserId?: string | null;
   email: string | null | undefined;
+  isAttendanceOnly?: boolean | null;
+  isNssPersonnel?: boolean | null;
   staffId: string;
   staffName: string;
 };
@@ -48,11 +56,7 @@ function asMetadata(metadata: unknown) {
 }
 
 function staffMetadata(input: SyncStaffIdentityInput) {
-  return {
-    latewatchStaffEmail: normalizeStaffEmail(input.email),
-    latewatchStaffId: input.staffId,
-    latewatchStaffName: input.staffName,
-  };
+  return clerkStaffPrivateMetadata(input);
 }
 
 function invitationPrivateMetadata(input: SyncStaffIdentityInput) {
@@ -130,7 +134,7 @@ async function updateUserStaffMetadata(client: ClerkClient, user: ClerkUser, inp
     },
     publicMetadata: {
       ...asMetadata(user.publicMetadata),
-      latewatchStaffId: input.staffId,
+      ...clerkStaffPublicMetadata(input),
     },
   });
 }
@@ -199,9 +203,7 @@ async function ensureInvitation(client: ClerkClient, organizationId: string, inp
       inviterUserId: input.actorUserId || undefined,
       organizationId,
       privateMetadata: invitationPrivateMetadata(input),
-      publicMetadata: {
-        latewatchStaffId: input.staffId,
-      },
+      publicMetadata: clerkStaffPublicMetadata(input),
       redirectUrl: getInvitationRedirectUrl(),
       role: getMemberRole(),
     });
@@ -218,10 +220,12 @@ async function removeOwnedMetadata(client: ClerkClient, user: ClerkUser, staffId
   const privateMetadata = asMetadata(user.privateMetadata);
   const publicMetadata = asMetadata(user.publicMetadata);
 
-  delete privateMetadata.latewatchStaffEmail;
-  delete privateMetadata.latewatchStaffId;
-  delete privateMetadata.latewatchStaffName;
-  delete publicMetadata.latewatchStaffId;
+  CLERK_PRIVATE_STAFF_METADATA_KEYS.forEach((key) => {
+    delete privateMetadata[key];
+  });
+  CLERK_PUBLIC_STAFF_METADATA_KEYS.forEach((key) => {
+    delete publicMetadata[key];
+  });
 
   await client.users.updateUserMetadata(user.id, {
     privateMetadata,

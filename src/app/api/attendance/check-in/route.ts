@@ -167,6 +167,8 @@ async function resolveMemberForAttendance(input: {
       await syncStaffEmailIdentity({
         actorUserId: input.actorId,
         email,
+        isAttendanceOnly: resolved.member.isAttendanceOnly,
+        isNssPersonnel: resolved.member.isNssPersonnel,
         staffId: resolved.member.id,
         staffName: resolved.member.fullName,
       });

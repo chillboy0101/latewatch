@@ -57,6 +57,8 @@ export async function POST(
     const syncResult = await syncStaffEmailIdentity({
       actorUserId: actor?.id,
       email,
+      isAttendanceOnly: member.isAttendanceOnly,
+      isNssPersonnel: member.isNssPersonnel,
       staffId: member.id,
       staffName: member.fullName,
     });

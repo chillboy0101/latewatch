@@ -202,6 +202,8 @@ export async function PUT(
       await syncStaffEmailIdentity({
         actorUserId: actor?.id,
         email: nextEmail,
+        isAttendanceOnly: updated[0].isAttendanceOnly,
+        isNssPersonnel: updated[0].isNssPersonnel,
         staffId: id,
         staffName: updated[0].fullName,
       });
@@ -209,6 +211,8 @@ export async function PUT(
       await syncStaffEmailIdentity({
         actorUserId: actor?.id,
         email: nextEmail,
+        isAttendanceOnly: updated[0].isAttendanceOnly,
+        isNssPersonnel: updated[0].isNssPersonnel,
         staffId: id,
         staffName: updated[0].fullName,
       });

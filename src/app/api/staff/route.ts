@@ -128,6 +128,8 @@ export async function POST(request: Request) {
           await syncStaffEmailIdentity({
             actorUserId: actor?.id,
             email: restored.email,
+            isAttendanceOnly: restored.isAttendanceOnly,
+            isNssPersonnel: restored.isNssPersonnel,
             staffId: restored.id,
             staffName: restored.fullName,
           });
@@ -172,6 +174,8 @@ export async function POST(request: Request) {
       await syncStaffEmailIdentity({
         actorUserId: actor?.id,
         email: newStaff[0].email,
+        isAttendanceOnly: newStaff[0].isAttendanceOnly,
+        isNssPersonnel: newStaff[0].isNssPersonnel,
         staffId: newStaff[0].id,
         staffName: newStaff[0].fullName,
       });
