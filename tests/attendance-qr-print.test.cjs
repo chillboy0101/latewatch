@@ -143,6 +143,8 @@ test('attendance present and on-time filters stay distinct', () => {
   assert.match(apiSource, /if \(row\.attendance\?\.checkInTime\) acc\.present \+= 1/);
   assert.match(apiSource, /if \(isOnTimeAttendanceRow\(row\)\) acc\.onTime \+= 1/);
   assert.match(apiSource, /if \(isOnTimeAttendanceRow\(row\)\) acc\.onTime \+= 1;\s*if \(row\.status === 'late'\) acc\.late \+= 1/);
+  assert.match(apiSource, /else if \(row\.status === 'not_checked_in'\) acc\.notCheckedIn \+= 1/);
+  assert.doesNotMatch(apiSource, /else acc\.notCheckedIn \+= 1/);
   assert.doesNotMatch(apiSource, /if \(row\.status === 'present'\) acc\.onTime \+= 1/);
   assert.match(apiSource, /onTime: 0/);
 });

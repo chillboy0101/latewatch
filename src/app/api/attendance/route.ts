@@ -212,7 +212,7 @@ export async function GET(request: NextRequest) {
       else if (row.status === 'expected_late') acc.expectedLate += 1;
       else if (row.status === 'permission_overdue') acc.permissionOverdue += 1;
       else if (row.status === 'no_sign_out') acc.noSignOut += 1;
-      else acc.notCheckedIn += 1;
+      else if (row.status === 'not_checked_in') acc.notCheckedIn += 1;
       return acc;
     }, { excused: 0, expectedLate: 0, late: 0, noSignOut: 0, notCheckedIn: 0, onTime: 0, permissionOverdue: 0, present: 0 });
 
