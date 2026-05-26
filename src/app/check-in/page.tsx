@@ -3,7 +3,7 @@
 import { UserButton, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, Bell, CheckCircle2, Loader2, LogOut, MapPin, Moon, ReceiptText, ShieldCheck, Sun, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, LogOut, MapPin, Moon, ReceiptText, ShieldCheck, Sun, XCircle } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -491,6 +491,19 @@ export default function CheckInPage() {
     return () => window.clearInterval(interval);
   }, [deviceToken, fetchStatus]);
 
+  const getPushReminderPublicKey = useCallback(async () => {
+    if (pushReminderStatus?.publicKey) return pushReminderStatus.publicKey;
+
+    const response = await fetch('/api/attendance/check-in/push-subscription', { cache: 'no-store' });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || 'Could not load reminder setup.');
+
+    setPushReminderStatus(body);
+    if (body?.publicKey) return body.publicKey as string;
+
+    throw new Error('Reminder setup could not load. Refresh this page and try again.');
+  }, [pushReminderStatus?.publicKey]);
+
   const locationConfigured = Boolean(status?.locationConfigured);
   const locationPolicy = status?.locationPolicy || null;
 
@@ -617,10 +630,7 @@ export default function CheckInPage() {
         throw new Error('This browser does not support phone notifications.');
       }
 
-      const publicKey = pushReminderStatus?.publicKey;
-      if (!publicKey) {
-        throw new Error('Push notification setup is incomplete. Ask an admin to finish setup.');
-      }
+      const publicKey = await getPushReminderPublicKey();
 
       const permission = Notification.permission === 'granted'
         ? 'granted'
@@ -658,7 +668,7 @@ export default function CheckInPage() {
     } finally {
       setSavingPushReminder(false);
     }
-  }, [fetchPushReminderStatus, pushReminderStatus]);
+  }, [fetchPushReminderStatus, getPushReminderPublicKey, pushReminderStatus]);
 
   async function requestDeviceTransfer() {
     if (!deviceToken) return;
@@ -1084,22 +1094,9 @@ function ReminderNotificationPanel({
   signInEnabled: boolean;
   signOutEnabled: boolean;
 }) {
-  const supportMessage = notificationPermission === 'unsupported'
-      ? 'This browser does not support phone notifications.'
-      : notificationPermission === 'denied'
-        ? 'Notifications are blocked in this browser.'
-        : 'Phone reminders run on Ghana workdays.';
-
   return (
     <div className="rounded-md border border-border bg-card p-3">
-      <div className="mb-3 flex items-start gap-2">
-        <Bell className="mt-0.5 h-4 w-4 text-primary" />
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold">Attendance reminders</h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">{supportMessage}</p>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <ReminderNotificationToggle
           disabled={disabled || notificationPermission === 'unsupported'}
           enabled={signInEnabled}

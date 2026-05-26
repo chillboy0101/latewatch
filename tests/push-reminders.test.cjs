@@ -48,6 +48,10 @@ test('check-in page replaces auto attendance controls with reminder notification
   assert.match(source, /\/api\/attendance\/check-in\/push-subscription/);
   assert.match(source, /navigator\.serviceWorker\.register\('\/sw\.js'\)/);
   assert.doesNotMatch(source, /Reminder notifications are not configured/);
+  assert.doesNotMatch(source, /Attendance reminders/);
+  assert.doesNotMatch(source, /Phone reminders run on Ghana workdays/);
+  assert.doesNotMatch(source, /Ask an admin to finish setup/);
+  assert.match(source, /getPushReminderPublicKey/);
   assert.doesNotMatch(source, /disabled=\{disabled \|\| !configured \|\| notificationPermission === 'unsupported'\}/);
   assert.match(source, /disabled=\{disabled \|\| notificationPermission === 'unsupported'\}/);
   assert.doesNotMatch(source, /AutoAttendancePanel/);
