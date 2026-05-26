@@ -149,9 +149,26 @@ function writeFormula(cell: ExcelJS.Cell, formula: string, resultCents: number) 
   cell.numFmt = '#,##0.00';
 }
 
-function setAmountCell(cell: ExcelJS.Cell, centsValue: number) {
+function setStrike(cell: ExcelJS.Cell, strike: boolean) {
+  const style = cloneStyle(cell.style || {});
+  style.font = {
+    ...(style.font || {}),
+    strike,
+  };
+  cell.style = style;
+}
+
+function setAmountCell(cell: ExcelJS.Cell, centsValue: number, strike = false) {
   cell.value = centsValue > 0 ? money(centsValue) : null;
   cell.numFmt = '#,##0.00';
+  setStrike(cell, strike);
+}
+
+function paymentStatus(rowPenaltyCents: number, rowPaidCents: number, rowUnpaidCents: number) {
+  if (rowPenaltyCents <= 0) return null;
+  if (rowUnpaidCents <= 0) return 'PAID';
+  if (rowPaidCents > 0) return 'PARTIALLY PAID';
+  return 'UNPAID';
 }
 
 function monthItems(items: OffenceBookItemInput[], itemType: OffenceBookItemType, monthKey: string) {
@@ -280,12 +297,12 @@ export async function buildOffenceBookWorkbookFromData({
 
         rowPenaltyCents += dayPenaltyCents;
         rowPaidCents += dayPaidCents;
-        setAmountCell(worksheet.getCell(row, column), dayPenaltyCents);
+        setAmountCell(worksheet.getCell(row, column), dayPenaltyCents, dayPenaltyCents > 0 && dayPaidCents >= dayPenaltyCents);
       }
 
       const rowUnpaidCents = Math.max(0, rowPenaltyCents - rowPaidCents);
       writeFormula(worksheet.getCell(row, TOTAL_COLUMN), `SUM(D${row}:I${row})`, rowPenaltyCents);
-      worksheet.getCell(row, STATUS_COLUMN).value = rowPenaltyCents <= 0 ? null : rowUnpaidCents > 0 ? 'UNPAID' : 'PAID';
+      worksheet.getCell(row, STATUS_COLUMN).value = paymentStatus(rowPenaltyCents, rowPaidCents, rowUnpaidCents);
       setAmountCell(worksheet.getCell(row, PAID_COLUMN), rowPaidCents);
       writeFormula(worksheet.getCell(row, UNPAID_COLUMN), `J${row}-M${row}`, rowUnpaidCents);
 

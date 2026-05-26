@@ -45,7 +45,7 @@ const entries = [
 
 const allocations = [
   { allocatedAmount: '5.00', entryId: 'entry-before' },
-  { allocatedAmount: '5.00', entryId: 'entry-1' },
+  { allocatedAmount: '20.00', entryId: 'entry-1' },
   { allocatedAmount: '10.00', entryId: 'entry-3' },
 ];
 
@@ -73,6 +73,10 @@ function resultOf(value) {
 
 function fillArgb(cell) {
   return cell.fill?.fgColor?.argb || null;
+}
+
+function isStruck(cell) {
+  return cell.font?.strike === true;
 }
 
 function formulaTexts(workbook) {
@@ -118,15 +122,18 @@ test('offence book export preserves template layout and fills monthly payment va
   assert.equal(sheet.getCell('D27').value, 20);
   assert.equal(sheet.getCell('E27').value, 10);
   assert.equal(resultOf(sheet.getCell('J27').value), 30);
-  assert.equal(sheet.getCell('M27').value, 5);
-  assert.equal(resultOf(sheet.getCell('N27').value), 25);
-  assert.equal(sheet.getCell('K27').value, 'UNPAID');
+  assert.equal(sheet.getCell('M27').value, 20);
+  assert.equal(resultOf(sheet.getCell('N27').value), 10);
+  assert.equal(sheet.getCell('K27').value, 'PARTIALLY PAID');
+  assert.equal(isStruck(sheet.getCell('D27')), true);
+  assert.equal(isStruck(sheet.getCell('E27')), false);
 
   assert.equal(sheet.getCell('C91').value, 'Active Two');
   assert.equal(sheet.getCell('D91').value, 10);
   assert.equal(sheet.getCell('M91').value, 10);
   assert.equal(resultOf(sheet.getCell('N91').value), 0);
   assert.equal(sheet.getCell('K91').value, 'PAID');
+  assert.equal(isStruck(sheet.getCell('D91')), true);
 
   assert.equal(sheet.getCell('P5').value, 10);
   assert.equal(sheet.getCell('P8').value, 1000);
@@ -134,11 +141,11 @@ test('offence book export preserves template layout and fills monthly payment va
   assert.equal(sheet.getCell('R6').value, 'TnT');
   assert.equal(sheet.getCell('S6').value, 50);
   assert.equal(resultOf(sheet.getCell('P15').value), 40);
-  assert.equal(resultOf(sheet.getCell('P18').value), 15);
+  assert.equal(resultOf(sheet.getCell('P18').value), 30);
   assert.equal(resultOf(sheet.getCell('S15').value), 50);
   assert.equal(resultOf(sheet.getCell('T5').value), 1000);
-  assert.equal(resultOf(sheet.getCell('T8').value), 1025);
-  assert.equal(resultOf(sheet.getCell('T11').value), 975);
+  assert.equal(resultOf(sheet.getCell('T8').value), 1040);
+  assert.equal(resultOf(sheet.getCell('T11').value), 990);
 });
 
 test('offence book export calculates amount owed and preserves owed highlighting', async () => {
@@ -147,7 +154,7 @@ test('offence book export calculates amount owed and preserves owed highlighting
 
   assert.ok(sheet);
   assert.equal(sheet.getCell('P26').value, 'Active One');
-  assert.equal(sheet.getCell('Q26').value, 25);
+  assert.equal(sheet.getCell('Q26').value, 10);
   assert.equal(fillArgb(sheet.getCell('P26')), 'FFFF00FF');
   assert.equal(fillArgb(sheet.getCell('Q26')), 'FFFF00FF');
 
