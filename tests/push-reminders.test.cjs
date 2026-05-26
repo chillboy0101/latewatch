@@ -15,6 +15,7 @@ const attendancePagePath = path.join(root, 'src/app/attendance/page.tsx');
 const pushApiPath = path.join(root, 'src/app/api/attendance/check-in/push-subscription/route.ts');
 const signInReminderRoutePath = path.join(root, 'src/app/api/attendance/reminders/sign-in/route.ts');
 const signOutReminderRoutePath = path.join(root, 'src/app/api/attendance/reminders/sign-out/route.ts');
+const pushClientLibPath = path.join(root, 'src/lib/push-client.ts');
 const pushReminderLibPath = path.join(root, 'src/lib/push-reminders.ts');
 const serviceWorkerPath = path.join(root, 'public/sw.js');
 const vercelPath = path.join(root, 'vercel.json');
@@ -80,6 +81,18 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.match(signOutRoute, /sendAttendanceReminderBatch\('sign_out'\)/);
   assert.match(vercel, /"path": "\/api\/attendance\/reminders\/sign-in"[\s\S]*"schedule": "15 8 \* \* 1-5"/);
   assert.match(vercel, /"path": "\/api\/attendance\/reminders\/sign-out"[\s\S]*"schedule": "30 16 \* \* 1-5"/);
+});
+
+test('push client normalizes pasted VAPID public keys before browser subscribe', () => {
+  require('tsx/cjs');
+  const { normalizeVapidPublicKey, vapidPublicKeyToUint8Array } = require(pushClientLibPath);
+  const cleanKey = Buffer.concat([Buffer.from([4]), Buffer.alloc(64, 1)]).toString('base64url');
+  const pastedKey = `\uFEFF ${cleanKey}\n`;
+
+  assert.equal(normalizeVapidPublicKey(pastedKey), cleanKey);
+  const decoded = vapidPublicKeyToUint8Array(pastedKey);
+  assert.ok(decoded instanceof Uint8Array);
+  assert.equal(decoded.length, 65);
 });
 
 test('service worker displays push notifications and opens check-in', () => {

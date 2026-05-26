@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { formatDisplayDate } from '@/lib/date-format';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
+import { vapidPublicKeyToUint8Array } from '@/lib/push-client';
 import { applyThemePreference, getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 
@@ -271,14 +272,6 @@ function getOrCreateDeviceToken() {
 
   window.localStorage.setItem(storageKey, token);
   return token;
-}
-
-function urlBase64ToUint8Array(value: string) {
-  const padding = '='.repeat((4 - (value.length % 4)) % 4);
-  const base64 = `${value}${padding}`.replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = window.atob(base64);
-
-  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
 }
 
 function locationErrorMessage(error: unknown) {
@@ -643,7 +636,7 @@ export default function CheckInPage() {
       const registration = await navigator.serviceWorker.register('/sw.js');
       const existingSubscription = await registration.pushManager.getSubscription();
       const browserSubscription = existingSubscription || await registration.pushManager.subscribe({
-        applicationServerKey: urlBase64ToUint8Array(publicKey),
+        applicationServerKey: vapidPublicKeyToUint8Array(publicKey),
         userVisibleOnly: true,
       });
 
