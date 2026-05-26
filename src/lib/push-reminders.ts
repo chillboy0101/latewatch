@@ -69,19 +69,30 @@ export function shouldSendPushReminder(input: ReminderEligibilityInput) {
   return Boolean(input.attendance?.checkInTime && !input.attendance?.signOutTime);
 }
 
-function reminderCopy(reminderType: PushReminderType) {
+function staffFirstName(staffName: string | null | undefined) {
+  const firstName = (staffName || '').trim().split(/\s+/)[0] || '';
+  if (!firstName) return '';
+
+  return firstName
+    .split('-')
+    .map((part) => part ? `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}` : part)
+    .join('-');
+}
+
+export function reminderCopy(reminderType: PushReminderType, staffName?: string | null) {
+  const firstName = staffFirstName(staffName);
   if (reminderType === 'sign_in') {
     return {
       body: 'Please sign in for today.',
       tag: 'latewatch-sign-in-reminder',
-      title: 'Time to sign in',
+      title: firstName ? `${firstName}, time to sign in` : 'Time to sign in',
     };
   }
 
   return {
     body: 'Please sign out for today.',
     tag: 'latewatch-sign-out-reminder',
-    title: 'Time to sign out',
+    title: firstName ? `${firstName}, time to sign out` : 'Time to sign out',
   };
 }
 
@@ -166,7 +177,6 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
 
   const attendanceByStaffId = new Map(attendanceRows.map((row) => [row.staffId, row]));
   const permissionByStaffId = new Map(permissionRows.map((row) => [row.staffId, row]));
-  const copy = reminderCopy(reminderType);
 
   for (const row of subscriptionRows) {
     const shouldSend = shouldSendPushReminder({
@@ -209,6 +219,8 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
       summary.skipped += 1;
       continue;
     }
+
+    const copy = reminderCopy(reminderType, row.staffName);
 
     try {
       await webpush.sendNotification({

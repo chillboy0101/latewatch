@@ -100,6 +100,21 @@ test('push client normalizes pasted VAPID public keys before browser subscribe',
   );
 });
 
+test('attendance reminder notification titles include the staff first name', () => {
+  require('tsx/cjs');
+  const originalLoad = Module._load;
+  Module._load = function patchedLoad(request, parent, isMain) {
+    if (request === 'server-only') return {};
+    return originalLoad.call(this, request, parent, isMain);
+  };
+  const { reminderCopy } = require(pushReminderLibPath);
+  Module._load = originalLoad;
+
+  assert.equal(reminderCopy('sign_in', 'CARL CHRISTIAN QUIST').title, 'Carl, time to sign in');
+  assert.equal(reminderCopy('sign_out', 'CARL CHRISTIAN QUIST').title, 'Carl, time to sign out');
+  assert.equal(reminderCopy('sign_in', '').title, 'Time to sign in');
+});
+
 test('service worker displays push notifications and opens check-in', () => {
   assert.equal(fs.existsSync(serviceWorkerPath), true);
   const source = fs.readFileSync(serviceWorkerPath, 'utf8');
