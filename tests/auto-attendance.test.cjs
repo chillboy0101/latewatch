@@ -58,5 +58,7 @@ test('check-in page renders push reminder controls instead of auto actions', () 
   assert.match(source, /Enable sign-out reminder/);
   assert.match(source, /\/api\/attendance\/check-in\/push-subscription/);
   assert.match(source, /navigator\.serviceWorker\.register\('\/sw\.js'\)/);
+  assert.doesNotMatch(source, /Reminder notifications are not configured/);
+  assert.match(source, /disabled=\{disabled \|\| notificationPermission === 'unsupported'\}/);
   assert.doesNotMatch(source, /Auto check-in|Auto sign-out|auto_attendance/);
 });

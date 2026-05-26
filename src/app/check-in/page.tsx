@@ -619,7 +619,7 @@ export default function CheckInPage() {
 
       const publicKey = pushReminderStatus?.publicKey;
       if (!publicKey) {
-        throw new Error('Reminder notifications are not configured yet.');
+        throw new Error('Push notification setup is incomplete. Ask an admin to finish setup.');
       }
 
       const permission = Notification.permission === 'granted'
@@ -836,7 +836,6 @@ export default function CheckInPage() {
                 )}
 
                 <ReminderNotificationPanel
-                  configured={Boolean(pushReminderStatus?.configured)}
                   disabled={!status?.staff || pushReminderLoading || savingPushReminder}
                   loading={pushReminderLoading || savingPushReminder}
                   notificationPermission={notificationPermission}
@@ -1069,7 +1068,6 @@ function AccessNotSetUp({ email }: { email: string | null }) {
 }
 
 function ReminderNotificationPanel({
-  configured,
   disabled,
   loading,
   notificationPermission,
@@ -1078,7 +1076,6 @@ function ReminderNotificationPanel({
   signInEnabled,
   signOutEnabled,
 }: {
-  configured: boolean;
   disabled: boolean;
   loading: boolean;
   notificationPermission: BrowserNotificationPermission;
@@ -1087,9 +1084,7 @@ function ReminderNotificationPanel({
   signInEnabled: boolean;
   signOutEnabled: boolean;
 }) {
-  const supportMessage = !configured
-    ? 'Reminder notifications are not configured.'
-    : notificationPermission === 'unsupported'
+  const supportMessage = notificationPermission === 'unsupported'
       ? 'This browser does not support phone notifications.'
       : notificationPermission === 'denied'
         ? 'Notifications are blocked in this browser.'
@@ -1106,14 +1101,14 @@ function ReminderNotificationPanel({
       </div>
       <div className="grid grid-cols-2 gap-2">
         <ReminderNotificationToggle
-          disabled={disabled || !configured || notificationPermission === 'unsupported'}
+          disabled={disabled || notificationPermission === 'unsupported'}
           enabled={signInEnabled}
           label="Enable sign-in reminder"
           loading={loading}
           onToggle={onToggleCheckIn}
         />
         <ReminderNotificationToggle
-          disabled={disabled || !configured || notificationPermission === 'unsupported'}
+          disabled={disabled || notificationPermission === 'unsupported'}
           enabled={signOutEnabled}
           label="Enable sign-out reminder"
           loading={loading}
