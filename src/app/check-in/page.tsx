@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { formatDisplayDate } from '@/lib/date-format';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
-import { vapidPublicKeyToUint8Array } from '@/lib/push-client';
+import { pushSubscriptionErrorMessage, vapidPublicKeyToUint8Array } from '@/lib/push-client';
 import { applyThemePreference, getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 
@@ -633,7 +633,8 @@ export default function CheckInPage() {
         throw new Error('Notification permission is blocked for this browser.');
       }
 
-      const registration = await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.register('/sw.js');
+      const registration = await navigator.serviceWorker.ready;
       const existingSubscription = await registration.pushManager.getSubscription();
       const browserSubscription = existingSubscription || await registration.pushManager.subscribe({
         applicationServerKey: vapidPublicKeyToUint8Array(publicKey),
@@ -655,8 +656,9 @@ export default function CheckInPage() {
       setPushReminderStatus(body);
       setMessage({ type: 'success', text: 'Reminder notifications updated.' });
     } catch (error) {
-      console.warn('Reminder settings could not update:', error);
-      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Could not update reminders' });
+      const errorMessage = pushSubscriptionErrorMessage(error);
+      console.warn('Reminder settings could not update:', errorMessage);
+      setMessage({ type: 'error', text: errorMessage });
       await fetchPushReminderStatus({ silent: true });
     } finally {
       setSavingPushReminder(false);

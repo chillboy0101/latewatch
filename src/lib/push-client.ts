@@ -1,4 +1,5 @@
 const INVISIBLE_KEY_CHARS = /[\uFEFF\u200B-\u200D\u2060\s]/g;
+const PUSH_SERVICE_UNAVAILABLE_MESSAGE = 'This browser could not connect to its push notification service. Open LateWatch in Chrome, Edge, or Safari, or enable Brave push messaging and try again.';
 
 export function normalizeVapidPublicKey(value: string) {
   return value
@@ -24,4 +25,24 @@ export function vapidPublicKeyToUint8Array(value: string) {
   } catch {
     throw new Error('Reminder setup key is invalid. Refresh this page and try again.');
   }
+}
+
+export function pushSubscriptionErrorMessage(error: unknown) {
+  const name = error && typeof error === 'object' && 'name' in error ? String(error.name) : '';
+  const message = error instanceof Error
+    ? error.message
+    : error && typeof error === 'object' && 'message' in error
+      ? String(error.message)
+      : '';
+  const normalizedMessage = message.toLowerCase();
+
+  if (name === 'AbortError' && normalizedMessage.includes('push service')) {
+    return PUSH_SERVICE_UNAVAILABLE_MESSAGE;
+  }
+
+  if (normalizedMessage.includes('registration failed') && normalizedMessage.includes('push service')) {
+    return PUSH_SERVICE_UNAVAILABLE_MESSAGE;
+  }
+
+  return message || 'Could not update reminders';
 }

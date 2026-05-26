@@ -1,8 +1,12 @@
 import type { MetadataRoute } from "next";
 import { SITE_DESCRIPTION, SITE_NAME, getSiteUrl } from "@/lib/site-metadata";
 
+type ChromiumPushManifest = MetadataRoute.Manifest & {
+  gcm_sender_id: string;
+};
+
 export default function manifest(): MetadataRoute.Manifest {
-  return {
+  const data = {
     name: `${SITE_NAME} Attendance`,
     short_name: SITE_NAME,
     description: SITE_DESCRIPTION,
@@ -12,6 +16,7 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: "#020617",
     theme_color: "#2563eb",
     categories: ["business", "productivity", "utilities"],
+    gcm_sender_id: "103953800507",
     lang: "en-GH",
     icons: [
       {
@@ -33,5 +38,7 @@ export default function manifest(): MetadataRoute.Manifest {
         purpose: "any",
       },
     ],
-  };
+  } satisfies ChromiumPushManifest;
+
+  return data;
 }

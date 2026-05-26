@@ -24,6 +24,7 @@ test('web app manifest opens installed LateWatch at staff check-in with install 
   assert.equal(data.start_url, '/check-in');
   assert.equal(data.scope, '/');
   assert.equal(data.display, 'standalone');
+  assert.equal(data.gcm_sender_id, '103953800507');
   assert.equal(iconSizes.has('192x192'), true);
   assert.equal(iconSizes.has('512x512'), true);
 });

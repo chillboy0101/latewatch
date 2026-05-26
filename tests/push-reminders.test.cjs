@@ -48,6 +48,7 @@ test('check-in page replaces auto attendance controls with reminder notification
   assert.match(source, /Enable sign-out reminder/);
   assert.match(source, /\/api\/attendance\/check-in\/push-subscription/);
   assert.match(source, /navigator\.serviceWorker\.register\('\/sw\.js'\)/);
+  assert.match(source, /navigator\.serviceWorker\.ready/);
   assert.doesNotMatch(source, /Reminder notifications are not configured/);
   assert.doesNotMatch(source, /Attendance reminders/);
   assert.doesNotMatch(source, /Phone reminders run on Ghana workdays/);
@@ -85,7 +86,7 @@ test('push subscription API and reminder cron routes are wired', () => {
 
 test('push client normalizes pasted VAPID public keys before browser subscribe', () => {
   require('tsx/cjs');
-  const { normalizeVapidPublicKey, vapidPublicKeyToUint8Array } = require(pushClientLibPath);
+  const { normalizeVapidPublicKey, pushSubscriptionErrorMessage, vapidPublicKeyToUint8Array } = require(pushClientLibPath);
   const cleanKey = Buffer.concat([Buffer.from([4]), Buffer.alloc(64, 1)]).toString('base64url');
   const pastedKey = `\uFEFF ${cleanKey}\n`;
 
@@ -93,6 +94,10 @@ test('push client normalizes pasted VAPID public keys before browser subscribe',
   const decoded = vapidPublicKeyToUint8Array(pastedKey);
   assert.ok(decoded instanceof Uint8Array);
   assert.equal(decoded.length, 65);
+  assert.equal(
+    pushSubscriptionErrorMessage(new DOMException('Registration failed - push service error', 'AbortError')),
+    'This browser could not connect to its push notification service. Open LateWatch in Chrome, Edge, or Safari, or enable Brave push messaging and try again.',
+  );
 });
 
 test('service worker displays push notifications and opens check-in', () => {
