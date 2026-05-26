@@ -3,13 +3,12 @@
 import { UserButton, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, LogOut, MapPin, Moon, ReceiptText, ShieldCheck, Sun, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Bell, CheckCircle2, Loader2, LogOut, MapPin, Moon, ReceiptText, ShieldCheck, Sun, XCircle } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
-import { resolveAutoAttendanceAction } from '@/lib/auto-attendance';
 import { formatDisplayDate } from '@/lib/date-format';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
 import { applyThemePreference, getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
@@ -49,8 +48,6 @@ interface CheckInStatus {
   networkConfigured: boolean;
   officeCodeRequired: boolean;
   device: {
-    autoCheckInEnabled: boolean;
-    autoSignOutEnabled: boolean;
     lastSeenAt: string | null;
     registered: boolean;
     registeredAt: string | null;
@@ -84,6 +81,17 @@ interface CheckInStatus {
 }
 
 type PenaltyPaymentStatus = 'paid' | 'partially_paid' | 'unpaid';
+
+interface PushReminderStatus {
+  configured: boolean;
+  publicKey: string | null;
+  subscription: {
+    disabledAt: string | null;
+    endpoint: string;
+    signInEnabled: boolean;
+    signOutEnabled: boolean;
+  } | null;
+}
 
 interface PenaltyHistoryEntry {
   arrivalTime: string | null;
@@ -129,7 +137,7 @@ type LiveLocation =
   | { blocking: false; message: string; state: 'checking' }
   | { blocking: true; distanceMeters?: number | null; message: string; state: 'error' | 'outside' | 'weak' };
 type AttendanceAction = 'check_in' | 'sign_out';
-type AttendanceSource = 'auto_attendance' | 'staff_portal';
+type BrowserNotificationPermission = NotificationPermission | 'unsupported';
 
 const CHECK_IN_FEEDBACK_DISMISS_MS = 4_000;
 
@@ -265,6 +273,14 @@ function getOrCreateDeviceToken() {
   return token;
 }
 
+function urlBase64ToUint8Array(value: string) {
+  const padding = '='.repeat((4 - (value.length % 4)) % 4);
+  const base64 = `${value}${padding}`.replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+
+  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+}
+
 function locationErrorMessage(error: unknown) {
   if (error && typeof error === 'object' && 'code' in error) {
     const code = Number((error as { code?: unknown }).code);
@@ -351,15 +367,16 @@ export default function CheckInPage() {
   const [status, setStatus] = useState<CheckInStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [checkingIn, setCheckingIn] = useState(false);
-  const [autoAttendanceAction, setAutoAttendanceAction] = useState<AttendanceAction | null>(null);
-  const [lastAutoActionAt, setLastAutoActionAt] = useState<number | null>(null);
-  const [savingAutoSettings, setSavingAutoSettings] = useState(false);
   const [requestingTransfer, setRequestingTransfer] = useState(false);
   const [deviceToken, setDeviceToken] = useState<string | null>(null);
   const [penaltyHistory, setPenaltyHistory] = useState<PenaltyHistoryResponse | null>(null);
   const [penaltyHistoryError, setPenaltyHistoryError] = useState<string | null>(null);
   const [penaltyHistoryLoading, setPenaltyHistoryLoading] = useState(false);
   const [penaltyHistoryOpen, setPenaltyHistoryOpen] = useState(false);
+  const [pushReminderStatus, setPushReminderStatus] = useState<PushReminderStatus | null>(null);
+  const [pushReminderLoading, setPushReminderLoading] = useState(false);
+  const [savingPushReminder, setSavingPushReminder] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<BrowserNotificationPermission>('default');
   const [liveLocation, setLiveLocation] = useState<LiveLocation>({
     blocking: false,
     message: 'Waiting for location.',
@@ -373,6 +390,10 @@ export default function CheckInPage() {
 
   useEffect(() => {
     setDeviceToken(getOrCreateDeviceToken());
+  }, []);
+
+  useEffect(() => {
+    setNotificationPermission('Notification' in window ? Notification.permission : 'unsupported');
   }, []);
 
   useEffect(() => {
@@ -409,6 +430,29 @@ export default function CheckInPage() {
       if (!options?.silent) setLoading(false);
     }
   }, [deviceToken]);
+
+  const fetchPushReminderStatus = useCallback(async (options?: { silent?: boolean }) => {
+    if (!isLoaded || !user) return;
+    if (!options?.silent) setPushReminderLoading(true);
+
+    try {
+      const response = await fetch('/api/attendance/check-in/push-subscription', { cache: 'no-store' });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || 'Could not load reminder settings');
+      setPushReminderStatus(body);
+    } catch (error) {
+      console.warn('Reminder settings could not load:', error);
+      if (!options?.silent) {
+        setPushReminderStatus(null);
+      }
+    } finally {
+      if (!options?.silent) setPushReminderLoading(false);
+    }
+  }, [isLoaded, user]);
+
+  useEffect(() => {
+    void fetchPushReminderStatus();
+  }, [fetchPushReminderStatus]);
 
   useEffect(() => {
     fetchStatus();
@@ -497,15 +541,9 @@ export default function CheckInPage() {
     };
   }, [locationConfigured, locationPolicy]);
 
-  const submitAttendance = useCallback(async (options?: { action?: AttendanceAction; source?: AttendanceSource }) => {
+  const submitAttendance = useCallback(async (options?: { action?: AttendanceAction }) => {
     const action = options?.action || (status?.attendance && !status.attendance.signOutTime ? 'sign_out' : 'check_in');
-    const source = options?.source || 'staff_portal';
-    const isAutoAttendance = source === 'auto_attendance';
-    if (isAutoAttendance) {
-      setAutoAttendanceAction(action);
-    } else {
-      setCheckingIn(true);
-    }
+    setCheckingIn(true);
     setMessage(null);
 
     try {
@@ -516,7 +554,6 @@ export default function CheckInPage() {
           deviceLabel: navigator.userAgent,
           deviceToken,
           location,
-          source,
         }),
         headers: {
           'Content-Type': 'application/json',
@@ -530,83 +567,98 @@ export default function CheckInPage() {
       setStatus(body);
       setMessage({
         type: 'success',
-        text: isAutoAttendance
-          ? action === 'sign_out'
-            ? 'Auto sign-out complete.'
-            : 'Auto check-in complete.'
-          : body.signedOut
-            ? 'You have checked out for today.'
-            : body.alreadySignedOut
-              ? 'You already checked out today.'
-              : body.alreadyCheckedIn
-                ? 'You already checked in today.'
-                : 'You have checked in for today.',
+        text: body.signedOut
+          ? 'You have checked out for today.'
+          : body.alreadySignedOut
+            ? 'You already checked out today.'
+            : body.alreadyCheckedIn
+              ? 'You already checked in today.'
+              : 'You have checked in for today.',
       });
     } catch (error) {
       console.warn('Attendance action could not complete:', error);
       const errorMessage = locationErrorMessage(error);
-      await fetchStatus({ preserveMessage: isAutoAttendance, silent: isAutoAttendance });
-      if (!isAutoAttendance) {
-        setMessage({ type: 'error', text: errorMessage });
-      }
+      await fetchStatus();
+      setMessage({ type: 'error', text: errorMessage });
     } finally {
-      if (isAutoAttendance) {
-        setAutoAttendanceAction(null);
-      } else {
-        setCheckingIn(false);
-      }
+      setCheckingIn(false);
     }
   }, [deviceToken, fetchStatus, status]);
 
-  const updateAutoAttendanceSettings = useCallback(async (next: {
-    autoCheckInEnabled: boolean;
-    autoSignOutEnabled: boolean;
+  const updatePushReminderSettings = useCallback(async (next: {
+    signInEnabled: boolean;
+    signOutEnabled: boolean;
   }) => {
-    if (!deviceToken) return;
-
-    setSavingAutoSettings(true);
+    setSavingPushReminder(true);
     setMessage(null);
 
     try {
-      const response = await fetch('/api/attendance/check-in/auto-settings', {
+      const currentEndpoint = pushReminderStatus?.subscription?.endpoint || null;
+
+      if (!next.signInEnabled && !next.signOutEnabled) {
+        const registration = await navigator.serviceWorker?.getRegistration('/sw.js');
+        const browserSubscription = await registration?.pushManager.getSubscription();
+        await browserSubscription?.unsubscribe();
+
+        const response = await fetch('/api/attendance/check-in/push-subscription', {
+          body: JSON.stringify({ endpoint: currentEndpoint }),
+          headers: { 'Content-Type': 'application/json' },
+          method: 'DELETE',
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || 'Could not disable reminders');
+        setPushReminderStatus(body);
+        setMessage({ type: 'success', text: 'Reminder notifications disabled.' });
+        return;
+      }
+
+      if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+        setNotificationPermission('unsupported');
+        throw new Error('This browser does not support phone notifications.');
+      }
+
+      const publicKey = pushReminderStatus?.publicKey;
+      if (!publicKey) {
+        throw new Error('Reminder notifications are not configured yet.');
+      }
+
+      const permission = Notification.permission === 'granted'
+        ? 'granted'
+        : await Notification.requestPermission();
+      setNotificationPermission(permission);
+      if (permission !== 'granted') {
+        throw new Error('Notification permission is blocked for this browser.');
+      }
+
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      const existingSubscription = await registration.pushManager.getSubscription();
+      const browserSubscription = existingSubscription || await registration.pushManager.subscribe({
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+        userVisibleOnly: true,
+      });
+
+      const response = await fetch('/api/attendance/check-in/push-subscription', {
         body: JSON.stringify({
-          ...next,
-          deviceToken,
+          signInEnabled: next.signInEnabled,
+          signOutEnabled: next.signOutEnabled,
+          subscription: browserSubscription.toJSON(),
         }),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-latewatch-device': deviceToken,
-        },
-        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        method: 'PUT',
       });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || 'Could not update auto attendance');
+      if (!response.ok) throw new Error(body.error || 'Could not update reminders');
 
-      setStatus((current) => current
-        ? {
-            ...current,
-            device: current.device
-              ? {
-                  ...current.device,
-                  autoCheckInEnabled: Boolean(body.device?.autoCheckInEnabled),
-                  autoSignOutEnabled: Boolean(body.device?.autoSignOutEnabled),
-                  lastSeenAt: body.device?.lastSeenAt || current.device.lastSeenAt,
-                  registered: Boolean(body.device?.registered ?? current.device.registered),
-                  registeredAt: body.device?.registeredAt || current.device.registeredAt,
-                  trusted: Boolean(body.device?.trusted ?? current.device.trusted),
-                }
-              : body.device || null,
-          }
-        : current);
-      setMessage({ type: 'success', text: 'Auto attendance updated.' });
+      setPushReminderStatus(body);
+      setMessage({ type: 'success', text: 'Reminder notifications updated.' });
     } catch (error) {
-      console.warn('Auto attendance settings could not update:', error);
-      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Could not update auto attendance' });
-      await fetchStatus({ preserveMessage: true, silent: true });
+      console.warn('Reminder settings could not update:', error);
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Could not update reminders' });
+      await fetchPushReminderStatus({ silent: true });
     } finally {
-      setSavingAutoSettings(false);
+      setSavingPushReminder(false);
     }
-  }, [deviceToken, fetchStatus]);
+  }, [fetchPushReminderStatus, pushReminderStatus]);
 
   async function requestDeviceTransfer() {
     if (!deviceToken) return;
@@ -671,37 +723,8 @@ export default function CheckInPage() {
   );
   const accessNotSetUp = Boolean(status && !status.staff);
   const locationBlocksAction = Boolean(status?.locationConfigured && liveLocation.blocking);
-  const autoDeviceReady = Boolean(status?.staff && status.device?.registered && status.device.trusted);
-
-  useEffect(() => {
-    if (!autoDeviceReady || checkingIn || autoAttendanceAction || savingAutoSettings) return;
-
-    const action = resolveAutoAttendanceAction({
-      autoCheckInEnabled: Boolean(status?.device?.autoCheckInEnabled),
-      autoSignOutEnabled: Boolean(status?.device?.autoSignOutEnabled),
-      canCheckIn: autoDeviceReady && canCheckIn,
-      canSubmitSignOut: autoDeviceReady && canSubmitSignOut,
-      lastAutoActionAt,
-      officeVerified: liveLocation.state === 'inside',
-    });
-
-    if (!action) return;
-
-    setLastAutoActionAt(Date.now());
-    void submitAttendance({ action, source: 'auto_attendance' });
-  }, [
-    autoAttendanceAction,
-    autoDeviceReady,
-    canCheckIn,
-    canSubmitSignOut,
-    checkingIn,
-    lastAutoActionAt,
-    liveLocation.state,
-    savingAutoSettings,
-    status?.device?.autoCheckInEnabled,
-    status?.device?.autoSignOutEnabled,
-    submitAttendance,
-  ]);
+  const signInReminderEnabled = Boolean(pushReminderStatus?.subscription?.signInEnabled && !pushReminderStatus.subscription.disabledAt);
+  const signOutReminderEnabled = Boolean(pushReminderStatus?.subscription?.signOutEnabled && !pushReminderStatus.subscription.disabledAt);
 
   return (
     <main className="h-dvh overflow-hidden bg-background px-3 py-3 text-foreground sm:px-6 sm:py-4">
@@ -812,20 +835,23 @@ export default function CheckInPage() {
                   </div>
                 )}
 
-                <AutoAttendancePanel
-                  autoCheckInEnabled={Boolean(status?.device?.autoCheckInEnabled)}
-                  autoSignOutEnabled={Boolean(status?.device?.autoSignOutEnabled)}
-                  disabled={!autoDeviceReady || savingAutoSettings || Boolean(autoAttendanceAction)}
+                <ReminderNotificationPanel
+                  configured={Boolean(pushReminderStatus?.configured)}
+                  disabled={!status?.staff || pushReminderLoading || savingPushReminder}
+                  loading={pushReminderLoading || savingPushReminder}
+                  notificationPermission={notificationPermission}
+                  signInEnabled={signInReminderEnabled}
+                  signOutEnabled={signOutReminderEnabled}
                   onToggleCheckIn={() => {
-                    void updateAutoAttendanceSettings({
-                      autoCheckInEnabled: !status?.device?.autoCheckInEnabled,
-                      autoSignOutEnabled: Boolean(status?.device?.autoSignOutEnabled),
+                    void updatePushReminderSettings({
+                      signInEnabled: !signInReminderEnabled,
+                      signOutEnabled: signOutReminderEnabled,
                     });
                   }}
                   onToggleSignOut={() => {
-                    void updateAutoAttendanceSettings({
-                      autoCheckInEnabled: Boolean(status?.device?.autoCheckInEnabled),
-                      autoSignOutEnabled: !status?.device?.autoSignOutEnabled,
+                    void updatePushReminderSettings({
+                      signInEnabled: signInReminderEnabled,
+                      signOutEnabled: !signOutReminderEnabled,
                     });
                   }}
                 />
@@ -1042,32 +1068,55 @@ function AccessNotSetUp({ email }: { email: string | null }) {
   );
 }
 
-function AutoAttendancePanel({
-  autoCheckInEnabled,
-  autoSignOutEnabled,
+function ReminderNotificationPanel({
+  configured,
   disabled,
+  loading,
+  notificationPermission,
   onToggleCheckIn,
   onToggleSignOut,
+  signInEnabled,
+  signOutEnabled,
 }: {
-  autoCheckInEnabled: boolean;
-  autoSignOutEnabled: boolean;
+  configured: boolean;
   disabled: boolean;
+  loading: boolean;
+  notificationPermission: BrowserNotificationPermission;
   onToggleCheckIn: () => void;
   onToggleSignOut: () => void;
+  signInEnabled: boolean;
+  signOutEnabled: boolean;
 }) {
+  const supportMessage = !configured
+    ? 'Reminder notifications are not configured.'
+    : notificationPermission === 'unsupported'
+      ? 'This browser does not support phone notifications.'
+      : notificationPermission === 'denied'
+        ? 'Notifications are blocked in this browser.'
+        : 'Phone reminders run on Ghana workdays.';
+
   return (
-    <div className="rounded-md border border-border bg-card p-2">
+    <div className="rounded-md border border-border bg-card p-3">
+      <div className="mb-3 flex items-start gap-2">
+        <Bell className="mt-0.5 h-4 w-4 text-primary" />
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold">Attendance reminders</h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">{supportMessage}</p>
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-2">
-        <AutoAttendanceToggle
-          disabled={disabled}
-          enabled={autoCheckInEnabled}
-          label="Auto check-in"
+        <ReminderNotificationToggle
+          disabled={disabled || !configured || notificationPermission === 'unsupported'}
+          enabled={signInEnabled}
+          label="Enable sign-in reminder"
+          loading={loading}
           onToggle={onToggleCheckIn}
         />
-        <AutoAttendanceToggle
-          disabled={disabled}
-          enabled={autoSignOutEnabled}
-          label="Auto sign-out"
+        <ReminderNotificationToggle
+          disabled={disabled || !configured || notificationPermission === 'unsupported'}
+          enabled={signOutEnabled}
+          label="Enable sign-out reminder"
+          loading={loading}
           onToggle={onToggleSignOut}
         />
       </div>
@@ -1075,15 +1124,17 @@ function AutoAttendancePanel({
   );
 }
 
-function AutoAttendanceToggle({
+function ReminderNotificationToggle({
   disabled,
   enabled,
   label,
+  loading,
   onToggle,
 }: {
   disabled: boolean;
   enabled: boolean;
   label: string;
+  loading: boolean;
   onToggle: () => void;
 }) {
   return (
@@ -1100,10 +1151,14 @@ function AutoAttendanceToggle({
       type="button"
     >
       <span className="truncate">{label}</span>
-      <span className={cn(
-        'h-2.5 w-2.5 shrink-0 rounded-full',
-        enabled ? 'bg-primary' : 'bg-muted-foreground/40',
-      )} />
+      {loading ? (
+        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+      ) : (
+        <span className={cn(
+          'h-2.5 w-2.5 shrink-0 rounded-full',
+          enabled ? 'bg-primary' : 'bg-muted-foreground/40',
+        )} />
+      )}
     </button>
   );
 }

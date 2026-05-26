@@ -387,6 +387,40 @@ export async function POST() {
       )
     `);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS offence_book_item_month_type_order_idx ON offence_book_item(month_key, item_type, display_order)`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS push_subscription (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        staff_id uuid NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
+        user_id text NOT NULL,
+        endpoint text NOT NULL,
+        p256dh text NOT NULL,
+        auth text NOT NULL,
+        user_agent text,
+        sign_in_enabled boolean DEFAULT true NOT NULL,
+        sign_out_enabled boolean DEFAULT true NOT NULL,
+        disabled_at timestamp,
+        created_at timestamp DEFAULT now(),
+        updated_at timestamp DEFAULT now(),
+        UNIQUE(endpoint)
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS push_subscription_staff_idx ON push_subscription(staff_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS push_subscription_user_idx ON push_subscription(user_id)`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS push_reminder_delivery (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        subscription_id uuid NOT NULL REFERENCES push_subscription(id) ON DELETE CASCADE,
+        staff_id uuid NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
+        date date NOT NULL,
+        reminder_type text NOT NULL,
+        status text NOT NULL,
+        error text,
+        sent_at timestamp,
+        created_at timestamp DEFAULT now(),
+        UNIQUE(subscription_id, date, reminder_type)
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS push_reminder_delivery_date_type_idx ON push_reminder_delivery(date, reminder_type)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS attendance_record_date_idx ON attendance_record(date)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS attendance_attempt_date_idx ON attendance_attempt(date)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS attendance_attempt_staff_date_idx ON attendance_attempt(staff_id, date)`);
@@ -426,6 +460,8 @@ export async function POST() {
           'lateness_payment',
           'lateness_payment_allocation',
           'offence_book_item',
+          'push_subscription',
+          'push_reminder_delivery',
         ],
       },
       reason: 'schema-maintenance',

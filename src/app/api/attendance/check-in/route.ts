@@ -202,8 +202,6 @@ function responsePayload(input: {
   } | null;
   networkConfigured: boolean;
   device?: {
-    autoCheckInEnabled?: boolean;
-    autoSignOutEnabled?: boolean;
     registered: boolean;
     trusted: boolean;
     lastSeenAt?: Date | string | null;
@@ -290,16 +288,12 @@ function serializePermission(permission: {
 }
 
 function serializeDevice(device: {
-  autoCheckInEnabled?: boolean | null;
-  autoSignOutEnabled?: boolean | null;
   deviceHash?: string;
   id?: string;
   lastSeenAt?: Date | string | null;
   registeredAt?: Date | string | null;
 } | null | undefined, deviceHash: string | null) {
   return {
-    autoCheckInEnabled: Boolean(device?.autoCheckInEnabled),
-    autoSignOutEnabled: Boolean(device?.autoSignOutEnabled),
     lastSeenAt: device?.lastSeenAt || null,
     registered: Boolean(device),
     registeredAt: device?.registeredAt || null,
@@ -647,9 +641,7 @@ export async function POST(request: NextRequest) {
   const checkInTime = clock.timeKey.slice(0, 5);
   const actor = await getAuditActor({ email: actorEmail, id: userId });
   const body = await request.json().catch(() => ({}));
-  const attendanceSource = body?.source === 'auto_attendance'
-    ? 'auto_attendance'
-    : body?.source === 'mobile_app'
+  const attendanceSource = body?.source === 'mobile_app'
     ? 'mobile_app'
     : 'staff_portal';
   const action = body?.action === 'sign_out'

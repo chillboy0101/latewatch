@@ -12,9 +12,8 @@ const autoSettingsRoutePath = path.join(root, 'src/app/api/attendance/check-in/a
 const checkInPagePath = path.join(root, 'src/app/check-in/page.tsx');
 const attendanceRoutePath = path.join(root, 'src/app/api/attendance/route.ts');
 const attendancePagePath = path.join(root, 'src/app/attendance/page.tsx');
-const autoAttendanceHelperPath = path.join(root, 'src/lib/auto-attendance.ts');
 
-test('trusted devices store auto attendance toggles with a migration', () => {
+test('legacy trusted-device auto columns remain for non-destructive migration safety', () => {
   const schema = fs.readFileSync(schemaPath, 'utf8');
   const migration = fs.readFileSync(migrationPath, 'utf8');
 
@@ -24,29 +23,20 @@ test('trusted devices store auto attendance toggles with a migration', () => {
   assert.match(migration, /ALTER TABLE staff_device ADD COLUMN IF NOT EXISTS auto_sign_out_enabled boolean DEFAULT false NOT NULL/);
 });
 
-test('auto settings endpoint updates only the signed-in trusted device', () => {
-  assert.equal(fs.existsSync(autoSettingsRoutePath), true);
-  const source = fs.readFileSync(autoSettingsRoutePath, 'utf8');
-
-  assert.match(source, /export async function PATCH/);
-  assert.match(source, /currentUser\(\)/);
-  assert.match(source, /getDeviceTokenFromRequest\(request, body\)/);
-  assert.match(source, /eq\(staffDevice\.deviceHash, trustedDeviceHash\)/);
-  assert.match(source, /autoCheckInEnabled/);
-  assert.match(source, /autoSignOutEnabled/);
-  assert.match(source, /entityType: 'staff_device'/);
-  assert.match(source, /publishRealtime\('attendance'/);
-});
-
-test('check-in APIs expose and accept auto attendance source', () => {
-  const route = fs.readFileSync(checkInRoutePath, 'utf8');
+test('auto attendance settings endpoint is retired from the app surface', () => {
+  const checkInPage = fs.readFileSync(checkInPagePath, 'utf8');
+  const checkInRoute = fs.readFileSync(checkInRoutePath, 'utf8');
   const attendanceRoute = fs.readFileSync(attendanceRoutePath, 'utf8');
+  const attendancePage = fs.readFileSync(attendancePagePath, 'utf8');
 
-  assert.match(route, /body\?\.source === 'auto_attendance'/);
-  assert.match(route, /autoCheckInEnabled: Boolean\(device\?\.autoCheckInEnabled\)/);
-  assert.match(route, /autoSignOutEnabled: Boolean\(device\?\.autoSignOutEnabled\)/);
-  assert.match(attendanceRoute, /autoCheckInEnabled: staffDevice\.autoCheckInEnabled/);
-  assert.match(attendanceRoute, /autoSignOutEnabled: staffDevice\.autoSignOutEnabled/);
+  assert.equal(fs.existsSync(autoSettingsRoutePath), false);
+  assert.doesNotMatch(checkInPage, /\/api\/attendance\/check-in\/auto-settings/);
+  assert.doesNotMatch(checkInPage, /source: 'auto_attendance'/);
+  assert.doesNotMatch(checkInPage, /Auto check-in|Auto sign-out|AutoAttendancePanel/);
+  assert.doesNotMatch(checkInRoute, /body\?\.source === 'auto_attendance'/);
+  assert.doesNotMatch(checkInRoute, /autoCheckInEnabled: Boolean\(device\?\.autoCheckInEnabled\)/);
+  assert.doesNotMatch(attendanceRoute, /autoCheckInEnabled: staffDevice\.autoCheckInEnabled/);
+  assert.doesNotMatch(attendancePage, /Auto in|Auto out/);
 });
 
 test('check-in API repairs legacy entries fallback sign-outs', () => {
@@ -60,68 +50,13 @@ test('check-in API repairs legacy entries fallback sign-outs', () => {
   assert.match(route, /attendance-sign-out-repair/);
 });
 
-test('check-in page renders independent auto toggles and calls auto settings/action APIs', () => {
+test('check-in page renders push reminder controls instead of auto actions', () => {
   const source = fs.readFileSync(checkInPagePath, 'utf8');
 
-  assert.match(source, /Auto check-in/);
-  assert.match(source, /Auto sign-out/);
-  assert.match(source, /\/api\/attendance\/check-in\/auto-settings/);
-  assert.match(source, /source: 'auto_attendance'/);
-  assert.match(source, /autoCheckInEnabled/);
-  assert.match(source, /autoSignOutEnabled/);
-  assert.doesNotMatch(source, /<h3 className="text-sm font-semibold">Auto attendance<\/h3>/);
-  assert.doesNotMatch(source, /Auto attendance active|Waiting for office location|Auto sign-out off|Auto attendance off/);
-});
-
-test('admin attendance page exposes auto attendance device badges', () => {
-  const source = fs.readFileSync(attendancePagePath, 'utf8');
-
-  assert.match(source, /autoCheckInEnabled: boolean/);
-  assert.match(source, /autoSignOutEnabled: boolean/);
-  assert.match(source, /Auto in/);
-  assert.match(source, /Auto out/);
-});
-
-test('auto attendance resolver waits for office location and debounces late-day sign-out', () => {
-  require('tsx/cjs');
-  const {
-    AUTO_ATTENDANCE_DEBOUNCE_MS,
-    resolveAutoAttendanceAction,
-  } = require(autoAttendanceHelperPath);
-
-  assert.equal(resolveAutoAttendanceAction({
-    autoCheckInEnabled: true,
-    autoSignOutEnabled: true,
-    canCheckIn: true,
-    canSubmitSignOut: false,
-    officeVerified: false,
-  }), null);
-
-  assert.equal(resolveAutoAttendanceAction({
-    autoCheckInEnabled: true,
-    autoSignOutEnabled: false,
-    canCheckIn: true,
-    canSubmitSignOut: false,
-    officeVerified: true,
-  }), 'check_in');
-
-  assert.equal(resolveAutoAttendanceAction({
-    autoCheckInEnabled: false,
-    autoSignOutEnabled: true,
-    canCheckIn: false,
-    canSubmitSignOut: true,
-    lastAutoActionAt: 10_000,
-    now: 10_000 + AUTO_ATTENDANCE_DEBOUNCE_MS - 1,
-    officeVerified: true,
-  }), null);
-
-  assert.equal(resolveAutoAttendanceAction({
-    autoCheckInEnabled: false,
-    autoSignOutEnabled: true,
-    canCheckIn: false,
-    canSubmitSignOut: true,
-    lastAutoActionAt: 10_000,
-    now: 10_000 + AUTO_ATTENDANCE_DEBOUNCE_MS + 1,
-    officeVerified: true,
-  }), 'sign_out');
+  assert.match(source, /ReminderNotificationPanel/);
+  assert.match(source, /Enable sign-in reminder/);
+  assert.match(source, /Enable sign-out reminder/);
+  assert.match(source, /\/api\/attendance\/check-in\/push-subscription/);
+  assert.match(source, /navigator\.serviceWorker\.register\('\/sw\.js'\)/);
+  assert.doesNotMatch(source, /Auto check-in|Auto sign-out|auto_attendance/);
 });

@@ -63,8 +63,6 @@ interface AttendanceRow {
     status: AttendanceStatus;
   } | null;
   device: {
-    autoCheckInEnabled: boolean;
-    autoSignOutEnabled: boolean;
     deviceLabel: string | null;
     id: string | null;
     lastDistanceMeters: string | null;
@@ -932,16 +930,6 @@ export default function AttendancePage() {
                                 <Smartphone className="h-3.5 w-3.5" />
                                 {row.device.registered ? 'Linked' : 'Not linked'}
                               </span>
-                              {row.device.autoCheckInEnabled && (
-                                <span className="inline-flex items-center rounded-full border border-primary/25 bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
-                                  Auto in
-                                </span>
-                              )}
-                              {row.device.autoSignOutEnabled && (
-                                <span className="inline-flex items-center rounded-full border border-primary/25 bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
-                                  Auto out
-                                </span>
-                              )}
                               {row.device.registered && (
                                 <Button
                                   className="h-8 gap-1.5 px-2"

@@ -77,6 +77,11 @@ CF_R2_BUCKET=...
 
 # App
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# Web Push Attendance Reminders
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=...
+VAPID_PRIVATE_KEY=...
+VAPID_SUBJECT=mailto:admin@example.com
 ```
 
 ### 4. Set Up Database
@@ -218,6 +223,9 @@ Make sure to add all environment variables in Vercel dashboard:
 - `CF_R2_ACCESS_KEY_ID`
 - `CF_R2_SECRET_ACCESS_KEY`
 - `CF_R2_BUCKET`
+- `NEXT_PUBLIC_VAPID_PUBLIC_KEY`
+- `VAPID_PRIVATE_KEY`
+- `VAPID_SUBJECT`
 
 ## 📝 Available Scripts
 

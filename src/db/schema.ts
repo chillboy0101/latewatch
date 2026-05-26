@@ -462,3 +462,37 @@ export const notificationRead = pgTable('notification_read', {
   index('notification_read_user_id_idx').on(table.userId),
   unique().on(table.notificationId, table.userId),
 ]);
+
+export const pushSubscription = pgTable('push_subscription', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  staffId: uuid('staff_id').notNull().references(() => staff.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull(),
+  endpoint: text('endpoint').notNull(),
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  userAgent: text('user_agent'),
+  signInEnabled: boolean('sign_in_enabled').default(true).notNull(),
+  signOutEnabled: boolean('sign_out_enabled').default(true).notNull(),
+  disabledAt: timestamp('disabled_at'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => [
+  index('push_subscription_staff_idx').on(table.staffId),
+  index('push_subscription_user_idx').on(table.userId),
+  unique().on(table.endpoint),
+]);
+
+export const pushReminderDelivery = pgTable('push_reminder_delivery', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  subscriptionId: uuid('subscription_id').notNull().references(() => pushSubscription.id, { onDelete: 'cascade' }),
+  staffId: uuid('staff_id').notNull().references(() => staff.id, { onDelete: 'cascade' }),
+  date: date('date').notNull(),
+  reminderType: text('reminder_type').notNull(),
+  status: text('status').notNull(),
+  error: text('error'),
+  sentAt: timestamp('sent_at'),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => [
+  index('push_reminder_delivery_date_type_idx').on(table.date, table.reminderType),
+  unique().on(table.subscriptionId, table.date, table.reminderType),
+]);
