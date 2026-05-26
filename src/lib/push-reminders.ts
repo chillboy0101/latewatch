@@ -1,12 +1,12 @@
 import 'server-only';
 
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import webpush from 'web-push';
 import { db } from '@/db';
 import { attendancePermission, attendanceRecord, pushReminderDelivery, pushSubscription, staff } from '@/db/schema';
 import { getAccraClock, getHolidayForDate, isWeekendDate } from '@/lib/attendance';
 
-export type PushReminderType = 'sign_in' | 'sign_out';
+export type PushReminderType = 'sign_in' | 'sign_out' | 'holiday';
 
 type ReminderEligibilityInput = {
   attendance?: {
@@ -55,9 +55,15 @@ function ensureVapidConfig() {
 }
 
 export function shouldSendPushReminder(input: ReminderEligibilityInput) {
-  if (input.isWeekend || input.isHoliday) return false;
   if (input.staff.active !== true || input.staff.archived === true || input.staff.isAttendanceOnly === true) return false;
   if (input.subscription.disabledAt) return false;
+
+  if (input.reminderType === 'holiday') {
+    if (!input.isHoliday) return false;
+    return input.subscription.signInEnabled === true || input.subscription.signOutEnabled === true;
+  }
+
+  if (input.isWeekend || input.isHoliday) return false;
 
   if (input.reminderType === 'sign_in') {
     if (input.subscription.signInEnabled !== true) return false;
@@ -79,13 +85,26 @@ function staffFirstName(staffName: string | null | undefined) {
     .join('-');
 }
 
-export function reminderCopy(reminderType: PushReminderType, staffName?: string | null) {
+export function reminderCopy(
+  reminderType: PushReminderType,
+  staffName?: string | null,
+  options?: { holidayName?: string | null },
+) {
   const firstName = staffFirstName(staffName);
   if (reminderType === 'sign_in') {
     return {
       body: 'Please sign in for today.',
       tag: 'latewatch-sign-in-reminder',
       title: firstName ? `${firstName}, time to sign in` : 'Time to sign in',
+    };
+  }
+
+  if (reminderType === 'holiday') {
+    const holidayName = options?.holidayName?.trim();
+    return {
+      body: holidayName ? `Today is ${holidayName}. No check-in is required.` : 'No check-in is required today.',
+      tag: 'latewatch-holiday-reminder',
+      title: firstName ? `${firstName}, no check-in required on Holidays` : 'No check-in required on Holidays',
     };
   }
 
@@ -118,18 +137,25 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
     failed: 0,
     isHoliday,
     isWeekend,
+    holidayName: holiday?.holidayNote || null,
     reminderType,
     sent: 0,
     skipped: 0,
   };
 
-  if (isWeekend || isHoliday) {
+  if (reminderType === 'holiday' ? !isHoliday : isWeekend || isHoliday) {
     return summary;
   }
 
   if (!ensureVapidConfig()) {
     return summary;
   }
+
+  const subscriptionEnabledFilter = reminderType === 'holiday'
+    ? or(eq(pushSubscription.signInEnabled, true), eq(pushSubscription.signOutEnabled, true))
+    : reminderType === 'sign_in'
+      ? eq(pushSubscription.signInEnabled, true)
+      : eq(pushSubscription.signOutEnabled, true);
 
   const subscriptionRows = await db.select({
     auth: pushSubscription.auth,
@@ -149,9 +175,7 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
     .innerJoin(staff, eq(pushSubscription.staffId, staff.id))
     .where(and(
       isNull(pushSubscription.disabledAt),
-      reminderType === 'sign_in'
-        ? eq(pushSubscription.signInEnabled, true)
-        : eq(pushSubscription.signOutEnabled, true),
+      subscriptionEnabledFilter,
       eq(staff.active, true),
       eq(staff.archived, false),
       eq(staff.isAttendanceOnly, false),
@@ -161,22 +185,27 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
     return summary;
   }
 
-  const staffIds = Array.from(new Set(subscriptionRows.map((row) => row.staffId)));
-  const [attendanceRows, permissionRows] = await Promise.all([
-    db.select()
-      .from(attendanceRecord)
-      .where(and(eq(attendanceRecord.date, date), inArray(attendanceRecord.staffId, staffIds))),
-    db.select()
-      .from(attendancePermission)
-      .where(and(
-        eq(attendancePermission.date, date),
-        eq(attendancePermission.status, 'approved'),
-        inArray(attendancePermission.staffId, staffIds),
-      )),
-  ]);
+  const attendanceByStaffId = new Map<string, { checkInTime?: string | null; signOutTime?: string | null }>();
+  const permissionByStaffId = new Map<string, { permissionType?: string | null }>();
 
-  const attendanceByStaffId = new Map(attendanceRows.map((row) => [row.staffId, row]));
-  const permissionByStaffId = new Map(permissionRows.map((row) => [row.staffId, row]));
+  if (reminderType !== 'holiday') {
+    const staffIds = Array.from(new Set(subscriptionRows.map((row) => row.staffId)));
+    const [attendanceRows, permissionRows] = await Promise.all([
+      db.select()
+        .from(attendanceRecord)
+        .where(and(eq(attendanceRecord.date, date), inArray(attendanceRecord.staffId, staffIds))),
+      db.select()
+        .from(attendancePermission)
+        .where(and(
+          eq(attendancePermission.date, date),
+          eq(attendancePermission.status, 'approved'),
+          inArray(attendancePermission.staffId, staffIds),
+        )),
+    ]);
+
+    attendanceRows.forEach((row) => attendanceByStaffId.set(row.staffId, row));
+    permissionRows.forEach((row) => permissionByStaffId.set(row.staffId, row));
+  }
 
   for (const row of subscriptionRows) {
     const shouldSend = shouldSendPushReminder({
@@ -220,7 +249,7 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
       continue;
     }
 
-    const copy = reminderCopy(reminderType, row.staffName);
+    const copy = reminderCopy(reminderType, row.staffName, { holidayName: holiday?.holidayNote || null });
 
     try {
       await webpush.sendNotification({

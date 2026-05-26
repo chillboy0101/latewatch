@@ -15,8 +15,10 @@ const attendancePagePath = path.join(root, 'src/app/attendance/page.tsx');
 const pushApiPath = path.join(root, 'src/app/api/attendance/check-in/push-subscription/route.ts');
 const signInReminderRoutePath = path.join(root, 'src/app/api/attendance/reminders/sign-in/route.ts');
 const signOutReminderRoutePath = path.join(root, 'src/app/api/attendance/reminders/sign-out/route.ts');
+const holidayReminderRoutePath = path.join(root, 'src/app/api/attendance/reminders/holiday/route.ts');
 const pushClientLibPath = path.join(root, 'src/lib/push-client.ts');
 const pushReminderLibPath = path.join(root, 'src/lib/push-reminders.ts');
+const attendanceLibPath = path.join(root, 'src/lib/attendance.ts');
 const serviceWorkerPath = path.join(root, 'public/sw.js');
 const vercelPath = path.join(root, 'vercel.json');
 
@@ -68,10 +70,12 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.equal(fs.existsSync(pushApiPath), true);
   assert.equal(fs.existsSync(signInReminderRoutePath), true);
   assert.equal(fs.existsSync(signOutReminderRoutePath), true);
+  assert.equal(fs.existsSync(holidayReminderRoutePath), true);
 
   const pushApi = fs.readFileSync(pushApiPath, 'utf8');
   const signInRoute = fs.readFileSync(signInReminderRoutePath, 'utf8');
   const signOutRoute = fs.readFileSync(signOutReminderRoutePath, 'utf8');
+  const holidayRoute = fs.readFileSync(holidayReminderRoutePath, 'utf8');
   const vercel = fs.readFileSync(vercelPath, 'utf8');
 
   assert.match(pushApi, /export async function GET/);
@@ -80,8 +84,10 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.match(pushApi, /pushSubscription/);
   assert.match(signInRoute, /sendAttendanceReminderBatch\('sign_in'\)/);
   assert.match(signOutRoute, /sendAttendanceReminderBatch\('sign_out'\)/);
+  assert.match(holidayRoute, /sendAttendanceReminderBatch\('holiday'\)/);
   assert.match(vercel, /"path": "\/api\/attendance\/reminders\/sign-in"[\s\S]*"schedule": "15 8 \* \* 1-5"/);
   assert.match(vercel, /"path": "\/api\/attendance\/reminders\/sign-out"[\s\S]*"schedule": "30 16 \* \* 1-5"/);
+  assert.match(vercel, /"path": "\/api\/attendance\/reminders\/holiday"[\s\S]*"schedule": "15 8 \* \* \*"/);
 });
 
 test('push client normalizes pasted VAPID public keys before browser subscribe', () => {
@@ -112,7 +118,22 @@ test('attendance reminder notification titles include the staff first name', () 
 
   assert.equal(reminderCopy('sign_in', 'CARL CHRISTIAN QUIST').title, 'Carl, time to sign in');
   assert.equal(reminderCopy('sign_out', 'CARL CHRISTIAN QUIST').title, 'Carl, time to sign out');
+  assert.equal(reminderCopy('holiday', 'CARL CHRISTIAN QUIST', { holidayName: 'Christmas Day' }).title, 'Carl, no check-in required on Holidays');
+  assert.equal(reminderCopy('holiday', 'CARL CHRISTIAN QUIST', { holidayName: 'Christmas Day' }).body, 'Today is Christmas Day. No check-in is required.');
   assert.equal(reminderCopy('sign_in', '').title, 'Time to sign in');
+});
+
+test('holiday reminder source uses corrected work calendar data', () => {
+  const source = fs.readFileSync(pushReminderLibPath, 'utf8');
+  const attendanceSource = fs.readFileSync(attendanceLibPath, 'utf8');
+
+  assert.match(source, /getHolidayForDate\(date\)/);
+  assert.match(source, /const isHoliday = Boolean\(holiday\)/);
+  assert.match(source, /reminderType === 'holiday'/);
+  assert.match(source, /latewatch-holiday-reminder/);
+  assert.match(attendanceSource, /eq\(workCalendar\.isHoliday, true\)/);
+  assert.match(attendanceSource, /eq\(workCalendar\.isRemoved, false\)/);
+  assert.doesNotMatch(source, /African Union Day/);
 });
 
 test('service worker displays push notifications and opens check-in', () => {
@@ -156,4 +177,10 @@ test('reminder eligibility follows workday, permission, and attendance rules', (
   assert.equal(shouldSendPushReminder({ ...base, reminderType: 'sign_out', attendance: { checkInTime: '08:10', signOutTime: '16:45' } }), false);
   assert.equal(shouldSendPushReminder({ ...base, reminderType: 'sign_out', attendance: null }), false);
   assert.equal(shouldSendPushReminder({ ...base, reminderType: 'sign_out', subscription: { signInEnabled: true, signOutEnabled: false, disabledAt: null } }), false);
+
+  assert.equal(shouldSendPushReminder({ ...base, reminderType: 'holiday', isHoliday: true }), true);
+  assert.equal(shouldSendPushReminder({ ...base, reminderType: 'holiday', isHoliday: true, isWeekend: true }), true);
+  assert.equal(shouldSendPushReminder({ ...base, reminderType: 'holiday', isHoliday: false, isWeekend: true }), false);
+  assert.equal(shouldSendPushReminder({ ...base, reminderType: 'holiday', isHoliday: false }), false);
+  assert.equal(shouldSendPushReminder({ ...base, reminderType: 'holiday', isHoliday: true, subscription: { signInEnabled: false, signOutEnabled: false, disabledAt: null } }), false);
 });
