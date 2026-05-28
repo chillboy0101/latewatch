@@ -123,6 +123,15 @@ test('exports page exposes Preview actions beside every workbook download family
   assert.match(source, /min-w-\[8rem\]/);
 });
 
+test('exports page sends successful preview sessions straight to Microsoft viewer', () => {
+  const source = fs.readFileSync(exportsPagePath, 'utf8');
+
+  assert.match(source, /openPreviewWindow/);
+  assert.match(source, /sendPreviewWindowToUrl\(previewWindow, session\.viewerUrl\)/);
+  assert.match(source, /schedulePreviewCleanup\(session\)/);
+  assert.match(source, /setPreviewSession\(session\)/);
+});
+
 test('workbook preview dialog gives the iframe the full modal body instead of a side column', () => {
   const source = fs.readFileSync(path.join(root, 'src/components/exports/workbook-preview-dialog.tsx'), 'utf8');
 

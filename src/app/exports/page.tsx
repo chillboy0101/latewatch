@@ -61,6 +61,22 @@ async function downloadWorkbook(response: Response, fileName: string) {
   window.URL.revokeObjectURL(url);
 }
 
+function openPreviewWindow() {
+  const previewWindow = window.open('', '_blank');
+  if (!previewWindow) return null;
+
+  previewWindow.document.title = 'Preparing Excel preview';
+  previewWindow.document.body.textContent = 'Preparing Excel preview...';
+
+  return previewWindow;
+}
+
+function sendPreviewWindowToUrl(previewWindow: Window | null, viewerUrl: string) {
+  if (!previewWindow || previewWindow.closed) return false;
+  previewWindow.location.href = viewerUrl;
+  return true;
+}
+
 export default function ExportsPage() {
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [weekSummaries, setWeekSummaries] = useState<WeekSummary[]>([]);
@@ -151,11 +167,25 @@ export default function ExportsPage() {
     if (sessionId) await cleanupPreviewSession(sessionId);
   }
 
+  function schedulePreviewCleanup(session: WorkbookPreviewSession) {
+    const expiresAtMs = new Date(session.expiresAt).getTime();
+    const delayMs = Number.isFinite(expiresAtMs)
+      ? Math.min(Math.max(expiresAtMs - Date.now() + 30_000, 60_000), 15 * 60_000)
+      : 11 * 60_000;
+
+    window.setTimeout(() => {
+      void cleanupPreviewSession(session.sessionId);
+    }, delayMs);
+  }
+
   async function requestPreview(body: ExportPreviewRequest, target: ExportTarget) {
     if (exporting || previewing) return;
 
     const existingSessionId = previewSession?.sessionId;
+    const previewWindow = openPreviewWindow();
     setPreviewing(target);
+    setPreviewOpen(false);
+    setPreviewSession(null);
     setError(null);
 
     try {
@@ -173,9 +203,14 @@ export default function ExportsPage() {
       }
 
       const session = await response.json() as WorkbookPreviewSession;
-      setPreviewSession(session);
-      setPreviewOpen(true);
+      schedulePreviewCleanup(session);
+
+      if (!sendPreviewWindowToUrl(previewWindow, session.viewerUrl)) {
+        setPreviewSession(session);
+        setPreviewOpen(true);
+      }
     } catch (err) {
+      if (previewWindow && !previewWindow.closed) previewWindow.close();
       console.error('Export preview failed:', err);
       setError(err instanceof Error ? err.message : 'Export preview failed');
     } finally {
