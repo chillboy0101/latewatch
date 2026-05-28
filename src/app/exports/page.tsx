@@ -61,12 +61,239 @@ async function downloadWorkbook(response: Response, fileName: string) {
   window.URL.revokeObjectURL(url);
 }
 
+function buildExportPreviewLoadingHtml({ isDark }: { isDark: boolean }) {
+  const themeClass = isDark ? 'dark' : '';
+
+  return `<!doctype html>
+<html class="${themeClass}" lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Loading export preview</title>
+  <style>
+    :root {
+      --background: #ffffff;
+      --foreground: #171717;
+      --card: #f9fafb;
+      --border: #e5e7eb;
+      --primary: #2563eb;
+      --muted-foreground: #6b7280;
+    }
+
+    .dark {
+      --background: #0a0a0a;
+      --foreground: #fafafa;
+      --card: #171717;
+      --border: #262626;
+      --primary: #3b82f6;
+      --muted-foreground: #9ca3af;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100dvh;
+      margin: 0;
+      overflow: hidden;
+      background: var(--background);
+      color: var(--foreground);
+      font-family: "Aptos", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    }
+
+    .export-preview-shell {
+      position: relative;
+      display: grid;
+      min-height: 100dvh;
+      place-items: center;
+      padding: 1.5rem;
+      background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 5%, transparent), var(--background) 52%, color-mix(in srgb, var(--primary) 10%, transparent));
+    }
+
+    .export-preview-grid {
+      position: absolute;
+      inset: 0;
+      opacity: 0.02;
+      background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    }
+
+    @keyframes loading-buffer-spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes auth-watermark-float {
+      0%, 100% {
+        transform: translate3d(-1.4rem, 0.7rem, 0) scale(0.98);
+      }
+      50% {
+        transform: translate3d(1.2rem, -0.9rem, 0) scale(1.03);
+      }
+    }
+
+    @keyframes auth-watermark-pulse {
+      0%, 100% {
+        opacity: 0.72;
+        transform: scale(0.92);
+      }
+      50% {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    .auth-watermark {
+      pointer-events: none;
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100dvh;
+      width: 100dvw;
+      overflow: hidden;
+    }
+
+    .auth-watermark-mark {
+      position: relative;
+      display: grid;
+      width: clamp(36rem, 120vmax, 88rem);
+      aspect-ratio: 1;
+      place-items: center;
+      opacity: 0.28;
+      transform-origin: center;
+      animation: auth-watermark-float 8s ease-in-out infinite;
+    }
+
+    .dark .auth-watermark-mark {
+      opacity: 0.34;
+    }
+
+    .auth-watermark-ring {
+      position: absolute;
+      inset: 16%;
+      border: clamp(0.7rem, 1.6vw, 1.45rem) solid color-mix(in srgb, var(--primary) 26%, transparent);
+      border-top-color: color-mix(in srgb, var(--primary) 92%, transparent);
+      border-right-color: color-mix(in srgb, var(--primary) 70%, transparent);
+      border-radius: 999px;
+      box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--primary) 18%, transparent),
+        0 1.5rem 5rem color-mix(in srgb, var(--primary) 18%, transparent);
+      animation: loading-buffer-spin 8.5s linear infinite;
+    }
+
+    .auth-watermark-core {
+      width: 33%;
+      aspect-ratio: 1;
+      border-radius: 999px;
+      background: var(--primary);
+      box-shadow:
+        0 0 0 clamp(3rem, 6vw, 6rem) color-mix(in srgb, var(--primary) 18%, transparent),
+        0 1rem 4.5rem color-mix(in srgb, var(--primary) 24%, transparent);
+      animation: auth-watermark-pulse 3.2s ease-in-out infinite;
+    }
+
+    .auth-watermark-dot {
+      position: absolute;
+      right: 17%;
+      top: 17%;
+      width: 18%;
+      aspect-ratio: 1;
+      border: clamp(0.45rem, 1vw, 0.9rem) solid var(--background);
+      border-radius: 999px;
+      background: var(--primary);
+      box-shadow: 0 0 0 clamp(0.9rem, 2vw, 1.6rem) color-mix(in srgb, var(--primary) 30%, transparent);
+    }
+
+    .export-preview-status {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      width: min(100%, 28rem);
+      justify-items: center;
+      gap: 1rem;
+      border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+      border-radius: 0.75rem;
+      background: color-mix(in srgb, var(--card) 92%, transparent);
+      padding: 2rem;
+      text-align: center;
+      box-shadow: 0 1.25rem 4rem color-mix(in srgb, #000000 16%, transparent);
+      backdrop-filter: blur(18px);
+    }
+
+    .export-preview-logo {
+      width: 3rem;
+      height: 3rem;
+      object-fit: contain;
+    }
+
+    .export-preview-status h1 {
+      margin: 0;
+      font-size: clamp(1.5rem, 3vw, 2rem);
+      line-height: 1.1;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .export-preview-status p {
+      max-width: 22rem;
+      margin: 0;
+      color: var(--muted-foreground);
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    .export-preview-progress {
+      position: relative;
+      width: 2.75rem;
+      aspect-ratio: 1;
+      border-radius: 999px;
+    }
+
+    .export-preview-progress::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border: 3px solid color-mix(in srgb, var(--primary) 18%, transparent);
+      border-top-color: var(--primary);
+      border-radius: inherit;
+      animation: loading-buffer-spin 0.95s linear infinite;
+    }
+  </style>
+</head>
+<body>
+  <main class="export-preview-shell" role="status" aria-live="polite">
+    <div class="export-preview-grid" aria-hidden="true"></div>
+    <div aria-hidden="true" class="auth-watermark">
+      <div class="auth-watermark-mark">
+        <span class="auth-watermark-ring"></span>
+        <span class="auth-watermark-core"></span>
+        <span class="auth-watermark-dot"></span>
+      </div>
+    </div>
+    <section class="export-preview-status">
+      <img class="export-preview-logo" src="/latewatch-logo.png" alt="" />
+      <div class="export-preview-progress" aria-hidden="true"></div>
+      <h1>Loading export preview</h1>
+      <p>Preparing your protected Excel workbook. Microsoft Excel viewer will open automatically.</p>
+    </section>
+  </main>
+</body>
+</html>`;
+}
+
 function openPreviewWindow() {
   const previewWindow = window.open('', '_blank');
   if (!previewWindow) return null;
 
-  previewWindow.document.title = 'Preparing Excel preview';
-  previewWindow.document.body.textContent = 'Preparing Excel preview...';
+  previewWindow.document.open();
+  previewWindow.document.write(buildExportPreviewLoadingHtml({
+    isDark: document.documentElement.classList.contains('dark'),
+  }));
+  previewWindow.document.close();
 
   return previewWindow;
 }
@@ -579,7 +806,7 @@ export default function ExportsPage() {
 
         <Card className="overflow-hidden">
           <div className="border-b border-border px-6 py-5">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-5 2xl:flex-row 2xl:items-center 2xl:justify-between">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-background text-primary">
                   <FileSpreadsheet className="h-5 w-5" />
@@ -587,7 +814,7 @@ export default function ExportsPage() {
                 <h2 className="text-lg font-semibold leading-none">Attendance Exports</h2>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(9rem,1fr)_7rem_minmax(10rem,1fr)_minmax(11rem,1fr)_auto_auto] xl:items-end">
+              <div className="grid w-full gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end 2xl:w-auto 2xl:grid-cols-[minmax(9rem,1fr)_7rem_minmax(10rem,1fr)_minmax(11rem,1fr)_auto_auto]">
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-muted-foreground">Month</label>
                   <div className="relative">
@@ -661,7 +888,7 @@ export default function ExportsPage() {
                 </div>
 
                 <Button
-                  className="h-10 gap-2 sm:col-span-2 xl:col-span-1"
+                  className="h-10 gap-2 whitespace-nowrap xl:justify-self-end 2xl:justify-self-auto"
                   onClick={handleAttendanceExport}
                   disabled={loading || previewing !== null || (exporting !== null && !isAttendanceExporting)}
                   aria-busy={isAttendanceExporting}
@@ -671,7 +898,7 @@ export default function ExportsPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-10 min-w-[8rem] gap-2 sm:col-span-2 xl:col-span-1"
+                  className="h-10 min-w-[8rem] gap-2 whitespace-nowrap xl:justify-self-end 2xl:justify-self-auto"
                   onClick={handleAttendancePreview}
                   disabled={loading || exporting !== null || (previewing !== null && !isAttendancePreviewing)}
                   aria-busy={isAttendancePreviewing}

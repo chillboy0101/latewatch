@@ -132,6 +132,27 @@ test('exports page sends successful preview sessions straight to Microsoft viewe
   assert.match(source, /setPreviewSession\(session\)/);
 });
 
+test('exports page opens a branded loading tab while the Excel preview is prepared', () => {
+  const source = fs.readFileSync(exportsPagePath, 'utf8');
+
+  assert.match(source, /buildExportPreviewLoadingHtml/);
+  assert.match(source, /auth-watermark/);
+  assert.match(source, /Loading export preview/);
+  assert.match(source, /Preparing your protected Excel workbook\. Microsoft Excel viewer will open automatically\./);
+  assert.match(source, /previewWindow\.document\.open\(\)/);
+  assert.match(source, /previewWindow\.document\.write\(buildExportPreviewLoadingHtml/);
+  assert.doesNotMatch(source, /body\.textContent = 'Preparing Excel preview\.\.\.'/);
+});
+
+test('attendance export controls keep the preview workbook button visible at dashboard widths', () => {
+  const source = fs.readFileSync(exportsPagePath, 'utf8');
+
+  assert.match(source, /xl:grid-cols-\[minmax\(0,1fr\)_auto\]/);
+  assert.match(source, /2xl:grid-cols-\[minmax\(9rem,1fr\)_7rem_minmax\(10rem,1fr\)_minmax\(11rem,1fr\)_auto_auto\]/);
+  assert.match(source, /xl:justify-self-end/);
+  assert.match(source, /whitespace-nowrap/);
+});
+
 test('workbook preview dialog gives the iframe the full modal body instead of a side column', () => {
   const source = fs.readFileSync(path.join(root, 'src/components/exports/workbook-preview-dialog.tsx'), 'utf8');
 
