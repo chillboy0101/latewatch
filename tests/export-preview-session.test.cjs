@@ -78,6 +78,17 @@ test('exports page exposes Preview actions beside every workbook download family
   assert.match(source, /handleContributionPreview/);
   assert.match(source, /WorkbookPreviewDialog/);
   assert.match(source, /Preparing Preview/);
+  assert.match(source, /Preview Workbook/);
+  assert.match(source, /min-w-\[8rem\]/);
+});
+
+test('workbook preview dialog gives the iframe the full modal body instead of a side column', () => {
+  const source = fs.readFileSync(path.join(root, 'src/components/exports/workbook-preview-dialog.tsx'), 'utf8');
+
+  assert.match(source, /grid h-\[min\(94vh,64rem\)\]/);
+  assert.match(source, /grid-rows-\[auto_minmax\(0,1fr\)\]/);
+  assert.match(source, /<iframe[\s\S]*className="h-full w-full/);
+  assert.doesNotMatch(source, /DialogContent className="flex h-\[min\(90vh,56rem\)\]/);
 });
 
 test('audit taxonomy labels preview events distinctly from generated downloads', () => {

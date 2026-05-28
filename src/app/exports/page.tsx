@@ -454,13 +454,13 @@ export default function ExportsPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-10 gap-2 sm:mt-[1.625rem]"
+                  className="h-10 min-w-[8rem] gap-2 sm:mt-[1.625rem]"
                   onClick={handleMonthlyPreview}
                   disabled={loading || weekSummaries.length === 0 || exporting !== null || (previewing !== null && !isMonthlyPreviewing)}
                   aria-busy={isMonthlyPreviewing}
                 >
                   {isMonthlyPreviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
-                  {isMonthlyPreviewing ? 'Preparing Preview' : 'Preview'}
+                  {isMonthlyPreviewing ? 'Preparing Preview' : 'Preview Workbook'}
                 </Button>
               </div>
             </div>
@@ -519,7 +519,7 @@ export default function ExportsPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="gap-2"
+                          className="min-w-[6.5rem] gap-2"
                           onClick={() => handleWeeklyPreview(week)}
                           disabled={isOtherBusy || isExporting || isPreviewing}
                           aria-busy={isPreviewing}
@@ -636,13 +636,13 @@ export default function ExportsPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-10 gap-2 sm:col-span-2 xl:col-span-1"
+                  className="h-10 min-w-[8rem] gap-2 sm:col-span-2 xl:col-span-1"
                   onClick={handleAttendancePreview}
                   disabled={loading || exporting !== null || (previewing !== null && !isAttendancePreviewing)}
                   aria-busy={isAttendancePreviewing}
                 >
                   {isAttendancePreviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
-                  {isAttendancePreviewing ? 'Preparing Preview' : 'Preview'}
+                  {isAttendancePreviewing ? 'Preparing Preview' : 'Preview Workbook'}
                 </Button>
               </div>
             </div>
@@ -710,13 +710,13 @@ export default function ExportsPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-10 gap-2"
+                  className="h-10 min-w-[8rem] gap-2"
                   onClick={handleOffenceBookPreview}
                   disabled={exporting !== null || (previewing !== null && !isOffenceBookPreviewing)}
                   aria-busy={isOffenceBookPreviewing}
                 >
                   {isOffenceBookPreviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
-                  {isOffenceBookPreviewing ? 'Preparing Preview' : 'Preview'}
+                  {isOffenceBookPreviewing ? 'Preparing Preview' : 'Preview Workbook'}
                 </Button>
               </div>
             </div>
@@ -745,13 +745,13 @@ export default function ExportsPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-10 gap-2 sm:w-auto"
+                  className="h-10 min-w-[8rem] gap-2 sm:w-auto"
                   onClick={handleContributionPreview}
                   disabled={exporting !== null || (previewing !== null && !isContributionPreviewing)}
                   aria-busy={isContributionPreviewing}
                 >
                   {isContributionPreviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
-                  {isContributionPreviewing ? 'Preparing Preview' : 'Preview'}
+                  {isContributionPreviewing ? 'Preparing Preview' : 'Preview Workbook'}
                 </Button>
               </div>
             </div>

@@ -33,35 +33,35 @@ export function WorkbookPreviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[min(90vh,56rem)] w-[min(96vw,82rem)] max-w-none grid-rows-[auto_1fr] gap-0 overflow-hidden p-0">
-        <DialogHeader className="border-b border-border px-5 py-4 pr-12">
-          <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div className="flex min-w-0 items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-background text-primary">
+      <DialogContent className="grid h-[min(94vh,64rem)] w-[min(98vw,96rem)] max-w-none grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
+        <DialogHeader className="space-y-0 border-b border-border bg-card px-4 py-3 pr-12 sm:px-5">
+          <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-background text-primary shadow-sm">
                 <FileSpreadsheet className="h-5 w-5" />
               </div>
               <div className="min-w-0">
                 <DialogTitle className="truncate text-base md:text-lg">
                   {session?.fileName || 'Workbook preview'}
                 </DialogTitle>
-                <DialogDescription className="mt-1">
+                <DialogDescription className="mt-1 truncate">
                   Read-only Excel preview inside LateWatch{expiryLabel ? `, available until ${expiryLabel}` : ''}.
                 </DialogDescription>
               </div>
             </div>
 
             {session && (
-              <Button asChild variant="outline" size="sm" className="shrink-0 gap-2">
+              <Button asChild variant="outline" size="sm" className="h-9 shrink-0 gap-2 px-3 text-xs font-semibold">
                 <a href={session.viewerUrl} target="_blank" rel="noreferrer">
                   <ExternalLink className="h-4 w-4" />
-                  Open Viewer
+                  Open in new tab
                 </a>
               </Button>
             )}
           </div>
         </DialogHeader>
 
-        <div className="min-h-0 bg-background">
+        <div className="min-h-0 overflow-hidden bg-background">
           {session ? (
             <iframe
               className="h-full w-full border-0 bg-background"
