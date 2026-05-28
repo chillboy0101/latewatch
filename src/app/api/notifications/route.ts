@@ -225,6 +225,25 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
   const beforeData = toAuditJson(event.beforeJson);
   const operation = getAuditOperation(event.action, event.entityType, beforeData, afterData);
 
+  if (
+    event.entityType === 'system'
+    && typeof afterData?.notificationTitle === 'string'
+    && typeof afterData.notificationMessage === 'string'
+  ) {
+    return makeNotification(
+      event,
+      read,
+      afterData.notificationTitle,
+      afterData.notificationMessage,
+      'info',
+      'normal',
+      {
+        category: 'system',
+        href: typeof afterData.notificationHref === 'string' ? afterData.notificationHref : '/dashboard',
+      },
+    );
+  }
+
   switch (operation) {
     case 'CREATE':
       if (event.entityType === 'entry_submission') {

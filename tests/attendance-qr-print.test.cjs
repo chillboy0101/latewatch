@@ -175,6 +175,15 @@ test('notifications endpoint isolates audit and system notification failures', (
   assert.doesNotMatch(source, /Promise\.all\(\[\s*getAuditNotifications/);
 });
 
+test('audit-backed system announcements render as system notifications', () => {
+  const source = fs.readFileSync(notificationsApiPath, 'utf8');
+
+  assert.match(source, /event\.entityType === 'system'/);
+  assert.match(source, /notificationTitle/);
+  assert.match(source, /notificationMessage/);
+  assert.match(source, /category: 'system'/);
+});
+
 test('system no-sign-out notifications ignore waived rows', () => {
   const source = fs.readFileSync(notificationsApiPath, 'utf8');
 
