@@ -79,7 +79,12 @@ function buildSearchCondition(query: string): SQL | undefined {
   }
 
   if (normalizedQuery.includes('generate') || normalizedQuery.includes('generated') || normalizedQuery.includes('export')) {
-    conditions.push(inArray(auditEvent.action, ['GENERATE', 'EXPORT']));
+    conditions.push(inArray(auditEvent.action, ['GENERATE', 'EXPORT', 'PREVIEW']));
+    conditions.push(eq(auditEvent.entityType, 'export'));
+  }
+
+  if (normalizedQuery.includes('preview') || normalizedQuery.includes('viewed')) {
+    conditions.push(eq(auditEvent.action, 'PREVIEW'));
     conditions.push(eq(auditEvent.entityType, 'export'));
   }
 

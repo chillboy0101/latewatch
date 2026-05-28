@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { WorkbookPreviewDialog, type WorkbookPreviewSession } from '@/components/exports/workbook-preview-dialog';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
-import { ChevronDown, Download, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { ChevronDown, Download, Eye, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { type WorkingWeekRange } from '@/lib/export-weeks';
 import {
@@ -28,6 +29,13 @@ interface WeekSummary extends WorkingWeekRange {
 interface LatenessSummaryResponse {
   weeks: WeekSummary[];
 }
+
+type ExportPreviewRequest =
+  | { type: 'attendance'; group: AttendanceExportGroup; month: number; template: AttendanceExportTemplate; year: number }
+  | { type: 'contributions' }
+  | { type: 'monthly'; month: number; year: number }
+  | { type: 'offence-book'; month: number; year: number }
+  | { type: 'weekly'; weekEnd: string; weekNumber: number; weekStart: string };
 
 type ExportTarget =
   | { type: 'attendance' }
@@ -58,6 +66,9 @@ export default function ExportsPage() {
   const [weekSummaries, setWeekSummaries] = useState<WeekSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState<ExportTarget>(null);
+  const [previewing, setPreviewing] = useState<ExportTarget>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewSession, setPreviewSession] = useState<WorkbookPreviewSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attendanceGroup, setAttendanceGroup] = useState<AttendanceExportGroup>('main');
   const [attendanceTemplate, setAttendanceTemplate] = useState<AttendanceExportTemplate>('daily-summary');
@@ -68,6 +79,10 @@ export default function ExportsPage() {
   const isAttendanceExporting = exporting?.type === 'attendance';
   const isContributionExporting = exporting?.type === 'contributions';
   const isOffenceBookExporting = exporting?.type === 'offence-book';
+  const isMonthlyPreviewing = previewing?.type === 'monthly';
+  const isAttendancePreviewing = previewing?.type === 'attendance';
+  const isContributionPreviewing = previewing?.type === 'contributions';
+  const isOffenceBookPreviewing = previewing?.type === 'offence-book';
   const attendanceTemplateOptions = useMemo(
     () => getAttendanceExportTemplatesForGroup(attendanceGroup),
     [attendanceGroup],
@@ -119,8 +134,108 @@ export default function ExportsPage() {
     [weekSummaries],
   );
 
+  async function cleanupPreviewSession(sessionId: string) {
+    await fetch('/api/export/preview/session', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    }).catch((cleanupError) => {
+      console.warn('Preview cleanup failed:', cleanupError);
+    });
+  }
+
+  async function closePreview() {
+    const sessionId = previewSession?.sessionId;
+    setPreviewOpen(false);
+    setPreviewSession(null);
+    if (sessionId) await cleanupPreviewSession(sessionId);
+  }
+
+  async function requestPreview(body: ExportPreviewRequest, target: ExportTarget) {
+    if (exporting || previewing) return;
+
+    const existingSessionId = previewSession?.sessionId;
+    setPreviewing(target);
+    setError(null);
+
+    try {
+      if (existingSessionId) void cleanupPreviewSession(existingSessionId);
+
+      const response = await fetch('/api/export/preview/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Preview failed (${response.status})`);
+      }
+
+      const session = await response.json() as WorkbookPreviewSession;
+      setPreviewSession(session);
+      setPreviewOpen(true);
+    } catch (err) {
+      console.error('Export preview failed:', err);
+      setError(err instanceof Error ? err.message : 'Export preview failed');
+    } finally {
+      setPreviewing(null);
+    }
+  }
+
+  function handleWeeklyPreview(week: WeekSummary) {
+    void requestPreview(
+      {
+        type: 'weekly',
+        weekEnd: week.exportEnd,
+        weekNumber: week.weekNumber,
+        weekStart: week.exportStart,
+      },
+      { type: 'weekly', key: exportKeyForWeek(week) },
+    );
+  }
+
+  function handleMonthlyPreview() {
+    void requestPreview(
+      {
+        type: 'monthly',
+        month: selectedMonthIndex,
+        year: selectedYear,
+      },
+      { type: 'monthly' },
+    );
+  }
+
+  function handleAttendancePreview() {
+    void requestPreview(
+      {
+        type: 'attendance',
+        group: attendanceGroup,
+        month: selectedMonthIndex,
+        template: selectedAttendanceTemplate,
+        year: selectedYear,
+      },
+      { type: 'attendance' },
+    );
+  }
+
+  function handleContributionPreview() {
+    void requestPreview({ type: 'contributions' }, { type: 'contributions' });
+  }
+
+  function handleOffenceBookPreview() {
+    void requestPreview(
+      {
+        type: 'offence-book',
+        month: selectedMonthIndex,
+        year: selectedYear,
+      },
+      { type: 'offence-book' },
+    );
+  }
+
   async function handleWeeklyExport(week: WeekSummary) {
-    if (exporting) return;
+    if (exporting || previewing) return;
 
     const exportKey = exportKeyForWeek(week);
     setExporting({ type: 'weekly', key: exportKey });
@@ -155,7 +270,7 @@ export default function ExportsPage() {
   }
 
   async function handleMonthlyExport() {
-    if (exporting) return;
+    if (exporting || previewing) return;
 
     setExporting({ type: 'monthly' });
     setError(null);
@@ -185,7 +300,7 @@ export default function ExportsPage() {
   }
 
   async function handleAttendanceExport() {
-    if (exporting) return;
+    if (exporting || previewing) return;
 
     setExporting({ type: 'attendance' });
     setError(null);
@@ -225,7 +340,7 @@ export default function ExportsPage() {
   }
 
   async function handleContributionExport() {
-    if (exporting) return;
+    if (exporting || previewing) return;
 
     setExporting({ type: 'contributions' });
     setError(null);
@@ -248,7 +363,7 @@ export default function ExportsPage() {
   }
 
   async function handleOffenceBookExport() {
-    if (exporting) return;
+    if (exporting || previewing) return;
 
     setExporting({ type: 'offence-book' });
     setError(null);
@@ -331,11 +446,21 @@ export default function ExportsPage() {
                 <Button
                   className="h-10 gap-2 sm:mt-[1.625rem]"
                   onClick={handleMonthlyExport}
-                  disabled={loading || weekSummaries.length === 0 || (exporting !== null && !isMonthlyExporting)}
+                  disabled={loading || weekSummaries.length === 0 || previewing !== null || (exporting !== null && !isMonthlyExporting)}
                   aria-busy={isMonthlyExporting}
                 >
                   {isMonthlyExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                   {isMonthlyExporting ? 'Downloading Month' : 'Monthly Workbook'}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-10 gap-2 sm:mt-[1.625rem]"
+                  onClick={handleMonthlyPreview}
+                  disabled={loading || weekSummaries.length === 0 || exporting !== null || (previewing !== null && !isMonthlyPreviewing)}
+                  aria-busy={isMonthlyPreviewing}
+                >
+                  {isMonthlyPreviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                  {isMonthlyPreviewing ? 'Preparing Preview' : 'Preview'}
                 </Button>
               </div>
             </div>
@@ -359,7 +484,8 @@ export default function ExportsPage() {
                 {weekSummaries.map((week) => {
                   const weekExportKey = exportKeyForWeek(week);
                   const isExporting = exporting?.type === 'weekly' && exporting.key === weekExportKey;
-                  const isOtherExporting = exporting !== null && !isExporting;
+                  const isPreviewing = previewing?.type === 'weekly' && previewing.key === weekExportKey;
+                  const isOtherBusy = (exporting !== null && !isExporting) || (previewing !== null && !isPreviewing);
 
                   return (
                     <div
@@ -384,11 +510,22 @@ export default function ExportsPage() {
                           size="sm"
                           className="gap-2"
                           onClick={() => handleWeeklyExport(week)}
-                          disabled={isOtherExporting || isExporting}
+                          disabled={isOtherBusy || isExporting || isPreviewing}
                           aria-busy={isExporting}
                         >
                           {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                           {isExporting ? 'Downloading' : 'Download'}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-2"
+                          onClick={() => handleWeeklyPreview(week)}
+                          disabled={isOtherBusy || isExporting || isPreviewing}
+                          aria-busy={isPreviewing}
+                        >
+                          {isPreviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                          {isPreviewing ? 'Preparing Preview' : 'Preview'}
                         </Button>
                       </div>
                     </div>
@@ -415,7 +552,7 @@ export default function ExportsPage() {
                 <h2 className="text-lg font-semibold leading-none">Attendance Exports</h2>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(9rem,1fr)_7rem_minmax(10rem,1fr)_minmax(11rem,1fr)_auto] xl:items-end">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(9rem,1fr)_7rem_minmax(10rem,1fr)_minmax(11rem,1fr)_auto_auto] xl:items-end">
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-muted-foreground">Month</label>
                   <div className="relative">
@@ -491,11 +628,21 @@ export default function ExportsPage() {
                 <Button
                   className="h-10 gap-2 sm:col-span-2 xl:col-span-1"
                   onClick={handleAttendanceExport}
-                  disabled={loading || (exporting !== null && !isAttendanceExporting)}
+                  disabled={loading || previewing !== null || (exporting !== null && !isAttendanceExporting)}
                   aria-busy={isAttendanceExporting}
                 >
                   {isAttendanceExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                   {isAttendanceExporting ? 'Downloading' : 'Download'}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-10 gap-2 sm:col-span-2 xl:col-span-1"
+                  onClick={handleAttendancePreview}
+                  disabled={loading || exporting !== null || (previewing !== null && !isAttendancePreviewing)}
+                  aria-busy={isAttendancePreviewing}
+                >
+                  {isAttendancePreviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                  {isAttendancePreviewing ? 'Preparing Preview' : 'Preview'}
                 </Button>
               </div>
             </div>
@@ -512,7 +659,7 @@ export default function ExportsPage() {
                 <h2 className="text-lg font-semibold leading-none">OFFENCE BOOK EXPORT</h2>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-[minmax(9rem,1fr)_7rem_auto] sm:items-end">
+              <div className="grid gap-3 sm:grid-cols-[minmax(9rem,1fr)_7rem_auto_auto] sm:items-end">
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-muted-foreground">Month</label>
                   <div className="relative">
@@ -555,11 +702,21 @@ export default function ExportsPage() {
                 <Button
                   className="h-10 gap-2"
                   onClick={handleOffenceBookExport}
-                  disabled={exporting !== null && !isOffenceBookExporting}
+                  disabled={previewing !== null || (exporting !== null && !isOffenceBookExporting)}
                   aria-busy={isOffenceBookExporting}
                 >
                   {isOffenceBookExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                   {isOffenceBookExporting ? 'Downloading' : 'Download'}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-10 gap-2"
+                  onClick={handleOffenceBookPreview}
+                  disabled={exporting !== null || (previewing !== null && !isOffenceBookPreviewing)}
+                  aria-busy={isOffenceBookPreviewing}
+                >
+                  {isOffenceBookPreviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                  {isOffenceBookPreviewing ? 'Preparing Preview' : 'Preview'}
                 </Button>
               </div>
             </div>
@@ -576,19 +733,42 @@ export default function ExportsPage() {
                 <h2 className="text-lg font-semibold leading-none">Contributions Exports</h2>
               </div>
 
-              <Button
-                className="h-10 gap-2 sm:w-auto"
-                onClick={handleContributionExport}
-                disabled={exporting !== null && !isContributionExporting}
-                aria-busy={isContributionExporting}
-              >
-                {isContributionExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                {isContributionExporting ? 'Downloading' : 'Download Contributions'}
-              </Button>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button
+                  className="h-10 gap-2 sm:w-auto"
+                  onClick={handleContributionExport}
+                  disabled={previewing !== null || (exporting !== null && !isContributionExporting)}
+                  aria-busy={isContributionExporting}
+                >
+                  {isContributionExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                  {isContributionExporting ? 'Downloading' : 'Download Contributions'}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-10 gap-2 sm:w-auto"
+                  onClick={handleContributionPreview}
+                  disabled={exporting !== null || (previewing !== null && !isContributionPreviewing)}
+                  aria-busy={isContributionPreviewing}
+                >
+                  {isContributionPreviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                  {isContributionPreviewing ? 'Preparing Preview' : 'Preview'}
+                </Button>
+              </div>
             </div>
           </div>
         </Card>
       </div>
+      <WorkbookPreviewDialog
+        open={previewOpen}
+        session={previewSession}
+        onOpenChange={(open) => {
+          if (open) {
+            setPreviewOpen(true);
+            return;
+          }
+          void closePreview();
+        }}
+      />
     </DashboardLayout>
   );
 }

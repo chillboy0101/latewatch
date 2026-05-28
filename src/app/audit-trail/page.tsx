@@ -27,6 +27,7 @@ import {
   UserCheck,
   UserX,
   Archive,
+  Eye,
   RotateCcw,
 } from 'lucide-react';
 import {
@@ -185,6 +186,7 @@ export default function AuditTrailPage() {
       case 'DELETE': return <Trash2 className="h-3.5 w-3.5" />;
       case 'GENERATE': return <Download className="h-3.5 w-3.5" />;
       case 'EXPORT': return <Download className="h-3.5 w-3.5" />;
+      case 'PREVIEW': return <Eye className="h-3.5 w-3.5" />;
       case 'SYNC': return <RefreshCw className="h-3.5 w-3.5" />;
       case 'ACTIVATE': return <UserCheck className="h-3.5 w-3.5" />;
       case 'DEACTIVATE': return <UserX className="h-3.5 w-3.5" />;
@@ -203,6 +205,7 @@ export default function AuditTrailPage() {
       case 'DELETE': return 'bg-danger/10 text-danger border border-danger/20';
       case 'GENERATE': return 'bg-success/10 text-success border border-success/20';
       case 'EXPORT': return 'bg-warning/10 text-warning border border-warning/20';
+      case 'PREVIEW': return 'bg-primary/10 text-primary border border-primary/20';
       case 'SYNC': return 'bg-primary/10 text-primary border border-primary/20';
       case 'ACTIVATE': return 'bg-success/10 text-success border border-success/20';
       case 'DEACTIVATE': return 'bg-warning/10 text-warning border border-warning/20';
@@ -348,6 +351,11 @@ function displayAuditDate(value: unknown, fallback = 'date') {
         return `Weekly export (${displayAuditDate(afterData.weekStart)} to ${displayAuditDate(afterData.weekEnd, '?')})`;
       }
       return 'Monthly export generated';
+    }
+
+    if (operation === 'PREVIEW') {
+      const fileName = typeof afterData?.fileName === 'string' ? afterData.fileName : 'export workbook';
+      return `Previewed ${fileName}`;
     }
 
     if (operation === 'SYNC') {

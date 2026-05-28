@@ -27,7 +27,65 @@ export async function POST(request: NextRequest) {
     }
 
     const actor = await getAuditActor();
+    const result = await buildMonthlyExportWorkbook({
+      actorEmail: actor.actorEmail,
+      actorUserId: actor.actorUserId,
+      month: exportMonth,
+      year: exportYear,
+    });
 
+    const buffer = await result.workbook.xlsx.writeBuffer();
+
+    try {
+      await tryWriteAuditEvent({
+        entityType: 'export',
+        entityId: `monthly-${exportYear}-${exportMonth + 1}`,
+        action: 'GENERATE',
+        before: null,
+        after: {
+          year: exportYear,
+          month: exportMonth + 1,
+          weekCount: result.workingWeeks.length,
+          weeks: result.workingWeeks.map((week) => ({
+            weekNumber: week.weekNumber,
+            exportStart: week.exportStart,
+            exportEnd: week.exportEnd,
+            dates: week.dates,
+          })),
+        },
+        actor: { id: actor.actorUserId, email: actor.actorEmail },
+        reason: 'exports',
+      });
+    } catch (auditError) {
+      console.error('Audit log failed:', auditError);
+    }
+
+    return new NextResponse(buffer, {
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="${result.monthName}.xlsx"`,
+      },
+    });
+  } catch (error) {
+    console.error('Monthly export failed:', error);
+    const errMsg = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: `Monthly export failed: ${errMsg}` }, { status: 500 });
+  }
+}
+
+export async function buildMonthlyExportWorkbook({
+  actorEmail,
+  actorUserId,
+  month,
+  year,
+}: {
+  actorEmail?: string;
+  actorUserId?: string | null;
+  month: number;
+  year: number;
+}) {
+  const exportYear = Number(year);
+  const exportMonth = Number(month);
     const monthStartDate = startOfMonth(new Date(exportYear, exportMonth, 1));
     const monthEnd = endOfMonth(monthStartDate);
     const workingWeeks = getMonthWorkingWeeks(exportYear, exportMonth);
@@ -42,8 +100,8 @@ export async function POST(request: NextRequest) {
       const weeklyBook = await buildWeeklyWorkbook(
         week.weekStart,
         week.weekEnd,
-        actor.actorUserId,
-        actor.actorEmail,
+        actorUserId,
+        actorEmail,
         format(monthStartDate, 'yyyy-MM-dd'),
         format(monthEnd, 'yyyy-MM-dd'),
         week.weekNumber,
@@ -118,42 +176,10 @@ export async function POST(request: NextRequest) {
     }
 
     combinedBook.calcProperties.fullCalcOnLoad = true;
-    const buffer = await combinedBook.xlsx.writeBuffer();
-
-    try {
-      await tryWriteAuditEvent({
-        entityType: 'export',
-        entityId: `monthly-${exportYear}-${exportMonth + 1}`,
-        action: 'GENERATE',
-        before: null,
-        after: {
-          year: exportYear,
-          month: exportMonth + 1,
-          weekCount: workingWeeks.length,
-          weeks: workingWeeks.map((week) => ({
-            weekNumber: week.weekNumber,
-            exportStart: week.exportStart,
-            exportEnd: week.exportEnd,
-            dates: week.dates,
-          })),
-        },
-        actor: { id: actor.actorUserId, email: actor.actorEmail },
-        reason: 'exports',
-      });
-    } catch (auditError) {
-      console.error('Audit log failed:', auditError);
-    }
-
     const monthName = format(monthStartDate, 'MMMM_yyyy');
-    return new NextResponse(buffer, {
-      headers: {
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="${monthName}.xlsx"`,
-      },
-    });
-  } catch (error) {
-    console.error('Monthly export failed:', error);
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: `Monthly export failed: ${errMsg}` }, { status: 500 });
-  }
+    return {
+      monthName,
+      workbook: combinedBook,
+      workingWeeks,
+    };
 }
