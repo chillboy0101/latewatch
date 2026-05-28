@@ -1,8 +1,8 @@
 import { DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { format, parseISO } from 'date-fns';
-import type ExcelJS from 'exceljs';
-import { randomUUID } from 'node:crypto';
+import ExcelJS from 'exceljs';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { getAttendanceExportFileName, isAttendanceExportGroup, isAttendanceExportTemplate } from '@/lib/attendance-export-shared';
 
 export type ExportPreviewRequest =
@@ -28,6 +28,7 @@ type ExportPreviewFile = {
 export type ExportPreviewSession = {
   expiresAt: string;
   exportType: NormalizedExportPreviewRequest['type'];
+  fallbackViewerUrl: string;
   fileName: string;
   objectKey: string;
   sessionId: string;
@@ -39,6 +40,22 @@ const EXCEL_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spread
 const PREVIEW_PREFIX = 'export-previews';
 const PREVIEW_EXPIRY_SECONDS = 10 * 60;
 const PREVIEW_CLEANUP_AGE_MS = 60 * 60 * 1000;
+const PREVIEW_WORKSHEET_PROTECTION_OPTIONS: Partial<ExcelJS.WorksheetProtection> = {
+  autoFilter: false,
+  deleteColumns: false,
+  deleteRows: false,
+  formatCells: false,
+  formatColumns: false,
+  formatRows: false,
+  insertColumns: false,
+  insertHyperlinks: false,
+  insertRows: false,
+  pivotTables: false,
+  selectLockedCells: true,
+  selectUnlockedCells: true,
+  sort: false,
+  spinCount: 1000,
+};
 
 function normalizeAttendanceGroup(value: unknown) {
   if (!isAttendanceExportGroup(value)) {
@@ -127,14 +144,47 @@ function bufferToUint8Array(buffer: ExcelJS.Buffer) {
   return new Uint8Array(buffer as ArrayBuffer);
 }
 
-export function buildMicrosoftExcelViewerUrl(signedFileUrl: string) {
+function bufferForExcelJsLoad(buffer: ExcelJS.Buffer): ExcelJS.Buffer {
+  const maybeNodeBuffer: unknown = buffer;
+  if (Buffer.isBuffer(maybeNodeBuffer)) {
+    return maybeNodeBuffer.buffer.slice(
+      maybeNodeBuffer.byteOffset,
+      maybeNodeBuffer.byteOffset + maybeNodeBuffer.byteLength,
+    ) as unknown as ExcelJS.Buffer;
+  }
+  return buffer;
+}
+
+export function buildMicrosoftExcelViewerUrl(
+  signedFileUrl: string,
+  options: { allowInteractivity?: boolean } = {},
+) {
+  const allowInteractivity = options.allowInteractivity ?? true;
   const url = new URL('https://view.officeapps.live.com/op/embed.aspx');
   url.searchParams.set('src', signedFileUrl);
-  url.searchParams.set('wdAllowInteractivity', 'True');
+  url.searchParams.set('wdAllowInteractivity', allowInteractivity ? 'True' : 'False');
   url.searchParams.set('wdDownloadButton', 'False');
   url.searchParams.set('wdHideGridlines', 'False');
   url.searchParams.set('wdHideHeaders', 'False');
   return url.toString();
+}
+
+export async function protectWorkbookForPreview(workbook: ExcelJS.Workbook, password: string) {
+  await Promise.all(workbook.worksheets.map((worksheet) =>
+    worksheet.protect(password, PREVIEW_WORKSHEET_PROTECTION_OPTIONS)
+  ));
+  return workbook;
+}
+
+async function protectPreviewWorkbookBuffer(buffer: ExcelJS.Buffer, password: string) {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(bufferForExcelJsLoad(buffer));
+  await protectWorkbookForPreview(workbook, password);
+  return workbook.xlsx.writeBuffer();
+}
+
+function createPreviewProtectionPassword() {
+  return randomBytes(24).toString('base64url');
 }
 
 async function buildExportPreviewFile(input: NormalizedExportPreviewRequest): Promise<ExportPreviewFile> {
@@ -262,13 +312,14 @@ export async function createExportPreviewSession(input: NormalizedExportPreviewR
   const sessionId = randomUUID();
   const objectKey = `${PREVIEW_PREFIX}/${sessionId}/${safeFileName(file.fileName)}`;
   const expiresAt = new Date(Date.now() + PREVIEW_EXPIRY_SECONDS * 1000).toISOString();
+  const protectedBuffer = await protectPreviewWorkbookBuffer(file.buffer, createPreviewProtectionPassword());
 
   await cleanupExpiredExportPreviewSessions().catch((error) => {
     console.warn('Export preview cleanup failed:', error);
   });
 
   await r2.send(new PutObjectCommand({
-    Body: bufferToUint8Array(file.buffer),
+    Body: bufferToUint8Array(protectedBuffer),
     Bucket: bucket,
     ContentType: EXCEL_CONTENT_TYPE,
     Key: objectKey,
@@ -288,10 +339,12 @@ export async function createExportPreviewSession(input: NormalizedExportPreviewR
     { expiresIn: PREVIEW_EXPIRY_SECONDS },
   );
   const viewerUrl = buildMicrosoftExcelViewerUrl(signedFileUrl);
+  const fallbackViewerUrl = buildMicrosoftExcelViewerUrl(signedFileUrl, { allowInteractivity: false });
 
   return {
     expiresAt,
     exportType: file.exportType,
+    fallbackViewerUrl,
     fileName: file.fileName,
     objectKey,
     sessionId,
@@ -311,6 +364,7 @@ export async function deleteExportPreviewSession(sessionId: unknown) {
 export function getExportPreviewPublicResponse(session: ExportPreviewSession) {
   return {
     expiresAt: session.expiresAt,
+    fallbackViewerUrl: session.fallbackViewerUrl,
     fileName: session.fileName,
     sessionId: session.sessionId,
     viewerUrl: session.viewerUrl,
