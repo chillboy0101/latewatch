@@ -163,18 +163,18 @@ test('exports page sends successful preview sessions straight to the read-only M
   assert.doesNotMatch(source, /session\.editUrl/);
 });
 
-test('exports page opens a branded loading tab while the Excel preview is prepared', () => {
+test('exports page opens a blank holding tab before redirecting to Microsoft viewer', () => {
   const source = fs.readFileSync(exportsPagePath, 'utf8');
 
-  assert.match(source, /buildExportPreviewLoadingHtml/);
-  assert.match(source, /auth-watermark/);
-  assert.match(source, /Loading export preview/);
+  assert.match(source, /window\.open\('', '_blank'\)/);
+  assert.match(source, /sendPreviewWindowToUrl\(previewWindow, session\.viewerUrl\)/);
+  assert.doesNotMatch(source, /buildExportPreviewLoadingHtml/);
+  assert.doesNotMatch(source, /auth-watermark/);
+  assert.doesNotMatch(source, /Loading export preview/);
   assert.doesNotMatch(source, /Preparing your protected Excel workbook\. Microsoft Excel viewer will open automatically\./);
   assert.doesNotMatch(source, /<p>[\s\S]*<\/p>/);
-  assert.match(source, /width: min\(100%, 26rem\);/);
-  assert.match(source, /align-content: center;/);
-  assert.match(source, /previewWindow\.document\.open\(\)/);
-  assert.match(source, /previewWindow\.document\.write\(buildExportPreviewLoadingHtml/);
+  assert.doesNotMatch(source, /previewWindow\.document\.open\(\)/);
+  assert.doesNotMatch(source, /previewWindow\.document\.write/);
   assert.doesNotMatch(source, /body\.textContent = 'Preparing Excel preview\.\.\.'/);
 });
 
