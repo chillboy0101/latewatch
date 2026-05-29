@@ -63,6 +63,15 @@ const STAFF_NUMBER_COLUMN = 2;
 const STAFF_NAME_COLUMN = 3;
 const EXTERNAL_MONEY_ROWS = [8, 9, 10, 11];
 const EXPENDITURE_ROWS = [6, 7, 8, 9, 10, 11, 12, 13, 14];
+const SUMMARY_GRID_BORDER: Partial<ExcelJS.Border> = {
+  color: { argb: 'FF000000' },
+  style: 'thin',
+};
+const SUMMARY_COLUMN_WIDTHS = {
+  expenditureAmount: 14,
+  expenditureItem: 44,
+  externalSource: 34,
+};
 
 function amountNumber(value: number | string | null | undefined) {
   const amount = Number(value || 0);
@@ -208,6 +217,40 @@ function clearBlockRows(worksheet: ExcelJS.Worksheet, titleRow: number) {
       worksheet.getCell(rowNumber, column).value = null;
     }
   }
+}
+
+function widenColumn(worksheet: ExcelJS.Worksheet, column: number, minimumWidth: number) {
+  const target = worksheet.getColumn(column);
+  target.width = Math.max(target.width || 0, minimumWidth);
+}
+
+function applyGridBorders(
+  worksheet: ExcelJS.Worksheet,
+  startRow: number,
+  endRow: number,
+  startColumn: number,
+  endColumn: number,
+) {
+  for (let row = startRow; row <= endRow; row++) {
+    for (let column = startColumn; column <= endColumn; column++) {
+      const cell = worksheet.getCell(row, column);
+      cell.border = {
+        ...(cell.border || {}),
+        bottom: SUMMARY_GRID_BORDER,
+        left: SUMMARY_GRID_BORDER,
+        right: SUMMARY_GRID_BORDER,
+        top: SUMMARY_GRID_BORDER,
+      };
+    }
+  }
+}
+
+function applySummaryBlockLayout(worksheet: ExcelJS.Worksheet) {
+  widenColumn(worksheet, 17, SUMMARY_COLUMN_WIDTHS.externalSource);
+  widenColumn(worksheet, 18, SUMMARY_COLUMN_WIDTHS.expenditureItem);
+  widenColumn(worksheet, 19, SUMMARY_COLUMN_WIDTHS.expenditureAmount);
+  applyGridBorders(worksheet, 7, 12, 16, 17);
+  applyGridBorders(worksheet, 5, 15, 18, 19);
 }
 
 export async function buildOffenceBookWorkbookFromData({
@@ -374,6 +417,8 @@ export async function buildOffenceBookWorkbookFromData({
     amountCell.value = member ? money(owedCents) : null;
     amountCell.numFmt = '#,##0.00';
   }
+
+  applySummaryBlockLayout(worksheet);
 
   return workbook;
 }

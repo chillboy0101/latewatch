@@ -79,6 +79,10 @@ function isStruck(cell) {
   return cell.font?.strike === true;
 }
 
+function borderStyle(cell, edge) {
+  return cell.border?.[edge]?.style || null;
+}
+
 function formulaTexts(workbook) {
   const formulas = [];
   for (const sheet of workbook.worksheets) {
@@ -167,6 +171,29 @@ test('offence book export calculates amount owed and preserves owed highlighting
   assert.equal(sheet.getCell('Q28').value, 0);
   assert.notEqual(fillArgb(sheet.getCell('P28')), 'FFFF00FF');
   assert.notEqual(fillArgb(sheet.getCell('Q28')), 'FFFF00FF');
+});
+
+test('offence book summary money blocks have readable columns and visible grid lines only in that section', async () => {
+  const workbook = await buildWorkbook();
+  const sheet = workbook.getWorksheet('MAY 2026');
+
+  assert.ok(sheet);
+  assert.ok(sheet.getColumn(17).width >= 34, 'external money source column should be wide enough');
+  assert.ok(sheet.getColumn(18).width >= 44, 'expenditure item column should be wide enough');
+  assert.ok(sheet.getColumn(19).width >= 14, 'expenditure amount column should be wide enough');
+
+  assert.equal(borderStyle(sheet.getCell('P8'), 'right'), 'thin');
+  assert.equal(borderStyle(sheet.getCell('Q8'), 'left'), 'thin');
+  assert.equal(borderStyle(sheet.getCell('P8'), 'bottom'), 'thin');
+  assert.equal(borderStyle(sheet.getCell('P9'), 'top'), 'thin');
+
+  assert.equal(borderStyle(sheet.getCell('R6'), 'right'), 'thin');
+  assert.equal(borderStyle(sheet.getCell('S6'), 'left'), 'thin');
+  assert.equal(borderStyle(sheet.getCell('R6'), 'bottom'), 'thin');
+  assert.equal(borderStyle(sheet.getCell('R7'), 'top'), 'thin');
+
+  assert.deepEqual(sheet.getCell('B27').border || {}, {});
+  assert.deepEqual(sheet.getCell('C27').border || {}, {});
 });
 
 test('offence book export is standalone and can be re-opened without external workbook references', async () => {
