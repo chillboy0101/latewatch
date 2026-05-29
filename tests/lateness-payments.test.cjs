@@ -11,6 +11,7 @@ const {
 } = require('../src/lib/lateness-payments.ts');
 const {
   buildLatenessPaymentReceiptDetail,
+  getLatenessPaymentReceiptDocumentTitle,
   getLatenessPaymentReceiptNumber,
   summarizeLatenessPaymentReceipts,
 } = require('../src/lib/lateness-payment-receipts.ts');
@@ -106,6 +107,17 @@ test('lateness payment receipt numbers are stable and date-based', () => {
   assert.equal(
     getLatenessPaymentReceiptNumber('123e4567-e89b-12d3-a456-426614174000', new Date('2026-05-29T10:20:00.000Z')),
     'LW-RCPT-202605-123E4567',
+  );
+});
+
+test('lateness payment receipt print titles include the receipt date and number', () => {
+  assert.equal(
+    getLatenessPaymentReceiptDocumentTitle('LW-RCPT-202605-123E4567', '2026-05-29T10:20:00.000Z'),
+    'LateWatch Receipt 2026-05-29 LW-RCPT-202605-123E4567',
+  );
+  assert.equal(
+    getLatenessPaymentReceiptDocumentTitle('LW-RCPT-UNKNOWN-123E4567', null),
+    'LateWatch Receipt unknown-date LW-RCPT-UNKNOWN-123E4567',
   );
 });
 

@@ -86,6 +86,16 @@ export function getLatenessPaymentReceiptNumber(paymentId: string, recordedAt: D
   return `LW-RCPT-${period}-${suffix}`;
 }
 
+export function getLatenessPaymentReceiptDocumentTitle(
+  receiptNumber: string,
+  recordedAt: Date | string | null | undefined,
+) {
+  const date = parseDate(recordedAt);
+  const receiptDate = date ? date.toISOString().slice(0, 10) : 'unknown-date';
+
+  return `LateWatch Receipt ${receiptDate} ${receiptNumber}`;
+}
+
 export function summarizeLatenessPaymentReceipt(payment: LatenessPaymentReceiptPaymentLike): LatenessPaymentReceiptSummary {
   return {
     amount: money(payment.amount),

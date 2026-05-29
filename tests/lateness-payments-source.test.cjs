@@ -189,6 +189,8 @@ test('receipt page is print-friendly and uses LateWatch branding', () => {
   assert.match(source, /Official Receipt/);
   assert.match(source, /Print \/ Save PDF/);
   assert.match(source, /window\.print\(\)/);
+  assert.match(source, /getLatenessPaymentReceiptDocumentTitle/);
+  assert.match(source, /document\.title = receiptDocumentTitle/);
   assert.match(source, /\/api\/attendance\/check-in\/receipts\/\$\{paymentId\}/);
   assert.match(source, /@media print/);
   assert.match(source, /Receipt No/);
@@ -199,6 +201,7 @@ test('receipt helper derives stable receipts from existing payment data', () => 
   const source = fs.readFileSync(receiptLibPath, 'utf8');
 
   assert.match(source, /export function getLatenessPaymentReceiptNumber/);
+  assert.match(source, /export function getLatenessPaymentReceiptDocumentTitle/);
   assert.match(source, /export function summarizeLatenessPaymentReceipts/);
   assert.match(source, /export function buildLatenessPaymentReceiptDetail/);
   assert.doesNotMatch(source, /receipt_table/);

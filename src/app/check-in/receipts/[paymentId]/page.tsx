@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { formatDisplayDate, formatDisplayDateTime } from '@/lib/date-format';
+import { getLatenessPaymentReceiptDocumentTitle } from '@/lib/lateness-payment-receipts';
 
 type ReceiptDetail = {
   allocations: Array<{
@@ -57,6 +58,10 @@ export default function PaymentReceiptPage() {
   const [error, setError] = useState<string | null>(null);
 
   const receiptUrl = useMemo(() => `/api/attendance/check-in/receipts/${paymentId}`, [paymentId]);
+  const receiptDocumentTitle = useMemo(() => {
+    if (!receipt) return 'LateWatch Receipt';
+    return getLatenessPaymentReceiptDocumentTitle(receipt.receipt.receiptNumber, receipt.receipt.recordedAt);
+  }, [receipt]);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,6 +97,20 @@ export default function PaymentReceiptPage() {
     };
   }, [paymentId, receiptUrl]);
 
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = receiptDocumentTitle;
+
+    return () => {
+      document.title = previousTitle;
+    };
+  }, [receiptDocumentTitle]);
+
+  function handlePrint() {
+    document.title = receiptDocumentTitle;
+    window.print();
+  }
+
   return (
     <main className="min-h-dvh bg-background px-4 py-5 text-foreground sm:px-6 lg:px-8">
       <style>{`
@@ -113,7 +132,7 @@ export default function PaymentReceiptPage() {
         <Button
           type="button"
           className="gap-2"
-          onClick={() => window.print()}
+          onClick={handlePrint}
           disabled={!receipt || loading}
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
