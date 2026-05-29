@@ -71,6 +71,8 @@ const SUMMARY_COLUMN_WIDTHS = {
   expenditureAmount: 14,
   expenditureItem: 44,
   externalSource: 34,
+  owedName: 34,
+  staffName: 34,
 };
 
 function amountNumber(value: number | string | null | undefined) {
@@ -246,6 +248,8 @@ function applyGridBorders(
 }
 
 function applySummaryBlockLayout(worksheet: ExcelJS.Worksheet) {
+  widenColumn(worksheet, STAFF_NAME_COLUMN, SUMMARY_COLUMN_WIDTHS.staffName);
+  widenColumn(worksheet, 16, SUMMARY_COLUMN_WIDTHS.owedName);
   widenColumn(worksheet, 17, SUMMARY_COLUMN_WIDTHS.externalSource);
   widenColumn(worksheet, 18, SUMMARY_COLUMN_WIDTHS.expenditureItem);
   widenColumn(worksheet, 19, SUMMARY_COLUMN_WIDTHS.expenditureAmount);

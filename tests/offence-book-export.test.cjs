@@ -110,6 +110,18 @@ async function buildWorkbook() {
   });
 }
 
+async function buildWorkbookWithStaff(customStaff) {
+  return buildOffenceBookWorkbookFromData({
+    allocations: [],
+    entries: [],
+    items: [],
+    month: 4,
+    staff: customStaff,
+    templatePath: OFFENCE_BOOK_TEMPLATE_PATH,
+    year: 2026,
+  });
+}
+
 test('offence book export preserves template layout and fills monthly payment values', async () => {
   const workbook = await buildWorkbook();
   const sheet = workbook.getWorksheet('MAY 2026');
@@ -194,6 +206,19 @@ test('offence book summary money blocks have readable columns and visible grid l
 
   assert.deepEqual(sheet.getCell('B27').border || {}, {});
   assert.deepEqual(sheet.getCell('C27').border || {}, {});
+});
+
+test('offence book staff name columns are wide enough for full names without styling the main table', async () => {
+  const longName = 'DENNIS AKUETTEH ARYEETEY';
+  const workbook = await buildWorkbookWithStaff([{ fullName: longName, id: 'staff-long-name' }]);
+  const sheet = workbook.getWorksheet('MAY 2026');
+
+  assert.ok(sheet);
+  assert.equal(sheet.getCell('C6').value, longName);
+  assert.equal(sheet.getCell('P26').value, longName);
+  assert.ok(sheet.getColumn(3).width >= 34, 'weekly staff name column should fit full names');
+  assert.ok(sheet.getColumn(16).width >= 34, 'amount owed staff name column should fit full names');
+  assert.deepEqual(sheet.getCell('C6').border || {}, {});
 });
 
 test('offence book export is standalone and can be re-opened without external workbook references', async () => {
