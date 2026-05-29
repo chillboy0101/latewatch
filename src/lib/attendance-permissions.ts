@@ -13,7 +13,6 @@ export const ABSENCE_PERMISSION_REASONS = [
   { value: 'personal excuse', label: 'Personal excuse' },
   { value: 'sick', label: 'Sick' },
   { value: 'workshop', label: 'Workshop' },
-  { value: 'field work', label: 'Field Work' },
   { value: 'general pardon', label: 'General pardon' },
 ] as const;
 
@@ -42,7 +41,9 @@ const VALID_WINDOWS = new Set<string>(ATTENDANCE_PERMISSION_WINDOWS.map((option)
 const VALID_ABSENCE_WINDOWS = new Set<string>(ABSENCE_PERMISSION_WINDOWS.map((option) => option.value));
 const VALID_ABSENCE_REASONS = new Set<string>(ABSENCE_PERMISSION_REASONS.map((option) => option.value));
 const VALID_LATE_ARRIVAL_REASONS = new Set<string>(LATE_ARRIVAL_PERMISSION_REASONS.map((option) => option.value));
-const LEGACY_REASON_LABELS: Record<string, string> = {};
+const LEGACY_REASON_LABELS: Record<string, string> = {
+  'field work': 'Official duty',
+};
 const MINUTE_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 24 * 60 * 60 * 1000;

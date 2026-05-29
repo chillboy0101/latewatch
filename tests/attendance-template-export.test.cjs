@@ -201,25 +201,13 @@ test('daily attendance summary counts configured exempt permission reasons', asy
       active: true,
       archived: false,
       displayOrder: 8,
-      fullName: 'MAIN FIELD WORK',
-      gender: 'FEMALE',
-      id: 'main-field-work',
-      isAttendanceOnly: false,
-      isNssPersonnel: false,
-      rank: 'RO',
-      staffNo: 'GRA000006',
-    },
-    {
-      active: true,
-      archived: false,
-      displayOrder: 9,
       fullName: 'MAIN GENERAL PARDON',
       gender: 'MALE',
       id: 'main-general-pardon',
       isAttendanceOnly: false,
       isNssPersonnel: false,
       rank: 'RO',
-      staffNo: 'GRA000007',
+      staffNo: 'GRA000006',
     },
   ];
   const workbook = await workbookFor({
@@ -228,7 +216,6 @@ test('daily attendance summary counts configured exempt permission reasons', asy
       { date: '2026-04-01', permissionType: 'absence', reason: 'official duty', staffId: 'main-late' },
       { date: '2026-04-01', permissionType: 'absence', reason: 'sick', staffId: 'main-excused' },
       { date: '2026-04-01', permissionType: 'absence', reason: 'workshop', staffId: 'main-workshop' },
-      { date: '2026-04-01', permissionType: 'absence', reason: 'field work', staffId: 'main-field-work' },
       { date: '2026-04-01', permissionType: 'absence', reason: 'general pardon', staffId: 'main-general-pardon' },
     ],
     roster,
@@ -236,13 +223,13 @@ test('daily attendance summary counts configured exempt permission reasons', asy
   const sheet = workbook.worksheets[0];
   const remarks = String(sheet.getCell('G6').value);
 
-  assert.equal(sheet.getCell('E6').value, 5);
+  assert.equal(sheet.getCell('E6').value, 4);
   assert.match(remarks, /Exempt \(Training\) - 1/);
   assert.match(remarks, /Exempt \(Official Duty\) - 1/);
   assert.match(remarks, /Exempt \(Workshop\) - 1/);
-  assert.match(remarks, /Exempt \(Field Work\) - 1/);
   assert.match(remarks, /Sick - 1/);
   assert.match(remarks, /Leave - 1/);
+  assert.doesNotMatch(remarks, /Field Work/);
   assert.doesNotMatch(remarks, /General pardon/);
   assert.doesNotMatch(remarks, /Personal excuse/);
 });
@@ -340,6 +327,38 @@ test('attendance exports display personal excuse permissions as official duty', 
   assert.equal(monthlySheet.getCell('AS11').value, 'Official duty');
 
   const weeklyWorkbook = await workbookFor({
+    permissions,
+    template: 'weekly-validation',
+  });
+  const week1 = weeklyWorkbook.getWorksheet('WEEK 1');
+  assert.equal(week1.getCell('K9').value, 'Official duty');
+});
+
+test('attendance exports display legacy field work permissions as official duty', async () => {
+  const permissions = [
+    { date: '2026-04-01', permissionType: 'absence', reason: 'field work', staffId: 'main-excused' },
+  ];
+  const attendanceRecords = [
+    { checkInTime: '08:30', date: '2026-04-01', staffId: 'main-on-time' },
+    { checkInTime: '08:30', date: '2026-04-01', staffId: 'main-late' },
+  ];
+
+  const dailyWorkbook = await workbookFor({ attendanceRecords, permissions });
+  const dailyRemarks = String(dailyWorkbook.worksheets[0].getCell('G6').value);
+  assert.equal(dailyWorkbook.worksheets[0].getCell('E6').value, 1);
+  assert.match(dailyRemarks, /Exempt \(Official Duty\) - 1/);
+  assert.doesNotMatch(dailyRemarks, /Field Work/);
+
+  const monthlyWorkbook = await workbookFor({
+    attendanceRecords,
+    permissions,
+    template: 'monthly-matrix',
+  });
+  const monthlySheet = monthlyWorkbook.worksheets[0];
+  assert.equal(monthlySheet.getCell('AS11').value, 'Official duty');
+
+  const weeklyWorkbook = await workbookFor({
+    attendanceRecords,
     permissions,
     template: 'weekly-validation',
   });
@@ -481,7 +500,7 @@ test('weekly validation uses daily summary-style remark labels and keeps NSS sta
   assert.equal(week1.getCell('K8').value, 'Official duty');
   assert.equal(week1.getCell('F9').value, CROSS);
   assert.equal(week1.getCell('I7').value, 1);
-  assert.equal(week1.getCell('K9').value, 'Exempt (Field Work)');
+  assert.equal(week1.getCell('K9').value, 'Exempt (Workshop)');
   assert.equal(week1.getCell('F10').value, CROSS);
   assert.equal(week1.getCell('K10').value, 'Leave');
 
