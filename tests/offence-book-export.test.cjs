@@ -83,6 +83,15 @@ function borderStyle(cell, edge) {
   return cell.border?.[edge]?.style || null;
 }
 
+function borderSnapshot(cell) {
+  return {
+    bottom: borderStyle(cell, 'bottom'),
+    left: borderStyle(cell, 'left'),
+    right: borderStyle(cell, 'right'),
+    top: borderStyle(cell, 'top'),
+  };
+}
+
 function formulaTexts(workbook) {
   const formulas = [];
   for (const sheet of workbook.worksheets) {
@@ -191,7 +200,7 @@ test('offence book export calculates amount owed and preserves owed highlighting
   assert.notEqual(fillArgb(sheet.getCell('Q28')), 'FFFF00FF');
 });
 
-test('offence book summary money blocks have readable columns and visible grid lines only in that section', async () => {
+test('offence book summary money blocks keep the template border layout', async () => {
   const workbook = await buildWorkbook();
   const sheet = workbook.getWorksheet('MAY 2026');
   const template = await loadTemplateSheet();
@@ -202,28 +211,16 @@ test('offence book summary money blocks have readable columns and visible grid l
   assert.ok(sheet.getColumn(19).width >= 14, 'expenditure amount column should be wide enough');
   assert.equal(sheet.getColumn(11).width, template.getColumn(11).width, 'weekly payment status column should keep the template width');
 
-  assert.equal(borderStyle(sheet.getCell('P8'), 'right'), 'thin');
-  assert.equal(borderStyle(sheet.getCell('Q8'), 'left'), 'thin');
-  assert.equal(borderStyle(sheet.getCell('P8'), 'bottom'), 'thin');
-  assert.equal(borderStyle(sheet.getCell('P9'), 'top'), 'thin');
-
-  assert.equal(borderStyle(sheet.getCell('R6'), 'right'), 'thin');
-  assert.equal(borderStyle(sheet.getCell('S6'), 'left'), 'thin');
-  assert.equal(borderStyle(sheet.getCell('R6'), 'bottom'), 'thin');
-  assert.equal(borderStyle(sheet.getCell('R7'), 'top'), 'thin');
-
-  assert.equal(borderStyle(sheet.getCell('P14'), 'bottom'), 'thin');
-  assert.equal(borderStyle(sheet.getCell('P15'), 'top'), 'thin');
-  assert.equal(borderStyle(sheet.getCell('P17'), 'bottom'), 'thin');
-  assert.equal(borderStyle(sheet.getCell('P18'), 'top'), 'thin');
-  assert.equal(borderStyle(sheet.getCell('P22'), 'bottom'), 'thin');
-  assert.equal(borderStyle(sheet.getCell('P23'), 'top'), 'thin');
-  assert.equal(borderStyle(sheet.getCell('T4'), 'bottom'), 'thin');
-  assert.equal(borderStyle(sheet.getCell('T5'), 'top'), 'thin');
-  assert.equal(borderStyle(sheet.getCell('T7'), 'bottom'), 'thin');
-  assert.equal(borderStyle(sheet.getCell('T8'), 'top'), 'thin');
-  assert.equal(borderStyle(sheet.getCell('T10'), 'bottom'), 'thin');
-  assert.equal(borderStyle(sheet.getCell('T11'), 'top'), 'thin');
+  for (const address of [
+    'P4', 'P5', 'P8', 'P9', 'P12', 'P14', 'P15', 'P17', 'P18', 'P22', 'P23',
+    'Q8', 'R6', 'R7', 'R15', 'S6', 'S15', 'T4', 'T5', 'T7', 'T8', 'T10', 'T11',
+  ]) {
+    assert.deepEqual(
+      borderSnapshot(sheet.getCell(address)),
+      borderSnapshot(template.getCell(address)),
+      `${address} should keep the offence book template borders`,
+    );
+  }
 
   assert.deepEqual(sheet.getCell('B27').border || {}, {});
   assert.deepEqual(sheet.getCell('C27').border || {}, {});
