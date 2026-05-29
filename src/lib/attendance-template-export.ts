@@ -92,7 +92,8 @@ const PRESENT_MARK = '\u2713';
 const ABSENT_MARK = '\u2717';
 const MISSING_ATTENDANCE_REMARK = 'Absent with permission';
 const OFFICIAL_DUTY_EXPORT_REMARK = 'Official duty';
-const DAILY_EXEMPT_REASONS = new Set(['training', 'official duty', 'sick', 'workshop']);
+const DAILY_OFFICIAL_DUTY_REMARK = 'Exempt (Official Duty)';
+const DAILY_EXEMPT_REASONS = new Set(['training', 'official duty', 'sick', 'workshop', 'field work']);
 
 function templatePath(template: AttendanceExportTemplate) {
   return path.join(process.cwd(), 'src', 'attendance-templates', TEMPLATE_FILES[template]);
@@ -314,6 +315,16 @@ function absenceRemarkLabel(reason: string | null | undefined) {
   if (normalized === 'training') return 'Exempt (Training)';
   if (normalized === 'official duty') return OFFICIAL_DUTY_EXPORT_REMARK;
   if (normalized === 'workshop') return 'Exempt (Field Work)';
+  if (normalized === 'field work') return 'Exempt (Field Work)';
+  return formatAbsencePermissionReason(reason);
+}
+
+function dailySummaryAbsenceRemarkLabel(reason: string | null | undefined) {
+  const normalized = normalizedAbsenceReason(reason);
+  if (normalized === 'training') return 'Exempt (Training)';
+  if (normalized === 'workshop') return 'Exempt (Workshop)';
+  if (normalized === 'field work') return 'Exempt (Field Work)';
+  if (normalized === 'official duty') return DAILY_OFFICIAL_DUTY_REMARK;
   return formatAbsencePermissionReason(reason);
 }
 
@@ -358,6 +369,17 @@ function countLabels(labels: string[]) {
 
 function dailyRemark(labels: string[]) {
   return Array.from(new Set(labels.filter(Boolean))).join(' / ');
+}
+
+function countedDailyRemark(labels: string[]) {
+  const counts = new Map<string, number>();
+  for (const label of labels.filter(Boolean)) {
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .map(([label, count]) => `${label} - ${count}`)
+    .join(' / ');
 }
 
 async function loadTemplate(template: AttendanceExportTemplate) {
@@ -407,10 +429,10 @@ async function buildDailySummary(input: AttendanceWorkbookInput, roster: RosterS
       } else if (status.kind === 'approved_absence') {
         if (isDailyExemptReason(status.reason)) {
           exempt += 1;
-          remarks.push(absenceRemarkLabel(status.reason));
+          remarks.push(dailySummaryAbsenceRemarkLabel(status.reason));
         }
       } else if (status.kind === 'unapproved_absence') {
-        remarks.push(OFFICIAL_DUTY_EXPORT_REMARK);
+        remarks.push(DAILY_OFFICIAL_DUTY_REMARK);
       }
     }
 
@@ -421,7 +443,7 @@ async function buildDailySummary(input: AttendanceWorkbookInput, roster: RosterS
     setCell(row.getCell(4), leave);
     setCell(row.getCell(5), exempt);
     setCell(row.getCell(6), null);
-    setCell(row.getCell(7), dailyRemark(remarks));
+    setCell(row.getCell(7), countedDailyRemark(remarks));
     row.commit();
   });
 

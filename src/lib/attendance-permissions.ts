@@ -13,6 +13,7 @@ export const ABSENCE_PERMISSION_REASONS = [
   { value: 'personal excuse', label: 'Personal excuse' },
   { value: 'sick', label: 'Sick' },
   { value: 'workshop', label: 'Workshop' },
+  { value: 'field work', label: 'Field Work' },
   { value: 'general pardon', label: 'General pardon' },
 ] as const;
 
