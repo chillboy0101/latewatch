@@ -771,7 +771,7 @@ export default function ExportsPage() {
 
         <Card className="overflow-hidden">
           <div className="border-b border-border px-6 py-5">
-            <div className="flex flex-col gap-5 2xl:flex-row 2xl:items-center 2xl:justify-between">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-background text-primary">
                   <FileSpreadsheet className="h-5 w-5" />
@@ -779,7 +779,7 @@ export default function ExportsPage() {
                 <h2 className="text-lg font-semibold leading-none">Attendance Exports</h2>
               </div>
 
-              <div className="grid w-full gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end 2xl:w-auto 2xl:grid-cols-[minmax(9rem,1fr)_7rem_minmax(10rem,1fr)_minmax(11rem,1fr)_auto_auto]">
+              <div className="grid w-full min-w-0 gap-3 sm:grid-cols-2 lg:flex-1 lg:grid-cols-[minmax(6.75rem,0.8fr)_5.75rem_minmax(8.5rem,1fr)_minmax(9rem,1fr)_auto_auto] lg:items-end 2xl:w-auto 2xl:flex-none 2xl:grid-cols-[minmax(9rem,1fr)_7rem_minmax(10rem,1fr)_minmax(11rem,1fr)_auto_auto]">
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-muted-foreground">Month</label>
                   <div className="relative">
@@ -853,7 +853,7 @@ export default function ExportsPage() {
                 </div>
 
                 <Button
-                  className="h-10 gap-2 whitespace-nowrap xl:justify-self-end 2xl:justify-self-auto"
+                  className="h-10 min-w-[7.5rem] gap-2 whitespace-nowrap lg:justify-self-end 2xl:justify-self-auto"
                   onClick={handleAttendanceExport}
                   disabled={loading || previewing !== null || (exporting !== null && !isAttendanceExporting)}
                   aria-busy={isAttendanceExporting}
@@ -863,7 +863,7 @@ export default function ExportsPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-10 min-w-[8rem] gap-2 whitespace-nowrap xl:justify-self-end 2xl:justify-self-auto"
+                  className="h-10 min-w-[10rem] gap-2 whitespace-nowrap lg:justify-self-end 2xl:justify-self-auto"
                   onClick={handleAttendancePreview}
                   disabled={loading || exporting !== null || (previewing !== null && !isAttendancePreviewing)}
                   aria-busy={isAttendancePreviewing}

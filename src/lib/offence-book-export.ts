@@ -62,6 +62,7 @@ const PAID_COLUMN = 13;
 const UNPAID_COLUMN = 14;
 const STAFF_NUMBER_COLUMN = 2;
 const STAFF_NAME_COLUMN = 3;
+const PAYMENT_STATUS_COLUMN_MIN_WIDTH = 24;
 const EXTERNAL_MONEY_ROWS = [8, 9, 10, 11];
 const EXPENDITURE_ROWS = [6, 7, 8, 9, 10, 11, 12, 13, 14];
 const SUMMARY_GRID_BORDER: Partial<ExcelJS.Border> = {
@@ -247,6 +248,7 @@ function applySummaryGridLines(
 }
 
 function applySummaryBlockLayout(worksheet: ExcelJS.Worksheet) {
+  widenColumn(worksheet, STATUS_COLUMN, PAYMENT_STATUS_COLUMN_MIN_WIDTH);
   widenColumn(worksheet, STAFF_NAME_COLUMN, SUMMARY_COLUMN_WIDTHS.staffName);
   widenColumn(worksheet, 16, SUMMARY_COLUMN_WIDTHS.owedName);
   widenColumn(worksheet, 17, SUMMARY_COLUMN_WIDTHS.externalSource);

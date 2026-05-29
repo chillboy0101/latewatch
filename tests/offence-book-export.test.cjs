@@ -216,7 +216,9 @@ test('offence book colored summary blocks show grid lines without touching the w
   assert.ok(sheet.getColumn(17).width >= 34, 'external money source column should be wide enough');
   assert.ok(sheet.getColumn(18).width >= 44, 'expenditure item column should be wide enough');
   assert.ok(sheet.getColumn(19).width >= 14, 'expenditure amount column should be wide enough');
-  assert.equal(sheet.getColumn(11).width, template.getColumn(11).width, 'weekly payment status column should keep the template width');
+  assert.ok(sheet.getColumn(11).width >= 24, 'weekly payment status column should fit PARTIALLY PAID');
+  assert.equal(sheet.getColumn(13).width, template.getColumn(13).width, 'weekly paid column should keep the template width');
+  assert.equal(sheet.getColumn(14).width, template.getColumn(14).width, 'weekly unpaid column should keep the template width');
 
   for (const [startRow, endRow, startColumn, endColumn] of [
     [4, 5, 16, 16],
