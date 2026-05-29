@@ -169,7 +169,10 @@ test('exports page opens a branded loading tab while the Excel preview is prepar
   assert.match(source, /buildExportPreviewLoadingHtml/);
   assert.match(source, /auth-watermark/);
   assert.match(source, /Loading export preview/);
-  assert.match(source, /Preparing your protected Excel workbook\. Microsoft Excel viewer will open automatically\./);
+  assert.doesNotMatch(source, /Preparing your protected Excel workbook\. Microsoft Excel viewer will open automatically\./);
+  assert.doesNotMatch(source, /<p>[\s\S]*<\/p>/);
+  assert.match(source, /width: min\(100%, 26rem\);/);
+  assert.match(source, /align-content: center;/);
   assert.match(source, /previewWindow\.document\.open\(\)/);
   assert.match(source, /previewWindow\.document\.write\(buildExportPreviewLoadingHtml/);
   assert.doesNotMatch(source, /body\.textContent = 'Preparing Excel preview\.\.\.'/);

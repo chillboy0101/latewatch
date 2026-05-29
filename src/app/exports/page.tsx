@@ -77,7 +77,6 @@ function buildExportPreviewLoadingHtml({ isDark }: { isDark: boolean }) {
       --card: #f9fafb;
       --border: #e5e7eb;
       --primary: #2563eb;
-      --muted-foreground: #6b7280;
     }
 
     .dark {
@@ -86,7 +85,6 @@ function buildExportPreviewLoadingHtml({ isDark }: { isDark: boolean }) {
       --card: #171717;
       --border: #262626;
       --primary: #3b82f6;
-      --muted-foreground: #9ca3af;
     }
 
     * {
@@ -212,13 +210,15 @@ function buildExportPreviewLoadingHtml({ isDark }: { isDark: boolean }) {
       position: relative;
       z-index: 2;
       display: grid;
-      width: min(100%, 28rem);
+      width: min(100%, 26rem);
+      min-height: 18rem;
+      align-content: center;
       justify-items: center;
-      gap: 1rem;
+      gap: 1.15rem;
       border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
       border-radius: 0.75rem;
       background: color-mix(in srgb, var(--card) 92%, transparent);
-      padding: 2rem;
+      padding: 2.25rem;
       text-align: center;
       box-shadow: 0 1.25rem 4rem color-mix(in srgb, #000000 16%, transparent);
       backdrop-filter: blur(18px);
@@ -236,14 +236,6 @@ function buildExportPreviewLoadingHtml({ isDark }: { isDark: boolean }) {
       line-height: 1.1;
       font-weight: 700;
       letter-spacing: 0;
-    }
-
-    .export-preview-status p {
-      max-width: 22rem;
-      margin: 0;
-      color: var(--muted-foreground);
-      font-size: 0.95rem;
-      line-height: 1.6;
     }
 
     .export-preview-progress {
@@ -278,7 +270,6 @@ function buildExportPreviewLoadingHtml({ isDark }: { isDark: boolean }) {
       <img class="export-preview-logo" src="/latewatch-logo.png" alt="" />
       <div class="export-preview-progress" aria-hidden="true"></div>
       <h1>Loading export preview</h1>
-      <p>Preparing your protected Excel workbook. Microsoft Excel viewer will open automatically.</p>
     </section>
   </main>
 </body>
