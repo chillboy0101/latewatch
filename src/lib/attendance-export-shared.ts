@@ -2,8 +2,8 @@ import { format } from 'date-fns';
 
 export const ATTENDANCE_EXPORT_TEMPLATES = [
   'daily-summary',
-  'monthly-matrix',
   'weekly-validation',
+  'monthly-matrix',
 ] as const;
 
 export const ATTENDANCE_EXPORT_GROUPS = [

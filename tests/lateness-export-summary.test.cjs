@@ -141,8 +141,8 @@ test('exports page fetches database-backed lateness summary instead of entries p
 test('attendance export templates limit NSS personnel to weekly validation', () => {
   assert.deepEqual(getAttendanceExportTemplatesForGroup('main'), [
     'daily-summary',
-    'monthly-matrix',
     'weekly-validation',
+    'monthly-matrix',
   ]);
   assert.deepEqual(getAttendanceExportTemplatesForGroup('nss'), ['weekly-validation']);
   assert.equal(isAttendanceExportTemplateAllowedForGroup('nss', 'weekly-validation'), true);
