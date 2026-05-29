@@ -779,98 +779,102 @@ export default function ExportsPage() {
                 <h2 className="text-lg font-semibold leading-none">Attendance Exports</h2>
               </div>
 
-              <div className="grid w-full min-w-0 gap-3 sm:grid-cols-2 lg:flex-1 lg:grid-cols-[minmax(6.75rem,0.8fr)_5.75rem_minmax(8.5rem,1fr)_minmax(9rem,1fr)_auto_auto] lg:items-end 2xl:w-auto 2xl:flex-none 2xl:grid-cols-[minmax(9rem,1fr)_7rem_minmax(10rem,1fr)_minmax(11rem,1fr)_auto_auto]">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-muted-foreground">Month</label>
-                  <div className="relative">
-                    <select
-                      className="h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-9 text-sm leading-none outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-                      value={selectedMonthIndex}
-                      onChange={(event) => setSelectedMonth(new Date(selectedYear, parseInt(event.target.value, 10), 1))}
-                    >
-                      {Array.from({ length: 12 }, (_, index) => (
-                        <option key={index} value={index}>
-                          {format(new Date(selectedYear, index, 1), 'MMMM')}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-muted-foreground">Year</label>
-                  <div className="relative">
-                    <select
-                      className="h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-9 text-sm leading-none outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-                      value={selectedYear}
-                      onChange={(event) => setSelectedMonth(new Date(parseInt(event.target.value, 10), selectedMonthIndex, 1))}
-                    >
-                      {Array.from({ length: 11 }, (_, index) => {
-                        const year = 2024 + index;
-                        return (
-                          <option key={year} value={year}>
-                            {year}
+              <div className="grid w-full min-w-0 gap-3 lg:flex-1 2xl:w-auto 2xl:flex-none">
+                <div className="grid w-full min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(6.75rem,0.8fr)_5.75rem_minmax(8.5rem,1fr)_minmax(9rem,1fr)] lg:items-end 2xl:grid-cols-[minmax(9rem,1fr)_7rem_minmax(10rem,1fr)_minmax(11rem,1fr)]">
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-muted-foreground">Month</label>
+                    <div className="relative">
+                      <select
+                        className="h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-9 text-sm leading-none outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        value={selectedMonthIndex}
+                        onChange={(event) => setSelectedMonth(new Date(selectedYear, parseInt(event.target.value, 10), 1))}
+                      >
+                        {Array.from({ length: 12 }, (_, index) => (
+                          <option key={index} value={index}>
+                            {format(new Date(selectedYear, index, 1), 'MMMM')}
                           </option>
-                        );
-                      })}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-muted-foreground">Year</label>
+                    <div className="relative">
+                      <select
+                        className="h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-9 text-sm leading-none outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        value={selectedYear}
+                        onChange={(event) => setSelectedMonth(new Date(parseInt(event.target.value, 10), selectedMonthIndex, 1))}
+                      >
+                        {Array.from({ length: 11 }, (_, index) => {
+                          const year = 2024 + index;
+                          return (
+                            <option key={year} value={year}>
+                              {year}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-muted-foreground">Roster</label>
+                    <div className="relative">
+                      <select
+                        className="h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-9 text-sm leading-none outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        value={attendanceGroup}
+                        onChange={(event) => setAttendanceGroup(event.target.value as AttendanceExportGroup)}
+                      >
+                        <option value="main">Main Staff</option>
+                        <option value="nss">NSS Personnel</option>
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-muted-foreground">Template</label>
+                    <div className="relative">
+                      <select
+                        className="h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-9 text-sm leading-none outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        value={selectedAttendanceTemplate}
+                        onChange={(event) => setAttendanceTemplate(event.target.value as AttendanceExportTemplate)}
+                      >
+                        {attendanceTemplateOptions.map((template) => (
+                          <option key={template} value={template}>
+                            {getAttendanceExportTemplateLabel(template)}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    </div>
                   </div>
                 </div>
 
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-muted-foreground">Roster</label>
-                  <div className="relative">
-                    <select
-                      className="h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-9 text-sm leading-none outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-                      value={attendanceGroup}
-                      onChange={(event) => setAttendanceGroup(event.target.value as AttendanceExportGroup)}
-                    >
-                      <option value="main">Main Staff</option>
-                      <option value="nss">NSS Personnel</option>
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  </div>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[auto_auto] lg:justify-end">
+                  <Button
+                    className="h-10 min-w-[7.5rem] gap-2 whitespace-nowrap"
+                    onClick={handleAttendanceExport}
+                    disabled={loading || previewing !== null || (exporting !== null && !isAttendanceExporting)}
+                    aria-busy={isAttendanceExporting}
+                  >
+                    {isAttendanceExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                    {isAttendanceExporting ? 'Downloading' : 'Download'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-10 min-w-[10rem] gap-2 whitespace-nowrap"
+                    onClick={handleAttendancePreview}
+                    disabled={loading || exporting !== null || (previewing !== null && !isAttendancePreviewing)}
+                    aria-busy={isAttendancePreviewing}
+                  >
+                    {isAttendancePreviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                    {isAttendancePreviewing ? 'Preparing Preview' : 'Preview Workbook'}
+                  </Button>
                 </div>
-
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-muted-foreground">Template</label>
-                  <div className="relative">
-                    <select
-                      className="h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-9 text-sm leading-none outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-                      value={selectedAttendanceTemplate}
-                      onChange={(event) => setAttendanceTemplate(event.target.value as AttendanceExportTemplate)}
-                    >
-                      {attendanceTemplateOptions.map((template) => (
-                        <option key={template} value={template}>
-                          {getAttendanceExportTemplateLabel(template)}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  </div>
-                </div>
-
-                <Button
-                  className="h-10 min-w-[7.5rem] gap-2 whitespace-nowrap lg:justify-self-end 2xl:justify-self-auto"
-                  onClick={handleAttendanceExport}
-                  disabled={loading || previewing !== null || (exporting !== null && !isAttendanceExporting)}
-                  aria-busy={isAttendanceExporting}
-                >
-                  {isAttendanceExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                  {isAttendanceExporting ? 'Downloading' : 'Download'}
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-10 min-w-[10rem] gap-2 whitespace-nowrap lg:justify-self-end 2xl:justify-self-auto"
-                  onClick={handleAttendancePreview}
-                  disabled={loading || exporting !== null || (previewing !== null && !isAttendancePreviewing)}
-                  aria-busy={isAttendancePreviewing}
-                >
-                  {isAttendancePreviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
-                  {isAttendancePreviewing ? 'Preparing Preview' : 'Preview Workbook'}
-                </Button>
               </div>
             </div>
           </div>

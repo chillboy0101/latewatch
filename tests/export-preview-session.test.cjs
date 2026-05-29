@@ -178,13 +178,14 @@ test('exports page opens a watermark-only holding tab before redirecting to Micr
   assert.doesNotMatch(source, /body\.textContent = 'Preparing Excel preview\.\.\.'/);
 });
 
-test('attendance export controls stay on one neat row at dashboard widths', () => {
+test('attendance export actions sit on their own row below the selectors', () => {
   const source = fs.readFileSync(exportsPagePath, 'utf8');
 
   assert.match(source, /lg:flex-row/);
-  assert.match(source, /lg:grid-cols-\[minmax\(6\.75rem,0\.8fr\)_5\.75rem_minmax\(8\.5rem,1fr\)_minmax\(9rem,1fr\)_auto_auto\]/);
-  assert.match(source, /2xl:grid-cols-\[minmax\(9rem,1fr\)_7rem_minmax\(10rem,1fr\)_minmax\(11rem,1fr\)_auto_auto\]/);
-  assert.match(source, /lg:justify-self-end/);
+  assert.match(source, /lg:grid-cols-\[minmax\(6\.75rem,0\.8fr\)_5\.75rem_minmax\(8\.5rem,1fr\)_minmax\(9rem,1fr\)\]/);
+  assert.match(source, /2xl:grid-cols-\[minmax\(9rem,1fr\)_7rem_minmax\(10rem,1fr\)_minmax\(11rem,1fr\)\]/);
+  assert.match(source, /lg:grid-cols-\[auto_auto\]/);
+  assert.match(source, /lg:justify-end/);
   assert.doesNotMatch(source, /xl:grid-cols-\[minmax\(0,1fr\)_auto\]/);
   assert.match(source, /whitespace-nowrap/);
 });
