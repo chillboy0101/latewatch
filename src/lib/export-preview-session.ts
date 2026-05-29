@@ -58,10 +58,10 @@ const PREVIEW_WORKSHEET_PROTECTION_OPTIONS: Partial<ExcelJS.WorksheetProtection>
 };
 
 const LATENESS_PREVIEW_COLUMN_WIDTHS = {
-  amount: 16,
-  name: 42,
-  reason: 64,
-  time: 38,
+  amount: 36.57,
+  name: 46,
+  reason: 72,
+  time: 48,
 };
 
 function normalizeAttendanceGroup(value: unknown) {
@@ -206,13 +206,18 @@ export function optimizeWorkbookLayoutForPreview(workbook: ExcelJS.Workbook) {
   for (const worksheet of workbook.worksheets) {
     if (!isLatenessWorksheet(worksheet)) continue;
 
-    worksheet.getColumn(1).width = LATENESS_PREVIEW_COLUMN_WIDTHS.name;
-    worksheet.getColumn(2).width = LATENESS_PREVIEW_COLUMN_WIDTHS.time;
-    worksheet.getColumn(3).width = LATENESS_PREVIEW_COLUMN_WIDTHS.amount;
-    worksheet.getColumn(4).width = LATENESS_PREVIEW_COLUMN_WIDTHS.reason;
+    widenColumnForPreview(worksheet, 1, LATENESS_PREVIEW_COLUMN_WIDTHS.name);
+    widenColumnForPreview(worksheet, 2, LATENESS_PREVIEW_COLUMN_WIDTHS.time);
+    widenColumnForPreview(worksheet, 3, LATENESS_PREVIEW_COLUMN_WIDTHS.amount);
+    widenColumnForPreview(worksheet, 4, LATENESS_PREVIEW_COLUMN_WIDTHS.reason);
   }
 
   return workbook;
+}
+
+function widenColumnForPreview(worksheet: ExcelJS.Worksheet, columnNumber: number, minimumWidth: number) {
+  const column = worksheet.getColumn(columnNumber);
+  column.width = Math.max(column.width || 0, minimumWidth);
 }
 
 async function protectPreviewWorkbookBuffer(buffer: ExcelJS.Buffer, password: string) {

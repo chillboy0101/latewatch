@@ -70,7 +70,7 @@ test('preview workbook protection locks every worksheet without protecting norma
   }
 });
 
-test('preview layout optimization widens only temporary lateness preview workbook columns', () => {
+test('preview layout optimization widens only temporary lateness preview workbook columns without shrinking amount columns', () => {
   const workbook = new ExcelJS.Workbook();
   const lateness = workbook.addWorksheet('Week 5 25 May-29 May');
   const contribution = workbook.addWorksheet('Contributions');
@@ -80,19 +80,19 @@ test('preview layout optimization widens only temporary lateness preview workboo
   lateness.getCell('C3').value = 'AMOUNT';
   lateness.getCell('D3').value = 'REASON';
   lateness.getCell('B99').value = 'TOTAL AMOUNT FOR THE WEEK';
-  lateness.getColumn(1).width = 20;
-  lateness.getColumn(2).width = 38;
-  lateness.getColumn(3).width = 36;
-  lateness.getColumn(4).width = 24;
+  lateness.getColumn(1).width = 34.14;
+  lateness.getColumn(2).width = 38.42;
+  lateness.getColumn(3).width = 36.57;
+  lateness.getColumn(4).width = 47.29;
   contribution.getColumn(1).width = 12;
   contribution.getColumn(4).width = 18;
 
   optimizeWorkbookLayoutForPreview(workbook);
 
-  assert.equal(lateness.getColumn(1).width, 42);
-  assert.equal(lateness.getColumn(2).width, 38);
-  assert.equal(lateness.getColumn(3).width, 16);
-  assert.equal(lateness.getColumn(4).width, 64);
+  assert.equal(lateness.getColumn(1).width, 46);
+  assert.equal(lateness.getColumn(2).width, 48);
+  assert.equal(lateness.getColumn(3).width, 36.57);
+  assert.equal(lateness.getColumn(4).width, 72);
   assert.equal(contribution.getColumn(1).width, 12);
   assert.equal(contribution.getColumn(4).width, 18);
 });
@@ -151,13 +151,16 @@ test('exports page exposes Preview actions beside every workbook download family
   assert.match(source, /min-w-\[8rem\]/);
 });
 
-test('exports page sends successful preview sessions straight to Microsoft viewer', () => {
+test('exports page sends successful preview sessions straight to the read-only Microsoft viewer', () => {
   const source = fs.readFileSync(exportsPagePath, 'utf8');
 
   assert.match(source, /openPreviewWindow/);
+  assert.match(source, /\/api\/export\/preview\/session/);
   assert.match(source, /sendPreviewWindowToUrl\(previewWindow, session\.viewerUrl\)/);
   assert.match(source, /schedulePreviewCleanup\(session\)/);
   assert.match(source, /setPreviewSession\(session\)/);
+  assert.doesNotMatch(source, /\/api\/export\/edit\/session/);
+  assert.doesNotMatch(source, /session\.editUrl/);
 });
 
 test('exports page opens a branded loading tab while the Excel preview is prepared', () => {
