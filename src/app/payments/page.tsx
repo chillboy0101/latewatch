@@ -58,6 +58,7 @@ interface OffenceBookItemsResponse {
   externalMoney: OffenceBookStoredItem[];
   month: number;
   monthKey: string;
+  openingBalance: string;
   year: number;
 }
 
@@ -178,6 +179,7 @@ export default function PenaltyPaymentsPage() {
   const [offenceBookLoading, setOffenceBookLoading] = useState(true);
   const [offenceBookSaving, setOffenceBookSaving] = useState(false);
   const [offenceBookMessage, setOffenceBookMessage] = useState<{ text: string; type: 'error' | 'success' } | null>(null);
+  const [openingBalance, setOpeningBalance] = useState('');
   const [externalMoneyDrafts, setExternalMoneyDrafts] = useState<OffenceBookDraftItem[]>(() => [createOffenceBookDraftItem()]);
   const [expenditureDrafts, setExpenditureDrafts] = useState<OffenceBookDraftItem[]>(() => [createOffenceBookDraftItem()]);
 
@@ -214,8 +216,10 @@ export default function PenaltyPaymentsPage() {
 
       setExternalMoneyDrafts(offenceBookDraftsFromRows(body.externalMoney || []));
       setExpenditureDrafts(offenceBookDraftsFromRows(body.expenditure || []));
+      setOpeningBalance(body.openingBalance || '');
     } catch (error) {
       console.error('Failed to load offence book inputs:', error);
+      setOpeningBalance('');
       setExternalMoneyDrafts([createOffenceBookDraftItem()]);
       setExpenditureDrafts([createOffenceBookDraftItem()]);
       setOffenceBookMessage({ type: 'error', text: error instanceof Error ? error.message : 'Could not load offence book inputs' });
@@ -359,6 +363,7 @@ export default function PenaltyPaymentsPage() {
           expenditure: expenditureDrafts.map(({ amount, label }) => ({ amount, label })),
           externalMoney: externalMoneyDrafts.map(({ amount, label }) => ({ amount, label })),
           month: offenceBookMonth,
+          openingBalance,
           year: offenceBookYear,
         }),
       });
@@ -367,6 +372,7 @@ export default function PenaltyPaymentsPage() {
 
       setExternalMoneyDrafts(offenceBookDraftsFromRows(body.externalMoney || []));
       setExpenditureDrafts(offenceBookDraftsFromRows(body.expenditure || []));
+      setOpeningBalance(body.openingBalance || '');
       setOffenceBookMessage({ type: 'success', text: 'Offence book inputs saved.' });
     } catch (error) {
       console.error('Offence book save failed:', error);
@@ -435,7 +441,7 @@ export default function PenaltyPaymentsPage() {
             <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
               <div>
                 <h2 className="text-base font-semibold">Offence book inputs</h2>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
                   <div>
                     <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Month</label>
                     <select
@@ -466,6 +472,16 @@ export default function PenaltyPaymentsPage() {
                         );
                       })}
                     </select>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Opening Balance</label>
+                    <Input
+                      value={openingBalance}
+                      onChange={(event) => setOpeningBalance(normalizePaymentAmountInput(event.target.value))}
+                      placeholder="0.00"
+                      inputMode="decimal"
+                      disabled={offenceBookLoading || offenceBookSaving}
+                    />
                   </div>
                 </div>
               </div>

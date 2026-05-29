@@ -193,6 +193,7 @@ test('offence book summary money blocks have readable columns and visible grid l
   assert.ok(sheet.getColumn(17).width >= 34, 'external money source column should be wide enough');
   assert.ok(sheet.getColumn(18).width >= 44, 'expenditure item column should be wide enough');
   assert.ok(sheet.getColumn(19).width >= 14, 'expenditure amount column should be wide enough');
+  assert.ok(sheet.getColumn(11).width >= 18, 'payment status column should fit partially paid');
 
   assert.equal(borderStyle(sheet.getCell('P8'), 'right'), 'thin');
   assert.equal(borderStyle(sheet.getCell('Q8'), 'left'), 'thin');
@@ -204,8 +205,43 @@ test('offence book summary money blocks have readable columns and visible grid l
   assert.equal(borderStyle(sheet.getCell('R6'), 'bottom'), 'thin');
   assert.equal(borderStyle(sheet.getCell('R7'), 'top'), 'thin');
 
+  assert.equal(borderStyle(sheet.getCell('T7'), 'bottom'), 'thin');
+  assert.equal(borderStyle(sheet.getCell('T8'), 'top'), 'thin');
+  assert.equal(borderStyle(sheet.getCell('T10'), 'bottom'), 'thin');
+  assert.equal(borderStyle(sheet.getCell('T11'), 'top'), 'thin');
+  assert.equal(borderStyle(sheet.getCell('P14'), 'bottom'), 'thin');
+  assert.equal(borderStyle(sheet.getCell('P15'), 'top'), 'thin');
+
   assert.deepEqual(sheet.getCell('B27').border || {}, {});
   assert.deepEqual(sheet.getCell('C27').border || {}, {});
+});
+
+test('offence book export uses saved opening balance input when present', async () => {
+  const workbook = await buildOffenceBookWorkbookFromData({
+    allocations,
+    entries,
+    items: [
+      ...items,
+      {
+        amount: '250.00',
+        displayOrder: 0,
+        itemType: 'opening_balance',
+        label: 'Opening balance',
+        monthKey: '2026-05-01',
+      },
+    ],
+    month: 4,
+    staff,
+    templatePath: OFFENCE_BOOK_TEMPLATE_PATH,
+    year: 2026,
+  });
+  const sheet = workbook.getWorksheet('MAY 2026');
+
+  assert.ok(sheet);
+  assert.equal(sheet.getCell('P5').value, 250);
+  assert.equal(resultOf(sheet.getCell('T5').value), 1240);
+  assert.equal(resultOf(sheet.getCell('T8').value), 1280);
+  assert.equal(resultOf(sheet.getCell('T11').value), 1230);
 });
 
 test('offence book staff name columns are wide enough for full names without styling the main table', async () => {
