@@ -63,6 +63,19 @@ const UNPAID_COLUMN = 14;
 const STAFF_NUMBER_COLUMN = 2;
 const STAFF_NAME_COLUMN = 3;
 const PAYMENT_STATUS_COLUMN_MIN_WIDTH = 24;
+const WEEK_HEADER_LABELS: Array<[number, string]> = [
+  [STAFF_NAME_COLUMN, 'NAME'],
+  [4, 'MONDAY'],
+  [5, 'TUESDAY'],
+  [6, 'WEDNESDAY'],
+  [7, 'THURSDAY'],
+  [8, 'FRIDAY'],
+  [9, 'PENALTY'],
+  [TOTAL_COLUMN, 'TOTAL'],
+  [STATUS_COLUMN, 'STATUS'],
+  [PAID_COLUMN, 'PAID'],
+  [UNPAID_COLUMN, 'UNPAID'],
+];
 const EXTERNAL_MONEY_ROWS = [8, 9, 10, 11];
 const EXPENDITURE_ROWS = [6, 7, 8, 9, 10, 11, 12, 13, 14];
 const SUMMARY_GRID_BORDER: Partial<ExcelJS.Border> = {
@@ -171,6 +184,15 @@ function setStrike(cell: ExcelJS.Cell, strike: boolean) {
   cell.style = style;
 }
 
+function setBold(cell: ExcelJS.Cell, bold: boolean) {
+  const style = cloneStyle(cell.style || {});
+  style.font = {
+    ...(style.font || {}),
+    bold,
+  };
+  cell.style = style;
+}
+
 function setAmountCell(cell: ExcelJS.Cell, centsValue: number, strike = false) {
   cell.value = centsValue > 0 ? money(centsValue) : null;
   cell.numFmt = '#,##0.00';
@@ -220,6 +242,15 @@ function clearBlockRows(worksheet: ExcelJS.Worksheet, titleRow: number) {
     for (let column = STAFF_NUMBER_COLUMN; column <= UNPAID_COLUMN; column++) {
       worksheet.getCell(rowNumber, column).value = null;
     }
+  }
+}
+
+function applyWeeklyHeaderRow(worksheet: ExcelJS.Worksheet, titleRow: number) {
+  const headerRow = titleRow + 1;
+  for (const [column, label] of WEEK_HEADER_LABELS) {
+    const cell = worksheet.getCell(headerRow, column);
+    cell.value = label;
+    setBold(cell, true);
   }
 }
 
@@ -330,6 +361,7 @@ export async function buildOffenceBookWorkbookFromData({
     const titleRow = WEEK_BLOCK_TITLE_ROWS[weekIndex];
     const week = weeks[weekIndex];
     clearBlockRows(worksheet, titleRow);
+    applyWeeklyHeaderRow(worksheet, titleRow);
 
     const titleCell = worksheet.getCell(titleRow, STAFF_NAME_COLUMN);
     titleCell.value = week ? weekTitle(week.weekNumber, week.dates) : null;

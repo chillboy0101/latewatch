@@ -207,6 +207,35 @@ test('offence book export calculates amount owed and preserves owed highlighting
   assert.notEqual(fillArgb(sheet.getCell('Q28')), 'FFFF00FF');
 });
 
+test('offence book weekly table headers are complete and bold in every block', async () => {
+  const workbook = await buildWorkbook();
+  const sheet = workbook.getWorksheet('MAY 2026');
+
+  assert.ok(sheet);
+
+  const expectedHeaders = [
+    [3, 'NAME'],
+    [4, 'MONDAY'],
+    [5, 'TUESDAY'],
+    [6, 'WEDNESDAY'],
+    [7, 'THURSDAY'],
+    [8, 'FRIDAY'],
+    [9, 'PENALTY'],
+    [10, 'TOTAL'],
+    [11, 'STATUS'],
+    [13, 'PAID'],
+    [14, 'UNPAID'],
+  ];
+
+  for (const row of [5, 26, 47, 68, 89]) {
+    for (const [column, label] of expectedHeaders) {
+      const cell = sheet.getCell(row, column);
+      assert.equal(String(cell.value || '').trim(), label, `${cell.address} should show ${label}`);
+      assert.equal(cell.font?.bold, true, `${cell.address} should be bold`);
+    }
+  }
+});
+
 test('offence book colored summary blocks show grid lines without touching the weekly table', async () => {
   const workbook = await buildWorkbook();
   const sheet = workbook.getWorksheet('MAY 2026');
