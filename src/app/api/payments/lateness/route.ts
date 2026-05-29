@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { latenessEntry, latenessPayment, latenessPaymentAllocation, staff } from '@/db/schema';
 import { getAccraDateKey } from '@/lib/date-key';
 import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
+import { sendLatenessPaymentReceiptPush } from '@/lib/lateness-payment-receipt-push';
 import { allocateLatenessPayment, getWeekBoundsForDate, summarizeLatenessPaymentEntries } from '@/lib/lateness-payments';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
@@ -309,6 +310,12 @@ export async function POST(request: NextRequest) {
     publishRealtime('dashboard', 'invalidate', { reason: 'lateness-payment' });
     publishRealtime('audit-trail', 'invalidate', { reason: 'lateness-payment' });
     publishRealtime('notifications', 'invalidate', { reason: 'lateness-payment' });
+
+    try {
+      await sendLatenessPaymentReceiptPush(payment);
+    } catch (error) {
+      console.error('Failed to send payment receipt notification:', error);
+    }
 
     return NextResponse.json({
       allocations: createdAllocations,

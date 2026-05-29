@@ -15,6 +15,11 @@ const {
   getLatenessPaymentReceiptNumber,
   summarizeLatenessPaymentReceipts,
 } = require('../src/lib/lateness-payment-receipts.ts');
+const {
+  buildLatenessPaymentReceiptNotifications,
+  buildLatenessPaymentReceiptPushPayload,
+  getLatenessPaymentReceiptNotificationId,
+} = require('../src/lib/lateness-payment-receipt-notifications.ts');
 
 const entries = [
   { id: 'entry-a', staffId: 'staff-1', date: '2026-05-11', arrivalTime: '08:45', computedAmount: '10.00', reason: 'Late' },
@@ -150,6 +155,54 @@ test('lateness payment receipts summarize every payment without a new receipt ta
   assert.equal(receipts[0].paymentId, 'aaaaaaaa-1111-4111-8111-111111111111');
   assert.equal(receipts[0].amount, '18.00');
   assert.equal(receipts[0].note, 'Part payment');
+});
+
+test('lateness receipt notifications are one per payment with stable receipt links', () => {
+  const payments = [
+    {
+      amount: '18.00',
+      id: 'aaaaaaaa-1111-4111-8111-111111111111',
+      recordedAt: '2026-05-29T10:20:00.000Z',
+      recordedByEmail: 'admin@example.com',
+      weekEnd: '2026-05-29',
+      weekStart: '2026-05-25',
+    },
+    {
+      amount: '10.00',
+      id: 'bbbbbbbb-2222-4222-8222-222222222222',
+      recordedAt: '2026-05-29T10:30:00.000Z',
+      recordedByEmail: 'admin@example.com',
+      weekEnd: '2026-05-29',
+      weekStart: '2026-05-25',
+    },
+  ];
+  const notifications = buildLatenessPaymentReceiptNotifications(payments);
+
+  assert.deepEqual(notifications.map((notification) => notification.id), [
+    'receipt:aaaaaaaa-1111-4111-8111-111111111111',
+    'receipt:bbbbbbbb-2222-4222-8222-222222222222',
+  ]);
+  assert.equal(getLatenessPaymentReceiptNotificationId(payments[0].id), notifications[0].id);
+  assert.equal(notifications[0].href, '/check-in/receipts/aaaaaaaa-1111-4111-8111-111111111111');
+  assert.equal(notifications[0].receiptNumber, 'LW-RCPT-202605-AAAAAAAA');
+});
+
+test('lateness receipt push payload opens the exact receipt without renotify', () => {
+  const payload = buildLatenessPaymentReceiptPushPayload({
+    amount: '18.00',
+    id: 'aaaaaaaa-1111-4111-8111-111111111111',
+    recordedAt: '2026-05-29T10:20:00.000Z',
+    recordedByEmail: 'admin@example.com',
+    weekEnd: '2026-05-29',
+    weekStart: '2026-05-25',
+  });
+
+  assert.equal(payload.title, 'Payment receipt ready');
+  assert.equal(payload.body, 'GHC 18.00 was recorded. Tap to view your receipt.');
+  assert.equal(payload.data.url, '/check-in/receipts/aaaaaaaa-1111-4111-8111-111111111111');
+  assert.equal(payload.tag, 'latewatch-receipt-aaaaaaaa-1111-4111-8111-111111111111');
+  assert.equal(payload.renotify, false);
+  assert.equal(payload.requireInteraction, false);
 });
 
 test('lateness payment receipt details include allocated penalty days only', () => {

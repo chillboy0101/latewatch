@@ -15,6 +15,8 @@ self.addEventListener('push', (event) => {
     },
     icon: payload.icon || '/latewatch-logo.png',
     badge: '/latewatch-logo.png',
+    renotify: payload.renotify === true,
+    requireInteraction: payload.requireInteraction === true,
     tag: payload.tag || 'latewatch-attendance-reminder',
   };
 
@@ -25,14 +27,15 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   event.waitUntil((async () => {
+    const targetUrl = event.notification.data?.url || '/check-in';
     const windowClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
 
     for (const client of windowClients) {
-      if (client.url.includes('/check-in') && 'focus' in client) {
+      if (client.url.includes(targetUrl) && 'focus' in client) {
         return client.focus();
       }
     }
 
-    return clients.openWindow('/check-in');
+    return clients.openWindow(targetUrl);
   })());
 });

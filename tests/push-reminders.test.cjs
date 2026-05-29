@@ -143,7 +143,10 @@ test('service worker displays push notifications and opens check-in', () => {
   assert.match(source, /self\.addEventListener\('push'/);
   assert.match(source, /self\.registration\.showNotification/);
   assert.match(source, /self\.addEventListener\('notificationclick'/);
-  assert.match(source, /clients\.openWindow\('\/check-in'\)/);
+  assert.match(source, /payload\.data\?\.url/);
+  assert.match(source, /event\.notification\.data\?\.url/);
+  assert.match(source, /clients\.openWindow\(targetUrl\)/);
+  assert.doesNotMatch(source, /clients\.openWindow\('\/check-in'\)/);
 });
 
 test('reminder eligibility follows workday, permission, and attendance rules', () => {

@@ -10,10 +10,12 @@ const migrationPath = path.join(root, 'drizzle/0019_lateness_payments.sql');
 const paymentsApiPath = path.join(root, 'src/app/api/payments/lateness/route.ts');
 const penaltyHistoryApiPath = path.join(root, 'src/app/api/attendance/check-in/penalty-history/route.ts');
 const receiptApiPath = path.join(root, 'src/app/api/attendance/check-in/receipts/[paymentId]/route.ts');
+const receiptNotificationApiPath = path.join(root, 'src/app/api/attendance/check-in/receipt-notifications/route.ts');
 const dashboardApiPath = path.join(root, 'src/app/api/dashboard/route.ts');
 const paymentsPagePath = path.join(root, 'src/app/payments/page.tsx');
 const checkInPagePath = path.join(root, 'src/app/check-in/page.tsx');
 const receiptPagePath = path.join(root, 'src/app/check-in/receipts/[paymentId]/page.tsx');
+const receiptNotificationLibPath = path.join(root, 'src/lib/lateness-payment-receipt-notifications.ts');
 const receiptLibPath = path.join(root, 'src/lib/lateness-payment-receipts.ts');
 const sidebarPath = path.join(root, 'src/components/layout/sidebar.tsx');
 const appShellPath = path.join(root, 'src/components/layout/app-shell.tsx');
@@ -43,7 +45,9 @@ test('lateness payment API records payments, allocations, audit events, and real
   assert.match(source, /paymentWeekStart/);
   assert.match(source, /latenessPaymentAllocation/);
   assert.match(source, /entityType: 'lateness_payment'/);
+  assert.match(source, /sendLatenessPaymentReceiptPush/);
   assert.match(source, /publishRealtime\('payments'/);
+  assert.match(source, /publishRealtime\('notifications'/);
   assert.match(source, /Payment amount exceeds outstanding balance/);
   assert.doesNotMatch(source, /Valid weekStart and weekEnd are required/);
 });
@@ -74,6 +78,20 @@ test('staff receipt API returns only signed-in staff payment receipts', () => {
   assert.match(source, /return NextResponse\.json\(\{ error: 'Receipt was not found' \}, \{ status: 404 \}\)/);
   assert.match(source, /latenessPaymentAllocation/);
   assert.match(source, /buildLatenessPaymentReceiptDetail/);
+  assert.doesNotMatch(source, /searchParams\.get\('staffId'\)/);
+});
+
+test('staff receipt notification API returns only unseen signed-in staff payment receipts', () => {
+  assert.equal(fs.existsSync(receiptNotificationApiPath), true);
+  const source = fs.readFileSync(receiptNotificationApiPath, 'utf8');
+
+  assert.match(source, /currentUser\(\)/);
+  assert.match(source, /resolveMemberForReceiptNotifications/);
+  assert.match(source, /eq\(latenessPayment\.staffId, member\.id\)/);
+  assert.match(source, /notificationRead/);
+  assert.match(source, /DISMISSED_PREFIX/);
+  assert.match(source, /getLatenessPaymentReceiptNotificationId/);
+  assert.match(source, /buildLatenessPaymentReceiptNotifications/);
   assert.doesNotMatch(source, /searchParams\.get\('staffId'\)/);
 });
 
@@ -181,6 +199,20 @@ test('staff penalty history exposes payment receipts', () => {
   assert.match(source, /formatDisplayDateTime\(receipt\.recordedAt\)/);
 });
 
+test('check-in page exposes auto-disappearing receipt notifications', () => {
+  const source = fs.readFileSync(checkInPagePath, 'utf8');
+
+  assert.match(source, /RECEIPT_NOTIFICATION_AUTO_DISMISS_MS/);
+  assert.match(source, /\/api\/attendance\/check-in\/receipt-notifications/);
+  assert.match(source, /ReceiptNotificationToast/);
+  assert.match(source, /setTimeout/);
+  assert.match(source, /dismissReceiptNotification/);
+  assert.match(source, /\/api\/notifications/);
+  assert.match(source, /router\.push\(notification\.href\)/);
+  assert.match(source, /subscribeRealtimeChannel/);
+  assert.match(source, /channel: 'staff-penalty-history'/);
+});
+
 test('receipt page is print-friendly and uses LateWatch branding', () => {
   assert.equal(fs.existsSync(receiptPagePath), true);
   const source = fs.readFileSync(receiptPagePath, 'utf8');
@@ -205,4 +237,18 @@ test('receipt helper derives stable receipts from existing payment data', () => 
   assert.match(source, /export function summarizeLatenessPaymentReceipts/);
   assert.match(source, /export function buildLatenessPaymentReceiptDetail/);
   assert.doesNotMatch(source, /receipt_table/);
+});
+
+test('receipt notification helper uses stable ids and one-time push payloads', () => {
+  assert.equal(fs.existsSync(receiptNotificationLibPath), true);
+  const source = fs.readFileSync(receiptNotificationLibPath, 'utf8');
+
+  assert.match(source, /export const RECEIPT_NOTIFICATION_AUTO_DISMISS_MS = 8_000/);
+  assert.match(source, /export function getLatenessPaymentReceiptNotificationId/);
+  assert.match(source, /`receipt:\$\{paymentId\}`/);
+  assert.match(source, /export function buildLatenessPaymentReceiptNotifications/);
+  assert.match(source, /export function buildLatenessPaymentReceiptPushPayload/);
+  assert.match(source, /latewatch-receipt-\$\{payment\.id\}/);
+  assert.match(source, /requireInteraction: false/);
+  assert.match(source, /renotify: false/);
 });

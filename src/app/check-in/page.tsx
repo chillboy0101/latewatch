@@ -2,8 +2,9 @@
 
 import { UserButton, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, LogOut, MapPin, Moon, ReceiptText, ShieldCheck, Sun, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, LogOut, MapPin, Moon, ReceiptText, ShieldCheck, Sun, X, XCircle } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -11,7 +12,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { formatDisplayDate, formatDisplayDateTime } from '@/lib/date-format';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
+import { RECEIPT_NOTIFICATION_AUTO_DISMISS_MS, type LatenessPaymentReceiptNotification } from '@/lib/lateness-payment-receipt-notifications';
 import { pushSubscriptionErrorMessage, vapidPublicKeyToUint8Array } from '@/lib/push-client';
+import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { applyThemePreference, getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 
@@ -369,6 +372,7 @@ async function getCurrentLocationEvidence(): Promise<LocationEvidence> {
 
 export default function CheckInPage() {
   const { isLoaded, user } = useUser();
+  const router = useRouter();
   const isDark = useSyncExternalStore(subscribeThemeChange, getIsDarkTheme, () => true);
   const [status, setStatus] = useState<CheckInStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -379,6 +383,7 @@ export default function CheckInPage() {
   const [penaltyHistoryError, setPenaltyHistoryError] = useState<string | null>(null);
   const [penaltyHistoryLoading, setPenaltyHistoryLoading] = useState(false);
   const [penaltyHistoryOpen, setPenaltyHistoryOpen] = useState(false);
+  const [receiptNotifications, setReceiptNotifications] = useState<LatenessPaymentReceiptNotification[]>([]);
   const [pushReminderStatus, setPushReminderStatus] = useState<PushReminderStatus | null>(null);
   const [pushReminderLoading, setPushReminderLoading] = useState(false);
   const [savingPushReminder, setSavingPushReminder] = useState(false);
@@ -486,6 +491,70 @@ export default function CheckInPage() {
     setPenaltyHistoryOpen(true);
     void fetchPenaltyHistory();
   }
+
+  const fetchReceiptNotifications = useCallback(async () => {
+    if (!isLoaded || !user) return;
+
+    try {
+      const response = await fetch('/api/attendance/check-in/receipt-notifications', { cache: 'no-store' });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || `Receipt notifications failed (${response.status})`);
+      setReceiptNotifications(Array.isArray(body.notifications) ? body.notifications : []);
+    } catch (error) {
+      console.warn('Receipt notifications could not load:', error);
+    }
+  }, [isLoaded, user]);
+
+  const dismissReceiptNotification = useCallback(async (id: string) => {
+    setReceiptNotifications((current) => current.filter((notification) => notification.id !== id));
+
+    try {
+      await fetch('/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'dismiss', ids: [id] }),
+      });
+    } catch (error) {
+      console.warn('Receipt notification could not be dismissed:', error);
+    }
+  }, []);
+
+  const openReceiptNotification = useCallback((notification: LatenessPaymentReceiptNotification) => {
+    void dismissReceiptNotification(notification.id);
+    router.push(notification.href);
+  }, [dismissReceiptNotification, router]);
+
+  useEffect(() => {
+    void fetchReceiptNotifications();
+  }, [fetchReceiptNotifications]);
+
+  useEffect(() => {
+    if (!isLoaded || !user) return;
+
+    let cleanup: (() => void) | undefined;
+    let mounted = true;
+
+    (async () => {
+      const unsubscribe = await subscribeRealtimeChannel({
+        channel: 'staff-penalty-history',
+        events: ['invalidate'],
+        onEvent: () => {
+          void fetchReceiptNotifications();
+        },
+      });
+
+      if (mounted) {
+        cleanup = unsubscribe;
+      } else {
+        unsubscribe();
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      cleanup?.();
+    };
+  }, [fetchReceiptNotifications, isLoaded, user]);
 
   useEffect(() => {
     if (!deviceToken) return;
@@ -796,6 +865,11 @@ export default function CheckInPage() {
           onRefresh={fetchPenaltyHistory}
           onOpenChange={setPenaltyHistoryOpen}
           open={penaltyHistoryOpen}
+        />
+        <ReceiptNotificationStack
+          notifications={receiptNotifications}
+          onDismiss={dismissReceiptNotification}
+          onOpen={openReceiptNotification}
         />
 
         <div className="flex min-h-0 flex-1 items-center py-3 sm:py-4">
@@ -1121,6 +1195,93 @@ function AccessNotSetUp({ email }: { email: string | null }) {
       <Button asChild variant="outline" className="w-full sm:w-auto">
         <Link href="/">Back to portal</Link>
       </Button>
+    </div>
+  );
+}
+
+function ReceiptNotificationStack({
+  notifications,
+  onDismiss,
+  onOpen,
+}: {
+  notifications: LatenessPaymentReceiptNotification[];
+  onDismiss: (id: string) => void | Promise<void>;
+  onOpen: (notification: LatenessPaymentReceiptNotification) => void;
+}) {
+  if (notifications.length === 0) return null;
+
+  return (
+    <div className="pointer-events-none fixed inset-x-3 top-3 z-50 flex flex-col items-end gap-2 sm:inset-x-auto sm:right-5 sm:top-5 sm:w-96">
+      {notifications.map((notification) => (
+        <ReceiptNotificationToast
+          key={notification.id}
+          notification={notification}
+          onDismiss={onDismiss}
+          onOpen={onOpen}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ReceiptNotificationToast({
+  notification,
+  onDismiss,
+  onOpen,
+}: {
+  notification: LatenessPaymentReceiptNotification;
+  onDismiss: (id: string) => void | Promise<void>;
+  onOpen: (notification: LatenessPaymentReceiptNotification) => void;
+}) {
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void onDismiss(notification.id);
+    }, RECEIPT_NOTIFICATION_AUTO_DISMISS_MS);
+
+    return () => window.clearTimeout(timeout);
+  }, [notification.id, onDismiss]);
+
+  return (
+    <div
+      className="pointer-events-auto w-full overflow-hidden rounded-lg border border-primary/25 bg-card shadow-xl ring-1 ring-primary/10"
+      role="status"
+    >
+      <div className="flex gap-3 p-3">
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <ReceiptText className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-foreground">Payment receipt ready</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                GHC {Number(notification.amount || 0).toFixed(2)} recorded for {formatDisplayDateTime(notification.recordedAt)}.
+              </p>
+            </div>
+            <button
+              aria-label="Dismiss receipt notification"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              onClick={() => { void onDismiss(notification.id); }}
+              type="button"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <span className="truncate font-mono text-[11px] font-semibold text-muted-foreground">
+              {notification.receiptNumber}
+            </span>
+            <Button
+              className="h-8 shrink-0 px-2.5 text-xs"
+              onClick={() => onOpen(notification)}
+              size="sm"
+              type="button"
+            >
+              View receipt
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
