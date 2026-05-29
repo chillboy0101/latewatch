@@ -142,11 +142,25 @@ test('attendance present and on-time filters stay distinct', () => {
 
   assert.match(apiSource, /if \(row\.attendance\?\.checkInTime\) acc\.present \+= 1/);
   assert.match(apiSource, /if \(isOnTimeAttendanceRow\(row\)\) acc\.onTime \+= 1/);
-  assert.match(apiSource, /if \(isOnTimeAttendanceRow\(row\)\) acc\.onTime \+= 1;\s*if \(row\.status === 'late'\) acc\.late \+= 1/);
-  assert.match(apiSource, /else if \(row\.status === 'not_checked_in'\) acc\.notCheckedIn \+= 1/);
+  assert.match(apiSource, /if \(isOnTimeAttendanceRow\(row\)\) acc\.onTime \+= 1;\s*if \(row\.statuses\.includes\('late'\)\) acc\.late \+= 1/);
+  assert.match(apiSource, /if \(row\.statuses\.includes\('not_checked_in'\)\) acc\.notCheckedIn \+= 1/);
   assert.doesNotMatch(apiSource, /else acc\.notCheckedIn \+= 1/);
   assert.doesNotMatch(apiSource, /if \(row\.status === 'present'\) acc\.onTime \+= 1/);
   assert.match(apiSource, /onTime: 0/);
+});
+
+test('late and no-sign-out attendance rows stay visible in both status filters', () => {
+  const pageSource = fs.readFileSync(attendancePagePath, 'utf8');
+  const apiSource = fs.readFileSync(attendanceApiPath, 'utf8');
+
+  assert.match(apiSource, /getAttendanceStatusFlags/);
+  assert.match(apiSource, /const statuses = getAttendanceStatusFlags/);
+  assert.match(apiSource, /row\.statuses\.includes\('late'\)/);
+  assert.match(apiSource, /row\.statuses\.includes\('no_sign_out'\)/);
+  assert.doesNotMatch(apiSource, /noSignOut\s*\?\s*'no_sign_out'\s*:\s*attendance\?\.status/);
+
+  assert.match(pageSource, /rowStatuses\(row\)\.includes\(activeFilter\)/);
+  assert.match(pageSource, /rowStatuses\(row\)\.map\(\(status\)/);
 });
 
 test('staff sign-out syncs penalties and invalidates entries and payment views', () => {

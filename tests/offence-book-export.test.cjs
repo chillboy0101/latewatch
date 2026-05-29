@@ -122,6 +122,12 @@ async function buildWorkbookWithStaff(customStaff) {
   });
 }
 
+async function loadTemplateSheet() {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(OFFENCE_BOOK_TEMPLATE_PATH);
+  return workbook.worksheets[0];
+}
+
 test('offence book export preserves template layout and fills monthly payment values', async () => {
   const workbook = await buildWorkbook();
   const sheet = workbook.getWorksheet('MAY 2026');
@@ -188,12 +194,13 @@ test('offence book export calculates amount owed and preserves owed highlighting
 test('offence book summary money blocks have readable columns and visible grid lines only in that section', async () => {
   const workbook = await buildWorkbook();
   const sheet = workbook.getWorksheet('MAY 2026');
+  const template = await loadTemplateSheet();
 
   assert.ok(sheet);
   assert.ok(sheet.getColumn(17).width >= 34, 'external money source column should be wide enough');
   assert.ok(sheet.getColumn(18).width >= 44, 'expenditure item column should be wide enough');
   assert.ok(sheet.getColumn(19).width >= 14, 'expenditure amount column should be wide enough');
-  assert.ok(sheet.getColumn(11).width >= 18, 'payment status column should fit partially paid');
+  assert.equal(sheet.getColumn(11).width, template.getColumn(11).width, 'weekly payment status column should keep the template width');
 
   assert.equal(borderStyle(sheet.getCell('P8'), 'right'), 'thin');
   assert.equal(borderStyle(sheet.getCell('Q8'), 'left'), 'thin');

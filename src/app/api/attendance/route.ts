@@ -5,6 +5,7 @@ import { attendanceAttempt, attendancePermission, attendanceRecord, deviceTransf
 import { getAccraClock, getActiveOfficeNetwork, getOfficeLocationsForAttendance, isOfficeIp, resolveClientIpInfo } from '@/lib/attendance';
 import { syncLatenessEntriesFromAttendanceForDate } from '@/lib/attendance-lateness-sync';
 import { isGeneralPardonReason, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
+import { getAttendanceStatusFlags, primaryAttendanceStatus, type AttendanceStatus } from '@/lib/attendance-status';
 import { resolveOfficeLocationForDate } from '@/lib/office-location-policy';
 import { isOnTimeCheckIn, shouldAlertNoSignOut } from '@/lib/work-hours';
 
@@ -140,13 +141,20 @@ export async function GET(request: NextRequest) {
         !attendance.signOutTime &&
         (date < clock.dateKey || (date === clock.dateKey && shouldAlertNoSignOut(clock.timeKey))),
       );
-      const fallbackStatus = (() => {
+      const fallbackStatus: AttendanceStatus = (() => {
         if (!permission) return 'not_checked_in';
         if (permission.permissionType === 'absence') return 'excused';
         if (isGeneralPardonReason(permission.reason)) return 'not_checked_in';
         if (isPermissionWindowOverdue(permission, date, clock.dateKey, clock.timeKey)) return 'permission_overdue';
         return 'expected_late';
       })();
+      const statuses = getAttendanceStatusFlags({
+        absencePermission: permission?.permissionType === 'absence',
+        attendanceStatus: attendance?.status,
+        fallbackStatus,
+        hasAttendance: Boolean(attendance),
+        noSignOut,
+      });
       return {
         staff: member,
         attendance: attendance
@@ -184,11 +192,8 @@ export async function GET(request: NextRequest) {
               registeredAt: null,
             },
         permission,
-        status: permission?.permissionType === 'absence'
-          ? 'excused'
-          : noSignOut
-          ? 'no_sign_out'
-          : attendance?.status || fallbackStatus,
+        status: primaryAttendanceStatus(statuses),
+        statuses,
       };
     });
 
@@ -201,12 +206,12 @@ export async function GET(request: NextRequest) {
     const totals = rows.reduce((acc, row) => {
       if (row.attendance?.checkInTime) acc.present += 1;
       if (isOnTimeAttendanceRow(row)) acc.onTime += 1;
-      if (row.status === 'late') acc.late += 1;
-      else if (row.status === 'excused') acc.excused += 1;
-      else if (row.status === 'expected_late') acc.expectedLate += 1;
-      else if (row.status === 'permission_overdue') acc.permissionOverdue += 1;
-      else if (row.status === 'no_sign_out') acc.noSignOut += 1;
-      else if (row.status === 'not_checked_in') acc.notCheckedIn += 1;
+      if (row.statuses.includes('late')) acc.late += 1;
+      if (row.statuses.includes('excused')) acc.excused += 1;
+      if (row.statuses.includes('expected_late')) acc.expectedLate += 1;
+      if (row.statuses.includes('permission_overdue')) acc.permissionOverdue += 1;
+      if (row.statuses.includes('no_sign_out')) acc.noSignOut += 1;
+      if (row.statuses.includes('not_checked_in')) acc.notCheckedIn += 1;
       return acc;
     }, { excused: 0, expectedLate: 0, late: 0, noSignOut: 0, notCheckedIn: 0, onTime: 0, permissionOverdue: 0, present: 0 });
 

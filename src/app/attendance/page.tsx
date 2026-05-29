@@ -17,13 +17,13 @@ import {
   formatLateArrivalPermissionReason,
   getPermissionWindowBounds,
 } from '@/lib/attendance-permissions';
+import type { AttendanceStatus } from '@/lib/attendance-status';
 import { formatDisplayDate, formatDisplayDateTime, isIsoDateKey } from '@/lib/date-format';
 import { getAccraDateKey } from '@/lib/date-key';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 import { isOnTimeCheckIn } from '@/lib/work-hours';
 
-type AttendanceStatus = 'present' | 'late' | 'excused' | 'expected_late' | 'permission_overdue' | 'no_sign_out' | 'not_checked_in';
 type AttendanceFilter = 'all' | 'on_time' | AttendanceStatus;
 type GeneralPardonType = 'absence' | 'late_arrival';
 
@@ -74,6 +74,7 @@ interface AttendanceRow {
   };
   permission: AttendancePermission | null;
   status: AttendanceStatus;
+  statuses?: AttendanceStatus[];
 }
 
 interface AttendanceAttempt {
@@ -156,6 +157,34 @@ function statusClass(status: AttendanceStatus) {
   if (status === 'permission_overdue') return 'border-danger/25 bg-danger/10 text-danger';
   if (status === 'no_sign_out') return 'border-warning/25 bg-warning/10 text-warning';
   return 'border-border bg-muted/20 text-muted-foreground';
+}
+
+function StatusIcon({ status }: { status: AttendanceStatus }) {
+  if (status === 'present') return <CheckCircle2 className="h-3.5 w-3.5" />;
+  if (status === 'late') return <Clock className="h-3.5 w-3.5" />;
+  if (status === 'excused') return <ShieldCheck className="h-3.5 w-3.5" />;
+  if (status === 'expected_late') return <Clock className="h-3.5 w-3.5" />;
+  if (status === 'permission_overdue') return <AlertTriangle className="h-3.5 w-3.5" />;
+  if (status === 'no_sign_out') return <AlertTriangle className="h-3.5 w-3.5" />;
+  return <XCircle className="h-3.5 w-3.5" />;
+}
+
+function rowStatuses(row: AttendanceRow) {
+  return row.statuses?.length ? row.statuses : [row.status];
+}
+
+const STATUS_RANK: Record<AttendanceStatus, number> = {
+  permission_overdue: 0,
+  late: 1,
+  no_sign_out: 2,
+  not_checked_in: 3,
+  expected_late: 4,
+  excused: 5,
+  present: 6,
+};
+
+function statusRankForRow(row: AttendanceRow) {
+  return Math.min(...rowStatuses(row).map((status) => STATUS_RANK[status] ?? 99));
 }
 
 function permissionSummary(permission: AttendancePermission) {
@@ -492,21 +521,12 @@ export default function AttendancePage() {
   ), [data?.rows]);
 
   const sortedRows = useMemo(() => {
-    const rank: Record<AttendanceStatus, number> = {
-      permission_overdue: 0,
-      late: 1,
-      no_sign_out: 2,
-      not_checked_in: 3,
-      expected_late: 4,
-      excused: 5,
-      present: 6,
-    };
     const query = searchQuery.trim().toLowerCase();
     const rows = (() => {
       if (activeFilter === 'all') return data?.rows || [];
       if (activeFilter === 'present') return (data?.rows || []).filter((row) => Boolean(row.attendance?.checkInTime));
       if (activeFilter === 'on_time') return (data?.rows || []).filter((row) => isOnTimeAttendanceRow(row));
-      return (data?.rows || []).filter((row) => row.status === activeFilter);
+      return (data?.rows || []).filter((row) => rowStatuses(row).includes(activeFilter));
     })();
     const filteredRows = query
       ? rows.filter((row) => [
@@ -518,7 +538,7 @@ export default function AttendancePage() {
         ].join(' ').toLowerCase().includes(query))
       : rows;
 
-    return [...filteredRows].sort((a, b) => rank[a.status] - rank[b.status] || a.staff.fullName.localeCompare(b.staff.fullName));
+    return [...filteredRows].sort((a, b) => statusRankForRow(a) - statusRankForRow(b) || a.staff.fullName.localeCompare(b.staff.fullName));
   }, [activeFilter, data?.rows, searchQuery]);
 
   const attendanceTableSections = useMemo(() => {
@@ -955,16 +975,14 @@ export default function AttendancePage() {
                             {row.attendance?.signOutTime ? row.attendance.signOutTime.slice(0, 5) : '-'}
                           </td>
                           <td className="px-4 py-3">
-                            <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium', statusClass(row.status))}>
-                              {row.status === 'present' && <CheckCircle2 className="h-3.5 w-3.5" />}
-                              {row.status === 'late' && <Clock className="h-3.5 w-3.5" />}
-                              {row.status === 'excused' && <ShieldCheck className="h-3.5 w-3.5" />}
-                              {row.status === 'expected_late' && <Clock className="h-3.5 w-3.5" />}
-                              {row.status === 'permission_overdue' && <AlertTriangle className="h-3.5 w-3.5" />}
-                              {row.status === 'no_sign_out' && <AlertTriangle className="h-3.5 w-3.5" />}
-                              {row.status === 'not_checked_in' && <XCircle className="h-3.5 w-3.5" />}
-                              {statusLabel(row.status)}
-                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {rowStatuses(row).map((status) => (
+                                <span key={status} className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium', statusClass(status))}>
+                                  <StatusIcon status={status} />
+                                  {statusLabel(status)}
+                                </span>
+                              ))}
+                            </div>
                             {row.permission && (
                               <p className="mt-1 max-w-52 truncate text-xs text-muted-foreground" title={permissionSummary(row.permission)}>
                                 {permissionSummary(row.permission)}
