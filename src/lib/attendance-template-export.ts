@@ -376,7 +376,10 @@ function countLabels(labels: string[]) {
 }
 
 function dailyRemark(labels: string[]) {
-  return Array.from(new Set(labels.filter(Boolean))).join(' / ');
+  const uniqueLabels = Array.from(new Set(labels.filter(Boolean)));
+  return uniqueLabels
+    .map((label, index) => `${label}${index < uniqueLabels.length - 1 ? ' /' : ''}`)
+    .join('\n');
 }
 
 function countedDailyRemark(labels: string[]) {
@@ -615,7 +618,17 @@ function fillWeeklySheet(
     });
 
     row.getCell(9).value = presentCount;
-    row.getCell(11).value = dailyRemark(remarks);
+    const remarkText = dailyRemark(remarks);
+    const remarkCell = row.getCell(11);
+    remarkCell.value = remarkText;
+    remarkCell.alignment = {
+      ...(remarkCell.alignment || {}),
+      horizontal: 'left',
+      vertical: 'middle',
+      wrapText: true,
+    };
+    const remarkLineCount = remarkText ? remarkText.split('\n').length : 1;
+    row.height = Math.max(row.height || 0, remarkLineCount * DAILY_REMARK_LINE_HEIGHT);
     row.commit();
   });
 }

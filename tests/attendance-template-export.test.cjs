@@ -529,6 +529,23 @@ test('weekly validation uses daily summary-style remark labels and keeps NSS sta
   assert.equal(nssWeek1.getCell('F7').value, CHECK);
 });
 
+test('weekly validation puts each staff remark on its own line', async () => {
+  const workbook = await workbookFor({
+    holidays: april2026WeekdayHolidaysExcept('2026-04-01', '2026-04-02'),
+    permissions: [
+      { date: '2026-04-01', permissionType: 'absence', reason: 'workshop', staffId: 'main-excused' },
+      { date: '2026-04-02', permissionType: 'absence', reason: 'official duty', staffId: 'main-excused' },
+    ],
+    template: 'weekly-validation',
+  });
+  const week1 = workbook.getWorksheet('WEEK 1');
+  const remarkCell = week1.getCell('K9');
+
+  assert.equal(remarkCell.value, 'Exempt (Workshop) /\nOfficial duty');
+  assert.equal(remarkCell.alignment?.wrapText, true);
+  assert.ok((week1.getRow(9).height || 0) >= 30, 'weekly validation row should show one remark per line');
+});
+
 test('attendance export filenames include group, month, year, and template label', () => {
   assert.equal(
     getAttendanceExportFileName({ group: 'main', month: 3, template: 'weekly-validation', year: 2026 }),
