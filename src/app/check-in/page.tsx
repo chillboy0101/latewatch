@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
-import { formatDisplayDate } from '@/lib/date-format';
+import { formatDisplayDate, formatDisplayDateTime } from '@/lib/date-format';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
 import { pushSubscriptionErrorMessage, vapidPublicKeyToUint8Array } from '@/lib/push-client';
 import { applyThemePreference, getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
@@ -105,11 +105,23 @@ interface PenaltyHistoryEntry {
   status: PenaltyPaymentStatus;
 }
 
+interface PenaltyReceiptSummary {
+  amount: string;
+  note: string | null;
+  paymentId: string;
+  receiptNumber: string;
+  recordedAt: string | null;
+  recordedByEmail: string | null;
+  weekEnd: string;
+  weekStart: string;
+}
+
 interface PenaltyHistoryWeek {
   endDate: string;
   entries: PenaltyHistoryEntry[];
   outstandingBalance: string;
   paidAmount: string;
+  receipts: PenaltyReceiptSummary[];
   startDate: string;
   status: PenaltyPaymentStatus;
   totalPenalty: string;
@@ -117,6 +129,7 @@ interface PenaltyHistoryWeek {
 
 interface PenaltyHistoryResponse {
   currentWeek: PenaltyHistoryWeek;
+  receipts: PenaltyReceiptSummary[];
   staff: {
     email: string | null;
     fullName: string;
@@ -958,6 +971,7 @@ function PenaltyHistoryDialog({
             </div>
 
             <PenaltyHistoryEntries entries={currentWeek.entries} emptyLabel="No late penalty days this week." />
+            <PenaltyHistoryReceipts receipts={currentWeek.receipts} emptyLabel="No receipts for this week yet." />
 
             {olderWeeks.length > 0 && (
               <div className="space-y-2">
@@ -969,6 +983,9 @@ function PenaltyHistoryDialog({
                     </summary>
                     <div className="border-t border-border p-3">
                       <PenaltyHistoryEntries entries={week.entries} emptyLabel="No penalty days for this week." />
+                      <div className="mt-3">
+                        <PenaltyHistoryReceipts receipts={week.receipts} emptyLabel="No receipts for this week." />
+                      </div>
                     </div>
                   </details>
                 ))}
@@ -1003,6 +1020,42 @@ function PenaltyHistoryStat({ highlight, label, value }: { highlight?: boolean; 
     <div className="rounded-md border border-border bg-background p-2">
       <div className="text-[11px] uppercase leading-tight text-muted-foreground">{label}</div>
       <div className={cn('mt-1 font-mono text-sm font-semibold', highlight && 'text-warning')}>{value}</div>
+    </div>
+  );
+}
+
+function PenaltyHistoryReceipts({ emptyLabel, receipts }: { emptyLabel: string; receipts: PenaltyReceiptSummary[] }) {
+  return (
+    <div className="rounded-md border border-border bg-background">
+      <div className="flex items-center justify-between border-b border-border px-3 py-2">
+        <h3 className="text-sm font-semibold">Receipts</h3>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+          {receipts.length}
+        </span>
+      </div>
+      {receipts.length === 0 ? (
+        <div className="px-3 py-4 text-center text-sm text-muted-foreground">
+          {emptyLabel}
+        </div>
+      ) : (
+        <div className="divide-y divide-border">
+          {receipts.map((receipt) => (
+            <div key={receipt.paymentId} className="flex items-center justify-between gap-3 px-3 py-2.5">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">{receipt.receiptNumber}</div>
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  {formatDisplayDateTime(receipt.recordedAt)} - {ghc(receipt.amount)}
+                </div>
+              </div>
+              <Button asChild size="sm" variant="outline" className="h-8 shrink-0">
+                <Link href={`/check-in/receipts/${receipt.paymentId}`} target="_blank">
+                  View receipt
+                </Link>
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

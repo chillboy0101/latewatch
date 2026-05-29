@@ -2,9 +2,10 @@ import { currentUser } from '@clerk/nextjs/server';
 import { desc, eq, inArray } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { latenessEntry, latenessPaymentAllocation } from '@/db/schema';
+import { latenessEntry, latenessPayment, latenessPaymentAllocation } from '@/db/schema';
 import { getAccraClock, getOrAutoLinkStaffByEmail } from '@/lib/attendance';
 import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
+import { summarizeLatenessPaymentReceipts } from '@/lib/lateness-payment-receipts';
 import { summarizeLatenessPaymentEntries, summarizePenaltyHistoryWeeks } from '@/lib/lateness-payments';
 
 export const dynamic = 'force-dynamic';
@@ -75,13 +76,20 @@ export async function GET() {
       allocations,
       entries: penaltyEntries,
     });
+    const payments = await db.select()
+      .from(latenessPayment)
+      .where(eq(latenessPayment.staffId, member.id))
+      .orderBy(desc(latenessPayment.recordedAt));
+    const receipts = summarizeLatenessPaymentReceipts(payments);
     const history = summarizePenaltyHistoryWeeks({
       currentDate: clock.dateKey,
       entries: entrySummaries,
+      receipts,
     });
 
     return NextResponse.json({
       currentWeek: history.currentWeek,
+      receipts,
       staff: {
         email: member.email,
         fullName: member.fullName,

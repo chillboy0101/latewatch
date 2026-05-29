@@ -1,3 +1,5 @@
+import type { LatenessPaymentReceiptSummary } from '@/lib/lateness-payment-receipts';
+
 export type LatenessPaymentStatus = 'paid' | 'partially_paid' | 'unpaid';
 
 export type LatenessPaymentEntryLike = {
@@ -31,6 +33,7 @@ export type LatenessPaymentWeekSummary = {
   entries: LatenessPaymentEntrySummary[];
   outstandingBalance: string;
   paidAmount: string;
+  receipts: LatenessPaymentReceiptSummary[];
   startDate: string;
   status: LatenessPaymentStatus;
   totalPenalty: string;
@@ -191,12 +194,15 @@ export function allocateLatenessPayment(input: {
 export function summarizePenaltyHistoryWeeks(input: {
   currentDate: string;
   entries: LatenessPaymentEntrySummary[];
+  receipts?: LatenessPaymentReceiptSummary[];
 }): {
   currentWeek: LatenessPaymentWeekSummary;
   weeks: LatenessPaymentWeekSummary[];
 } {
   const currentBounds = getWeekBoundsForDate(input.currentDate);
   const groups = new Map<string, LatenessPaymentEntrySummary[]>();
+  const receiptGroups = new Map<string, LatenessPaymentReceiptSummary[]>();
+  const receipts = input.receipts || [];
 
   for (const entry of input.entries) {
     const bounds = getWeekBoundsForDate(entry.date);
@@ -206,7 +212,19 @@ export function summarizePenaltyHistoryWeeks(input: {
     groups.set(key, list);
   }
 
-  const makeWeek = (weekStart: string, weekEnd: string, entries: LatenessPaymentEntrySummary[]): LatenessPaymentWeekSummary => {
+  for (const receipt of receipts) {
+    const key = `${receipt.weekStart}:${receipt.weekEnd}`;
+    const list = receiptGroups.get(key) || [];
+    list.push(receipt);
+    receiptGroups.set(key, list);
+  }
+
+  const makeWeek = (weekStart: string, weekEnd: string): LatenessPaymentWeekSummary => {
+    const key = `${weekStart}:${weekEnd}`;
+    const entries = groups.get(key) || [];
+    const weekReceipts = (receiptGroups.get(key) || []).slice().sort((left, right) => (
+      (right.recordedAt || '').localeCompare(left.recordedAt || '')
+    ));
     const totalPenaltyCents = entries.reduce((sum, entry) => sum + cents(entry.penaltyAmount), 0);
     const paidCents = entries.reduce((sum, entry) => sum + cents(entry.paidAmount), 0);
     const outstandingCents = Math.max(0, totalPenaltyCents - paidCents);
@@ -216,22 +234,28 @@ export function summarizePenaltyHistoryWeeks(input: {
       entries,
       outstandingBalance: money(outstandingCents),
       paidAmount: money(paidCents),
+      receipts: weekReceipts,
       startDate: weekStart,
       status: getLatenessPaymentStatus(totalPenaltyCents / 100, paidCents / 100),
       totalPenalty: money(totalPenaltyCents),
     };
   };
 
-  const weeks = Array.from(groups.entries())
-    .map(([key, entries]) => {
+  const weekKeys = new Set([
+    ...groups.keys(),
+    ...receiptGroups.keys(),
+  ]);
+
+  const weeks = Array.from(weekKeys)
+    .map((key) => {
       const [weekStart, weekEnd] = key.split(':');
-      return makeWeek(weekStart, weekEnd, entries);
+      return makeWeek(weekStart, weekEnd);
     })
     .sort((a, b) => b.startDate.localeCompare(a.startDate));
 
   const currentKey = `${currentBounds.weekStart}:${currentBounds.weekEnd}`;
   const currentWeek = weeks.find((week) => `${week.startDate}:${week.endDate}` === currentKey)
-    || makeWeek(currentBounds.weekStart, currentBounds.weekEnd, []);
+    || makeWeek(currentBounds.weekStart, currentBounds.weekEnd);
 
   return { currentWeek, weeks };
 }

@@ -9,6 +9,11 @@ const {
   getLatenessPaymentStatus,
   summarizeLatenessPaymentEntries,
 } = require('../src/lib/lateness-payments.ts');
+const {
+  buildLatenessPaymentReceiptDetail,
+  getLatenessPaymentReceiptNumber,
+  summarizeLatenessPaymentReceipts,
+} = require('../src/lib/lateness-payment-receipts.ts');
 
 const entries = [
   { id: 'entry-a', staffId: 'staff-1', date: '2026-05-11', arrivalTime: '08:45', computedAmount: '10.00', reason: 'Late' },
@@ -91,4 +96,77 @@ test('lateness payment summaries calculate paid status and outstanding balance',
   assert.equal(getLatenessPaymentStatus(15, 15), 'paid');
   assert.equal(getLatenessPaymentStatus(15, 3), 'partially_paid');
   assert.equal(getLatenessPaymentStatus(15, 0), 'unpaid');
+});
+
+test('lateness payment receipt numbers are stable and date-based', () => {
+  assert.equal(
+    getLatenessPaymentReceiptNumber('123e4567-e89b-12d3-a456-426614174000', '2026-05-29T10:20:00.000Z'),
+    'LW-RCPT-202605-123E4567',
+  );
+  assert.equal(
+    getLatenessPaymentReceiptNumber('123e4567-e89b-12d3-a456-426614174000', new Date('2026-05-29T10:20:00.000Z')),
+    'LW-RCPT-202605-123E4567',
+  );
+});
+
+test('lateness payment receipts summarize every payment without a new receipt table', () => {
+  const receipts = summarizeLatenessPaymentReceipts([
+    {
+      amount: '18.00',
+      id: 'aaaaaaaa-1111-4111-8111-111111111111',
+      note: 'Part payment',
+      recordedAt: '2026-05-29T10:20:00.000Z',
+      recordedByEmail: 'admin@example.com',
+      weekEnd: '2026-05-29',
+      weekStart: '2026-05-25',
+    },
+    {
+      amount: '10.00',
+      id: 'bbbbbbbb-2222-4222-8222-222222222222',
+      note: null,
+      recordedAt: '2026-05-30T11:00:00.000Z',
+      recordedByEmail: 'admin@example.com',
+      weekEnd: '2026-05-29',
+      weekStart: '2026-05-25',
+    },
+  ]);
+
+  assert.deepEqual(receipts.map((receipt) => receipt.receiptNumber), [
+    'LW-RCPT-202605-AAAAAAAA',
+    'LW-RCPT-202605-BBBBBBBB',
+  ]);
+  assert.equal(receipts[0].paymentId, 'aaaaaaaa-1111-4111-8111-111111111111');
+  assert.equal(receipts[0].amount, '18.00');
+  assert.equal(receipts[0].note, 'Part payment');
+});
+
+test('lateness payment receipt details include allocated penalty days only', () => {
+  const detail = buildLatenessPaymentReceiptDetail({
+    allocations: [
+      { allocatedAmount: '10.00', entryId: 'entry-a' },
+      { allocatedAmount: '8.00', entryId: 'entry-b' },
+      { allocatedAmount: '99.00', entryId: 'entry-missing' },
+    ],
+    entries,
+    payment: {
+      amount: '18.00',
+      id: 'aaaaaaaa-1111-4111-8111-111111111111',
+      note: 'Part payment',
+      recordedAt: '2026-05-29T10:20:00.000Z',
+      recordedByEmail: 'admin@example.com',
+      weekEnd: '2026-05-29',
+      weekStart: '2026-05-25',
+    },
+    staff: {
+      email: 'staff@example.com',
+      fullName: 'Staff Member',
+      id: 'staff-1',
+    },
+  });
+
+  assert.equal(detail.receipt.receiptNumber, 'LW-RCPT-202605-AAAAAAAA');
+  assert.equal(detail.staff.fullName, 'Staff Member');
+  assert.deepEqual(detail.allocations.map((allocation) => allocation.entryId), ['entry-a', 'entry-b']);
+  assert.equal(detail.allocations[0].penaltyAmount, '10.00');
+  assert.equal(detail.allocations[1].allocatedAmount, '8.00');
 });

@@ -9,9 +9,12 @@ const schemaPath = path.join(root, 'src/db/schema.ts');
 const migrationPath = path.join(root, 'drizzle/0019_lateness_payments.sql');
 const paymentsApiPath = path.join(root, 'src/app/api/payments/lateness/route.ts');
 const penaltyHistoryApiPath = path.join(root, 'src/app/api/attendance/check-in/penalty-history/route.ts');
+const receiptApiPath = path.join(root, 'src/app/api/attendance/check-in/receipts/[paymentId]/route.ts');
 const dashboardApiPath = path.join(root, 'src/app/api/dashboard/route.ts');
 const paymentsPagePath = path.join(root, 'src/app/payments/page.tsx');
 const checkInPagePath = path.join(root, 'src/app/check-in/page.tsx');
+const receiptPagePath = path.join(root, 'src/app/check-in/receipts/[paymentId]/page.tsx');
+const receiptLibPath = path.join(root, 'src/lib/lateness-payment-receipts.ts');
 const sidebarPath = path.join(root, 'src/components/layout/sidebar.tsx');
 const appShellPath = path.join(root, 'src/components/layout/app-shell.tsx');
 const proxyPath = path.join(root, 'src/proxy.ts');
@@ -53,7 +56,24 @@ test('staff penalty history endpoint is scoped to the signed-in staff member', (
   assert.match(source, /resolveMemberForPenaltyHistory/);
   assert.match(source, /syncLatenessEntriesFromAttendanceForRange/);
   assert.match(source, /eq\(latenessEntry\.staffId, member\.id\)/);
+  assert.match(source, /latenessPayment/);
+  assert.match(source, /summarizeLatenessPaymentReceipts/);
+  assert.match(source, /receipts/);
   assert.match(source, /summarizePenaltyHistoryWeeks/);
+  assert.doesNotMatch(source, /searchParams\.get\('staffId'\)/);
+});
+
+test('staff receipt API returns only signed-in staff payment receipts', () => {
+  assert.equal(fs.existsSync(receiptApiPath), true);
+  const source = fs.readFileSync(receiptApiPath, 'utf8');
+
+  assert.match(source, /currentUser\(\)/);
+  assert.match(source, /resolveMemberForReceipt/);
+  assert.match(source, /eq\(latenessPayment\.id, paymentId\)/);
+  assert.match(source, /eq\(latenessPayment\.staffId, member\.id\)/);
+  assert.match(source, /return NextResponse\.json\(\{ error: 'Receipt was not found' \}, \{ status: 404 \}\)/);
+  assert.match(source, /latenessPaymentAllocation/);
+  assert.match(source, /buildLatenessPaymentReceiptDetail/);
   assert.doesNotMatch(source, /searchParams\.get\('staffId'\)/);
 });
 
@@ -148,4 +168,38 @@ test('check-in page exposes an icon-only penalty history modal', () => {
   assert.match(source, /Current week penalty/);
   assert.match(source, /Current week paid/);
   assert.match(source, /Current week balance/);
+});
+
+test('staff penalty history exposes payment receipts', () => {
+  const source = fs.readFileSync(checkInPagePath, 'utf8');
+
+  assert.match(source, /interface PenaltyReceiptSummary/);
+  assert.match(source, /receipts: PenaltyReceiptSummary\[\]/);
+  assert.match(source, /PenaltyHistoryReceipts/);
+  assert.match(source, /View receipt/);
+  assert.match(source, /\/check-in\/receipts\/\$\{receipt\.paymentId\}/);
+  assert.match(source, /formatDisplayDateTime\(receipt\.recordedAt\)/);
+});
+
+test('receipt page is print-friendly and uses LateWatch branding', () => {
+  assert.equal(fs.existsSync(receiptPagePath), true);
+  const source = fs.readFileSync(receiptPagePath, 'utf8');
+
+  assert.match(source, /LateWatchLogo/);
+  assert.match(source, /Official Receipt/);
+  assert.match(source, /Print \/ Save PDF/);
+  assert.match(source, /window\.print\(\)/);
+  assert.match(source, /\/api\/attendance\/check-in\/receipts\/\$\{paymentId\}/);
+  assert.match(source, /@media print/);
+  assert.match(source, /Receipt No/);
+});
+
+test('receipt helper derives stable receipts from existing payment data', () => {
+  assert.equal(fs.existsSync(receiptLibPath), true);
+  const source = fs.readFileSync(receiptLibPath, 'utf8');
+
+  assert.match(source, /export function getLatenessPaymentReceiptNumber/);
+  assert.match(source, /export function summarizeLatenessPaymentReceipts/);
+  assert.match(source, /export function buildLatenessPaymentReceiptDetail/);
+  assert.doesNotMatch(source, /receipt_table/);
 });
