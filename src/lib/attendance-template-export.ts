@@ -432,6 +432,7 @@ async function buildDailySummary(input: AttendanceWorkbookInput, roster: RosterS
           remarks.push(dailySummaryAbsenceRemarkLabel(status.reason));
         }
       } else if (status.kind === 'unapproved_absence') {
+        exempt += 1;
         remarks.push(DAILY_OFFICIAL_DUTY_REMARK);
       }
     }

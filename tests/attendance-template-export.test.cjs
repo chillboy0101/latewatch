@@ -182,7 +182,7 @@ test('daily attendance summary uses 8:30 cutoff, leave, exempt counts, and main 
   assert.match(String(sheet.getCell('G6').value), /Exempt \(Official Duty\) - 1/);
 });
 
-test('daily attendance summary counts only approved exempt reasons', async () => {
+test('daily attendance summary counts configured exempt permission reasons', async () => {
   const roster = [
     ...baseStaff,
     {
@@ -286,7 +286,9 @@ test('missing attendance is explained as official duty in daily and weekly expor
   ];
 
   const dailyWorkbook = await workbookFor({ attendanceRecords });
-  const dailyRemarks = String(dailyWorkbook.worksheets[0].getCell('G6').value);
+  const dailySheet = dailyWorkbook.worksheets[0];
+  const dailyRemarks = String(dailySheet.getCell('G6').value);
+  assert.equal(dailySheet.getCell('E6').value, 2);
   assert.match(dailyRemarks, /Exempt \(Official Duty\) - 2/);
   assert.match(dailyRemarks, /Leave - 1/);
   assert.doesNotMatch(dailyRemarks, /Absent with permission/);
