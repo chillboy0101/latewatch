@@ -37,7 +37,9 @@ test('offence book items API supports monthly database-backed input editing', ()
   assert.match(source, /export async function PUT/);
   assert.match(source, /OFFENCE_BOOK_ITEM_LIMITS/);
   assert.match(source, /openingBalance/);
+  assert.match(source, /closingBalance/);
   assert.match(source, /opening_balance/);
+  assert.match(source, /closing_balance/);
   assert.match(source, /external_money/);
   assert.match(source, /expenditure/);
   assert.match(source, /publishRealtime\('payments'/);
@@ -55,7 +57,9 @@ test('exports and payments pages expose offence book controls', () => {
 
   assert.match(paymentsPage, /Offence book inputs/);
   assert.match(paymentsPage, /Opening Balance/);
+  assert.match(paymentsPage, /Closing Balance/);
   assert.match(paymentsPage, /openingBalance/);
+  assert.match(paymentsPage, /closingBalance/);
   assert.match(paymentsPage, /externalMoneyDrafts/);
   assert.match(paymentsPage, /expenditureDrafts/);
   assert.match(paymentsPage, /\/api\/payments\/offence-book-items/);
@@ -77,5 +81,6 @@ test('offence book export route uses the template and audit/export wiring', () =
   assert.match(lib, /offence-book\.xlsx/);
   assert.match(lib, /OFFENCE_BOOK_ITEM_LIMITS/);
   assert.match(lib, /opening_balance/);
+  assert.match(lib, /closing_balance/);
   assert.match(lib, /buildOffenceBookWorkbookFromData/);
 });

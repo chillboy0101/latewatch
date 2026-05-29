@@ -286,6 +286,13 @@ test('offence book export uses saved opening balance input when present', async 
     items: [
       ...items,
       {
+        amount: '777.00',
+        displayOrder: 0,
+        itemType: 'closing_balance',
+        label: 'Closing balance',
+        monthKey: '2026-04-01',
+      },
+      {
         amount: '250.00',
         displayOrder: 0,
         itemType: 'opening_balance',
@@ -305,6 +312,60 @@ test('offence book export uses saved opening balance input when present', async 
   assert.equal(resultOf(sheet.getCell('T5').value), 1240);
   assert.equal(resultOf(sheet.getCell('T8').value), 1280);
   assert.equal(resultOf(sheet.getCell('T11').value), 1230);
+});
+
+test('offence book export carries previous month closing balance into next opening balance', async () => {
+  const workbook = await buildOffenceBookWorkbookFromData({
+    allocations,
+    entries,
+    items: [
+      ...items,
+      {
+        amount: '777.00',
+        displayOrder: 0,
+        itemType: 'closing_balance',
+        label: 'Closing balance',
+        monthKey: '2026-04-01',
+      },
+    ],
+    month: 4,
+    staff,
+    templatePath: OFFENCE_BOOK_TEMPLATE_PATH,
+    year: 2026,
+  });
+  const sheet = workbook.getWorksheet('MAY 2026');
+
+  assert.ok(sheet);
+  assert.equal(sheet.getCell('P5').value, 777);
+  assert.equal(resultOf(sheet.getCell('T5').value), 1767);
+  assert.equal(resultOf(sheet.getCell('T8').value), 1807);
+  assert.equal(resultOf(sheet.getCell('T11').value), 1757);
+});
+
+test('offence book export uses saved closing balance input when present', async () => {
+  const workbook = await buildOffenceBookWorkbookFromData({
+    allocations,
+    entries,
+    items: [
+      ...items,
+      {
+        amount: '555.00',
+        displayOrder: 0,
+        itemType: 'closing_balance',
+        label: 'Closing balance',
+        monthKey: '2026-05-01',
+      },
+    ],
+    month: 4,
+    staff,
+    templatePath: OFFENCE_BOOK_TEMPLATE_PATH,
+    year: 2026,
+  });
+  const sheet = workbook.getWorksheet('MAY 2026');
+
+  assert.ok(sheet);
+  assert.equal(sheet.getCell('P5').value, 10);
+  assert.equal(sheet.getCell('T11').value, 555);
 });
 
 test('offence book staff name columns are wide enough for full names without styling the main table', async () => {

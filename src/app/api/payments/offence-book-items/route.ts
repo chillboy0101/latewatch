@@ -14,7 +14,13 @@ type EditableItem = {
   label?: unknown;
 };
 
-type OffenceBookListItemType = Exclude<OffenceBookItemType, 'opening_balance'>;
+type OffenceBookBalanceItemType = Extract<OffenceBookItemType, 'opening_balance' | 'closing_balance'>;
+type OffenceBookListItemType = Exclude<OffenceBookItemType, OffenceBookBalanceItemType>;
+
+function formatMonthKey(year: number, month: number) {
+  const normalized = new Date(year, month, 1);
+  return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, '0')}-01`;
+}
 
 function parseYearMonth(url: URL) {
   const year = Number(url.searchParams.get('year'));
@@ -25,7 +31,7 @@ function parseYearMonth(url: URL) {
 
   return {
     month,
-    monthKey: `${year}-${String(month + 1).padStart(2, '0')}-01`,
+    monthKey: formatMonthKey(year, month),
     year,
   };
 }
@@ -39,7 +45,7 @@ function parseBodyMonth(body: unknown) {
 
   return {
     month,
-    monthKey: `${year}-${String(month + 1).padStart(2, '0')}-01`,
+    monthKey: formatMonthKey(year, month),
     year,
   };
 }
@@ -85,25 +91,42 @@ function normalizeItems(value: unknown, itemType: OffenceBookListItemType) {
     .filter((item): item is { amount: string; displayOrder: number; itemType: OffenceBookListItemType; label: string } => Boolean(item));
 }
 
-function normalizeOpeningBalance(value: unknown) {
+function normalizeBalance(value: unknown, itemType: OffenceBookBalanceItemType) {
   if (value === undefined || value === null || value === '') return null;
 
   return {
     amount: amountString(value),
     displayOrder: 0,
-    itemType: 'opening_balance' as const,
-    label: 'Opening balance',
+    itemType,
+    label: itemType === 'opening_balance' ? 'Opening balance' : 'Closing balance',
   };
 }
 
-function groupItems(rows: Array<typeof offenceBookItem.$inferSelect>) {
+function groupItems(rows: Array<typeof offenceBookItem.$inferSelect>, carriedOpeningBalance = '') {
   const openingBalance = rows.find((row) => row.itemType === 'opening_balance')?.amount || '';
+  const closingBalance = rows.find((row) => row.itemType === 'closing_balance')?.amount || '';
 
   return {
+    carriedOpeningBalance,
+    closingBalance,
     expenditure: rows.filter((row) => row.itemType === 'expenditure'),
     externalMoney: rows.filter((row) => row.itemType === 'external_money'),
     openingBalance,
   };
+}
+
+async function loadCarriedOpeningBalance(year: number, month: number) {
+  const previousMonthKey = formatMonthKey(year, month - 1);
+  const rows = await db.select({ amount: offenceBookItem.amount })
+    .from(offenceBookItem)
+    .where(and(
+      eq(offenceBookItem.monthKey, previousMonthKey),
+      eq(offenceBookItem.itemType, 'closing_balance'),
+    ))
+    .orderBy(asc(offenceBookItem.displayOrder))
+    .limit(1);
+
+  return rows[0]?.amount || '';
 }
 
 function actorEmail(user: Awaited<ReturnType<typeof currentUser>>) {
@@ -128,9 +151,10 @@ export async function GET(request: NextRequest) {
       .from(offenceBookItem)
       .where(eq(offenceBookItem.monthKey, parsed.monthKey))
       .orderBy(asc(offenceBookItem.itemType), asc(offenceBookItem.displayOrder));
+    const carriedOpeningBalance = await loadCarriedOpeningBalance(parsed.year, parsed.month);
 
     return NextResponse.json({
-      ...groupItems(rows),
+      ...groupItems(rows, carriedOpeningBalance),
       month: parsed.month,
       monthKey: parsed.monthKey,
       year: parsed.year,
@@ -158,7 +182,8 @@ export async function PUT(request: NextRequest) {
 
     const externalMoney = normalizeItems((body as { externalMoney?: unknown })?.externalMoney, 'external_money');
     const expenditure = normalizeItems((body as { expenditure?: unknown })?.expenditure, 'expenditure');
-    const openingBalance = normalizeOpeningBalance((body as { openingBalance?: unknown })?.openingBalance);
+    const openingBalance = normalizeBalance((body as { openingBalance?: unknown })?.openingBalance, 'opening_balance');
+    const closingBalance = normalizeBalance((body as { closingBalance?: unknown })?.closingBalance, 'closing_balance');
     const before = await db.select()
       .from(offenceBookItem)
       .where(eq(offenceBookItem.monthKey, parsed.monthKey));
@@ -171,6 +196,7 @@ export async function PUT(request: NextRequest) {
 
     const values = [
       ...(openingBalance ? [openingBalance] : []),
+      ...(closingBalance ? [closingBalance] : []),
       ...externalMoney,
       ...expenditure,
     ].map((item) => ({
@@ -189,6 +215,7 @@ export async function PUT(request: NextRequest) {
       .from(offenceBookItem)
       .where(eq(offenceBookItem.monthKey, parsed.monthKey))
       .orderBy(asc(offenceBookItem.itemType), asc(offenceBookItem.displayOrder));
+    const carriedOpeningBalance = await loadCarriedOpeningBalance(parsed.year, parsed.month);
 
     await writeAuditEvent({
       entityType: 'offence_book_item',
@@ -208,7 +235,7 @@ export async function PUT(request: NextRequest) {
     });
 
     return NextResponse.json({
-      ...groupItems(rows),
+      ...groupItems(rows, carriedOpeningBalance),
       month: parsed.month,
       monthKey: parsed.monthKey,
       success: true,

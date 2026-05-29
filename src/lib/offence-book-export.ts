@@ -5,6 +5,7 @@ import { getMonthWorkingWeeks } from '@/lib/export-weeks';
 
 export const OFFENCE_BOOK_ITEM_LIMITS = {
   opening_balance: 1,
+  closing_balance: 1,
   external_money: 4,
   expenditure: 9,
 } as const;
@@ -113,6 +114,10 @@ function monthStartKey(year: number, month: number) {
 
 function monthEndKey(year: number, month: number) {
   return format(new Date(year, month + 1, 0), 'yyyy-MM-dd');
+}
+
+function previousMonthStartKey(year: number, month: number) {
+  return format(new Date(year, month - 1, 1), 'yyyy-MM-dd');
 }
 
 function dateKey(value: string | Date) {
@@ -338,8 +343,11 @@ export async function buildOffenceBookWorkbookFromData({
     (entry) => dateKey(entry.date) < selectedMonthKey,
   );
   const openingBalanceItems = monthItems(items, 'opening_balance', selectedMonthKey);
+  const previousClosingBalanceItems = monthItems(items, 'closing_balance', previousMonthStartKey(year, month));
   const openingBalanceCents = openingBalanceItems.length > 0
     ? cents(openingBalanceItems[0].amount)
+    : previousClosingBalanceItems.length > 0
+      ? cents(previousClosingBalanceItems[0].amount)
     : calculatedOpeningBalanceCents;
   const owedThroughMonthByStaff = new Map<string, number>();
   for (const member of staff) {
@@ -417,11 +425,13 @@ export async function buildOffenceBookWorkbookFromData({
 
   const externalMoneyItems = monthItems(items, 'external_money', selectedMonthKey);
   const expenditureItems = monthItems(items, 'expenditure', selectedMonthKey);
+  const closingBalanceItems = monthItems(items, 'closing_balance', selectedMonthKey);
   const externalMoneyCents = externalMoneyItems.reduce((sum, item) => sum + cents(item.amount), 0);
   const expenditureCents = expenditureItems.reduce((sum, item) => sum + cents(item.amount), 0);
   const totalPenaltyCents = weeklyTotals.reduce((sum, week) => sum + week.penaltyCents, 0);
   const totalPaidCents = weeklyTotals.reduce((sum, week) => sum + week.paidCents, 0);
   const totalUnpaidCents = weeklyTotals.reduce((sum, week) => sum + week.unpaidCents, 0);
+  const calculatedClosingBalanceCents = openingBalanceCents + externalMoneyCents + totalPaidCents - expenditureCents;
 
   worksheet.getCell('P5').value = money(openingBalanceCents);
   worksheet.getCell('P5').numFmt = '#,##0.00';
@@ -446,7 +456,12 @@ export async function buildOffenceBookWorkbookFromData({
   writeFormula(worksheet.getCell('S15'), 'SUM(S6:S14)', expenditureCents);
   writeFormula(worksheet.getCell('T5'), 'SUM(P5,P12,P15)-S15', openingBalanceCents + externalMoneyCents + totalPenaltyCents - expenditureCents);
   writeFormula(worksheet.getCell('T8'), 'SUM(P5,P12,P18)', openingBalanceCents + externalMoneyCents + totalPaidCents);
-  writeFormula(worksheet.getCell('T11'), 'SUM(P5,P12,P18)-S15', openingBalanceCents + externalMoneyCents + totalPaidCents - expenditureCents);
+  if (closingBalanceItems.length > 0) {
+    worksheet.getCell('T11').value = money(cents(closingBalanceItems[0].amount));
+    worksheet.getCell('T11').numFmt = '#,##0.00';
+  } else {
+    writeFormula(worksheet.getCell('T11'), 'SUM(P5,P12,P18)-S15', calculatedClosingBalanceCents);
+  }
 
   const owedHighlightNameStyle = cloneStyle(worksheet.getCell('P27').style);
   const owedHighlightAmountStyle = cloneStyle(worksheet.getCell('Q27').style);
