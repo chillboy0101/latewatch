@@ -92,6 +92,13 @@ function borderSnapshot(cell) {
   };
 }
 
+function assertThinGrid(cell, label) {
+  assert.equal(borderStyle(cell, 'bottom'), 'thin', `${label} should show a bottom grid line`);
+  assert.equal(borderStyle(cell, 'left'), 'thin', `${label} should show a left grid line`);
+  assert.equal(borderStyle(cell, 'right'), 'thin', `${label} should show a right grid line`);
+  assert.equal(borderStyle(cell, 'top'), 'thin', `${label} should show a top grid line`);
+}
+
 function formulaTexts(workbook) {
   const formulas = [];
   for (const sheet of workbook.worksheets) {
@@ -200,7 +207,7 @@ test('offence book export calculates amount owed and preserves owed highlighting
   assert.notEqual(fillArgb(sheet.getCell('Q28')), 'FFFF00FF');
 });
 
-test('offence book summary money blocks keep the template border layout', async () => {
+test('offence book colored summary blocks show grid lines without touching the weekly table', async () => {
   const workbook = await buildWorkbook();
   const sheet = workbook.getWorksheet('MAY 2026');
   const template = await loadTemplateSheet();
@@ -211,10 +218,25 @@ test('offence book summary money blocks keep the template border layout', async 
   assert.ok(sheet.getColumn(19).width >= 14, 'expenditure amount column should be wide enough');
   assert.equal(sheet.getColumn(11).width, template.getColumn(11).width, 'weekly payment status column should keep the template width');
 
-  for (const address of [
-    'P4', 'P5', 'P8', 'P9', 'P12', 'P14', 'P15', 'P17', 'P18', 'P22', 'P23',
-    'Q8', 'R6', 'R7', 'R15', 'S6', 'S15', 'T4', 'T5', 'T7', 'T8', 'T10', 'T11',
+  for (const [startRow, endRow, startColumn, endColumn] of [
+    [4, 5, 16, 16],
+    [7, 12, 16, 17],
+    [14, 15, 16, 16],
+    [17, 18, 16, 16],
+    [4, 15, 18, 19],
+    [4, 5, 20, 20],
+    [7, 8, 20, 20],
+    [10, 11, 20, 20],
   ]) {
+    for (let row = startRow; row <= endRow; row++) {
+      for (let column = startColumn; column <= endColumn; column++) {
+        const cell = sheet.getCell(row, column);
+        assertThinGrid(cell, cell.address);
+      }
+    }
+  }
+
+  for (const address of ['P22', 'P23', 'C6', 'K27']) {
     assert.deepEqual(
       borderSnapshot(sheet.getCell(address)),
       borderSnapshot(template.getCell(address)),

@@ -64,6 +64,10 @@ const STAFF_NUMBER_COLUMN = 2;
 const STAFF_NAME_COLUMN = 3;
 const EXTERNAL_MONEY_ROWS = [8, 9, 10, 11];
 const EXPENDITURE_ROWS = [6, 7, 8, 9, 10, 11, 12, 13, 14];
+const SUMMARY_GRID_BORDER: Partial<ExcelJS.Border> = {
+  color: { argb: 'FFBFBFBF' },
+  style: 'thin',
+};
 const SUMMARY_COLUMN_WIDTHS = {
   expenditureAmount: 14,
   expenditureItem: 44,
@@ -223,12 +227,39 @@ function widenColumn(worksheet: ExcelJS.Worksheet, column: number, minimumWidth:
   target.width = Math.max(target.width || 0, minimumWidth);
 }
 
+function applySummaryGridLines(
+  worksheet: ExcelJS.Worksheet,
+  startRow: number,
+  endRow: number,
+  startColumn: number,
+  endColumn: number,
+) {
+  for (let row = startRow; row <= endRow; row++) {
+    for (let column = startColumn; column <= endColumn; column++) {
+      worksheet.getCell(row, column).border = {
+        bottom: SUMMARY_GRID_BORDER,
+        left: SUMMARY_GRID_BORDER,
+        right: SUMMARY_GRID_BORDER,
+        top: SUMMARY_GRID_BORDER,
+      };
+    }
+  }
+}
+
 function applySummaryBlockLayout(worksheet: ExcelJS.Worksheet) {
   widenColumn(worksheet, STAFF_NAME_COLUMN, SUMMARY_COLUMN_WIDTHS.staffName);
   widenColumn(worksheet, 16, SUMMARY_COLUMN_WIDTHS.owedName);
   widenColumn(worksheet, 17, SUMMARY_COLUMN_WIDTHS.externalSource);
   widenColumn(worksheet, 18, SUMMARY_COLUMN_WIDTHS.expenditureItem);
   widenColumn(worksheet, 19, SUMMARY_COLUMN_WIDTHS.expenditureAmount);
+  applySummaryGridLines(worksheet, 4, 5, 16, 16);
+  applySummaryGridLines(worksheet, 7, 12, 16, 17);
+  applySummaryGridLines(worksheet, 14, 15, 16, 16);
+  applySummaryGridLines(worksheet, 17, 18, 16, 16);
+  applySummaryGridLines(worksheet, 4, 15, 18, 19);
+  applySummaryGridLines(worksheet, 4, 5, 20, 20);
+  applySummaryGridLines(worksheet, 7, 8, 20, 20);
+  applySummaryGridLines(worksheet, 10, 11, 20, 20);
 }
 
 export async function buildOffenceBookWorkbookFromData({
