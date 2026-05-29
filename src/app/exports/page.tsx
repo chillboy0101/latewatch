@@ -61,8 +61,206 @@ async function downloadWorkbook(response: Response, fileName: string) {
   window.URL.revokeObjectURL(url);
 }
 
+function buildExportPreviewWatermarkHtml({ isDark }: { isDark: boolean }) {
+  return `<!doctype html>
+<html class="${isDark ? 'dark' : ''}" lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Export preview</title>
+  <style>
+    :root {
+      --background: #ffffff;
+      --primary: #2563eb;
+    }
+
+    .dark {
+      --background: #0a0a0a;
+      --primary: #3b82f6;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      overflow: hidden;
+      background: var(--background);
+    }
+
+    .export-preview-shell {
+      position: relative;
+      min-height: 100dvh;
+      width: 100dvw;
+      overflow: hidden;
+      background: var(--background);
+    }
+
+    @keyframes loading-buffer-spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes auth-watermark-float {
+      0%,
+      100% {
+        transform: translate3d(-1.4rem, 0.7rem, 0) scale(0.98);
+      }
+      50% {
+        transform: translate3d(1.2rem, -0.9rem, 0) scale(1.03);
+      }
+    }
+
+    @keyframes auth-watermark-mobile-float {
+      0%,
+      100% {
+        transform: translate3d(-0.4rem, 0.4rem, 0) scale(2);
+      }
+      50% {
+        transform: translate3d(0.45rem, -0.45rem, 0) scale(2.04);
+      }
+    }
+
+    @keyframes auth-watermark-pulse {
+      0%,
+      100% {
+        opacity: 0.72;
+        transform: scale(0.92);
+      }
+      50% {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    .auth-watermark {
+      pointer-events: none;
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100dvh;
+      width: 100dvw;
+      overflow: hidden;
+    }
+
+    .auth-watermark-mark {
+      position: relative;
+      display: grid;
+      width: clamp(36rem, 120vmax, 88rem);
+      aspect-ratio: 1;
+      place-items: center;
+      opacity: 0.28;
+      transform-origin: center;
+      animation: auth-watermark-float 8s ease-in-out infinite;
+    }
+
+    .dark .auth-watermark-mark {
+      opacity: 0.34;
+    }
+
+    .auth-watermark-ring {
+      position: absolute;
+      inset: 16%;
+      border: clamp(0.7rem, 1.6vw, 1.45rem) solid color-mix(in srgb, var(--primary) 26%, transparent);
+      border-top-color: color-mix(in srgb, var(--primary) 92%, transparent);
+      border-right-color: color-mix(in srgb, var(--primary) 70%, transparent);
+      border-radius: 999px;
+      box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--primary) 18%, transparent),
+        0 1.5rem 5rem color-mix(in srgb, var(--primary) 18%, transparent);
+      animation: loading-buffer-spin 8.5s linear infinite;
+    }
+
+    .auth-watermark-core {
+      width: 33%;
+      aspect-ratio: 1;
+      border-radius: 999px;
+      background: var(--primary);
+      box-shadow:
+        0 0 0 clamp(3rem, 6vw, 6rem) color-mix(in srgb, var(--primary) 18%, transparent),
+        0 1rem 4.5rem color-mix(in srgb, var(--primary) 24%, transparent);
+      animation: auth-watermark-pulse 3.2s ease-in-out infinite;
+    }
+
+    .auth-watermark-dot {
+      position: absolute;
+      right: 17%;
+      top: 17%;
+      width: 18%;
+      aspect-ratio: 1;
+      border: clamp(0.45rem, 1vw, 0.9rem) solid var(--background);
+      border-radius: 999px;
+      background: var(--primary);
+      box-shadow: 0 0 0 clamp(0.9rem, 2vw, 1.6rem) color-mix(in srgb, var(--primary) 30%, transparent);
+    }
+
+    @media (max-width: 640px), (max-height: 720px) and (max-width: 900px) {
+      .auth-watermark-mark {
+        width: clamp(50rem, 235vw, 58rem);
+        max-width: none;
+        opacity: 0.72;
+        animation-name: auth-watermark-mobile-float;
+      }
+
+      .dark .auth-watermark-mark {
+        opacity: 0.78;
+      }
+
+      .auth-watermark-ring {
+        inset: 10%;
+        border-width: clamp(1rem, 5.6vw, 1.6rem);
+      }
+
+      .auth-watermark-core {
+        width: 30%;
+        box-shadow:
+          0 0 0 clamp(3.6rem, 20vw, 6.4rem) color-mix(in srgb, var(--primary) 22%, transparent),
+          0 1rem 5rem color-mix(in srgb, var(--primary) 30%, transparent);
+      }
+
+      .auth-watermark-dot {
+        border-width: clamp(0.45rem, 2.5vw, 0.75rem);
+        box-shadow: 0 0 0 clamp(1rem, 5.5vw, 1.8rem) color-mix(in srgb, var(--primary) 32%, transparent);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main aria-hidden="true" class="export-preview-shell">
+    <div class="auth-watermark">
+      <div class="auth-watermark-mark">
+        <span class="auth-watermark-ring"></span>
+        <span class="auth-watermark-core"></span>
+        <span class="auth-watermark-dot"></span>
+      </div>
+    </div>
+  </main>
+</body>
+</html>`;
+}
+
 function openPreviewWindow() {
-  return window.open('', '_blank');
+  const previewWindow = window.open('', '_blank');
+  if (!previewWindow) return null;
+
+  previewWindow.document.open();
+  previewWindow.document.write(buildExportPreviewWatermarkHtml({
+    isDark: document.documentElement.classList.contains('dark'),
+  }));
+  previewWindow.document.close();
+
+  return previewWindow;
 }
 
 function sendPreviewWindowToUrl(previewWindow: Window | null, viewerUrl: string) {
