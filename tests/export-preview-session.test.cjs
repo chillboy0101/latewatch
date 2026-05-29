@@ -15,6 +15,7 @@ const {
   buildMicrosoftExcelViewerUrl,
   getExportPreviewAuditPayload,
   getExportPreviewPublicResponse,
+  optimizeWorkbookLayoutForPreview,
   protectWorkbookForPreview,
 } = require('../src/lib/export-preview-session.ts');
 
@@ -67,6 +68,32 @@ test('preview workbook protection locks every worksheet without protecting norma
     assert.equal(worksheet.sheetProtection.deleteRows, false);
     assert.equal(worksheet.getCell('A1').protection?.locked ?? true, true);
   }
+});
+
+test('preview layout optimization widens only temporary lateness preview workbook columns', () => {
+  const workbook = new ExcelJS.Workbook();
+  const lateness = workbook.addWorksheet('Week 5 25 May-29 May');
+  const contribution = workbook.addWorksheet('Contributions');
+
+  lateness.getCell('A3').value = 'NAME';
+  lateness.getCell('B3').value = 'TIME';
+  lateness.getCell('C3').value = 'AMOUNT';
+  lateness.getCell('D3').value = 'REASON';
+  lateness.getColumn(1).width = 20;
+  lateness.getColumn(2).width = 38;
+  lateness.getColumn(3).width = 36;
+  lateness.getColumn(4).width = 24;
+  contribution.getColumn(1).width = 12;
+  contribution.getColumn(4).width = 18;
+
+  optimizeWorkbookLayoutForPreview(workbook);
+
+  assert.equal(lateness.getColumn(1).width, 42);
+  assert.equal(lateness.getColumn(2).width, 14);
+  assert.equal(lateness.getColumn(3).width, 16);
+  assert.equal(lateness.getColumn(4).width, 64);
+  assert.equal(contribution.getColumn(1).width, 12);
+  assert.equal(contribution.getColumn(4).width, 18);
 });
 
 test('preview public response and audit payload never expose the raw signed workbook URL separately', () => {

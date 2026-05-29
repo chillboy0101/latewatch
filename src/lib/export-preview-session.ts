@@ -57,6 +57,13 @@ const PREVIEW_WORKSHEET_PROTECTION_OPTIONS: Partial<ExcelJS.WorksheetProtection>
   spinCount: 1000,
 };
 
+const LATENESS_PREVIEW_COLUMN_WIDTHS = {
+  amount: 16,
+  name: 42,
+  reason: 64,
+  time: 14,
+};
+
 function normalizeAttendanceGroup(value: unknown) {
   if (!isAttendanceExportGroup(value)) {
     throw new Error('Valid attendance roster group is required');
@@ -176,9 +183,42 @@ export async function protectWorkbookForPreview(workbook: ExcelJS.Workbook, pass
   return workbook;
 }
 
+function isLatenessWorksheet(worksheet: ExcelJS.Worksheet) {
+  for (let row = 1; row <= Math.min(worksheet.rowCount || 0, 140); row++) {
+    const headers = [1, 2, 3, 4].map((column) =>
+      String(worksheet.getCell(row, column).value || '').trim().toUpperCase()
+    );
+
+    if (
+      headers[0] === 'NAME' &&
+      headers[1] === 'TIME' &&
+      headers[2] === 'AMOUNT' &&
+      headers[3] === 'REASON'
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function optimizeWorkbookLayoutForPreview(workbook: ExcelJS.Workbook) {
+  for (const worksheet of workbook.worksheets) {
+    if (!isLatenessWorksheet(worksheet)) continue;
+
+    worksheet.getColumn(1).width = LATENESS_PREVIEW_COLUMN_WIDTHS.name;
+    worksheet.getColumn(2).width = LATENESS_PREVIEW_COLUMN_WIDTHS.time;
+    worksheet.getColumn(3).width = LATENESS_PREVIEW_COLUMN_WIDTHS.amount;
+    worksheet.getColumn(4).width = LATENESS_PREVIEW_COLUMN_WIDTHS.reason;
+  }
+
+  return workbook;
+}
+
 async function protectPreviewWorkbookBuffer(buffer: ExcelJS.Buffer, password: string) {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(bufferForExcelJsLoad(buffer));
+  optimizeWorkbookLayoutForPreview(workbook);
   await protectWorkbookForPreview(workbook, password);
   return workbook.xlsx.writeBuffer();
 }
