@@ -4,6 +4,7 @@ import path from 'path';
 import { getMonthWorkingWeeks } from '@/lib/export-weeks';
 
 export const OFFENCE_BOOK_ITEM_LIMITS = {
+  opening_balance: 1,
   external_money: 4,
   expenditure: 9,
 } as const;
@@ -73,6 +74,7 @@ const SUMMARY_COLUMN_WIDTHS = {
   externalSource: 34,
   owedName: 34,
   staffName: 34,
+  status: 18,
 };
 
 function amountNumber(value: number | string | null | undefined) {
@@ -249,12 +251,20 @@ function applyGridBorders(
 
 function applySummaryBlockLayout(worksheet: ExcelJS.Worksheet) {
   widenColumn(worksheet, STAFF_NAME_COLUMN, SUMMARY_COLUMN_WIDTHS.staffName);
+  widenColumn(worksheet, STATUS_COLUMN, SUMMARY_COLUMN_WIDTHS.status);
   widenColumn(worksheet, 16, SUMMARY_COLUMN_WIDTHS.owedName);
   widenColumn(worksheet, 17, SUMMARY_COLUMN_WIDTHS.externalSource);
   widenColumn(worksheet, 18, SUMMARY_COLUMN_WIDTHS.expenditureItem);
   widenColumn(worksheet, 19, SUMMARY_COLUMN_WIDTHS.expenditureAmount);
+  applyGridBorders(worksheet, 4, 5, 16, 16);
   applyGridBorders(worksheet, 7, 12, 16, 17);
+  applyGridBorders(worksheet, 14, 15, 16, 16);
+  applyGridBorders(worksheet, 17, 18, 16, 16);
+  applyGridBorders(worksheet, 22, 23, 16, 16);
   applyGridBorders(worksheet, 5, 15, 18, 19);
+  applyGridBorders(worksheet, 4, 5, 20, 20);
+  applyGridBorders(worksheet, 7, 8, 20, 20);
+  applyGridBorders(worksheet, 10, 11, 20, 20);
 }
 
 export async function buildOffenceBookWorkbookFromData({
@@ -294,11 +304,15 @@ export async function buildOffenceBookWorkbookFromData({
     selectedEntriesByStaffDate.set(key, list);
   }
 
-  const openingBalanceCents = sumEntryBalanceCents(
+  const calculatedOpeningBalanceCents = sumEntryBalanceCents(
     entries,
     paidByEntry,
     (entry) => dateKey(entry.date) < selectedMonthKey,
   );
+  const openingBalanceItems = monthItems(items, 'opening_balance', selectedMonthKey);
+  const openingBalanceCents = openingBalanceItems.length > 0
+    ? cents(openingBalanceItems[0].amount)
+    : calculatedOpeningBalanceCents;
   const owedThroughMonthByStaff = new Map<string, number>();
   for (const member of staff) {
     owedThroughMonthByStaff.set(member.id, sumEntryBalanceCents(

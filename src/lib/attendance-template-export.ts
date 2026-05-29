@@ -94,6 +94,16 @@ const MISSING_ATTENDANCE_REMARK = 'Absent with permission';
 const OFFICIAL_DUTY_EXPORT_REMARK = 'Official duty';
 const DAILY_OFFICIAL_DUTY_REMARK = 'Exempt (Official Duty)';
 const DAILY_EXEMPT_REASONS = new Set(['training', 'official duty', 'sick', 'workshop']);
+const DAILY_REMARK_COLUMN = 7;
+const DAILY_REMARK_COLUMN_WIDTH = 40;
+const DAILY_REMARK_LINE_HEIGHT = 16;
+const DAILY_REMARK_ORDER = new Map([
+  ['Exempt (Training)', 1],
+  [DAILY_OFFICIAL_DUTY_REMARK, 2],
+  ['Exempt (Workshop)', 3],
+  ['Sick', 4],
+  ['Leave', 5],
+]);
 
 function templatePath(template: AttendanceExportTemplate) {
   return path.join(process.cwd(), 'src', 'attendance-templates', TEMPLATE_FILES[template]);
@@ -375,9 +385,16 @@ function countedDailyRemark(labels: string[]) {
     counts.set(label, (counts.get(label) || 0) + 1);
   }
 
-  return Array.from(counts.entries())
-    .map(([label, count]) => `${label} - ${count}`)
-    .join(' / ');
+  const entries = Array.from(counts.entries())
+    .sort(([left], [right]) => {
+      const leftOrder = DAILY_REMARK_ORDER.get(left) || Number.MAX_SAFE_INTEGER;
+      const rightOrder = DAILY_REMARK_ORDER.get(right) || Number.MAX_SAFE_INTEGER;
+      return leftOrder === rightOrder ? left.localeCompare(right) : leftOrder - rightOrder;
+    });
+
+  return entries
+    .map(([label, count], index) => `${label} - ${count}${index < entries.length - 1 ? ' /' : ''}`)
+    .join('\n');
 }
 
 async function loadTemplate(template: AttendanceExportTemplate) {
@@ -403,6 +420,10 @@ async function buildDailySummary(input: AttendanceWorkbookInput, roster: RosterS
   sheet.getCell('A3').value = `Staff Strength: ${roster.length}`;
   sheet.getCell('A4').value = 'Date:';
   sheet.getCell('B4').value = `Month: ${format(new Date(input.year, input.month, 1), 'MMMM, yyyy')}`;
+  sheet.getColumn(DAILY_REMARK_COLUMN).width = Math.max(
+    sheet.getColumn(DAILY_REMARK_COLUMN).width || 0,
+    DAILY_REMARK_COLUMN_WIDTH,
+  );
   ensureRows(sheet, 6, rowsToPrepare, templateCapacity, 6);
   clearRows(sheet, 6, rowsToPrepare, 1, 7);
 
@@ -442,7 +463,15 @@ async function buildDailySummary(input: AttendanceWorkbookInput, roster: RosterS
     setCell(row.getCell(4), leave);
     setCell(row.getCell(5), exempt);
     setCell(row.getCell(6), null);
-    setCell(row.getCell(7), countedDailyRemark(remarks));
+    const remarkText = countedDailyRemark(remarks);
+    setCell(row.getCell(DAILY_REMARK_COLUMN), remarkText);
+    row.getCell(DAILY_REMARK_COLUMN).alignment = {
+      ...(row.getCell(DAILY_REMARK_COLUMN).alignment || {}),
+      horizontal: 'left',
+      wrapText: true,
+    };
+    const remarkLineCount = remarkText ? remarkText.split('\n').length : 1;
+    row.height = Math.max(row.height || 0, remarkLineCount * DAILY_REMARK_LINE_HEIGHT);
     row.commit();
   });
 

@@ -224,11 +224,19 @@ test('daily attendance summary counts configured exempt permission reasons', asy
   const remarks = String(sheet.getCell('G6').value);
 
   assert.equal(sheet.getCell('E6').value, 4);
-  assert.match(remarks, /Exempt \(Training\) - 1/);
-  assert.match(remarks, /Exempt \(Official Duty\) - 1/);
-  assert.match(remarks, /Exempt \(Workshop\) - 1/);
-  assert.match(remarks, /Sick - 1/);
-  assert.match(remarks, /Leave - 1/);
+  assert.equal(
+    remarks,
+    [
+      'Exempt (Training) - 1 /',
+      'Exempt (Official Duty) - 1 /',
+      'Exempt (Workshop) - 1 /',
+      'Sick - 1 /',
+      'Leave - 1',
+    ].join('\n'),
+  );
+  assert.equal(sheet.getCell('G6').alignment?.wrapText, true);
+  assert.ok(sheet.getColumn(7).width >= 38, 'remarks column should keep each reason/count on one line');
+  assert.ok((sheet.getRow(6).height || 0) >= 75, 'remarks row should be tall enough for one reason per line');
   assert.doesNotMatch(remarks, /Field Work/);
   assert.doesNotMatch(remarks, /General pardon/);
   assert.doesNotMatch(remarks, /Personal excuse/);
@@ -264,7 +272,7 @@ test('daily attendance summary aggregates duplicate remark reasons', async () =>
   const remarks = String(sheet.getCell('G6').value);
 
   assert.equal(sheet.getCell('E6').value, 2);
-  assert.match(remarks, /Exempt \(Training\) - 2/);
+  assert.equal(remarks, 'Exempt (Training) - 2');
 });
 
 test('missing attendance is explained as official duty in daily and weekly exports', async () => {

@@ -14,6 +14,8 @@ type EditableItem = {
   label?: unknown;
 };
 
+type OffenceBookListItemType = Exclude<OffenceBookItemType, 'opening_balance'>;
+
 function parseYearMonth(url: URL) {
   const year = Number(url.searchParams.get('year'));
   const month = Number(url.searchParams.get('month'));
@@ -51,12 +53,16 @@ function amountString(value: unknown) {
   return amount.toFixed(2);
 }
 
-function normalizeItems(value: unknown, itemType: OffenceBookItemType) {
+function itemTypeLabel(itemType: OffenceBookListItemType) {
+  return itemType === 'external_money' ? 'External money' : 'Expenditure';
+}
+
+function normalizeItems(value: unknown, itemType: OffenceBookListItemType) {
   const rows = Array.isArray(value) ? value : [];
   const limit = OFFENCE_BOOK_ITEM_LIMITS[itemType];
 
   if (rows.length > limit) {
-    throw new Error(`${itemType === 'external_money' ? 'External money' : 'Expenditure'} supports up to ${limit} rows`);
+    throw new Error(`${itemTypeLabel(itemType)} supports up to ${limit} rows`);
   }
 
   return rows
@@ -76,13 +82,27 @@ function normalizeItems(value: unknown, itemType: OffenceBookItemType) {
         label,
       };
     })
-    .filter((item): item is { amount: string; displayOrder: number; itemType: OffenceBookItemType; label: string } => Boolean(item));
+    .filter((item): item is { amount: string; displayOrder: number; itemType: OffenceBookListItemType; label: string } => Boolean(item));
+}
+
+function normalizeOpeningBalance(value: unknown) {
+  if (value === undefined || value === null || value === '') return null;
+
+  return {
+    amount: amountString(value),
+    displayOrder: 0,
+    itemType: 'opening_balance' as const,
+    label: 'Opening balance',
+  };
 }
 
 function groupItems(rows: Array<typeof offenceBookItem.$inferSelect>) {
+  const openingBalance = rows.find((row) => row.itemType === 'opening_balance')?.amount || '';
+
   return {
     expenditure: rows.filter((row) => row.itemType === 'expenditure'),
     externalMoney: rows.filter((row) => row.itemType === 'external_money'),
+    openingBalance,
   };
 }
 
@@ -138,6 +158,7 @@ export async function PUT(request: NextRequest) {
 
     const externalMoney = normalizeItems((body as { externalMoney?: unknown })?.externalMoney, 'external_money');
     const expenditure = normalizeItems((body as { expenditure?: unknown })?.expenditure, 'expenditure');
+    const openingBalance = normalizeOpeningBalance((body as { openingBalance?: unknown })?.openingBalance);
     const before = await db.select()
       .from(offenceBookItem)
       .where(eq(offenceBookItem.monthKey, parsed.monthKey));
@@ -148,7 +169,11 @@ export async function PUT(request: NextRequest) {
         eq(offenceBookItem.monthKey, parsed.monthKey),
       ));
 
-    const values = [...externalMoney, ...expenditure].map((item) => ({
+    const values = [
+      ...(openingBalance ? [openingBalance] : []),
+      ...externalMoney,
+      ...expenditure,
+    ].map((item) => ({
       ...item,
       createdByEmail: email,
       monthKey: parsed.monthKey,
