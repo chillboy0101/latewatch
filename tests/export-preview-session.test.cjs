@@ -79,6 +79,7 @@ test('preview layout optimization widens only temporary lateness preview workboo
   lateness.getCell('B3').value = 'TIME';
   lateness.getCell('C3').value = 'AMOUNT';
   lateness.getCell('D3').value = 'REASON';
+  lateness.getCell('B99').value = 'TOTAL AMOUNT FOR THE WEEK';
   lateness.getColumn(1).width = 20;
   lateness.getColumn(2).width = 38;
   lateness.getColumn(3).width = 36;
@@ -89,7 +90,7 @@ test('preview layout optimization widens only temporary lateness preview workboo
   optimizeWorkbookLayoutForPreview(workbook);
 
   assert.equal(lateness.getColumn(1).width, 42);
-  assert.equal(lateness.getColumn(2).width, 14);
+  assert.equal(lateness.getColumn(2).width, 38);
   assert.equal(lateness.getColumn(3).width, 16);
   assert.equal(lateness.getColumn(4).width, 64);
   assert.equal(contribution.getColumn(1).width, 12);

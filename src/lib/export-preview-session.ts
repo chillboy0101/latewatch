@@ -61,7 +61,7 @@ const LATENESS_PREVIEW_COLUMN_WIDTHS = {
   amount: 16,
   name: 42,
   reason: 64,
-  time: 14,
+  time: 38,
 };
 
 function normalizeAttendanceGroup(value: unknown) {
