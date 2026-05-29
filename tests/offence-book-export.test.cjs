@@ -7,6 +7,7 @@ require('tsx/cjs');
 
 const {
   buildOffenceBookWorkbookFromData,
+  calculateOffenceBookFinancialSummary,
   OFFENCE_BOOK_TEMPLATE_PATH,
 } = require('../src/lib/offence-book-export.ts');
 
@@ -143,6 +144,45 @@ async function loadTemplateSheet() {
   await workbook.xlsx.readFile(OFFENCE_BOOK_TEMPLATE_PATH);
   return workbook.worksheets[0];
 }
+
+test('offence book financial summary exposes the calculated closing balance for payment inputs', () => {
+  const summary = calculateOffenceBookFinancialSummary({
+    allocations,
+    entries,
+    items,
+    month: 4,
+    staff,
+    year: 2026,
+  });
+
+  assert.equal(summary.openingBalance, '10.00');
+  assert.equal(summary.calculatedClosingBalance, '990.00');
+  assert.equal(summary.closingBalance, '990.00');
+});
+
+test('offence book financial summary keeps calculated closing balance separate from saved override', () => {
+  const summary = calculateOffenceBookFinancialSummary({
+    allocations,
+    entries,
+    items: [
+      ...items,
+      {
+        amount: '555.00',
+        displayOrder: 0,
+        itemType: 'closing_balance',
+        label: 'Closing balance',
+        monthKey: '2026-05-01',
+      },
+    ],
+    month: 4,
+    staff,
+    year: 2026,
+  });
+
+  assert.equal(summary.calculatedClosingBalance, '990.00');
+  assert.equal(summary.closingBalance, '990.00');
+  assert.equal(summary.savedClosingBalance, '555.00');
+});
 
 test('offence book export preserves template layout and fills monthly payment values', async () => {
   const workbook = await buildWorkbook();
@@ -342,7 +382,7 @@ test('offence book export carries previous month closing balance into next openi
   assert.equal(resultOf(sheet.getCell('T11').value), 1757);
 });
 
-test('offence book export uses saved closing balance input when present', async () => {
+test('offence book export keeps current closing balance calculated when saved closing input exists', async () => {
   const workbook = await buildOffenceBookWorkbookFromData({
     allocations,
     entries,
@@ -365,7 +405,7 @@ test('offence book export uses saved closing balance input when present', async 
 
   assert.ok(sheet);
   assert.equal(sheet.getCell('P5').value, 10);
-  assert.equal(sheet.getCell('T11').value, 555);
+  assert.equal(resultOf(sheet.getCell('T11').value), 990);
 });
 
 test('offence book staff name columns are wide enough for full names without styling the main table', async () => {

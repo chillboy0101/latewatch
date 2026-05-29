@@ -54,6 +54,7 @@ interface OffenceBookStoredItem {
 }
 
 interface OffenceBookItemsResponse {
+  calculatedClosingBalance: string;
   carriedOpeningBalance: string;
   closingBalance: string;
   expenditure: OffenceBookStoredItem[];
@@ -222,7 +223,7 @@ export default function PenaltyPaymentsPage() {
       setExpenditureDrafts(offenceBookDraftsFromRows(body.expenditure || []));
       setOpeningBalance(body.openingBalance || body.carriedOpeningBalance || '');
       setOpeningBalanceInherited(!body.openingBalance && Boolean(body.carriedOpeningBalance));
-      setClosingBalance(body.closingBalance || '');
+      setClosingBalance(body.closingBalance || body.calculatedClosingBalance || '');
     } catch (error) {
       console.error('Failed to load offence book inputs:', error);
       setOpeningBalance('');
@@ -383,7 +384,7 @@ export default function PenaltyPaymentsPage() {
       setExpenditureDrafts(offenceBookDraftsFromRows(body.expenditure || []));
       setOpeningBalance(body.openingBalance || body.carriedOpeningBalance || '');
       setOpeningBalanceInherited(!body.openingBalance && Boolean(body.carriedOpeningBalance));
-      setClosingBalance(body.closingBalance || '');
+      setClosingBalance(body.closingBalance || body.calculatedClosingBalance || '');
       setOffenceBookMessage({ type: 'success', text: 'Offence book inputs saved.' });
     } catch (error) {
       console.error('Offence book save failed:', error);
