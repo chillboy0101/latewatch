@@ -17,6 +17,7 @@ const signInReminderRoutePath = path.join(root, 'src/app/api/attendance/reminder
 const signOutReminderRoutePath = path.join(root, 'src/app/api/attendance/reminders/sign-out/route.ts');
 const holidayReminderRoutePath = path.join(root, 'src/app/api/attendance/reminders/holiday/route.ts');
 const pushClientLibPath = path.join(root, 'src/lib/push-client.ts');
+const pushReminderToggleConfirmationLibPath = path.join(root, 'src/lib/push-reminder-toggle-confirmation.ts');
 const pushReminderLibPath = path.join(root, 'src/lib/push-reminders.ts');
 const attendanceLibPath = path.join(root, 'src/lib/attendance.ts');
 const serviceWorkerPath = path.join(root, 'public/sw.js');
@@ -79,6 +80,7 @@ test('push subscription API and reminder cron routes are wired', () => {
   const vercel = fs.readFileSync(vercelPath, 'utf8');
 
   assert.match(pushApi, /export async function GET/);
+  assert.doesNotMatch(pushApi, /export async function POST/);
   assert.match(pushApi, /export async function PUT/);
   assert.match(pushApi, /export async function DELETE/);
   assert.match(pushApi, /pushSubscription/);
@@ -159,6 +161,50 @@ test('check-in page does not expose test notification controls', () => {
   assert.doesNotMatch(source, /sendingTestNotification/);
   assert.doesNotMatch(source, /onSendTestNotification/);
   assert.doesNotMatch(source, /Test notification sent\./);
+});
+
+test('reminder toggle confirmation only appears when enabling reminders', () => {
+  require('tsx/cjs');
+  const {
+    getEnabledReminderToggleConfirmation,
+  } = require(pushReminderToggleConfirmationLibPath);
+  const source = fs.readFileSync(checkInPagePath, 'utf8');
+
+  assert.deepEqual(
+    getEnabledReminderToggleConfirmation(
+      { signInEnabled: false, signOutEnabled: false },
+      { signInEnabled: true, signOutEnabled: false },
+    ),
+    {
+      body: 'Sign-in reminder is now active on this device.',
+      signInEnabled: true,
+      signOutEnabled: false,
+      title: 'Reminder turned on',
+    },
+  );
+  assert.deepEqual(
+    getEnabledReminderToggleConfirmation(
+      { signInEnabled: false, signOutEnabled: false },
+      { signInEnabled: true, signOutEnabled: true },
+    ),
+    {
+      body: 'Sign-in and sign-out reminders are now active on this device.',
+      signInEnabled: true,
+      signOutEnabled: true,
+      title: 'Reminder turned on',
+    },
+  );
+  assert.deepEqual(
+    getEnabledReminderToggleConfirmation(
+      { signInEnabled: true, signOutEnabled: false },
+      { signInEnabled: false, signOutEnabled: false },
+    ),
+    null,
+  );
+  assert.match(source, /showReminderToggleConfirmation/);
+  assert.match(source, /registration\.showNotification\(confirmation\.title/);
+  assert.match(source, /getEnabledReminderToggleConfirmation\(/);
+  assert.match(source, /void showReminderToggleConfirmation\(enabledReminderConfirmation\)/);
 });
 
 test('reminder eligibility follows workday, permission, and attendance rules', () => {

@@ -14,6 +14,10 @@ import { formatDisplayDate, formatDisplayDateTime } from '@/lib/date-format';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
 import { RECEIPT_NOTIFICATION_AUTO_DISMISS_MS, type LatenessPaymentReceiptNotification } from '@/lib/lateness-payment-receipt-notifications';
 import { pushSubscriptionErrorMessage, vapidPublicKeyToUint8Array } from '@/lib/push-client';
+import {
+  getEnabledReminderToggleConfirmation,
+  type ReminderToggleConfirmation,
+} from '@/lib/push-reminder-toggle-confirmation';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { applyThemePreference, getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 import { cn } from '@/lib/utils';
@@ -299,6 +303,29 @@ function locationErrorMessage(error: unknown) {
   }
 
   return error instanceof Error ? error.message : 'Could not read this device location.';
+}
+
+async function showReminderToggleConfirmation(confirmation: ReminderToggleConfirmation) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (!('serviceWorker' in navigator)) return;
+
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    if (typeof registration.showNotification !== 'function') return;
+
+    await registration.showNotification(confirmation.title, {
+      badge: '/latewatch-logo.png',
+      body: confirmation.body,
+      data: {
+        url: '/check-in',
+      },
+      icon: '/latewatch-logo.png',
+      requireInteraction: false,
+      tag: 'latewatch-reminder-toggle-confirmation',
+    });
+  } catch (error) {
+    console.warn('Reminder confirmation could not display:', error);
+  }
 }
 
 function locationStateFromValidation(validation: LocationValidationResult): LiveLocation {
@@ -682,6 +709,10 @@ export default function CheckInPage() {
 
     try {
       const currentEndpoint = pushReminderStatus?.subscription?.endpoint || null;
+      const previousReminderState = {
+        signInEnabled: Boolean(pushReminderStatus?.subscription?.signInEnabled && !pushReminderStatus.subscription.disabledAt),
+        signOutEnabled: Boolean(pushReminderStatus?.subscription?.signOutEnabled && !pushReminderStatus.subscription.disabledAt),
+      };
 
       if (!next.signInEnabled && !next.signOutEnabled) {
         const registration = await navigator.serviceWorker?.getRegistration('/sw.js');
@@ -735,7 +766,11 @@ export default function CheckInPage() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Could not update reminders');
 
+      const enabledReminderConfirmation = getEnabledReminderToggleConfirmation(previousReminderState, next);
       setPushReminderStatus(body);
+      if (enabledReminderConfirmation) {
+        void showReminderToggleConfirmation(enabledReminderConfirmation);
+      }
       setMessage({ type: 'success', text: 'Reminder notifications updated.' });
     } catch (error) {
       const errorMessage = pushSubscriptionErrorMessage(error);
