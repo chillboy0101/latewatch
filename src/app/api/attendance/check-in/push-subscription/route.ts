@@ -1,14 +1,11 @@
 import { currentUser } from '@clerk/nextjs/server';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
-import webpush from 'web-push';
 import { db } from '@/db';
 import { pushSubscription } from '@/db/schema';
 import { getOrAutoLinkStaffByEmail } from '@/lib/attendance';
 
 export const dynamic = 'force-dynamic';
-
-let vapidConfigured = false;
 
 function getUserFullName(user: NonNullable<Awaited<ReturnType<typeof currentUser>>>) {
   return user.fullName
@@ -48,43 +45,6 @@ function hasVapidConfig() {
     && process.env.VAPID_PRIVATE_KEY
     && process.env.VAPID_SUBJECT,
   );
-}
-
-function ensureVapidConfig() {
-  if (!hasVapidConfig()) return false;
-
-  if (!vapidConfigured) {
-    webpush.setVapidDetails(
-      process.env.VAPID_SUBJECT || 'mailto:admin@example.com',
-      process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '',
-      process.env.VAPID_PRIVATE_KEY || '',
-    );
-    vapidConfigured = true;
-  }
-
-  return true;
-}
-
-function isExpiredPushEndpoint(error: unknown) {
-  const statusCode = typeof error === 'object' && error !== null && 'statusCode' in error
-    ? Number((error as { statusCode?: unknown }).statusCode)
-    : null;
-
-  return statusCode === 404 || statusCode === 410;
-}
-
-function testPushPayload() {
-  return {
-    body: 'System notifications are working on this device.',
-    data: {
-      url: '/check-in',
-    },
-    icon: '/latewatch-logo.png',
-    renotify: false,
-    requireInteraction: false,
-    tag: 'latewatch-test-notification',
-    title: 'LateWatch test notification',
-  };
 }
 
 async function getActivePushSubscription(staffId: string, userId: string) {
@@ -136,67 +96,6 @@ export async function GET() {
   return NextResponse.json(publicPayload(subscription || null), {
     headers: { 'Cache-Control': 'no-store' },
   });
-}
-
-export async function POST() {
-  const resolved = await resolveStaffForPush();
-  if (resolved.error) return resolved.error;
-
-  const subscription = await getActivePushSubscription(resolved.staffMember.id, resolved.user.id);
-
-  if (!subscription) {
-    return NextResponse.json({
-      ...publicPayload(null),
-      error: 'Enable reminder notifications before sending a test.',
-    }, { status: 404 });
-  }
-
-  if (!ensureVapidConfig()) {
-    return NextResponse.json({
-      ...publicPayload(subscription),
-      error: 'Push notifications are not configured.',
-    }, { status: 503 });
-  }
-
-  try {
-    await webpush.sendNotification({
-      endpoint: subscription.endpoint,
-      keys: {
-        auth: subscription.auth,
-        p256dh: subscription.p256dh,
-      },
-    }, JSON.stringify(testPushPayload()));
-
-    return NextResponse.json({
-      ...publicPayload(subscription),
-      success: true,
-    }, {
-      headers: { 'Cache-Control': 'no-store' },
-    });
-  } catch (error) {
-    if (isExpiredPushEndpoint(error)) {
-      const now = new Date();
-      await db.update(pushSubscription)
-        .set({
-          disabledAt: now,
-          signInEnabled: false,
-          signOutEnabled: false,
-          updatedAt: now,
-        })
-        .where(eq(pushSubscription.id, subscription.id));
-
-      return NextResponse.json({
-        ...publicPayload(null),
-        error: 'This device subscription expired. Enable reminders again.',
-      }, { status: 410 });
-    }
-
-    console.error('Failed to send test push notification:', error);
-    return NextResponse.json({
-      ...publicPayload(subscription),
-      error: 'Could not send test notification.',
-    }, { status: 502 });
-  }
 }
 
 export async function PUT(request: NextRequest) {

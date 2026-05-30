@@ -4,7 +4,7 @@ import { UserButton, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, Loader2, LogOut, MapPin, Moon, ReceiptText, ShieldCheck, Sun, X, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, LogOut, MapPin, Moon, ReceiptText, ShieldCheck, Sun, X, XCircle } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -387,7 +387,6 @@ export default function CheckInPage() {
   const [pushReminderStatus, setPushReminderStatus] = useState<PushReminderStatus | null>(null);
   const [pushReminderLoading, setPushReminderLoading] = useState(false);
   const [savingPushReminder, setSavingPushReminder] = useState(false);
-  const [sendingTestNotification, setSendingTestNotification] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<BrowserNotificationPermission>('default');
   const [liveLocation, setLiveLocation] = useState<LiveLocation>({
     blocking: false,
@@ -748,39 +747,6 @@ export default function CheckInPage() {
     }
   }, [fetchPushReminderStatus, getPushReminderPublicKey, pushReminderStatus]);
 
-  const sendTestNotification = useCallback(async () => {
-    setSendingTestNotification(true);
-    setMessage(null);
-
-    try {
-      if (!pushReminderStatus?.subscription || pushReminderStatus.subscription.disabledAt) {
-        throw new Error('Enable a reminder first, then send a test notification.');
-      }
-
-      if (notificationPermission !== 'granted') {
-        throw new Error('Allow notification permission first, then send a test notification.');
-      }
-
-      const response = await fetch('/api/attendance/check-in/push-subscription', {
-        method: 'POST',
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || 'Could not send test notification');
-
-      setPushReminderStatus(body);
-      setMessage({ type: 'success', text: 'Test notification sent.' });
-    } catch (error) {
-      console.warn('Test notification could not send:', error);
-      setMessage({
-        type: 'error',
-        text: error instanceof Error ? error.message : 'Could not send test notification',
-      });
-      await fetchPushReminderStatus({ silent: true });
-    } finally {
-      setSendingTestNotification(false);
-    }
-  }, [fetchPushReminderStatus, notificationPermission, pushReminderStatus]);
-
   async function requestDeviceTransfer() {
     if (!deviceToken) return;
 
@@ -962,15 +928,11 @@ export default function CheckInPage() {
                 )}
 
                 <ReminderNotificationPanel
-                  disabled={!status?.staff || pushReminderLoading || savingPushReminder || sendingTestNotification}
+                  disabled={!status?.staff || pushReminderLoading || savingPushReminder}
                   loading={pushReminderLoading || savingPushReminder}
                   notificationPermission={notificationPermission}
-                  onSendTestNotification={() => {
-                    void sendTestNotification();
-                  }}
                   signInEnabled={signInReminderEnabled}
                   signOutEnabled={signOutReminderEnabled}
-                  sendingTestNotification={sendingTestNotification}
                   onToggleCheckIn={() => {
                     void updatePushReminderSettings({
                       signInEnabled: !signInReminderEnabled,
@@ -1328,29 +1290,19 @@ function ReminderNotificationPanel({
   disabled,
   loading,
   notificationPermission,
-  onSendTestNotification,
   onToggleCheckIn,
   onToggleSignOut,
   signInEnabled,
   signOutEnabled,
-  sendingTestNotification,
 }: {
   disabled: boolean;
   loading: boolean;
   notificationPermission: BrowserNotificationPermission;
-  onSendTestNotification: () => void;
   onToggleCheckIn: () => void;
   onToggleSignOut: () => void;
   signInEnabled: boolean;
   signOutEnabled: boolean;
-  sendingTestNotification: boolean;
 }) {
-  const testDisabled = disabled
-    || loading
-    || sendingTestNotification
-    || notificationPermission !== 'granted'
-    || (!signInEnabled && !signOutEnabled);
-
   return (
     <div className="rounded-md border border-border bg-card p-3">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -1369,19 +1321,6 @@ function ReminderNotificationPanel({
           onToggle={onToggleSignOut}
         />
       </div>
-      <button
-        className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-55"
-        disabled={testDisabled}
-        onClick={onSendTestNotification}
-        type="button"
-      >
-        {sendingTestNotification ? (
-          <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-        ) : (
-          <BellRing className="h-4 w-4 shrink-0" />
-        )}
-        <span className="truncate">Send test notification</span>
-      </button>
     </div>
   );
 }

@@ -79,13 +79,12 @@ test('push subscription API and reminder cron routes are wired', () => {
   const vercel = fs.readFileSync(vercelPath, 'utf8');
 
   assert.match(pushApi, /export async function GET/);
-  assert.match(pushApi, /export async function POST/);
   assert.match(pushApi, /export async function PUT/);
   assert.match(pushApi, /export async function DELETE/);
   assert.match(pushApi, /pushSubscription/);
-  assert.match(pushApi, /LateWatch test notification/);
-  assert.match(pushApi, /System notifications are working on this device\./);
-  assert.match(pushApi, /latewatch-test-notification/);
+  assert.doesNotMatch(pushApi, /LateWatch test notification/);
+  assert.doesNotMatch(pushApi, /System notifications are working on this device\./);
+  assert.doesNotMatch(pushApi, /latewatch-test-notification/);
   assert.match(signInRoute, /sendAttendanceReminderBatch\('sign_in'\)/);
   assert.match(signOutRoute, /sendAttendanceReminderBatch\('sign_out'\)/);
   assert.match(holidayRoute, /sendAttendanceReminderBatch\('holiday'\)/);
@@ -153,14 +152,13 @@ test('service worker displays push notifications and opens check-in', () => {
   assert.doesNotMatch(source, /clients\.openWindow\('\/check-in'\)/);
 });
 
-test('check-in page can send an immediate system notification test', () => {
+test('check-in page does not expose test notification controls', () => {
   const source = fs.readFileSync(checkInPagePath, 'utf8');
 
-  assert.match(source, /Send test notification/);
-  assert.match(source, /sendingTestNotification/);
-  assert.match(source, /onSendTestNotification/);
-  assert.match(source, /method: 'POST'/);
-  assert.match(source, /Test notification sent\./);
+  assert.doesNotMatch(source, /Send test notification/);
+  assert.doesNotMatch(source, /sendingTestNotification/);
+  assert.doesNotMatch(source, /onSendTestNotification/);
+  assert.doesNotMatch(source, /Test notification sent\./);
 });
 
 test('reminder eligibility follows workday, permission, and attendance rules', () => {
