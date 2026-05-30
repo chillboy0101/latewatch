@@ -1160,7 +1160,7 @@ function PenaltyHistoryReceipts({ emptyLabel, receipts }: { emptyLabel: string; 
                 </div>
               </div>
               <Button asChild size="sm" variant="outline" className="h-8 shrink-0">
-                <Link href={`/check-in/receipts/${receipt.paymentId}`} target="_blank">
+                <Link href={`/check-in/receipts/${receipt.paymentId}`}>
                   View receipt
                 </Link>
               </Button>

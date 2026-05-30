@@ -196,6 +196,7 @@ test('staff penalty history exposes payment receipts', () => {
   assert.match(source, /PenaltyHistoryReceipts/);
   assert.match(source, /View receipt/);
   assert.match(source, /\/check-in\/receipts\/\$\{receipt\.paymentId\}/);
+  assert.doesNotMatch(source, /href=\{`\/check-in\/receipts\/\$\{receipt\.paymentId\}`\}\s+target="_blank"/);
   assert.match(source, /formatDisplayDateTime\(receipt\.recordedAt\)/);
 });
 
