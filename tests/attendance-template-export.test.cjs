@@ -491,7 +491,7 @@ test('attendance exports use historical leave periods without adding sheet rows'
   assert.equal(week1.getCell('C11').value, null);
 });
 
-test('weekly validation uses daily summary-style remark labels and keeps NSS staff number cells blank', async () => {
+test('weekly validation uses reason remark labels and keeps NSS staff number cells blank', async () => {
   const workbook = await workbookFor({
     attendanceRecords: [
       { checkInTime: '08:30', date: '2026-04-01', staffId: 'main-on-time' },
@@ -508,7 +508,7 @@ test('weekly validation uses daily summary-style remark labels and keeps NSS sta
   assert.equal(week1.getCell('K8').value, 'Official duty');
   assert.equal(week1.getCell('F9').value, CROSS);
   assert.equal(week1.getCell('I7').value, 1);
-  assert.equal(week1.getCell('K9').value, 'Exempt (Workshop)');
+  assert.equal(week1.getCell('K9').value, 'Workshop');
   assert.equal(week1.getCell('F10').value, CROSS);
   assert.equal(week1.getCell('K10').value, 'Leave');
 
@@ -534,14 +534,14 @@ test('weekly validation puts each staff remark on its own line', async () => {
     holidays: april2026WeekdayHolidaysExcept('2026-04-01', '2026-04-02'),
     permissions: [
       { date: '2026-04-01', permissionType: 'absence', reason: 'workshop', staffId: 'main-excused' },
-      { date: '2026-04-02', permissionType: 'absence', reason: 'official duty', staffId: 'main-excused' },
+      { date: '2026-04-02', permissionType: 'absence', reason: 'training', staffId: 'main-excused' },
     ],
     template: 'weekly-validation',
   });
   const week1 = workbook.getWorksheet('WEEK 1');
   const remarkCell = week1.getCell('K9');
 
-  assert.equal(remarkCell.value, 'Exempt (Workshop) /\nOfficial duty');
+  assert.equal(remarkCell.value, 'Workshop /\nTraining');
   assert.equal(remarkCell.alignment?.wrapText, true);
   assert.ok((week1.getRow(9).height || 0) >= 30, 'weekly validation row should show one remark per line');
 });

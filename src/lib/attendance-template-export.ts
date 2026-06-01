@@ -351,7 +351,9 @@ function weeklyValidationRemarkLabel(status: DayStatus) {
   if (status.kind === 'leave') return 'Leave';
   if (status.kind === 'unapproved_absence') return OFFICIAL_DUTY_EXPORT_REMARK;
   if (status.kind === 'approved_absence' && isDailyExemptReason(status.reason)) {
-    return absenceRemarkLabel(status.reason);
+    return normalizedAbsenceReason(status.reason) === 'official duty'
+      ? OFFICIAL_DUTY_EXPORT_REMARK
+      : formatAbsencePermissionReason(status.reason);
   }
   return '';
 }
