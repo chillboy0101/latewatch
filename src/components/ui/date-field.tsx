@@ -15,6 +15,7 @@ interface DateFieldProps {
   ariaLabel?: string;
   className?: string;
   clearable?: boolean;
+  disabled?: boolean;
   inputClassName?: string;
   label?: string;
   onChange: (value: string) => void;
@@ -26,6 +27,7 @@ export function DateField({
   ariaLabel,
   className,
   clearable = false,
+  disabled = false,
   inputClassName,
   label,
   onChange,
@@ -40,6 +42,7 @@ export function DateField({
   }, [value]);
 
   function openPicker() {
+    if (disabled) return;
     const picker = pickerRef.current;
     if (!picker) return;
 
@@ -52,6 +55,7 @@ export function DateField({
   }
 
   function handleTextChange(rawValue: string) {
+    if (disabled) return;
     const nextText = formatPartialDisplayDateInput(rawValue);
     setText(nextText);
 
@@ -71,6 +75,7 @@ export function DateField({
   }
 
   function clearDate() {
+    if (disabled) return;
     setText('');
     onChange('');
   }
@@ -86,12 +91,13 @@ export function DateField({
           type="text"
           inputMode="numeric"
           placeholder={placeholder}
+          disabled={disabled}
           value={text}
           onBlur={handleBlur}
           onChange={(event) => handleTextChange(event.target.value)}
           className={cn('h-10 pr-11 font-mono text-sm', clearable && text && 'pr-20', inputClassName)}
         />
-        {clearable && text && (
+        {clearable && text && !disabled && (
           <button
             type="button"
             aria-label={`Clear ${label?.toLowerCase() || 'date'}`}
@@ -105,13 +111,15 @@ export function DateField({
           type="button"
           aria-label={`Open ${label?.toLowerCase() || 'date'} picker`}
           onClick={openPicker}
-          className="absolute right-1.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+          disabled={disabled}
+          className="absolute right-1.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Calendar className="h-4 w-4" />
         </button>
         <input
           ref={pickerRef}
           type="date"
+          disabled={disabled}
           value={isIsoDateKey(value) ? value : ''}
           onChange={(event) => onChange(event.target.value)}
           tabIndex={-1}

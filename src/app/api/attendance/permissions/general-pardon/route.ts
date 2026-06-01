@@ -49,6 +49,14 @@ export async function POST(request: NextRequest) {
     const now = new Date();
     const permissions = [];
     const reconciliations = [];
+    const skippedPermissions: Array<{
+      date: string;
+      permissionId: string;
+      permissionType: string;
+      reason: string;
+      staffId: string;
+      staffName: string;
+    }> = [];
     const lateArrivalBounds = getPermissionWindowBounds({
       arrivalWindow: 'any_time_today',
       permissionType: 'late_arrival',
@@ -72,6 +80,19 @@ export async function POST(request: NextRequest) {
         .from(attendancePermission)
         .where(and(eq(attendancePermission.staffId, member.id), eq(attendancePermission.date, date)))
         .limit(1);
+
+      const existingReason = (existing?.reason || '').trim().toLowerCase();
+      if (existing && existingReason !== 'general pardon') {
+        skippedPermissions.push({
+          date,
+          permissionId: existing.id,
+          permissionType: existing.permissionType,
+          reason: existing.reason,
+          staffId: member.id,
+          staffName: member.fullName,
+        });
+        continue;
+      }
 
       const values = {
         ...permissionValues,
@@ -135,7 +156,9 @@ export async function POST(request: NextRequest) {
         date,
         pardonType,
         reason: 'general pardon',
-        staffIds: members.map((member) => member.id),
+        skippedCount: skippedPermissions.length,
+        skippedPermissions,
+        staffIds: permissions.map((permission) => permission.staffId),
       },
       actor,
       reason: 'attendance-general-pardon',
@@ -154,6 +177,8 @@ export async function POST(request: NextRequest) {
       pardonType,
       permissions,
       reconciliations,
+      skippedCount: skippedPermissions.length,
+      skippedPermissions,
     });
   } catch (error) {
     console.error('Failed to apply general attendance pardon:', error);

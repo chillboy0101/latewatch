@@ -20,6 +20,16 @@ export function ClerkAuthCard({ mode }: ClerkAuthCardProps) {
     () => createClerkAppearance(isDark ? 'dark' : 'light'),
     [isDark],
   );
+  const inviteOnlySignInAppearance = useMemo(
+    () => ({
+      ...appearance,
+      elements: {
+        ...appearance.elements,
+        footerAction: 'hidden',
+      },
+    }),
+    [appearance],
+  );
 
   if (mode === 'sign-up') {
     return (
@@ -39,9 +49,10 @@ export function ClerkAuthCard({ mode }: ClerkAuthCardProps) {
       key={isDark ? 'dark-sign-in' : 'light-sign-in'}
       routing="path"
       path="/sign-in"
-      signUpUrl="/sign-up"
       fallbackRedirectUrl="/"
-      appearance={appearance}
+      transferable={false}
+      withSignUp={false}
+      appearance={inviteOnlySignInAppearance}
     />
   );
 }

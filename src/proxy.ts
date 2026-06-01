@@ -126,7 +126,7 @@ function orgIdFromSessionClaims(sessionClaims: Record<string, unknown> | null | 
 }
 
 function requiredOrganizationId() {
-  return process.env.CLERK_ORGANIZATION_ID?.trim() || null;
+  return (process.env.CLERK_ORGANIZATION_ID || process.env.CLERK_ORG_ID || '').trim() || null;
 }
 
 function hasRequiredOrganization(sessionClaims: Record<string, unknown> | null | undefined) {
@@ -134,7 +134,12 @@ function hasRequiredOrganization(sessionClaims: Record<string, unknown> | null |
   if (!activeOrgId) return false;
 
   const requiredOrgId = requiredOrganizationId();
-  return !requiredOrgId || activeOrgId === requiredOrgId;
+  if (!requiredOrgId) {
+    console.error('CLERK_ORGANIZATION_ID is required for LateWatch organization-gated routes.');
+    return false;
+  }
+
+  return activeOrgId === requiredOrgId;
 }
 
 function organizationRequiredResponse(req: Request) {

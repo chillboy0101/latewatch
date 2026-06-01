@@ -275,7 +275,7 @@ test('daily attendance summary aggregates duplicate remark reasons', async () =>
   assert.equal(remarks, 'Exempt (Training) - 2');
 });
 
-test('missing attendance is explained as official duty in daily and weekly exports', async () => {
+test('missing attendance is not explained as official duty in weekly validation exports', async () => {
   const attendanceRecords = [
     { checkInTime: '08:30', date: '2026-04-01', staffId: 'main-on-time' },
   ];
@@ -306,8 +306,26 @@ test('missing attendance is explained as official duty in daily and weekly expor
     template: 'weekly-validation',
   });
   const week1 = weeklyWorkbook.getWorksheet('WEEK 1');
-  assert.equal(week1.getCell('K8').value, 'Official duty');
+  assert.equal(week1.getCell('F8').value, CROSS);
+  assert.equal(week1.getCell('K8').value, '');
   assert.doesNotMatch(String(week1.getCell('K8').value), /Absent without permission/);
+  assert.doesNotMatch(String(week1.getCell('K8').value), /Official duty/);
+});
+
+test('weekly validation still shows actual approved official duty permissions', async () => {
+  const weeklyWorkbook = await workbookFor({
+    attendanceRecords: [
+      { checkInTime: '08:30', date: '2026-04-01', staffId: 'main-on-time' },
+    ],
+    permissions: [
+      { date: '2026-04-01', permissionType: 'absence', reason: 'official duty', staffId: 'main-late' },
+    ],
+    template: 'weekly-validation',
+  });
+  const week1 = weeklyWorkbook.getWorksheet('WEEK 1');
+
+  assert.equal(week1.getCell('F8').value, CROSS);
+  assert.equal(week1.getCell('K8').value, 'Official duty');
 });
 
 test('attendance exports display personal excuse permissions as official duty', async () => {
@@ -418,6 +436,9 @@ test('monthly attendance matrix marks all absences as with permission', async ()
   assert.equal(mainSheet.getCell('AQ10').value, 1);
   assert.equal(mainSheet.getCell('AR10').value, 0);
   assert.equal(mainSheet.getCell('AS10').value, 'Absent with permission');
+  assert.ok(mainSheet.getColumn(45).width >= 52, 'monthly remarks column should show long remarks');
+  assert.ok((mainSheet.getColumn(44).width || 13) < 20, 'monthly matrix should not widen adjacent columns');
+  assert.equal(mainSheet.getCell('AS10').alignment?.horizontal, 'left');
 });
 
 test('monthly attendance matrix applies general pardon without printing it in remarks', async () => {
@@ -505,12 +526,13 @@ test('weekly validation uses reason remark labels and keeps NSS staff number cel
 
   assert.equal(week1.getCell('F7').value, CHECK);
   assert.equal(week1.getCell('F8').value, CROSS);
-  assert.equal(week1.getCell('K8').value, 'Official duty');
+  assert.equal(week1.getCell('K8').value, '');
   assert.equal(week1.getCell('F9').value, CROSS);
   assert.equal(week1.getCell('I7').value, 1);
   assert.equal(week1.getCell('K9').value, 'Workshop');
   assert.equal(week1.getCell('F10').value, CROSS);
   assert.equal(week1.getCell('K10').value, 'Leave');
+  assert.ok(week1.getColumn(2).width >= 15, 'weekly validation staff number column should fit staff numbers');
 
   const nssWorkbook = await workbookFor({
     attendanceRecords: [
@@ -527,6 +549,7 @@ test('weekly validation uses reason remark labels and keeps NSS staff number cel
   assert.equal(nssWeek1.getCell('B7').value, null);
   assert.equal(nssWeek1.getCell('C7').value, 'NSS PERSON');
   assert.equal(nssWeek1.getCell('F7').value, CHECK);
+  assert.ok(nssWeek1.getColumn(2).width >= 15, 'weekly validation staff number column should stay readable for NSS sheets');
 });
 
 test('weekly validation puts each staff remark on its own line', async () => {

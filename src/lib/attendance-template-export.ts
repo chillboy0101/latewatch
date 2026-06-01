@@ -97,6 +97,10 @@ const DAILY_EXEMPT_REASONS = new Set(['training', 'official duty', 'sick', 'work
 const DAILY_REMARK_COLUMN = 7;
 const DAILY_REMARK_COLUMN_WIDTH = 40;
 const DAILY_REMARK_LINE_HEIGHT = 16;
+const MONTHLY_MATRIX_REMARK_COLUMN = 45;
+const MONTHLY_MATRIX_REMARK_COLUMN_WIDTH = 52;
+const WEEKLY_STAFF_NO_COLUMN = 2;
+const WEEKLY_STAFF_NO_COLUMN_WIDTH = 15;
 const DAILY_REMARK_ORDER = new Map([
   ['Exempt (Training)', 1],
   [DAILY_OFFICIAL_DUTY_REMARK, 2],
@@ -349,7 +353,6 @@ function weeklyRemarkLabel(status: DayStatus) {
 
 function weeklyValidationRemarkLabel(status: DayStatus) {
   if (status.kind === 'leave') return 'Leave';
-  if (status.kind === 'unapproved_absence') return OFFICIAL_DUTY_EXPORT_REMARK;
   if (status.kind === 'approved_absence' && isDailyExemptReason(status.reason)) {
     return normalizedAbsenceReason(status.reason) === 'official duty'
       ? OFFICIAL_DUTY_EXPORT_REMARK
@@ -501,6 +504,7 @@ function writeMonthlyMatrixValues(
 
   sheet.getCell('A4').value = `MONTH : ${format(new Date(input.year, input.month, 1), 'MMMM, yyyy').toUpperCase()}`;
   sheet.getCell('A5').value = `STAFF STRENGTH: ${roster.length}`;
+  sheet.getColumn(MONTHLY_MATRIX_REMARK_COLUMN).width = MONTHLY_MATRIX_REMARK_COLUMN_WIDTH;
   ensureRows(sheet, dataStartRow, rowsToPrepare, templateCapacity, 9);
   clearRows(sheet, dataStartRow, rowsToPrepare, 1, 45);
 
@@ -555,7 +559,14 @@ function writeMonthlyMatrixValues(
     row.getCell(42).value = absentWithPermission;
     row.getCell(43).value = absentWithPermission;
     row.getCell(44).value = 0;
-    row.getCell(45).value = countLabels(remarks);
+    const remarkCell = row.getCell(MONTHLY_MATRIX_REMARK_COLUMN);
+    remarkCell.value = countLabels(remarks);
+    remarkCell.alignment = {
+      ...(remarkCell.alignment || {}),
+      horizontal: 'left',
+      vertical: 'middle',
+      wrapText: false,
+    };
     row.commit();
   });
 }
@@ -584,6 +595,7 @@ function fillWeeklySheet(
   const rowsToPrepare = Math.max(roster.length, templateCapacity);
   const asOfDate = getExportAsOfDate(input);
 
+  sheet.getColumn(WEEKLY_STAFF_NO_COLUMN).width = WEEKLY_STAFF_NO_COLUMN_WIDTH;
   ensureRows(sheet, dataStartRow, rowsToPrepare, templateCapacity, 7);
   clearRows(sheet, dataStartRow, rowsToPrepare, 1, 14);
   const inMonthWeekdays = weekDates.filter((date) => date.getUTCMonth() === input.month && !isWeekend(date));

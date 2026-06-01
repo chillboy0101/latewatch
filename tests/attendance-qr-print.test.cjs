@@ -44,13 +44,17 @@ test('attendance permission form exposes absence date range without period contr
   assert.doesNotMatch(source, /<TimeField/);
 });
 
-test('attendance permission absence fields align across full desktop rows', () => {
+test('attendance permission modal contains the absence fields and actions', () => {
   const source = fs.readFileSync(attendancePagePath, 'utf8');
 
-  assert.match(source, /permissionType === 'absence' \? 'xl:col-span-3' : 'xl:col-span-2'/);
-  assert.match(source, /className="xl:col-span-3"\s+label="Absence Start"/);
-  assert.match(source, /className="xl:col-span-3"\s+label="Absence End"/);
-  assert.match(source, /className="xl:col-span-10"[\s\S]*<option value="">Select absence reason<\/option>/);
+  assert.match(source, /open=\{permissionDialogOpen\}/);
+  assert.match(source, /New Permission/);
+  assert.match(source, /Change Permission/);
+  assert.match(source, /label="Absence Start"/);
+  assert.match(source, /label="Absence End"/);
+  assert.match(source, /disabled=\{isEditingPermission\}/);
+  assert.match(source, /Approve Permission/);
+  assert.match(source, /Update Permission/);
 });
 
 test('attendance permission API validates both permission reason lists and full-day absences', () => {
@@ -73,9 +77,27 @@ test('attendance page confirms general pardons before calling the bulk endpoint'
   assert.match(source, /generalPardonType/);
   assert.match(source, /setGeneralPardonOpen\(true\)/);
   assert.match(source, /\/api\/attendance\/permissions\/general-pardon/);
+  assert.match(source, /skippedCount/);
+  assert.match(source, /existing permission/);
 });
 
-test('general pardon API bulk applies to all active attendance staff and audits the summary', () => {
+test('attendance page lets admins change an existing permission from the permission list', () => {
+  const source = fs.readFileSync(attendancePagePath, 'utf8');
+
+  assert.match(source, /openNewPermissionDialog/);
+  assert.match(source, /setPermissionDialogOpen\(true\)/);
+  assert.match(source, />\s*New Permission\s*</);
+  assert.match(source, /startPermissionEdit\(permission: AttendancePermission\)/);
+  assert.match(source, /setEditingPermissionId\(permission\.id\)/);
+  assert.match(source, /setPermissionDialogOpen\(true\)/);
+  assert.match(source, /disabled=\{isEditingPermission\}/);
+  assert.match(source, /Update Permission/);
+  assert.match(source, /Permission updated\./);
+  assert.match(source, />\s*Change\s*</);
+  assert.match(source, />\s*Cancel\s*</);
+});
+
+test('general pardon API bulk applies to active staff and skips existing specific permissions', () => {
   assert.equal(fs.existsSync(generalPardonApiPath), true);
   const source = fs.readFileSync(generalPardonApiPath, 'utf8');
 
@@ -87,6 +109,10 @@ test('general pardon API bulk applies to all active attendance staff and audits 
   assert.match(source, /isAttendanceOnly: staff\.isAttendanceOnly/);
   assert.match(source, /isNssPersonnel: staff\.isNssPersonnel/);
   assert.match(source, /reason: 'general pardon'/);
+  assert.match(source, /skippedPermissions/);
+  assert.match(source, /existingReason !== 'general pardon'/);
+  assert.match(source, /continue;/);
+  assert.match(source, /skippedCount: skippedPermissions\.length/);
   assert.match(source, /reconcileAttendanceForPermission/);
   assert.match(source, /entityType: 'attendance_general_pardon'/);
 });
