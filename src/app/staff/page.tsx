@@ -144,15 +144,7 @@ export default function StaffPage() {
       });
 
       if (response.ok) {
-        const saved = await response.json();
-        setStaff((prev) => {
-          const exists = prev.some((member) => member.id === saved.id);
-          const next = exists
-            ? prev.map((member) => (member.id === saved.id ? { ...member, ...saved } : member))
-            : [...prev, saved];
-
-          return next.sort((a, b) => a.fullName.localeCompare(b.fullName));
-        });
+        await fetchStaff();
         setNewName('');
         setNewEmail('');
         setNewStaffNo('');
@@ -283,8 +275,7 @@ export default function StaffPage() {
       });
 
       if (response.ok) {
-        const updated = await response.json();
-        setStaff((prev) => prev.map((s) => (s.id === editingId ? { ...s, ...updated } : s)));
+        await fetchStaff();
         setEditingId(null);
       }
     } catch (error) {
@@ -423,6 +414,9 @@ export default function StaffPage() {
     { key: 'nss', members: nssFilteredStaff, title: 'NSS Personnel' },
     { key: 'attendanceOnly', members: attendanceOnlyFilteredStaff, title: 'Attendance Monitoring Only' },
   ].filter((section) => section.members.length > 0);
+  const newIsMainStaff = !newIsAttendanceOnly && !newIsNssPersonnel;
+  const addStaffMissingRequiredMetadata = !newGender.trim()
+    || (newIsMainStaff && (!newStaffNo.trim() || !newRank.trim()));
 
   return (
     <DashboardLayout title="Staff">
@@ -515,6 +509,7 @@ export default function StaffPage() {
                       placeholder="e.g. GRA003825"
                       value={newStaffNo}
                       onChange={(e) => setNewStaffNo(e.target.value)}
+                      required={newIsMainStaff}
                     />
                   </div>
                   <div className="space-y-2">
@@ -524,6 +519,7 @@ export default function StaffPage() {
                       placeholder="e.g. Female"
                       value={newGender}
                       onChange={(e) => setNewGender(e.target.value)}
+                      required
                     />
                   </div>
                   <div className="space-y-2">
@@ -533,9 +529,13 @@ export default function StaffPage() {
                       placeholder="e.g. ARO"
                       value={newRank}
                       onChange={(e) => setNewRank(e.target.value)}
+                      required={newIsMainStaff}
                     />
                   </div>
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  Gender is required for every profile. Staff No. and Rank are required for main staff.
+                </p>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="new-department">Department</Label>
@@ -596,7 +596,7 @@ export default function StaffPage() {
                   <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                     Cancel
                   </Button>
-                  <Button onClick={handleAddStaff} disabled={!newName.trim() || isSubmitting}>
+                  <Button onClick={handleAddStaff} disabled={!newName.trim() || addStaffMissingRequiredMetadata || isSubmitting}>
                     {isSubmitting ? 'Adding...' : 'Add Staff Member'}
                   </Button>
                 </div>

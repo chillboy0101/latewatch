@@ -210,9 +210,20 @@ test('lateness payment receipt details include allocated penalty days only', () 
     allocations: [
       { allocatedAmount: '10.00', entryId: 'entry-a' },
       { allocatedAmount: '8.00', entryId: 'entry-b' },
+      { allocatedAmount: '5.00', entryId: 'entry-signout' },
       { allocatedAmount: '99.00', entryId: 'entry-missing' },
     ],
-    entries,
+    entries: [
+      ...entries,
+      {
+        id: 'entry-signout',
+        staffId: 'staff-1',
+        date: '2026-05-14',
+        arrivalTime: null,
+        computedAmount: '5.00',
+        reason: 'Did not sign out',
+      },
+    ],
     payment: {
       amount: '18.00',
       id: 'aaaaaaaa-1111-4111-8111-111111111111',
@@ -231,7 +242,10 @@ test('lateness payment receipt details include allocated penalty days only', () 
 
   assert.equal(detail.receipt.receiptNumber, 'LW-RCPT-202605-AAAAAAAA');
   assert.equal(detail.staff.fullName, 'Staff Member');
-  assert.deepEqual(detail.allocations.map((allocation) => allocation.entryId), ['entry-a', 'entry-b']);
+  assert.deepEqual(detail.allocations.map((allocation) => allocation.entryId), ['entry-a', 'entry-b', 'entry-signout']);
+  assert.deepEqual(detail.allocations.map((allocation) => allocation.date), ['2026-05-11', '2026-05-12', '2026-05-14']);
   assert.equal(detail.allocations[0].penaltyAmount, '10.00');
   assert.equal(detail.allocations[1].allocatedAmount, '8.00');
+  assert.equal(detail.allocations[2].arrivalTime, null);
+  assert.equal(detail.allocations[2].reason, 'Did not sign out');
 });

@@ -8,7 +8,7 @@ import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
-import { formatDisplayDate, formatDisplayDateTime } from '@/lib/date-format';
+import { formatDisplayDate, formatDisplayDateTime, formatLongDisplayDate } from '@/lib/date-format';
 import { getLatenessPaymentReceiptDocumentTitle } from '@/lib/lateness-payment-receipts';
 
 type ReceiptDetail = {
@@ -181,7 +181,7 @@ export default function PaymentReceiptPage() {
               <table className="w-full text-sm">
                 <thead className="bg-muted/30 text-left text-xs uppercase text-muted-foreground">
                   <tr>
-                    <th className="px-3 py-2 font-medium">Date</th>
+                    <th className="px-3 py-2 font-medium">Day / Date</th>
                     <th className="px-3 py-2 font-medium">Reason</th>
                     <th className="px-3 py-2 text-right font-medium">Penalty</th>
                     <th className="px-3 py-2 text-right font-medium">Paid</th>
@@ -191,7 +191,7 @@ export default function PaymentReceiptPage() {
                   {receipt.allocations.map((allocation) => (
                     <tr key={`${allocation.entryId}-${allocation.allocatedAmount}`}>
                       <td className="px-3 py-2">
-                        <div className="font-medium">{formatDisplayDate(allocation.date)}</div>
+                        <div className="font-medium">{formatLongDisplayDate(allocation.date)}</div>
                         <div className="text-xs text-muted-foreground">{allocation.arrivalTime?.slice(0, 5) || '-'}</div>
                       </td>
                       <td className="px-3 py-2">{allocation.reason || 'Late arrival'}</td>

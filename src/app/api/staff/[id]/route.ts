@@ -25,6 +25,24 @@ type StaffUpdateBody = {
   unit?: string | null;
 };
 
+function normalizeOptionalText(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function applyProfileMetadataUpdate(
+  updateData: Partial<typeof staff.$inferInsert>,
+  key: 'gender' | 'rank' | 'staffNo',
+  value: string | null | undefined,
+  previousValue: string | null | undefined,
+) {
+  if (value === undefined) return;
+
+  const normalized = normalizeOptionalText(value);
+  if (normalized || !previousValue) {
+    updateData[key] = normalized;
+  }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -66,14 +84,20 @@ export async function PUT(
       isNssPersonnel,
     } = body;
 
+    // Capture before state for audit and metadata-preserving updates.
+    const [before] = await db.select().from(staff).where(eq(staff.id, id));
+    if (!before) {
+      return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
+    }
+
     const updateData: Partial<typeof staff.$inferInsert> = { updatedAt: new Date() };
     if (fullName !== undefined) updateData.fullName = fullName.trim();
     if (email !== undefined) updateData.email = normalizeStaffEmail(email);
-    if (department !== undefined) updateData.department = typeof department === 'string' && department.trim() ? department.trim() : null;
-    if (unit !== undefined) updateData.unit = typeof unit === 'string' && unit.trim() ? unit.trim() : null;
-    if (staffNo !== undefined) updateData.staffNo = typeof staffNo === 'string' && staffNo.trim() ? staffNo.trim() : null;
-    if (gender !== undefined) updateData.gender = typeof gender === 'string' && gender.trim() ? gender.trim() : null;
-    if (rank !== undefined) updateData.rank = typeof rank === 'string' && rank.trim() ? rank.trim() : null;
+    if (department !== undefined) updateData.department = normalizeOptionalText(department);
+    if (unit !== undefined) updateData.unit = normalizeOptionalText(unit);
+    applyProfileMetadataUpdate(updateData, 'staffNo', staffNo, before.staffNo);
+    applyProfileMetadataUpdate(updateData, 'gender', gender, before.gender);
+    applyProfileMetadataUpdate(updateData, 'rank', rank, before.rank);
     if (active !== undefined) updateData.active = active;
     if (isAttendanceOnly !== undefined) updateData.isAttendanceOnly = isAttendanceOnly === true;
     if (isNssPersonnel !== undefined || isAttendanceOnly !== undefined) {
@@ -83,12 +107,6 @@ export async function PUT(
       updateData.archived = archived;
       updateData.archivedAt = archived ? new Date() : null;
       updateData.active = archived ? false : true;
-    }
-
-    // Capture before state for audit
-    const [before] = await db.select().from(staff).where(eq(staff.id, id));
-    if (!before) {
-      return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
     }
 
     if (updateData.email) {

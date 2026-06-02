@@ -4,7 +4,7 @@ import { UserButton, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, LogOut, MapPin, Moon, ReceiptText, ShieldCheck, Sun, X, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Bell, CheckCircle2, Loader2, LogOut, MapPin, Moon, ReceiptText, ShieldCheck, Sun, X, XCircle } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -162,6 +162,16 @@ type BrowserNotificationPermission = NotificationPermission | 'unsupported';
 
 const CHECK_IN_FEEDBACK_DISMISS_MS = 4_000;
 
+function normalizedStaffName(value: string | null | undefined) {
+  return (value || '').toLowerCase().replace(/[^a-z]/g, '');
+}
+
+function isAnnalisaPermissionRequestStaff(staff: CheckInStatus['staff']) {
+  const name = normalizedStaffName(staff?.fullName);
+
+  return name.includes('annalisa') && name.includes('hammond');
+}
+
 function canSignOut(status: CheckInStatus | null) {
   return Boolean(status?.attendance && !status.attendance.signOutTime && status.time?.slice(0, 5) >= '16:30');
 }
@@ -297,7 +307,7 @@ function getOrCreateDeviceToken() {
 function locationErrorMessage(error: unknown) {
   if (error && typeof error === 'object' && 'code' in error) {
     const code = Number((error as { code?: unknown }).code);
-    if (code === 1) return 'Location permission is blocked. Allow location access and try again.';
+    if (code === 1) return 'Location permission is blocked. Reset the site location permission in iOS/browser settings and try again.';
     if (code === 2) return 'This device could not find its location. Turn on location services and try again.';
     if (code === 3) return 'Location detection took too long. Move to an open area and try again.';
   }
@@ -415,6 +425,7 @@ export default function CheckInPage() {
   const [pushReminderLoading, setPushReminderLoading] = useState(false);
   const [savingPushReminder, setSavingPushReminder] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<BrowserNotificationPermission>('default');
+  const [permissionRequestLoading, setPermissionRequestLoading] = useState<'location' | 'notification' | null>(null);
   const [liveLocation, setLiveLocation] = useState<LiveLocation>({
     blocking: false,
     message: 'Waiting for location.',
@@ -819,6 +830,64 @@ export default function CheckInPage() {
     }
   }
 
+  async function requestLocationAccess() {
+    setPermissionRequestLoading('location');
+    setMessage(null);
+
+    try {
+      const location = await getCurrentLocationEvidence();
+      const nextLiveLocation = validateLiveLocation(status?.locationPolicy || null, location);
+      setLiveLocation(nextLiveLocation);
+      setMessage({
+        type: 'success',
+        text: nextLiveLocation.blocking
+          ? `Location access allowed. ${nextLiveLocation.message}`
+          : 'Location access allowed.',
+      });
+    } catch (error) {
+      const errorMessage = locationErrorMessage(error);
+      setLiveLocation({ blocking: true, message: errorMessage, state: 'error' });
+      setMessage({ type: 'error', text: errorMessage });
+    } finally {
+      setPermissionRequestLoading(null);
+    }
+  }
+
+  async function requestNotificationAccess() {
+    setPermissionRequestLoading('notification');
+    setMessage(null);
+
+    try {
+      if (!('Notification' in window)) {
+        setNotificationPermission('unsupported');
+        throw new Error('This browser does not support notifications.');
+      }
+
+      const permission = Notification.permission === 'granted'
+        ? 'granted'
+        : await Notification.requestPermission();
+      setNotificationPermission(permission);
+
+      if (permission === 'granted') {
+        setMessage({ type: 'success', text: 'Notification access allowed. You can enable reminders now.' });
+      } else if (permission === 'denied') {
+        setMessage({
+          type: 'error',
+          text: 'Notification permission is blocked. Reset the site notification permission in iOS/browser settings and try again.',
+        });
+      } else {
+        setMessage({ type: 'error', text: 'Notification permission was not allowed. Tap Allow in the browser prompt and try again.' });
+      }
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Notification permission could not be requested.',
+      });
+    } finally {
+      setPermissionRequestLoading(null);
+    }
+  }
+
   function toggleTheme() {
     applyThemePreference(isDark ? 'light' : 'dark');
   }
@@ -847,6 +916,7 @@ export default function CheckInPage() {
   const locationBlocksAction = Boolean(status?.locationConfigured && liveLocation.blocking);
   const signInReminderEnabled = Boolean(pushReminderStatus?.subscription?.signInEnabled && !pushReminderStatus.subscription.disabledAt);
   const signOutReminderEnabled = Boolean(pushReminderStatus?.subscription?.signOutEnabled && !pushReminderStatus.subscription.disabledAt);
+  const showAnnalisaPermissionRequests = isAnnalisaPermissionRequestStaff(status?.staff || null);
 
   return (
     <main className="h-dvh overflow-hidden bg-background px-3 py-3 text-foreground sm:px-6 sm:py-4">
@@ -982,6 +1052,15 @@ export default function CheckInPage() {
                   }}
                 />
 
+                {showAnnalisaPermissionRequests && (
+                  <PermissionRequestPanel
+                    disabled={Boolean(permissionRequestLoading)}
+                    loading={permissionRequestLoading}
+                    onRequestLocation={() => void requestLocationAccess()}
+                    onRequestNotification={() => void requestNotificationAccess()}
+                  />
+                )}
+
                 {message && (
                   <div className={cn(
                     'flex items-center gap-2 rounded-md border px-3 py-2 text-sm',
@@ -1023,6 +1102,43 @@ export default function CheckInPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+function PermissionRequestPanel({
+  disabled,
+  loading,
+  onRequestLocation,
+  onRequestNotification,
+}: {
+  disabled: boolean;
+  loading: 'location' | 'notification' | null;
+  onRequestLocation: () => void;
+  onRequestNotification: () => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-2 rounded-md border border-border bg-card p-3 sm:grid-cols-2">
+      <Button
+        className="h-10 gap-2"
+        disabled={disabled}
+        onClick={onRequestLocation}
+        type="button"
+        variant="outline"
+      >
+        {loading === 'location' ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
+        Request location access
+      </Button>
+      <Button
+        className="h-10 gap-2"
+        disabled={disabled}
+        onClick={onRequestNotification}
+        type="button"
+        variant="outline"
+      >
+        {loading === 'notification' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bell className="h-4 w-4" />}
+        Request notification access
+      </Button>
+    </div>
   );
 }
 

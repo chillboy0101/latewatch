@@ -10,6 +10,7 @@ const staffUpdateRoutePath = path.join(__dirname, '../src/app/api/staff/[id]/rou
 const staffActionsPath = path.join(__dirname, '../src/actions/staff.ts');
 const schemaPath = path.join(__dirname, '../src/db/schema.ts');
 const migrationPath = path.join(__dirname, '../drizzle/0022_staff_leave_periods.sql');
+const metadataRepairMigrationPath = path.join(__dirname, '../drizzle/0026_restore_staff_profile_metadata.sql');
 const seedMigrationPath = path.join(__dirname, '../src/app/api/seed/migrate/route.ts');
 
 test('staff page exposes a top-level NSS personnel filter', () => {
@@ -50,6 +51,40 @@ test('staff page and API expose attendance export metadata fields', () => {
   assert.match(pageSource, /Staff No\./);
   assert.match(pageSource, /Gender/);
   assert.match(pageSource, /Rank/);
+  assert.match(pageSource, /addStaffMissingRequiredMetadata/);
+  assert.match(pageSource, /required=\{newIsMainStaff\}/);
+  assert.match(createSource, /Gender is required for staff profiles/);
+  assert.match(createSource, /Staff No\. and Rank are required for main staff profiles/);
+});
+
+test('staff profile metadata is not wiped by blank edit submissions', () => {
+  const pageSource = fs.readFileSync(staffPagePath, 'utf8');
+  const updateSource = fs.readFileSync(staffUpdateRoutePath, 'utf8');
+
+  assert.match(updateSource, /function applyProfileMetadataUpdate/);
+  assert.match(updateSource, /if \(normalized \|\| !previousValue\)/);
+  assert.match(updateSource, /applyProfileMetadataUpdate\(updateData, 'staffNo', staffNo, before\.staffNo\)/);
+  assert.match(updateSource, /applyProfileMetadataUpdate\(updateData, 'gender', gender, before\.gender\)/);
+  assert.match(updateSource, /applyProfileMetadataUpdate\(updateData, 'rank', rank, before\.rank\)/);
+  assert.doesNotMatch(updateSource, /if \(staffNo !== undefined\) updateData\.staffNo =/);
+  assert.doesNotMatch(updateSource, /if \(gender !== undefined\) updateData\.gender =/);
+  assert.doesNotMatch(updateSource, /if \(rank !== undefined\) updateData\.rank =/);
+  assert.match(pageSource, /if \(response\.ok\) \{\s*await fetchStaff\(\);/);
+});
+
+test('staff metadata repair can restore missing fields from audit history', () => {
+  assert.equal(fs.existsSync(metadataRepairMigrationPath), true);
+  const seedMigrationSource = fs.readFileSync(seedMigrationPath, 'utf8');
+  const metadataRepairMigrationSource = fs.readFileSync(metadataRepairMigrationPath, 'utf8');
+
+  for (const source of [seedMigrationSource, metadataRepairMigrationSource]) {
+    assert.match(source, /staff_profile_restore/);
+    assert.match(source, /before_json->>'staffNo'/);
+    assert.match(source, /before_json->>'gender'/);
+    assert.match(source, /before_json->>'rank'/);
+    assert.match(source, /after_json->>'staffNo'/);
+    assert.match(source, /NULLIF\(trim\(COALESCE\(staff\.staff_no, ''\)\), ''\) IS NULL/);
+  }
 });
 
 test('staff page omits removed manual message fields', () => {

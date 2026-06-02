@@ -220,6 +220,8 @@ test('receipt page is print-friendly and uses LateWatch branding', () => {
 
   assert.match(source, /LateWatchLogo/);
   assert.match(source, /Official Receipt/);
+  assert.match(source, /Day \/ Date/);
+  assert.match(source, /formatLongDisplayDate\(allocation\.date\)/);
   assert.match(source, /Print \/ Save PDF/);
   assert.match(source, /window\.print\(\)/);
   assert.match(source, /getLatenessPaymentReceiptDocumentTitle/);

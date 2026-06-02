@@ -74,6 +74,17 @@ export async function POST(request: Request) {
     const normalizedGender = typeof gender === 'string' && gender.trim() ? gender.trim() : null;
     const normalizedRank = typeof rank === 'string' && rank.trim() ? rank.trim() : null;
 
+    if (!normalizedGender) {
+      return NextResponse.json({ error: 'Gender is required for staff profiles.' }, { status: 400 });
+    }
+
+    if (!isAttendanceOnly && !isNssPersonnel && (!normalizedStaffNo || !normalizedRank)) {
+      return NextResponse.json(
+        { error: 'Staff No. and Rank are required for main staff profiles.' },
+        { status: 400 },
+      );
+    }
+
     const [existingStaff] = await db.select()
       .from(staff)
       .where(ilike(staff.fullName, name))
