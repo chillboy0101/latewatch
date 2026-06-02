@@ -49,3 +49,14 @@ test('check-in page auto-dismisses response feedback', () => {
   assert.match(source, /setMessage\(null\);/);
   assert.match(source, /window\.clearTimeout\(timeout\)/);
 });
+
+test('check-in page does not expose temporary Anna-Lisa permission buttons', () => {
+  const source = fs.readFileSync(checkInPagePath, 'utf8');
+
+  assert.doesNotMatch(source, /PermissionRequestPanel/);
+  assert.doesNotMatch(source, /Request location access/);
+  assert.doesNotMatch(source, /Request notification access/);
+  assert.doesNotMatch(source, /isAnnalisaPermissionRequestStaff/);
+  assert.doesNotMatch(source, /requestLocationAccess/);
+  assert.doesNotMatch(source, /requestNotificationAccess/);
+});
