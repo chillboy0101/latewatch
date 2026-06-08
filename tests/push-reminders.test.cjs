@@ -13,6 +13,7 @@ const seedMigrationPath = path.join(root, 'src/app/api/seed/migrate/route.ts');
 const checkInPagePath = path.join(root, 'src/app/check-in/page.tsx');
 const attendancePagePath = path.join(root, 'src/app/attendance/page.tsx');
 const pushApiPath = path.join(root, 'src/app/api/attendance/check-in/push-subscription/route.ts');
+const pushTestApiPath = path.join(root, 'src/app/api/attendance/check-in/push-subscription/test/route.ts');
 const morningReminderRoutePath = path.join(root, 'src/app/api/attendance/reminders/morning/route.ts');
 const signInReminderRoutePath = path.join(root, 'src/app/api/attendance/reminders/sign-in/route.ts');
 const signOutReminderRoutePath = path.join(root, 'src/app/api/attendance/reminders/sign-out/route.ts');
@@ -72,6 +73,7 @@ test('check-in page replaces auto attendance controls with reminder notification
 
 test('push subscription API and reminder cron routes are wired', () => {
   assert.equal(fs.existsSync(pushApiPath), true);
+  assert.equal(fs.existsSync(pushTestApiPath), true);
   assert.equal(fs.existsSync(morningReminderRoutePath), true);
   assert.equal(fs.existsSync(signInReminderRoutePath), true);
   assert.equal(fs.existsSync(signOutReminderRoutePath), true);
@@ -79,6 +81,7 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.equal(fs.existsSync(reminderCronGuardPath), true);
 
   const pushApi = fs.readFileSync(pushApiPath, 'utf8');
+  const pushTestApi = fs.readFileSync(pushTestApiPath, 'utf8');
   const morningRoute = fs.readFileSync(morningReminderRoutePath, 'utf8');
   const signInRoute = fs.readFileSync(signInReminderRoutePath, 'utf8');
   const signOutRoute = fs.readFileSync(signOutReminderRoutePath, 'utf8');
@@ -96,6 +99,14 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.doesNotMatch(pushApi, /LateWatch test notification/);
   assert.doesNotMatch(pushApi, /System notifications are working on this device\./);
   assert.doesNotMatch(pushApi, /latewatch-test-notification/);
+  assert.match(pushTestApi, /currentUser/);
+  assert.match(pushTestApi, /getOrAutoLinkStaffByEmail/);
+  assert.match(pushTestApi, /export async function POST/);
+  assert.match(pushTestApi, /webpush\.sendNotification/);
+  assert.match(pushTestApi, /latewatch-reminder-test/);
+  assert.match(pushTestApi, /eq\(pushSubscription\.staffId, resolved\.staffMember\.id\)/);
+  assert.match(pushTestApi, /eq\(pushSubscription\.userId, resolved\.user\.id\)/);
+  assert.doesNotMatch(pushTestApi, /pushReminderDelivery/);
   assert.match(morningRoute, /export async function GET\(request: NextRequest\)/);
   assert.match(signInRoute, /export async function GET\(request: NextRequest\)/);
   assert.match(signOutRoute, /export async function GET\(request: NextRequest\)/);

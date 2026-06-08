@@ -33,7 +33,7 @@ type ReminderEligibilityInput = {
 
 let vapidConfigured = false;
 
-function hasVapidConfig() {
+export function hasVapidConfig() {
   return Boolean(
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
     && process.env.VAPID_PRIVATE_KEY
@@ -41,7 +41,7 @@ function hasVapidConfig() {
   );
 }
 
-function ensureVapidConfig() {
+export function ensureVapidConfig() {
   if (!hasVapidConfig()) return false;
   if (!vapidConfigured) {
     webpush.setVapidDetails(
@@ -115,7 +115,7 @@ export function reminderCopy(
   };
 }
 
-function isExpiredPushEndpoint(error: unknown) {
+export function isExpiredPushEndpoint(error: unknown) {
   const statusCode = typeof error === 'object' && error !== null && 'statusCode' in error
     ? Number((error as { statusCode?: unknown }).statusCode)
     : null;
