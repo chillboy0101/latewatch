@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 import { getAccraClock } from '@/lib/attendance';
 
 const DEFAULT_REMINDER_CRON_WINDOW_MINUTES = 30;
+const VERCEL_CRON_USER_AGENT = 'vercel-cron/1.0';
 
 export const REMINDER_CRON_SCHEDULES = {
   morning: {
@@ -79,8 +80,16 @@ export function validateReminderCronRequest(
     };
   }
 
+  const userAgent = request.headers.get('user-agent') ?? '';
+  if (!userAgent.includes(VERCEL_CRON_USER_AGENT)) {
+    return {
+      ok: false,
+      response: noStoreJson({ error: 'Invalid cron caller' }, 403),
+    };
+  }
+
   const cronScheduleHeader = request.headers.get('x-vercel-cron-schedule');
-  if (cronScheduleHeader !== schedule.expectedSchedule) {
+  if (cronScheduleHeader && cronScheduleHeader !== schedule.expectedSchedule) {
     return {
       ok: false,
       response: noStoreJson({ error: 'Invalid cron schedule' }, 403),
