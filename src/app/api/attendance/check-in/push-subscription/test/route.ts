@@ -60,64 +60,74 @@ export async function POST() {
     sent: 0,
   };
 
-  const resolved = await resolveStaffForPushTest();
-  if (resolved.error) return resolved.error;
+  try {
+    const resolved = await resolveStaffForPushTest();
+    if (resolved.error) return resolved.error;
 
-  if (!ensureVapidConfig()) {
+    if (!ensureVapidConfig()) {
+      return NextResponse.json(summary, {
+        headers: { 'Cache-Control': 'no-store' },
+      });
+    }
+
+    const subscriptions = await db.select({
+      auth: pushSubscription.auth,
+      endpoint: pushSubscription.endpoint,
+      id: pushSubscription.id,
+      p256dh: pushSubscription.p256dh,
+    })
+      .from(pushSubscription)
+      .where(and(
+        eq(pushSubscription.staffId, resolved.staffMember.id),
+        eq(pushSubscription.userId, resolved.user.id),
+        isNull(pushSubscription.disabledAt),
+      ));
+
+    for (const subscription of subscriptions) {
+      try {
+        await webpush.sendNotification({
+          endpoint: subscription.endpoint,
+          keys: {
+            auth: subscription.auth,
+            p256dh: subscription.p256dh,
+          },
+        }, JSON.stringify({
+          body: 'Your LateWatch reminder notifications are working on this device.',
+          data: {
+            reminderType: 'test',
+            url: '/check-in',
+          },
+          icon: '/latewatch-logo.png',
+          tag: 'latewatch-reminder-test',
+          title: 'LateWatch test reminder',
+        }));
+
+        summary.sent += 1;
+      } catch (error) {
+        if (isExpiredPushEndpoint(error)) {
+          await db.update(pushSubscription)
+            .set({
+              disabledAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(pushSubscription.id, subscription.id));
+          summary.disabled += 1;
+        }
+
+        summary.failed += 1;
+      }
+    }
+
     return NextResponse.json(summary, {
       headers: { 'Cache-Control': 'no-store' },
     });
+  } catch {
+    return NextResponse.json({
+      ...summary,
+      error: 'Push test failed. Check the reminder push service configuration.',
+    }, {
+      headers: { 'Cache-Control': 'no-store' },
+      status: 500,
+    });
   }
-
-  const subscriptions = await db.select({
-    auth: pushSubscription.auth,
-    endpoint: pushSubscription.endpoint,
-    id: pushSubscription.id,
-    p256dh: pushSubscription.p256dh,
-  })
-    .from(pushSubscription)
-    .where(and(
-      eq(pushSubscription.staffId, resolved.staffMember.id),
-      eq(pushSubscription.userId, resolved.user.id),
-      isNull(pushSubscription.disabledAt),
-    ));
-
-  for (const subscription of subscriptions) {
-    try {
-      await webpush.sendNotification({
-        endpoint: subscription.endpoint,
-        keys: {
-          auth: subscription.auth,
-          p256dh: subscription.p256dh,
-        },
-      }, JSON.stringify({
-        body: 'Your LateWatch reminder notifications are working on this device.',
-        data: {
-          reminderType: 'test',
-          url: '/check-in',
-        },
-        icon: '/latewatch-logo.png',
-        tag: 'latewatch-reminder-test',
-        title: 'LateWatch test reminder',
-      }));
-
-      summary.sent += 1;
-    } catch (error) {
-      if (isExpiredPushEndpoint(error)) {
-        await db.update(pushSubscription)
-          .set({
-            disabledAt: new Date(),
-            updatedAt: new Date(),
-          })
-          .where(eq(pushSubscription.id, subscription.id));
-        summary.disabled += 1;
-      }
-
-      summary.failed += 1;
-    }
-  }
-
-  return NextResponse.json(summary, {
-    headers: { 'Cache-Control': 'no-store' },
-  });
 }

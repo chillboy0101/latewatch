@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { pushSubscription } from '@/db/schema';
 import { getOrAutoLinkStaffByEmail } from '@/lib/attendance';
+import { getVapidPublicKey, hasVapidConfig } from '@/lib/push-reminders';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +28,7 @@ function getUserEmailAddresses(user: NonNullable<Awaited<ReturnType<typeof curre
 function publicPayload(subscription: typeof pushSubscription.$inferSelect | null) {
   return {
     configured: hasVapidConfig(),
-    publicKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || null,
+    publicKey: getVapidPublicKey(),
     subscription: subscription
       ? {
           disabledAt: subscription.disabledAt,
@@ -37,14 +38,6 @@ function publicPayload(subscription: typeof pushSubscription.$inferSelect | null
         }
       : null,
   };
-}
-
-function hasVapidConfig() {
-  return Boolean(
-    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-    && process.env.VAPID_PRIVATE_KEY
-    && process.env.VAPID_SUBJECT,
-  );
 }
 
 async function getActivePushSubscription(staffId: string, userId: string) {

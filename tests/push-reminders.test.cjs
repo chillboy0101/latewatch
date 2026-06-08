@@ -85,6 +85,7 @@ test('push subscription API and reminder cron routes are wired', () => {
   const pushApi = fs.readFileSync(pushApiPath, 'utf8');
   const pushTestApi = fs.readFileSync(pushTestApiPath, 'utf8');
   const checkInPage = fs.readFileSync(checkInPagePath, 'utf8');
+  const pushReminderLib = fs.readFileSync(pushReminderLibPath, 'utf8');
   const morningRoute = fs.readFileSync(morningReminderRoutePath, 'utf8');
   const signInRoute = fs.readFileSync(signInReminderRoutePath, 'utf8');
   const signOutRoute = fs.readFileSync(signOutReminderRoutePath, 'utf8');
@@ -99,6 +100,7 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.match(pushApi, /export async function PUT/);
   assert.match(pushApi, /export async function DELETE/);
   assert.match(pushApi, /pushSubscription/);
+  assert.match(pushApi, /getVapidPublicKey/);
   assert.doesNotMatch(pushApi, /LateWatch test notification/);
   assert.doesNotMatch(pushApi, /System notifications are working on this device\./);
   assert.doesNotMatch(pushApi, /latewatch-test-notification/);
@@ -111,7 +113,12 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.match(pushTestApi, /latewatch-reminder-test/);
   assert.match(pushTestApi, /eq\(pushSubscription\.staffId, resolved\.staffMember\.id\)/);
   assert.match(pushTestApi, /eq\(pushSubscription\.userId, resolved\.user\.id\)/);
+  assert.match(pushTestApi, /Push test failed\. Check the reminder push service configuration\./);
   assert.doesNotMatch(pushTestApi, /pushReminderDelivery/);
+  assert.match(pushReminderLib, /function cleanVapidKey/);
+  assert.match(pushReminderLib, /base64UrlDecodedLength\(publicKey\) === 65/);
+  assert.match(pushReminderLib, /base64UrlDecodedLength\(privateKey\) === 32/);
+  assert.match(pushReminderLib, /webpush\.setVapidDetails\(subject, publicKey, privateKey\)/);
   assert.match(morningRoute, /export async function GET\(request: NextRequest\)/);
   assert.match(signInRoute, /export async function GET\(request: NextRequest\)/);
   assert.match(signOutRoute, /export async function GET\(request: NextRequest\)/);

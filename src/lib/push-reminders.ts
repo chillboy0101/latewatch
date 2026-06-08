@@ -33,24 +33,74 @@ type ReminderEligibilityInput = {
 
 let vapidConfigured = false;
 
+const INVISIBLE_KEY_CHARS = /[\uFEFF\u200B-\u200D\u2060\s]/g;
+
+function cleanEnvValue(value: string | undefined) {
+  return (value || '')
+    .trim()
+    .replace(/^['"`]+|['"`]+$/g, '')
+    .replace(INVISIBLE_KEY_CHARS, '');
+}
+
+function cleanVapidKey(value: string | undefined) {
+  return cleanEnvValue(value).replace(/=+$/g, '');
+}
+
+function base64UrlDecodedLength(value: string) {
+  if (!value) return 0;
+
+  const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = `${base64}${'='.repeat((4 - (base64.length % 4)) % 4)}`;
+
+  try {
+    return Buffer.from(padded, 'base64').length;
+  } catch {
+    return 0;
+  }
+}
+
+function getVapidConfig() {
+  const publicKey = cleanVapidKey(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY);
+  const privateKey = cleanVapidKey(process.env.VAPID_PRIVATE_KEY);
+
+  return {
+    privateKey,
+    publicKey,
+    subject: cleanEnvValue(process.env.VAPID_SUBJECT),
+  };
+}
+
+export function getVapidPublicKey() {
+  return getVapidConfig().publicKey || null;
+}
+
 export function hasVapidConfig() {
+  const { privateKey, publicKey, subject } = getVapidConfig();
+
   return Boolean(
-    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-    && process.env.VAPID_PRIVATE_KEY
-    && process.env.VAPID_SUBJECT,
+    publicKey
+    && privateKey
+    && subject
+    && base64UrlDecodedLength(publicKey) === 65
+    && base64UrlDecodedLength(privateKey) === 32,
   );
 }
 
 export function ensureVapidConfig() {
   if (!hasVapidConfig()) return false;
+
+  const { privateKey, publicKey, subject } = getVapidConfig();
+
   if (!vapidConfigured) {
-    webpush.setVapidDetails(
-      process.env.VAPID_SUBJECT || 'mailto:admin@example.com',
-      process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '',
-      process.env.VAPID_PRIVATE_KEY || '',
-    );
+    try {
+      webpush.setVapidDetails(subject, publicKey, privateKey);
+    } catch {
+      vapidConfigured = false;
+      return false;
+    }
     vapidConfigured = true;
   }
+
   return true;
 }
 
