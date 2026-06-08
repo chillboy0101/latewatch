@@ -4,7 +4,7 @@ import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { getAccraClock } from '@/lib/attendance';
 
-const DEFAULT_REMINDER_CRON_WINDOW_MINUTES = 30;
+const DEFAULT_REMINDER_CRON_WINDOW_MINUTES = 60;
 const VERCEL_CRON_USER_AGENT = 'vercel-cron/1.0';
 
 export const REMINDER_CRON_SCHEDULES = {
@@ -60,10 +60,10 @@ export function isWithinAccraReminderCronWindow(input: {
   windowMinutes?: number;
 }) {
   const currentMinute = minutesSinceMidnight(input.timeKey);
-  const scheduledMinute = input.scheduledHour * 60 + input.scheduledMinute;
+  const scheduledHourStartMinute = input.scheduledHour * 60;
   const windowMinutes = input.windowMinutes ?? DEFAULT_REMINDER_CRON_WINDOW_MINUTES;
 
-  return currentMinute >= scheduledMinute && currentMinute < scheduledMinute + windowMinutes;
+  return currentMinute >= scheduledHourStartMinute && currentMinute < scheduledHourStartMinute + windowMinutes;
 }
 
 export function validateReminderCronRequest(

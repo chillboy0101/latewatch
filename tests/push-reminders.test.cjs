@@ -134,7 +134,8 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.match(cronGuard, /if \(cronScheduleHeader && cronScheduleHeader !== schedule\.expectedSchedule\)/);
   assert.doesNotMatch(cronGuard, /if \(cronScheduleHeader !== schedule\.expectedSchedule\)/);
   assert.match(cronGuard, /getAccraClock\(\)/);
-  assert.match(cronGuard, /DEFAULT_REMINDER_CRON_WINDOW_MINUTES = 30/);
+  assert.match(cronGuard, /DEFAULT_REMINDER_CRON_WINDOW_MINUTES = 60/);
+  assert.match(cronGuard, /scheduledHourStartMinute = input\.scheduledHour \* 60/);
   assert.match(cronGuard, /isWithinAccraReminderCronWindow/);
   assert.match(proxy, /isCronReminderRoute/);
   assert.match(proxy, /\/api\/attendance\/reminders\(\.\*\)/);
