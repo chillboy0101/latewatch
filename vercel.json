@@ -6,20 +6,12 @@
   "outputDirectory": ".next",
   "crons": [
     {
-      "path": "/api/calendar/sync",
-      "schedule": "0 0 * * *"
-    },
-    {
-      "path": "/api/attendance/reminders/sign-in",
-      "schedule": "15 8 * * 1-5"
+      "path": "/api/attendance/reminders/morning",
+      "schedule": "15 8 * * *"
     },
     {
       "path": "/api/attendance/reminders/sign-out",
       "schedule": "30 16 * * 1-5"
-    },
-    {
-      "path": "/api/attendance/reminders/holiday",
-      "schedule": "15 8 * * *"
     }
   ]
 }

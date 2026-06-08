@@ -82,7 +82,10 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 NEXT_PUBLIC_VAPID_PUBLIC_KEY=...
 VAPID_PRIVATE_KEY=...
 VAPID_SUBJECT=mailto:admin@example.com
+CRON_SECRET=generate-a-long-random-secret
 ```
+
+`CRON_SECRET` is required for Vercel Cron to call protected reminder endpoints.
 
 ### 4. Set Up Database
 
@@ -226,6 +229,7 @@ Make sure to add all environment variables in Vercel dashboard:
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY`
 - `VAPID_PRIVATE_KEY`
 - `VAPID_SUBJECT`
+- `CRON_SECRET`
 
 ## 📝 Available Scripts
 

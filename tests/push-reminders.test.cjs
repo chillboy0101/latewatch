@@ -13,12 +13,14 @@ const seedMigrationPath = path.join(root, 'src/app/api/seed/migrate/route.ts');
 const checkInPagePath = path.join(root, 'src/app/check-in/page.tsx');
 const attendancePagePath = path.join(root, 'src/app/attendance/page.tsx');
 const pushApiPath = path.join(root, 'src/app/api/attendance/check-in/push-subscription/route.ts');
+const morningReminderRoutePath = path.join(root, 'src/app/api/attendance/reminders/morning/route.ts');
 const signInReminderRoutePath = path.join(root, 'src/app/api/attendance/reminders/sign-in/route.ts');
 const signOutReminderRoutePath = path.join(root, 'src/app/api/attendance/reminders/sign-out/route.ts');
 const holidayReminderRoutePath = path.join(root, 'src/app/api/attendance/reminders/holiday/route.ts');
 const pushClientLibPath = path.join(root, 'src/lib/push-client.ts');
 const pushReminderToggleConfirmationLibPath = path.join(root, 'src/lib/push-reminder-toggle-confirmation.ts');
 const pushReminderLibPath = path.join(root, 'src/lib/push-reminders.ts');
+const reminderCronGuardPath = path.join(root, 'src/lib/reminder-cron-guard.ts');
 const attendanceLibPath = path.join(root, 'src/lib/attendance.ts');
 const serviceWorkerPath = path.join(root, 'public/sw.js');
 const vercelPath = path.join(root, 'vercel.json');
@@ -69,15 +71,20 @@ test('check-in page replaces auto attendance controls with reminder notification
 
 test('push subscription API and reminder cron routes are wired', () => {
   assert.equal(fs.existsSync(pushApiPath), true);
+  assert.equal(fs.existsSync(morningReminderRoutePath), true);
   assert.equal(fs.existsSync(signInReminderRoutePath), true);
   assert.equal(fs.existsSync(signOutReminderRoutePath), true);
   assert.equal(fs.existsSync(holidayReminderRoutePath), true);
+  assert.equal(fs.existsSync(reminderCronGuardPath), true);
 
   const pushApi = fs.readFileSync(pushApiPath, 'utf8');
+  const morningRoute = fs.readFileSync(morningReminderRoutePath, 'utf8');
   const signInRoute = fs.readFileSync(signInReminderRoutePath, 'utf8');
   const signOutRoute = fs.readFileSync(signOutReminderRoutePath, 'utf8');
   const holidayRoute = fs.readFileSync(holidayReminderRoutePath, 'utf8');
+  const cronGuard = fs.readFileSync(reminderCronGuardPath, 'utf8');
   const vercel = fs.readFileSync(vercelPath, 'utf8');
+  const vercelConfig = JSON.parse(vercel);
 
   assert.match(pushApi, /export async function GET/);
   assert.doesNotMatch(pushApi, /export async function POST/);
@@ -87,12 +94,29 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.doesNotMatch(pushApi, /LateWatch test notification/);
   assert.doesNotMatch(pushApi, /System notifications are working on this device\./);
   assert.doesNotMatch(pushApi, /latewatch-test-notification/);
+  assert.match(morningRoute, /export async function GET\(request: NextRequest\)/);
+  assert.match(signInRoute, /export async function GET\(request: NextRequest\)/);
+  assert.match(signOutRoute, /export async function GET\(request: NextRequest\)/);
+  assert.match(morningRoute, /sendAttendanceReminderBatch\('holiday'\)/);
+  assert.match(morningRoute, /sendAttendanceReminderBatch\('sign_in'\)/);
   assert.match(signInRoute, /sendAttendanceReminderBatch\('sign_in'\)/);
   assert.match(signOutRoute, /sendAttendanceReminderBatch\('sign_out'\)/);
   assert.match(holidayRoute, /sendAttendanceReminderBatch\('holiday'\)/);
-  assert.match(vercel, /"path": "\/api\/attendance\/reminders\/sign-in"[\s\S]*"schedule": "15 8 \* \* 1-5"/);
+  assert.match(morningRoute, /validateReminderCronRequest\(request, REMINDER_CRON_SCHEDULES\.morning\)/);
+  assert.match(signInRoute, /validateReminderCronRequest\(request, REMINDER_CRON_SCHEDULES\.signIn\)/);
+  assert.match(signOutRoute, /validateReminderCronRequest\(request, REMINDER_CRON_SCHEDULES\.signOut\)/);
+  assert.match(holidayRoute, /validateReminderCronRequest\(request, REMINDER_CRON_SCHEDULES\.holiday\)/);
+  assert.match(cronGuard, /process\.env\.CRON_SECRET/);
+  assert.match(cronGuard, /x-vercel-cron-schedule/);
+  assert.match(cronGuard, /getAccraClock\(\)/);
+  assert.match(cronGuard, /DEFAULT_REMINDER_CRON_WINDOW_MINUTES = 30/);
+  assert.match(cronGuard, /isWithinAccraReminderCronWindow/);
+  assert.equal(vercelConfig.crons.length, 2);
+  assert.match(vercel, /"path": "\/api\/attendance\/reminders\/morning"[\s\S]*"schedule": "15 8 \* \* \*"/);
   assert.match(vercel, /"path": "\/api\/attendance\/reminders\/sign-out"[\s\S]*"schedule": "30 16 \* \* 1-5"/);
-  assert.match(vercel, /"path": "\/api\/attendance\/reminders\/holiday"[\s\S]*"schedule": "15 8 \* \* \*"/);
+  assert.doesNotMatch(vercel, /"path": "\/api\/attendance\/reminders\/sign-in"/);
+  assert.doesNotMatch(vercel, /"path": "\/api\/attendance\/reminders\/holiday"/);
+  assert.doesNotMatch(vercel, /"path": "\/api\/calendar\/sync"/);
 });
 
 test('push client normalizes pasted VAPID public keys before browser subscribe', () => {

@@ -6,12 +6,20 @@ import { REMINDER_CRON_SCHEDULES, validateReminderCronRequest } from '@/lib/remi
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  const cronGuard = validateReminderCronRequest(request, REMINDER_CRON_SCHEDULES.signIn);
+  const cronGuard = validateReminderCronRequest(request, REMINDER_CRON_SCHEDULES.morning);
   if (!cronGuard.ok) return cronGuard.response;
 
-  const result = await sendAttendanceReminderBatch('sign_in');
+  const holiday = await sendAttendanceReminderBatch('holiday');
+  const signIn = holiday.isHoliday
+    ? null
+    : await sendAttendanceReminderBatch('sign_in');
 
-  return NextResponse.json(result, {
+  return NextResponse.json({
+    date: holiday.date,
+    holiday,
+    reminderType: 'morning',
+    signIn,
+  }, {
     headers: { 'Cache-Control': 'no-store' },
   });
 }
