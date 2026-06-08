@@ -54,6 +54,8 @@ test('check-in page replaces auto attendance controls with reminder notification
   assert.match(source, /Enable sign-in reminder/);
   assert.match(source, /Enable sign-out reminder/);
   assert.match(source, /\/api\/attendance\/check-in\/push-subscription/);
+  assert.match(source, /\/api\/attendance\/check-in\/push-subscription\/test/);
+  assert.match(source, /Send test reminder/);
   assert.match(source, /navigator\.serviceWorker\.register\('\/sw\.js'\)/);
   assert.match(source, /navigator\.serviceWorker\.ready/);
   assert.doesNotMatch(source, /Reminder notifications are not configured/);
@@ -82,6 +84,7 @@ test('push subscription API and reminder cron routes are wired', () => {
 
   const pushApi = fs.readFileSync(pushApiPath, 'utf8');
   const pushTestApi = fs.readFileSync(pushTestApiPath, 'utf8');
+  const checkInPage = fs.readFileSync(checkInPagePath, 'utf8');
   const morningRoute = fs.readFileSync(morningReminderRoutePath, 'utf8');
   const signInRoute = fs.readFileSync(signInReminderRoutePath, 'utf8');
   const signOutRoute = fs.readFileSync(signOutReminderRoutePath, 'utf8');
@@ -99,6 +102,8 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.doesNotMatch(pushApi, /LateWatch test notification/);
   assert.doesNotMatch(pushApi, /System notifications are working on this device\./);
   assert.doesNotMatch(pushApi, /latewatch-test-notification/);
+  assert.match(checkInPage, /\/api\/attendance\/check-in\/push-subscription\/test/);
+  assert.match(checkInPage, /Send test reminder/);
   assert.match(pushTestApi, /currentUser/);
   assert.match(pushTestApi, /getOrAutoLinkStaffByEmail/);
   assert.match(pushTestApi, /export async function POST/);
@@ -194,13 +199,14 @@ test('service worker displays push notifications and opens check-in', () => {
   assert.doesNotMatch(source, /clients\.openWindow\('\/check-in'\)/);
 });
 
-test('check-in page does not expose test notification controls', () => {
+test('check-in page exposes controlled test reminder controls', () => {
   const source = fs.readFileSync(checkInPagePath, 'utf8');
 
-  assert.doesNotMatch(source, /Send test notification/);
-  assert.doesNotMatch(source, /sendingTestNotification/);
-  assert.doesNotMatch(source, /onSendTestNotification/);
-  assert.doesNotMatch(source, /Test notification sent\./);
+  assert.match(source, /sendPushReminderTest/);
+  assert.match(source, /testingPushReminder/);
+  assert.match(source, /onSendTest/);
+  assert.match(source, /\/api\/attendance\/check-in\/push-subscription\/test/);
+  assert.match(source, /Test reminder sent to/);
 });
 
 test('reminder toggle confirmation only appears when enabling reminders', () => {
