@@ -7,10 +7,13 @@ const test = require('node:test');
 const attendancePagePath = path.join(__dirname, '../src/app/attendance/page.tsx');
 const attendanceApiPath = path.join(__dirname, '../src/app/api/attendance/route.ts');
 const attendanceCheckInApiPath = path.join(__dirname, '../src/app/api/attendance/check-in/route.ts');
+const attendanceDeviceRoutePath = path.join(__dirname, '../src/app/api/attendance/devices/[staffId]/route.ts');
+const deviceTransferRoutePath = path.join(__dirname, '../src/app/api/attendance/device-transfers/[id]/route.ts');
 const attendancePermissionsApiPath = path.join(__dirname, '../src/app/api/attendance/permissions/route.ts');
 const notificationsApiPath = path.join(__dirname, '../src/app/api/notifications/route.ts');
 const generalPardonApiPath = path.join(__dirname, '../src/app/api/attendance/permissions/general-pardon/route.ts');
 const reconciliationPath = path.join(__dirname, '../src/lib/attendance-permission-reconciliation.ts');
+const pushSubscriptionsLibPath = path.join(__dirname, '../src/lib/push-subscriptions.ts');
 
 test('attendance QR print sheet does not show the raw install URL text', () => {
   const source = fs.readFileSync(attendancePagePath, 'utf8');
@@ -249,4 +252,38 @@ test('notifications suppress device reset notices after the staff device is reli
   assert.match(source, /getResolvedDeviceResetEventIds/);
   assert.match(source, /inArray\(staffDevice\.staffId, staffIds\)/);
   assert.match(source, /resolvedDeviceResetEventIds\.has\(event\.id\)/);
+});
+
+test('attendance device reset also disables old push notification subscriptions', () => {
+  const route = fs.readFileSync(attendanceDeviceRoutePath, 'utf8');
+  const helper = fs.readFileSync(pushSubscriptionsLibPath, 'utf8');
+  const page = fs.readFileSync(attendancePagePath, 'utf8');
+
+  assert.match(helper, /pushSubscription/);
+  assert.match(helper, /eq\(pushSubscription\.staffId, staffId\)/);
+  assert.match(helper, /isNull\(pushSubscription\.disabledAt\)/);
+  assert.match(helper, /disabledAt/);
+  assert.match(helper, /signInEnabled: false/);
+  assert.match(helper, /signOutEnabled: false/);
+  assert.match(helper, /return disabledSubscriptions\.length/);
+  assert.match(route, /disableActivePushSubscriptionsForStaff\(staffId, now\)/);
+  assert.match(route, /disabledPushSubscriptions/);
+  assert.ok(route.indexOf('disableActivePushSubscriptionsForStaff(staffId, now)') < route.indexOf('if (!before)'));
+  assert.match(page, /old notification device/);
+  assert.match(page, /Reminders must be enabled again on the new device/);
+});
+
+test('device transfer approval disables push subscriptions but rejection does not', () => {
+  const route = fs.readFileSync(deviceTransferRoutePath, 'utf8');
+  const page = fs.readFileSync(attendancePagePath, 'utf8');
+
+  assert.match(route, /disableActivePushSubscriptionsForStaff\(transfer\.staffId, now\)/);
+  assert.match(route, /let disabledPushSubscriptions = 0/);
+  assert.match(route, /disabledPushSubscriptions/);
+  assert.match(route, /return NextResponse\.json\(\{\s*disabledPushSubscriptions/);
+  assert.doesNotMatch(route, /action === 'reject'[\s\S]{0,300}disableActivePushSubscriptionsForStaff/);
+  assert.match(page, /Device transfer approved/);
+  assert.match(page, /Device transfer rejected/);
+  assert.match(page, /old notification device/);
+  assert.match(page, /Reminders must be enabled again on the new device/);
 });

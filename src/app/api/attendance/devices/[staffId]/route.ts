@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { staff, staffDevice } from '@/db/schema';
 import { writeAuditEvent } from '@/lib/audit';
+import { disableActivePushSubscriptionsForStaff } from '@/lib/push-subscriptions';
 import { publishRealtime } from '@/lib/realtime';
 
 export const dynamic = 'force-dynamic';
@@ -36,8 +37,11 @@ export async function DELETE(
       .where(eq(staffDevice.staffId, staffId))
       .limit(1);
 
+    const now = new Date();
+    const disabledPushSubscriptions = await disableActivePushSubscriptionsForStaff(staffId, now);
+
     if (!before) {
-      return NextResponse.json({ success: true, reset: false });
+      return NextResponse.json({ disabledPushSubscriptions, success: true, reset: false });
     }
 
     await db.delete(staffDevice).where(eq(staffDevice.staffId, staffId));
@@ -53,6 +57,7 @@ export async function DELETE(
         staffName: member.fullName,
       },
       after: {
+        disabledPushSubscriptions,
         staffName: member.fullName,
       },
       actor: { email: actorEmail, id: user.id },
@@ -62,7 +67,7 @@ export async function DELETE(
     publishRealtime('dashboard', 'invalidate', { reason: 'attendance-device-reset' });
     publishRealtime('notifications', 'invalidate', { reason: 'attendance-device-reset' });
 
-    return NextResponse.json({ success: true, reset: true });
+    return NextResponse.json({ disabledPushSubscriptions, success: true, reset: true });
   } catch (error) {
     console.error('Failed to reset attendance device:', error);
     return NextResponse.json({ error: 'Failed to reset attendance device' }, { status: 500 });

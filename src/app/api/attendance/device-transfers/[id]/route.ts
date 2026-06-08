@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { deviceTransferRequest, staff, staffDevice } from '@/db/schema';
 import { writeAuditEvent } from '@/lib/audit';
+import { disableActivePushSubscriptionsForStaff } from '@/lib/push-subscriptions';
 import { publishRealtime } from '@/lib/realtime';
 
 export const dynamic = 'force-dynamic';
@@ -59,6 +60,7 @@ export async function PATCH(
 
     const actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';
     const now = new Date();
+    let disabledPushSubscriptions = 0;
     let nextDevice: typeof staffDevice.$inferSelect | null = beforeDevice || null;
 
     if (action === 'approve') {
@@ -86,6 +88,7 @@ export async function PATCH(
         .returning();
 
       nextDevice = upsertedDevice || nextDevice;
+      disabledPushSubscriptions = await disableActivePushSubscriptionsForStaff(transfer.staffId, now);
     }
 
     const [reviewedRequest] = await db.update(deviceTransferRequest)
@@ -108,6 +111,7 @@ export async function PATCH(
         request: transfer,
       },
       after: {
+        disabledPushSubscriptions,
         device: nextDevice,
         request: reviewedRequest,
         staffName: member?.fullName || null,
@@ -122,6 +126,7 @@ export async function PATCH(
     publishRealtime('notifications', 'invalidate', { reason: 'attendance-device-transfer-review' });
 
     return NextResponse.json({
+      disabledPushSubscriptions,
       device: nextDevice,
       request: reviewedRequest,
       success: true,

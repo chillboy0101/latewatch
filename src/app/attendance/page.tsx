@@ -465,7 +465,7 @@ export default function AttendancePage() {
     }
   }
 
-  async function resetDevice(staffId: string) {
+  async function resetDevice(staffId: string, staffName: string) {
     setResettingDeviceStaffId(staffId);
     setError(null);
     setNotice(null);
@@ -474,6 +474,11 @@ export default function AttendancePage() {
       const response = await fetch(`/api/attendance/devices/${staffId}`, { method: 'DELETE' });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Could not reset device');
+      const disabledCount = Number(body.disabledPushSubscriptions || 0);
+      const disabledCopy = disabledCount > 0
+        ? ` ${disabledCount} old notification device${disabledCount === 1 ? '' : 's'} disabled.`
+        : ' No old notification devices were active.';
+      setNotice(`${staffName}'s attendance device was reset.${disabledCopy} Reminders must be enabled again on the new device.`);
       await fetchAttendance();
     } catch (err) {
       console.error('Failed to reset attendance device:', err);
@@ -496,6 +501,15 @@ export default function AttendancePage() {
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Could not review device transfer');
+      if (action === 'approve') {
+        const disabledCount = Number(body.disabledPushSubscriptions || 0);
+        const disabledCopy = disabledCount > 0
+          ? ` ${disabledCount} old notification device${disabledCount === 1 ? '' : 's'} disabled.`
+          : ' No old notification devices were active.';
+        setNotice(`Device transfer approved.${disabledCopy} Reminders must be enabled again on the new device.`);
+      } else {
+        setNotice('Device transfer rejected.');
+      }
       await fetchAttendance();
     } catch (err) {
       console.error('Failed to review device transfer:', err);
@@ -1058,7 +1072,7 @@ export default function AttendancePage() {
                                   className="h-8 gap-1.5 px-2"
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => resetDevice(row.staff.id)}
+                                  onClick={() => resetDevice(row.staff.id, row.staff.fullName)}
                                   disabled={resettingDeviceStaffId === row.staff.id}
                                 >
                                   {resettingDeviceStaffId === row.staff.id ? (
