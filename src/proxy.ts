@@ -43,6 +43,10 @@ const isStaffCheckInRoute = createRouteMatcher([
   '/api/attendance/check-in(.*)',
 ]);
 
+const isCronReminderRoute = createRouteMatcher([
+  '/api/attendance/reminders(.*)',
+]);
+
 const isAdminRoute = createRouteMatcher([
   '/dashboard(.*)',
   '/staff(.*)',
@@ -200,6 +204,10 @@ function forbiddenResponse(req: Request) {
 
 const handler = clerkConfigured
   ? clerkMiddleware(async (auth, req) => {
+      if (isCronReminderRoute(req)) {
+        return NextResponse.next();
+      }
+
       if (isProtectedRoute(req)) {
         const session = await auth.protect();
         if (isOrgRequiredRoute(req) && !hasRequiredOrganization(session.sessionClaims)) {

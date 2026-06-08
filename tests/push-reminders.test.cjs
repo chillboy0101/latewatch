@@ -17,6 +17,7 @@ const morningReminderRoutePath = path.join(root, 'src/app/api/attendance/reminde
 const signInReminderRoutePath = path.join(root, 'src/app/api/attendance/reminders/sign-in/route.ts');
 const signOutReminderRoutePath = path.join(root, 'src/app/api/attendance/reminders/sign-out/route.ts');
 const holidayReminderRoutePath = path.join(root, 'src/app/api/attendance/reminders/holiday/route.ts');
+const proxyPath = path.join(root, 'src/proxy.ts');
 const pushClientLibPath = path.join(root, 'src/lib/push-client.ts');
 const pushReminderToggleConfirmationLibPath = path.join(root, 'src/lib/push-reminder-toggle-confirmation.ts');
 const pushReminderLibPath = path.join(root, 'src/lib/push-reminders.ts');
@@ -83,6 +84,7 @@ test('push subscription API and reminder cron routes are wired', () => {
   const signOutRoute = fs.readFileSync(signOutReminderRoutePath, 'utf8');
   const holidayRoute = fs.readFileSync(holidayReminderRoutePath, 'utf8');
   const cronGuard = fs.readFileSync(reminderCronGuardPath, 'utf8');
+  const proxy = fs.readFileSync(proxyPath, 'utf8');
   const vercel = fs.readFileSync(vercelPath, 'utf8');
   const vercelConfig = JSON.parse(vercel);
 
@@ -111,6 +113,9 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.match(cronGuard, /getAccraClock\(\)/);
   assert.match(cronGuard, /DEFAULT_REMINDER_CRON_WINDOW_MINUTES = 30/);
   assert.match(cronGuard, /isWithinAccraReminderCronWindow/);
+  assert.match(proxy, /isCronReminderRoute/);
+  assert.match(proxy, /\/api\/attendance\/reminders\(\.\*\)/);
+  assert.match(proxy, /if \(isCronReminderRoute\(req\)\) \{\s*return NextResponse\.next\(\);\s*\}/);
   assert.equal(vercelConfig.crons.length, 2);
   assert.match(vercel, /"path": "\/api\/attendance\/reminders\/morning"[\s\S]*"schedule": "15 8 \* \* \*"/);
   assert.match(vercel, /"path": "\/api\/attendance\/reminders\/sign-out"[\s\S]*"schedule": "30 16 \* \* 1-5"/);
