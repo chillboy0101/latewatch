@@ -5,6 +5,7 @@ import {
   appUrlFromSetupRequest,
   setupCronJobOrgReminderJobs,
   setupFormHtml,
+  setupResultHtml,
 } from '@/lib/cron-job-org-reminder-setup';
 
 export const dynamic = 'force-dynamic';
@@ -20,18 +21,23 @@ async function requireAdmin() {
   return null;
 }
 
+function htmlResponse(html: string, status = 200) {
+  return new Response(html, {
+    headers: {
+      'Cache-Control': 'no-store',
+      'Content-Type': 'text/html; charset=utf-8',
+    },
+    status,
+  });
+}
+
 export async function GET() {
   const adminError = await requireAdmin();
   if (adminError) {
     return NextResponse.json({ error: adminError.error }, { status: adminError.status });
   }
 
-  return new Response(setupFormHtml('/api/admin/cron-job-org/reminders/setup'), {
-    headers: {
-      'Cache-Control': 'no-store',
-      'Content-Type': 'text/html; charset=utf-8',
-    },
-  });
+  return htmlResponse(setupFormHtml('/settings/reminder-scheduler'));
 }
 
 export async function POST(request: NextRequest) {
@@ -57,9 +63,7 @@ export async function POST(request: NextRequest) {
       cronSecret,
     });
 
-    return NextResponse.json(result, {
-      headers: { 'Cache-Control': 'no-store' },
-    });
+    return htmlResponse(setupResultHtml(result));
   } catch (error) {
     console.error('Failed to configure cron-job.org reminder jobs:', error);
     return NextResponse.json({ error: 'Failed to configure cron-job.org reminder jobs' }, { status: 500 });
