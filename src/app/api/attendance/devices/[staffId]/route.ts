@@ -4,6 +4,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { staff, staffDevice } from '@/db/schema';
 import { writeAuditEvent } from '@/lib/audit';
+import {
+  isStaffSessionRevocationError,
+  revokeStaffLoginSessions,
+} from '@/lib/clerk-session-revocation';
 import { disableActivePushSubscriptionsForStaff } from '@/lib/push-subscriptions';
 import { publishRealtime } from '@/lib/realtime';
 
@@ -21,6 +25,7 @@ export async function DELETE(
 
     const { staffId } = await params;
     const [member] = await db.select({
+      email: staff.email,
       fullName: staff.fullName,
       id: staff.id,
     })
@@ -38,10 +43,21 @@ export async function DELETE(
       .limit(1);
 
     const now = new Date();
+    const sessionRevocation = await revokeStaffLoginSessions({
+      deviceUserId: before?.userId,
+      staffEmail: member.email,
+    });
+    const revokedSessions = sessionRevocation.revokedSessions;
     const disabledPushSubscriptions = await disableActivePushSubscriptionsForStaff(staffId, now);
 
     if (!before) {
-      return NextResponse.json({ disabledPushSubscriptions, success: true, reset: false });
+      return NextResponse.json({
+        disabledPushSubscriptions,
+        reset: false,
+        revokedSessions,
+        sessionRevocation,
+        success: true,
+      });
     }
 
     await db.delete(staffDevice).where(eq(staffDevice.staffId, staffId));
@@ -58,6 +74,8 @@ export async function DELETE(
       },
       after: {
         disabledPushSubscriptions,
+        revokedSessions,
+        sessionRevocation,
         staffName: member.fullName,
       },
       actor: { email: actorEmail, id: user.id },
@@ -67,8 +85,23 @@ export async function DELETE(
     publishRealtime('dashboard', 'invalidate', { reason: 'attendance-device-reset' });
     publishRealtime('notifications', 'invalidate', { reason: 'attendance-device-reset' });
 
-    return NextResponse.json({ disabledPushSubscriptions, success: true, reset: true });
+    return NextResponse.json({
+      disabledPushSubscriptions,
+      reset: true,
+      revokedSessions,
+      sessionRevocation,
+      success: true,
+    });
   } catch (error) {
+    if (isStaffSessionRevocationError(error)) {
+      console.error('Failed to revoke staff login sessions during attendance device reset:', error);
+      return NextResponse.json({
+        error: 'Could not revoke staff login sessions. Try again before resetting the attendance device.',
+        result: 'SESSION_REVOCATION_FAILED',
+        revokedSessions: error.revokedSessions,
+      }, { status: 502 });
+    }
+
     console.error('Failed to reset attendance device:', error);
     return NextResponse.json({ error: 'Failed to reset attendance device' }, { status: 500 });
   }

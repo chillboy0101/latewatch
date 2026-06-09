@@ -9,6 +9,11 @@ import {
   SHARED_ATTENDANCE_DEVICE_RESULT,
 } from '@/lib/attendance-device-security';
 import { writeAuditEvent } from '@/lib/audit';
+import {
+  isStaffSessionRevocationError,
+  revokeStaffLoginSessions,
+  type StaffSessionRevocationResult,
+} from '@/lib/clerk-session-revocation';
 import { disableActivePushSubscriptionsForStaff } from '@/lib/push-subscriptions';
 import { publishRealtime } from '@/lib/realtime';
 
@@ -51,6 +56,7 @@ export async function PATCH(
     }
 
     const [member] = await db.select({
+      email: staff.email,
       fullName: staff.fullName,
       id: staff.id,
     })
@@ -67,6 +73,8 @@ export async function PATCH(
     const now = new Date();
     let disabledPushSubscriptions = 0;
     let nextDevice: typeof staffDevice.$inferSelect | null = beforeDevice || null;
+    let revokedSessions = 0;
+    let sessionRevocation: StaffSessionRevocationResult | null = null;
 
     if (action === 'approve') {
       const sharedDeviceOwner = await findSharedAttendanceDeviceOwner({
@@ -98,6 +106,12 @@ export async function PATCH(
           result: SHARED_ATTENDANCE_DEVICE_RESULT,
         }, { status: 409 });
       }
+
+      sessionRevocation = await revokeStaffLoginSessions({
+        deviceUserId: beforeDevice?.userId,
+        staffEmail: member?.email,
+      });
+      revokedSessions = sessionRevocation.revokedSessions;
 
       const deviceValues = {
         deviceHash: transfer.deviceHash,
@@ -149,6 +163,8 @@ export async function PATCH(
         disabledPushSubscriptions,
         device: nextDevice,
         request: reviewedRequest,
+        revokedSessions,
+        sessionRevocation,
         staffName: member?.fullName || null,
       },
       actor: { email: actorEmail, id: user.id },
@@ -163,10 +179,21 @@ export async function PATCH(
     return NextResponse.json({
       disabledPushSubscriptions,
       device: nextDevice,
+      revokedSessions,
       request: reviewedRequest,
+      sessionRevocation,
       success: true,
     });
   } catch (error) {
+    if (isStaffSessionRevocationError(error)) {
+      console.error('Failed to revoke staff login sessions during device transfer approval:', error);
+      return NextResponse.json({
+        error: 'Could not revoke staff login sessions. Try again before approving the device transfer.',
+        result: 'SESSION_REVOCATION_FAILED',
+        revokedSessions: error.revokedSessions,
+      }, { status: 502 });
+    }
+
     console.error('Failed to review device transfer:', error);
     return NextResponse.json({ error: 'Failed to review device transfer' }, { status: 500 });
   }

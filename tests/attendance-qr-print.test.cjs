@@ -14,6 +14,7 @@ const notificationsApiPath = path.join(__dirname, '../src/app/api/notifications/
 const generalPardonApiPath = path.join(__dirname, '../src/app/api/attendance/permissions/general-pardon/route.ts');
 const reconciliationPath = path.join(__dirname, '../src/lib/attendance-permission-reconciliation.ts');
 const attendanceDeviceSecurityLibPath = path.join(__dirname, '../src/lib/attendance-device-security.ts');
+const clerkSessionRevocationLibPath = path.join(__dirname, '../src/lib/clerk-session-revocation.ts');
 const pushSubscriptionsLibPath = path.join(__dirname, '../src/lib/push-subscriptions.ts');
 
 test('attendance QR print sheet does not show the raw install URL text', () => {
@@ -274,6 +275,25 @@ test('attendance device reset also disables old push notification subscriptions'
   assert.match(page, /Reminders must be enabled again on the new device/);
 });
 
+test('attendance device reset revokes staff Clerk sessions before device cleanup', () => {
+  const route = fs.readFileSync(attendanceDeviceRoutePath, 'utf8');
+  const helper = fs.readFileSync(clerkSessionRevocationLibPath, 'utf8');
+
+  assert.match(helper, /createClerkClient/);
+  assert.match(helper, /client\.users\.getUser\(userId\)/);
+  assert.match(helper, /findUserByEmail\(client, input\.staffEmail\)/);
+  assert.match(helper, /client\.sessions\.getSessionList\(\{[\s\S]*status: 'active'[\s\S]*userId/);
+  assert.match(helper, /client\.sessions\.revokeSession\(session\.id\)/);
+  assert.match(helper, /StaffSessionRevocationError/);
+  assert.match(route, /revokeStaffLoginSessions\(\{\s*deviceUserId: before\?\.userId,\s*staffEmail: member\.email/);
+  assert.match(route, /revokedSessions/);
+  assert.match(route, /sessionRevocation/);
+  assert.match(route, /SESSION_REVOCATION_FAILED/);
+  assert.ok(route.indexOf('revokeStaffLoginSessions({') < route.indexOf('disableActivePushSubscriptionsForStaff(staffId, now)'));
+  assert.ok(route.indexOf('revokeStaffLoginSessions({') < route.indexOf('if (!before)'));
+  assert.ok(route.indexOf('revokeStaffLoginSessions({') < route.indexOf('await db.delete(staffDevice)'));
+});
+
 test('device transfer approval disables push subscriptions but rejection does not', () => {
   const route = fs.readFileSync(deviceTransferRoutePath, 'utf8');
   const page = fs.readFileSync(attendancePagePath, 'utf8');
@@ -293,6 +313,20 @@ test('device transfer approval disables push subscriptions but rejection does no
   assert.match(notifications, /Device transfer approved/);
   assert.match(notifications, /Device transfer rejected/);
   assert.match(notifications, /Reminders must be enabled again on the new device/);
+});
+
+test('device transfer approval revokes staff Clerk sessions but rejection does not', () => {
+  const route = fs.readFileSync(deviceTransferRoutePath, 'utf8');
+
+  assert.match(route, /revokeStaffLoginSessions\(\{\s*deviceUserId: beforeDevice\?\.userId,\s*staffEmail: member\?\.email/);
+  assert.match(route, /let revokedSessions = 0/);
+  assert.match(route, /let sessionRevocation: StaffSessionRevocationResult \| null = null/);
+  assert.match(route, /revokedSessions/);
+  assert.match(route, /sessionRevocation/);
+  assert.match(route, /SESSION_REVOCATION_FAILED/);
+  assert.ok(route.indexOf('revokeStaffLoginSessions({') < route.indexOf('const deviceValues = {'));
+  assert.ok(route.indexOf('revokeStaffLoginSessions({') < route.indexOf('await db.insert(staffDevice)'));
+  assert.doesNotMatch(route, /action === 'reject'[\s\S]{0,400}revokeStaffLoginSessions/);
 });
 
 test('check-in status returns current device transfer review state', () => {
