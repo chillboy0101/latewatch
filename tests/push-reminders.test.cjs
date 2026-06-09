@@ -23,6 +23,7 @@ const pushClientLibPath = path.join(root, 'src/lib/push-client.ts');
 const pushReminderToggleConfirmationLibPath = path.join(root, 'src/lib/push-reminder-toggle-confirmation.ts');
 const pushReminderLibPath = path.join(root, 'src/lib/push-reminders.ts');
 const reminderCronGuardPath = path.join(root, 'src/lib/reminder-cron-guard.ts');
+const cronJobOrgScriptPath = path.join(root, 'scripts/setup-cron-job-org-reminders.mjs');
 const attendanceLibPath = path.join(root, 'src/lib/attendance.ts');
 const serviceWorkerPath = path.join(root, 'public/sw.js');
 const vercelPath = path.join(root, 'vercel.json');
@@ -33,6 +34,7 @@ test('push reminder package, schema, migration, and seed repair are defined', ()
   const seedMigration = fs.readFileSync(seedMigrationPath, 'utf8');
 
   assert.ok(pkg.dependencies?.['web-push']);
+  assert.equal(pkg.scripts?.['cronjob-org:reminders'], 'node scripts/setup-cron-job-org-reminders.mjs');
   assert.equal(fs.existsSync(migrationPath), true);
   const migration = fs.readFileSync(migrationPath, 'utf8');
 
@@ -44,6 +46,26 @@ test('push reminder package, schema, migration, and seed repair are defined', ()
   assert.match(migration, /CREATE TABLE IF NOT EXISTS push_reminder_delivery/);
   assert.match(seedMigration, /CREATE TABLE IF NOT EXISTS push_subscription/);
   assert.match(seedMigration, /CREATE TABLE IF NOT EXISTS push_reminder_delivery/);
+});
+
+test('cron-job.org setup script creates reminder catch-up jobs with protected headers', () => {
+  assert.equal(fs.existsSync(cronJobOrgScriptPath), true);
+  const source = fs.readFileSync(cronJobOrgScriptPath, 'utf8');
+
+  assert.match(source, /https:\/\/api\.cron-job\.org/);
+  assert.match(source, /CRONJOB_ORG_API_KEY/);
+  assert.match(source, /CRON_SECRET/);
+  assert.match(source, /LateWatch morning reminder catch-up/);
+  assert.match(source, /\/api\/attendance\/reminders\/morning/);
+  assert.match(source, /hours: \[8, 9, 10, 11, 12, 13, 14, 15, 16\]/);
+  assert.match(source, /LateWatch sign-out reminder catch-up/);
+  assert.match(source, /\/api\/attendance\/reminders\/sign-out/);
+  assert.match(source, /hours: \[16, 17, 18, 19, 20, 21, 22, 23\]/);
+  assert.match(source, /wdays: \[1, 2, 3, 4, 5\]/);
+  assert.match(source, /Authorization: `Bearer \$\{CRON_SECRET\}`/);
+  assert.match(source, /'x-latewatch-cron': 'external'/);
+  assert.match(source, /method: 'PUT'/);
+  assert.match(source, /method: 'PATCH'/);
 });
 
 test('check-in page replaces auto attendance controls with reminder notification controls', () => {
