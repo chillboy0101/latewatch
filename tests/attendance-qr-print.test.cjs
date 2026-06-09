@@ -302,3 +302,13 @@ test('check-in status returns current device transfer review state', () => {
   assert.match(source, /const statusTransfer = pendingTransfer \|\| currentDeviceTransfer \|\| null/);
   assert.match(source, /transferRequest: statusTransfer/);
 });
+
+test('device transfer request still requires verified office location', () => {
+  const source = fs.readFileSync(attendanceCheckInApiPath, 'utf8');
+
+  assert.match(source, /const locationValidation = validateAttendanceLocation/);
+  assert.match(source, /if \(!locationValidation\.ok\)/);
+  assert.match(source, /locationValidation\.message/);
+  assert.ok(source.indexOf('if (!locationValidation.ok)') < source.indexOf("if (action === 'request_device_transfer')"));
+  assert.match(source, /body\?\.action === 'request_device_transfer'/);
+});

@@ -976,7 +976,13 @@ export default function CheckInPage() {
   }, [deviceToken, fetchPushReminderStatus, getPushReminderPublicKey, pushReminderStatus]);
 
   async function requestDeviceTransfer() {
-    if (!deviceToken) return;
+    if (!deviceToken) {
+      setMessage({
+        type: 'error',
+        text: 'This browser could not be identified. Refresh the page and try again.',
+      });
+      return;
+    }
 
     setRequestingTransfer(true);
     setMessage(null);
@@ -1203,13 +1209,17 @@ export default function CheckInPage() {
                 {status?.device?.registered && !status.device.trusted && (
                   <Button
                     className="h-10 w-full gap-2 text-sm sm:h-11 sm:text-base"
-                    disabled={requestingTransfer || transferRequestPending || locationBlocksAction}
+                    disabled={requestingTransfer || transferRequestPending}
                     onClick={requestDeviceTransfer}
                     type="button"
                     variant="outline"
                   >
                     {requestingTransfer ? <Loader2 className="h-5 w-5 animate-spin" /> : <ShieldCheck className="h-5 w-5" />}
-                    {transferRequestPending ? 'Transfer Request Pending' : 'Request Device Transfer'}
+                    {requestingTransfer
+                      ? 'Checking location...'
+                      : transferRequestPending
+                        ? 'Transfer Request Pending'
+                        : 'Request Device Transfer'}
                   </Button>
                 )}
               </div>
