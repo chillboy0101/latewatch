@@ -1,12 +1,14 @@
 import { currentUser } from '@clerk/nextjs/server';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, ne } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { pushSubscription } from '@/db/schema';
+import { pushSubscription, staffDevice } from '@/db/schema';
 import { getOrAutoLinkStaffByEmail } from '@/lib/attendance';
+import { getDeviceTokenFromRequest, hashDeviceToken } from '@/lib/device-binding';
 import { getVapidPublicKey, hasVapidConfig } from '@/lib/push-reminders';
 
 export const dynamic = 'force-dynamic';
+const UNTRUSTED_REMINDER_DEVICE_ERROR = 'Transfer this device before changing reminder notifications.';
 
 function getUserFullName(user: NonNullable<Awaited<ReturnType<typeof currentUser>>>) {
   return user.fullName
@@ -54,6 +56,53 @@ async function getActivePushSubscription(staffId: string, userId: string) {
   return subscription || null;
 }
 
+async function requireTrustedAttendanceDevice(
+  request: NextRequest,
+  staffId: string,
+  body?: Record<string, unknown>,
+) {
+  const deviceToken = getDeviceTokenFromRequest(request, body);
+  if (!deviceToken) {
+    return NextResponse.json({ error: UNTRUSTED_REMINDER_DEVICE_ERROR }, { status: 403 });
+  }
+
+  const deviceHash = hashDeviceToken(deviceToken);
+  const [device] = await db.select()
+    .from(staffDevice)
+    .where(eq(staffDevice.staffId, staffId))
+    .limit(1);
+
+  if (!device || device.deviceHash !== deviceHash) {
+    return NextResponse.json({ error: UNTRUSTED_REMINDER_DEVICE_ERROR }, { status: 403 });
+  }
+
+  return null;
+}
+
+async function disableOtherActivePushSubscriptions(input: {
+  endpoint: string;
+  staffId: string;
+  userId: string;
+  now: Date;
+}) {
+  const disabledRows = await db.update(pushSubscription)
+    .set({
+      disabledAt: input.now,
+      signInEnabled: false,
+      signOutEnabled: false,
+      updatedAt: input.now,
+    })
+    .where(and(
+      eq(pushSubscription.staffId, input.staffId),
+      eq(pushSubscription.userId, input.userId),
+      isNull(pushSubscription.disabledAt),
+      ne(pushSubscription.endpoint, input.endpoint),
+    ))
+    .returning({ id: pushSubscription.id });
+
+  return disabledRows.length;
+}
+
 async function resolveStaffForPush() {
   const user = await currentUser();
   if (!user) {
@@ -96,6 +145,9 @@ export async function PUT(request: NextRequest) {
   if (resolved.error) return resolved.error;
 
   const body = await request.json().catch(() => ({}));
+  const trustedDeviceError = await requireTrustedAttendanceDevice(request, resolved.staffMember.id, body);
+  if (trustedDeviceError) return trustedDeviceError;
+
   const browserSubscription = body?.subscription;
   const endpoint = typeof browserSubscription?.endpoint === 'string' ? browserSubscription.endpoint : '';
   const p256dh = typeof browserSubscription?.keys?.p256dh === 'string' ? browserSubscription.keys.p256dh : '';
@@ -106,6 +158,13 @@ export async function PUT(request: NextRequest) {
   }
 
   const now = new Date();
+  await disableOtherActivePushSubscriptions({
+    endpoint,
+    now,
+    staffId: resolved.staffMember.id,
+    userId: resolved.user.id,
+  });
+
   const values = {
     auth,
     disabledAt: null,
@@ -137,6 +196,9 @@ export async function DELETE(request: NextRequest) {
   if (resolved.error) return resolved.error;
 
   const body = await request.json().catch(() => ({}));
+  const trustedDeviceError = await requireTrustedAttendanceDevice(request, resolved.staffMember.id, body);
+  if (trustedDeviceError) return trustedDeviceError;
+
   const endpoint = typeof body?.endpoint === 'string' ? body.endpoint : null;
   const now = new Date();
 

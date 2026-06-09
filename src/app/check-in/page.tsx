@@ -823,6 +823,10 @@ export default function CheckInPage() {
     setMessage(null);
 
     try {
+      if (!deviceToken) {
+        throw new Error('Transfer this device before changing reminder notifications.');
+      }
+
       const currentEndpoint = pushReminderStatus?.subscription?.endpoint || null;
       const previousReminderState = {
         signInEnabled: Boolean(pushReminderStatus?.subscription?.signInEnabled && !pushReminderStatus.subscription.disabledAt),
@@ -835,8 +839,11 @@ export default function CheckInPage() {
         await browserSubscription?.unsubscribe();
 
         const response = await fetch('/api/attendance/check-in/push-subscription', {
-          body: JSON.stringify({ endpoint: currentEndpoint }),
-          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deviceToken, endpoint: currentEndpoint }),
+          headers: {
+            'Content-Type': 'application/json',
+            'x-latewatch-device': deviceToken,
+          },
           method: 'DELETE',
         });
         const body = await response.json().catch(() => ({}));
@@ -871,11 +878,15 @@ export default function CheckInPage() {
 
       const response = await fetch('/api/attendance/check-in/push-subscription', {
         body: JSON.stringify({
+          deviceToken,
           signInEnabled: next.signInEnabled,
           signOutEnabled: next.signOutEnabled,
           subscription: browserSubscription.toJSON(),
         }),
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-latewatch-device': deviceToken,
+        },
         method: 'PUT',
       });
       const body = await response.json().catch(() => ({}));
@@ -895,7 +906,7 @@ export default function CheckInPage() {
     } finally {
       setSavingPushReminder(false);
     }
-  }, [fetchPushReminderStatus, getPushReminderPublicKey, pushReminderStatus]);
+  }, [deviceToken, fetchPushReminderStatus, getPushReminderPublicKey, pushReminderStatus]);
 
   async function requestDeviceTransfer() {
     if (!deviceToken) return;
@@ -962,6 +973,7 @@ export default function CheckInPage() {
   const locationBlocksAction = Boolean(status?.locationConfigured && liveLocation.blocking);
   const signInReminderEnabled = Boolean(pushReminderStatus?.subscription?.signInEnabled && !pushReminderStatus.subscription.disabledAt);
   const signOutReminderEnabled = Boolean(pushReminderStatus?.subscription?.signOutEnabled && !pushReminderStatus.subscription.disabledAt);
+  const reminderControlsLocked = Boolean(!status?.device?.registered || !status.device.trusted);
 
   return (
     <main className="h-dvh overflow-hidden bg-background px-3 py-3 text-foreground sm:px-6 sm:py-4">
@@ -1078,7 +1090,7 @@ export default function CheckInPage() {
                 )}
 
                 <ReminderNotificationPanel
-                  disabled={!status?.staff || pushReminderLoading || savingPushReminder}
+                  disabled={!status?.staff || reminderControlsLocked || pushReminderLoading || savingPushReminder}
                   loading={pushReminderLoading || savingPushReminder}
                   notificationPermission={notificationPermission}
                   signInEnabled={signInReminderEnabled}
