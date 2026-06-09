@@ -14,6 +14,7 @@ const checkInPagePath = path.join(root, 'src/app/check-in/page.tsx');
 const attendancePagePath = path.join(root, 'src/app/attendance/page.tsx');
 const pushApiPath = path.join(root, 'src/app/api/attendance/check-in/push-subscription/route.ts');
 const pushTestApiPath = path.join(root, 'src/app/api/attendance/check-in/push-subscription/test/route.ts');
+const cronJobOrgSetupApiPath = path.join(root, 'src/app/api/admin/cron-job-org/reminders/setup/route.ts');
 const morningReminderRoutePath = path.join(root, 'src/app/api/attendance/reminders/morning/route.ts');
 const signInReminderRoutePath = path.join(root, 'src/app/api/attendance/reminders/sign-in/route.ts');
 const signOutReminderRoutePath = path.join(root, 'src/app/api/attendance/reminders/sign-out/route.ts');
@@ -55,17 +56,44 @@ test('cron-job.org setup script creates reminder catch-up jobs with protected he
   assert.match(source, /https:\/\/api\.cron-job\.org/);
   assert.match(source, /CRONJOB_ORG_API_KEY/);
   assert.match(source, /CRON_SECRET/);
-  assert.match(source, /LateWatch morning reminder catch-up/);
+  assert.match(source, /LateWatch morning reminder 8AM catch-up/);
+  assert.match(source, /LateWatch morning reminder daytime catch-up/);
   assert.match(source, /\/api\/attendance\/reminders\/morning/);
-  assert.match(source, /hours: \[8, 9, 10, 11, 12, 13, 14, 15, 16\]/);
-  assert.match(source, /LateWatch sign-out reminder catch-up/);
+  assert.match(source, /hours: \[8\]/);
+  assert.match(source, /minutes: \[15, 20, 25, 30, 35, 40, 45, 50, 55\]/);
+  assert.match(source, /hours: \[9, 10, 11, 12, 13, 14, 15, 16\]/);
+  assert.match(source, /LateWatch sign-out reminder 4PM catch-up/);
+  assert.match(source, /LateWatch sign-out reminder evening catch-up/);
   assert.match(source, /\/api\/attendance\/reminders\/sign-out/);
-  assert.match(source, /hours: \[16, 17, 18, 19, 20, 21, 22, 23\]/);
+  assert.match(source, /hours: \[16\]/);
+  assert.match(source, /minutes: \[30, 35, 40, 45, 50, 55\]/);
+  assert.match(source, /hours: \[17, 18, 19, 20, 21, 22, 23\]/);
   assert.match(source, /wdays: \[1, 2, 3, 4, 5\]/);
   assert.match(source, /Authorization: `Bearer \$\{CRON_SECRET\}`/);
   assert.match(source, /'x-latewatch-cron': 'external'/);
   assert.match(source, /method: 'PUT'/);
   assert.match(source, /method: 'PATCH'/);
+});
+
+test('admin cron-job.org setup API uses Vercel cron secret without exposing it', () => {
+  assert.equal(fs.existsSync(cronJobOrgSetupApiPath), true);
+  const source = fs.readFileSync(cronJobOrgSetupApiPath, 'utf8');
+
+  assert.match(source, /requireRole\(\['admin'\]\)/);
+  assert.match(source, /process\.env\.CRON_SECRET/);
+  assert.match(source, /body\?\.apiKey/);
+  assert.match(source, /process\.env\.CRONJOB_ORG_API_KEY/);
+  assert.match(source, /Authorization: `Bearer \$\{input\.cronSecret\}`/);
+  assert.match(source, /'x-latewatch-cron': 'external'/);
+  assert.match(source, /https:\/\/api\.cron-job\.org/);
+  assert.match(source, /method: 'PUT'/);
+  assert.match(source, /method: 'PATCH'/);
+  assert.match(source, /LateWatch morning reminder 8AM catch-up/);
+  assert.match(source, /LateWatch morning reminder daytime catch-up/);
+  assert.match(source, /LateWatch sign-out reminder 4PM catch-up/);
+  assert.match(source, /LateWatch sign-out reminder evening catch-up/);
+  assert.doesNotMatch(source, /console\.log\(.*apiKey/);
+  assert.doesNotMatch(source, /console\.log\(.*cronSecret/);
 });
 
 test('check-in page replaces auto attendance controls with reminder notification controls', () => {
