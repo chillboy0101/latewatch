@@ -58,6 +58,8 @@ test('cron-job.org setup script creates reminder catch-up jobs with protected he
   assert.match(source, /https:\/\/api\.cron-job\.org/);
   assert.match(source, /CRONJOB_ORG_API_KEY/);
   assert.match(source, /CRON_SECRET/);
+  assert.match(source, /CRON_JOB_ORG_WRITE_DELAY_MS = 750/);
+  assert.match(source, /await wait\(CRON_JOB_ORG_WRITE_DELAY_MS\)/);
   assert.match(source, /LateWatch morning reminder 8AM catch-up/);
   assert.match(source, /LateWatch morning reminder daytime catch-up/);
   assert.match(source, /\/api\/attendance\/reminders\/morning/);
@@ -100,6 +102,8 @@ test('admin cron-job.org setup API uses Vercel cron secret without exposing it',
   assert.match(helperSource, /request\.formData\(\)/);
   assert.match(helperSource, /body\?\.apiKey/);
   assert.match(helperSource, /process\.env\.CRONJOB_ORG_API_KEY/);
+  assert.match(helperSource, /CRON_JOB_ORG_WRITE_DELAY_MS = 750/);
+  assert.match(helperSource, /await wait\(CRON_JOB_ORG_WRITE_DELAY_MS\)/);
   assert.match(helperSource, /Authorization: `Bearer \$\{input\.cronSecret\}`/);
   assert.match(helperSource, /'x-latewatch-cron': 'external'/);
   assert.match(helperSource, /https:\/\/api\.cron-job\.org/);

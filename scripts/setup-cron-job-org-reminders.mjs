@@ -5,6 +5,7 @@ const APP_URL = process.env.LATEWATCH_APP_URL || 'https://latewatch.vercel.app';
 const API_KEY = process.env.CRONJOB_ORG_API_KEY;
 const CRON_SECRET = process.env.CRON_SECRET;
 
+const CRON_JOB_ORG_WRITE_DELAY_MS = 750;
 const EVERY_FIVE_MINUTES = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
 
 const jobs = [
@@ -118,6 +119,12 @@ async function cronJobOrgRequest(path, options = {}) {
   return body;
 }
 
+function wait(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 async function main() {
   requireEnv('CRONJOB_ORG_API_KEY', API_KEY);
   requireEnv('CRON_SECRET', CRON_SECRET);
@@ -129,6 +136,8 @@ async function main() {
   for (const job of jobs) {
     const payload = { job: jobPayload(job) };
     const existingJob = existingByTitle.get(job.title);
+
+    await wait(CRON_JOB_ORG_WRITE_DELAY_MS);
 
     if (existingJob?.jobId) {
       await cronJobOrgRequest(`/jobs/${existingJob.jobId}`, {

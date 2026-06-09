@@ -1,6 +1,7 @@
 import 'server-only';
 
 const API_BASE_URL = 'https://api.cron-job.org';
+const CRON_JOB_ORG_WRITE_DELAY_MS = 750;
 const EVERY_FIVE_MINUTES = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
 
 type CronJobOrgJobSummary = {
@@ -167,6 +168,12 @@ async function cronJobOrgRequest<T = Record<string, unknown>>(path: string, apiK
   return body as T;
 }
 
+function wait(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 export function appUrlFromSetupRequest(request: Request) {
   return (process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin).replace(/\/$/, '');
 }
@@ -251,6 +258,8 @@ export async function setupCronJobOrgReminderJobs(input: CronJobOrgSetupInput): 
   for (const job of cronJobOrgReminderJobs) {
     const payload = { job: jobPayload({ appUrl: input.appUrl, cronSecret: input.cronSecret, job }) };
     const existingJob = existingByTitle.get(job.title);
+
+    await wait(CRON_JOB_ORG_WRITE_DELAY_MS);
 
     if (existingJob?.jobId) {
       await cronJobOrgRequest(`/jobs/${existingJob.jobId}`, input.apiKey, {
