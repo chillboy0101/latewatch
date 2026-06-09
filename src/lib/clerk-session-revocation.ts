@@ -8,7 +8,14 @@ type ClerkUser = Awaited<ReturnType<ClerkClient['users']['getUser']>>;
 
 export type StaffSessionRevocationResult = {
   revokedSessions: number;
-  status: 'clerk_not_configured' | 'no_clerk_user' | 'no_session_id' | 'no_active_sessions' | 'revoked';
+  status:
+    | 'clerk_not_configured'
+    | 'no_clerk_user'
+    | 'no_session_id'
+    | 'no_active_sessions'
+    | 'keep_session_not_active'
+    | 'no_extra_sessions'
+    | 'revoked';
   userId: string | null;
 };
 
@@ -168,4 +175,57 @@ export async function revokeStaffLoginSessionById(input: {
       { revokedSessions: 0, userId: input.expectedUserId || 'unknown' },
     );
   }
+}
+
+export async function revokeStaffLoginSessionsExcept(input: {
+  deviceUserId?: string | null;
+  keepSessionId?: string | null;
+  staffEmail?: string | null;
+}): Promise<StaffSessionRevocationResult> {
+  const client = getClerkClient();
+  if (!client) {
+    return { revokedSessions: 0, status: 'clerk_not_configured', userId: null };
+  }
+
+  if (!input.keepSessionId) {
+    return { revokedSessions: 0, status: 'no_session_id', userId: input.deviceUserId || null };
+  }
+
+  const user: ClerkUser | null = await resolveClerkUser(client, {
+    deviceUserId: input.deviceUserId,
+    staffEmail: input.staffEmail,
+  });
+  if (!user) {
+    return { revokedSessions: 0, status: 'no_clerk_user', userId: null };
+  }
+
+  const sessions = await getActiveSessions(client, user.id);
+  if (sessions.length === 0) {
+    return { revokedSessions: 0, status: 'no_active_sessions', userId: user.id };
+  }
+
+  const keepSessionIsActive = sessions.some((session) => session.id === input.keepSessionId);
+  if (!keepSessionIsActive) {
+    return { revokedSessions: 0, status: 'keep_session_not_active', userId: user.id };
+  }
+
+  const sessionsToRevoke = sessions.filter((session) => session.id !== input.keepSessionId);
+  if (sessionsToRevoke.length === 0) {
+    return { revokedSessions: 0, status: 'no_extra_sessions', userId: user.id };
+  }
+
+  let revokedSessions = 0;
+  for (const session of sessionsToRevoke) {
+    try {
+      await client.sessions.revokeSession(session.id);
+      revokedSessions += 1;
+    } catch {
+      throw new StaffSessionRevocationError(
+        'Could not revoke old Clerk sessions while preserving the trusted device session.',
+        { revokedSessions, userId: user.id },
+      );
+    }
+  }
+
+  return { revokedSessions, status: 'revoked', userId: user.id };
 }

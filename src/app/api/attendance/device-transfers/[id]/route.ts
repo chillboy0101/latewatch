@@ -12,6 +12,7 @@ import { writeAuditEvent } from '@/lib/audit';
 import {
   isStaffSessionRevocationError,
   revokeStaffLoginSessionById,
+  revokeStaffLoginSessionsExcept,
   type StaffSessionRevocationResult,
 } from '@/lib/clerk-session-revocation';
 import { disableActivePushSubscriptionsForStaff } from '@/lib/push-subscriptions';
@@ -107,14 +108,67 @@ export async function PATCH(
         }, { status: 409 });
       }
 
+      if (!transfer.clerkSessionId) {
+        await writeAuditEvent({
+          entityType: 'staff_device_transfer',
+          entityId: transfer.id,
+          action: 'ALERT',
+          before: {
+            device: beforeDevice,
+            request: transfer,
+          },
+          after: {
+            result: 'TRANSFER_SESSION_REQUIRED',
+            staffName: member?.fullName || null,
+          },
+          actor: { email: actorEmail, id: user.id },
+          reason: 'attendance-device-transfer-session-required',
+        });
+
+        return NextResponse.json({
+          error: 'The new device login is no longer active. Ask the staff member to sign in on the new device and request transfer again.',
+          result: 'TRANSFER_SESSION_REQUIRED',
+        }, { status: 409 });
+      }
+
       const oldTrustedSessionId = beforeDevice?.clerkSessionId && beforeDevice.clerkSessionId !== transfer.clerkSessionId
         ? beforeDevice.clerkSessionId
         : null;
-      sessionRevocation = await revokeStaffLoginSessionById({
-        expectedUserId: beforeDevice?.userId || transfer.userId,
-        sessionId: oldTrustedSessionId,
-      });
+      sessionRevocation = oldTrustedSessionId
+        ? await revokeStaffLoginSessionById({
+          expectedUserId: beforeDevice?.userId || transfer.userId,
+          sessionId: oldTrustedSessionId,
+        })
+        : await revokeStaffLoginSessionsExcept({
+          deviceUserId: beforeDevice?.userId || transfer.userId,
+          keepSessionId: transfer.clerkSessionId,
+          staffEmail: member?.email,
+        });
       revokedSessions = sessionRevocation.revokedSessions;
+      if (sessionRevocation.status === 'keep_session_not_active') {
+        await writeAuditEvent({
+          entityType: 'staff_device_transfer',
+          entityId: transfer.id,
+          action: 'ALERT',
+          before: {
+            device: beforeDevice,
+            request: transfer,
+          },
+          after: {
+            result: 'TRANSFER_SESSION_NOT_ACTIVE',
+            sessionRevocation,
+            staffName: member?.fullName || null,
+          },
+          actor: { email: actorEmail, id: user.id },
+          reason: 'attendance-device-transfer-session-not-active',
+        });
+
+        return NextResponse.json({
+          error: 'The new device login is no longer active. Ask the staff member to sign in on the new device and request transfer again.',
+          result: 'TRANSFER_SESSION_NOT_ACTIVE',
+          sessionRevocation,
+        }, { status: 409 });
+      }
 
       const deviceValues = {
         clerkSessionId: transfer.clerkSessionId,

@@ -10,6 +10,7 @@
     "test": "node --test tests/*.test.cjs",
     "load:test": "node scripts/load-test-api.mjs",
     "clerk:role": "node scripts/set-clerk-role.mjs",
+    "clerk:sessions:cleanup": "node scripts/cleanup-staff-sessions.mjs",
     "clerk:staff-metadata": "node scripts/sync-clerk-staff-metadata.mjs",
     "cronjob-org:reminders": "node scripts/setup-cron-job-org-reminders.mjs",
     "penalties:recalculate": "node scripts/recalculate-regular-staff-penalties.mjs",

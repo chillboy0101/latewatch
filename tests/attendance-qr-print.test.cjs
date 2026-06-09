@@ -19,6 +19,8 @@ const pushSubscriptionsLibPath = path.join(__dirname, '../src/lib/push-subscript
 const schemaPath = path.join(__dirname, '../src/db/schema.ts');
 const seedMigrateRoutePath = path.join(__dirname, '../src/app/api/seed/migrate/route.ts');
 const attendanceDeviceSessionMigrationPath = path.join(__dirname, '../drizzle/0028_attendance_device_session_ids.sql');
+const clerkSessionCleanupScriptPath = path.join(__dirname, '../scripts/cleanup-staff-sessions.mjs');
+const packageJsonPath = path.join(__dirname, '../package.json');
 
 test('attendance QR print sheet does not show the raw install URL text', () => {
   const source = fs.readFileSync(attendancePagePath, 'utf8');
@@ -316,6 +318,8 @@ test('attendance transfer stores Clerk session ids for targeted old-device logou
   assert.match(checkInRoute, /clerkSessionId: input\.clerkSessionId \|\| device\.clerkSessionId/);
   assert.match(checkInRoute, /clerkSessionId: input\.clerkSessionId,/);
   assert.match(checkInRoute, /clerkSessionId: input\.clerkSessionId \|\| currentDevice\.clerkSessionId/);
+  assert.match(checkInRoute, /resolvedDevice\.clerkSessionId !== clerkSessionId/);
+  assert.match(checkInRoute, /await db\.update\(staffDevice\)[\s\S]*clerkSessionId,[\s\S]*where\(eq\(staffDevice\.id, resolvedDevice\.id\)\)/);
   assert.match(checkInRoute, /const transferValues = \{[\s\S]*clerkSessionId,[\s\S]*deviceHash: trustedDeviceHash/);
   assert.match(transferRoute, /const oldTrustedSessionId = beforeDevice\?\.clerkSessionId && beforeDevice\.clerkSessionId !== transfer\.clerkSessionId/);
   assert.match(transferRoute, /sessionId: oldTrustedSessionId/);
@@ -346,19 +350,46 @@ test('device transfer approval disables push subscriptions but rejection does no
   assert.match(notifications, /Reminders must be enabled again on the new device/);
 });
 
-test('device transfer approval revokes only the old trusted-device Clerk session', () => {
+test('device transfer approval revokes old sessions while preserving the new trusted-device session', () => {
   const route = fs.readFileSync(deviceTransferRoutePath, 'utf8');
+  const helper = fs.readFileSync(clerkSessionRevocationLibPath, 'utf8');
 
   assert.match(route, /revokeStaffLoginSessionById\(\{\s*expectedUserId: beforeDevice\?\.userId \|\| transfer\.userId,\s*sessionId: oldTrustedSessionId/);
+  assert.match(route, /revokeStaffLoginSessionsExcept\(\{\s*deviceUserId: beforeDevice\?\.userId \|\| transfer\.userId,\s*keepSessionId: transfer\.clerkSessionId,\s*staffEmail: member\?\.email/);
+  assert.match(route, /if \(!transfer\.clerkSessionId\)/);
+  assert.match(route, /TRANSFER_SESSION_REQUIRED/);
+  assert.match(route, /sessionRevocation\.status === 'keep_session_not_active'/);
+  assert.match(route, /TRANSFER_SESSION_NOT_ACTIVE/);
   assert.doesNotMatch(route, /revokeStaffLoginSessions\(/);
   assert.match(route, /let revokedSessions = 0/);
   assert.match(route, /let sessionRevocation: StaffSessionRevocationResult \| null = null/);
   assert.match(route, /revokedSessions/);
   assert.match(route, /sessionRevocation/);
   assert.match(route, /SESSION_REVOCATION_FAILED/);
+  assert.match(helper, /export async function revokeStaffLoginSessionsExcept/);
+  assert.match(helper, /const keepSessionIsActive = sessions\.some/);
+  assert.match(helper, /sessions\.filter\(\(session\) => session\.id !== input\.keepSessionId\)/);
+  assert.match(helper, /status: 'keep_session_not_active'/);
+  assert.match(helper, /status: 'no_extra_sessions'/);
   assert.ok(route.indexOf('revokeStaffLoginSessionById({') < route.indexOf('const deviceValues = {'));
-  assert.ok(route.indexOf('revokeStaffLoginSessionById({') < route.indexOf('await db.insert(staffDevice)'));
-  assert.doesNotMatch(route, /action === 'reject'[\s\S]{0,400}revokeStaffLoginSessionById/);
+  assert.ok(route.indexOf('revokeStaffLoginSessionsExcept({') < route.indexOf('const deviceValues = {'));
+  assert.ok(route.indexOf('const deviceValues = {') < route.indexOf('await db.insert(staffDevice)'));
+  assert.doesNotMatch(route, /action === 'reject'[\s\S]{0,600}revokeStaffLoginSession/);
+});
+
+test('Clerk session cleanup script is dry-run first and preserves trusted attendance sessions', () => {
+  const script = fs.readFileSync(clerkSessionCleanupScriptPath, 'utf8');
+  const packageJson = fs.readFileSync(packageJsonPath, 'utf8');
+
+  assert.match(packageJson, /"clerk:sessions:cleanup": "node scripts\/cleanup-staff-sessions\.mjs"/);
+  assert.match(script, /process\.argv\.includes\('--apply'\)/);
+  assert.match(script, /Dry run by default/);
+  assert.match(script, /sd\.clerk_session_id as "trustedSessionId"/);
+  assert.match(script, /skippedMissingTrustedSession/);
+  assert.match(script, /sessions\.some\(\(session\) => session\.id === staffMember\.trustedSessionId\)/);
+  assert.match(script, /sessions\.filter\(\(session\) => session\.id !== staffMember\.trustedSessionId\)/);
+  assert.match(script, /await clerk\.sessions\.revokeSession\(session\.id\)/);
+  assert.match(script, /Run with --apply/);
 });
 
 test('check-in status returns current device transfer review state', () => {

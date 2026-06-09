@@ -610,6 +610,28 @@ export async function GET(request: NextRequest) {
     let resolvedDevice = registeredDevice || null;
     const statusTransfer = pendingTransfer || currentDeviceTransfer || null;
 
+    if (
+      member
+      && resolvedDevice
+      && deviceHash
+      && resolvedDevice.deviceHash === deviceHash
+      && clerkSessionId
+      && resolvedDevice.clerkSessionId !== clerkSessionId
+    ) {
+      const [refreshedDevice] = await db.update(staffDevice)
+        .set({
+          clerkSessionId,
+          lastSeenAt: clock.now,
+          lastSeenIp: currentIp,
+          updatedAt: clock.now,
+          userAgent,
+          userId: user.id,
+        })
+        .where(eq(staffDevice.id, resolvedDevice.id))
+        .returning();
+      resolvedDevice = refreshedDevice || resolvedDevice;
+    }
+
     if (member && existingAttendance && !resolvedDevice && deviceHash) {
       const syncResult = await syncDeviceBinding({
         actorEmail,
