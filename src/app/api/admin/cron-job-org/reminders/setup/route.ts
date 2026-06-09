@@ -78,6 +78,37 @@ function appUrlFromRequest(request: NextRequest) {
   return (process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin).replace(/\/$/, '');
 }
 
+function setupFormHtml() {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LateWatch cron-job.org setup</title>
+    <style>
+      body { background: #050505; color: #f8fafc; font-family: Arial, sans-serif; margin: 0; }
+      main { margin: 48px auto; max-width: 560px; padding: 24px; }
+      label, input, button { display: block; width: 100%; }
+      label { color: #cbd5e1; font-size: 14px; margin-bottom: 8px; }
+      input { background: #111827; border: 1px solid #334155; border-radius: 6px; box-sizing: border-box; color: #f8fafc; font-size: 14px; padding: 12px; }
+      button { background: #2563eb; border: 0; border-radius: 6px; color: #fff; cursor: pointer; font-size: 15px; font-weight: 700; margin-top: 16px; padding: 12px; }
+      p { color: #94a3b8; line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>LateWatch cron-job.org setup</h1>
+      <p>This admin-only setup uses Vercel CRON_SECRET internally and does not display it.</p>
+      <form method="post">
+        <label for="apiKey">cron-job.org API key</label>
+        <input id="apiKey" name="apiKey" type="password" autocomplete="off" required />
+        <button type="submit">Create or update reminder jobs</button>
+      </form>
+    </main>
+  </body>
+</html>`;
+}
+
 function jobPayload(input: {
   appUrl: string;
   cronSecret: string;
@@ -132,12 +163,51 @@ async function cronJobOrgRequest<T = Record<string, unknown>>(path: string, apiK
   return body as T;
 }
 
-export async function POST(request: NextRequest) {
+async function requireAdmin() {
   try {
     await requireRole(['admin']);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unauthorized';
-    return NextResponse.json({ error: message }, { status: message === 'Forbidden' ? 403 : 401 });
+    return { error: message, status: message === 'Forbidden' ? 403 : 401 };
+  }
+
+  return null;
+}
+
+async function apiKeyFromRequest(request: NextRequest) {
+  const contentType = request.headers.get('content-type') || '';
+  if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
+    const formData = await request.formData();
+    const apiKey = formData.get('apiKey');
+
+    return typeof apiKey === 'string' && apiKey.trim() ? apiKey.trim() : process.env.CRONJOB_ORG_API_KEY;
+  }
+
+  const body = await request.json().catch(() => ({}));
+
+  return typeof body?.apiKey === 'string' && body.apiKey.trim()
+    ? body.apiKey.trim()
+    : process.env.CRONJOB_ORG_API_KEY;
+}
+
+export async function GET() {
+  const adminError = await requireAdmin();
+  if (adminError) {
+    return NextResponse.json({ error: adminError.error }, { status: adminError.status });
+  }
+
+  return new Response(setupFormHtml(), {
+    headers: {
+      'Cache-Control': 'no-store',
+      'Content-Type': 'text/html; charset=utf-8',
+    },
+  });
+}
+
+export async function POST(request: NextRequest) {
+  const adminError = await requireAdmin();
+  if (adminError) {
+    return NextResponse.json({ error: adminError.error }, { status: adminError.status });
   }
 
   const cronSecret = process.env.CRON_SECRET;
@@ -145,10 +215,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'CRON_SECRET is not configured in Vercel.' }, { status: 500 });
   }
 
-  const body = await request.json().catch(() => ({}));
-  const apiKey = typeof body?.apiKey === 'string' && body.apiKey.trim()
-    ? body.apiKey.trim()
-    : process.env.CRONJOB_ORG_API_KEY;
+  const apiKey = await apiKeyFromRequest(request);
 
   if (!apiKey) {
     return NextResponse.json({ error: 'cron-job.org API key is required.' }, { status: 400 });

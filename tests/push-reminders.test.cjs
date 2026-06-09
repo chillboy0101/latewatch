@@ -80,6 +80,10 @@ test('admin cron-job.org setup API uses Vercel cron secret without exposing it',
   const source = fs.readFileSync(cronJobOrgSetupApiPath, 'utf8');
 
   assert.match(source, /requireRole\(\['admin'\]\)/);
+  assert.match(source, /export async function GET/);
+  assert.match(source, /method="post"/);
+  assert.match(source, /name="apiKey"/);
+  assert.match(source, /request\.formData\(\)/);
   assert.match(source, /process\.env\.CRON_SECRET/);
   assert.match(source, /body\?\.apiKey/);
   assert.match(source, /process\.env\.CRONJOB_ORG_API_KEY/);
