@@ -357,6 +357,7 @@ export const staffDevice = pgTable('staff_device', {
   lastSeenAt: timestamp('last_seen_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => [
+  index('staff_device_device_hash_idx').on(table.deviceHash),
   index('staff_device_user_id_idx').on(table.userId),
   unique().on(table.staffId),
 ]);

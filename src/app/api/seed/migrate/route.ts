@@ -355,6 +355,7 @@ export async function POST() {
       )
     `);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS staff_device_staff_id_idx ON staff_device(staff_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS staff_device_device_hash_idx ON staff_device(device_hash)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS staff_device_user_id_idx ON staff_device(user_id)`);
     await db.execute(sql`ALTER TABLE staff_device ADD COLUMN IF NOT EXISTS device_label text`);
     await db.execute(sql`ALTER TABLE staff_device ADD COLUMN IF NOT EXISTS last_verified_at timestamp`);

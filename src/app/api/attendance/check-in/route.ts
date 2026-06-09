@@ -14,6 +14,11 @@ import {
   resolveClientIpInfo,
 } from '@/lib/attendance';
 import { syncLatenessEntriesFromAttendanceForDate } from '@/lib/attendance-lateness-sync';
+import {
+  findSharedAttendanceDeviceOwner,
+  SHARED_ATTENDANCE_DEVICE_MESSAGE,
+  SHARED_ATTENDANCE_DEVICE_RESULT,
+} from '@/lib/attendance-device-security';
 import { getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/attendance-permissions';
 import { getAuditActor, writeAuditEvent } from '@/lib/audit';
 import { computePenalty } from '@/lib/penalty-calculator';
@@ -31,6 +36,12 @@ import {
 } from '@/lib/work-hours';
 
 export const dynamic = 'force-dynamic';
+
+type StaffDeviceRow = typeof staffDevice.$inferSelect;
+type SharedAttendanceDeviceOwner = NonNullable<Awaited<ReturnType<typeof findSharedAttendanceDeviceOwner>>>;
+type DeviceBindingResult =
+  | { device: StaffDeviceRow; sharedDeviceOwner?: null; trusted: true }
+  | { device: StaffDeviceRow | null; sharedDeviceOwner?: SharedAttendanceDeviceOwner | null; trusted: false };
 
 function getUserFullName(user: NonNullable<Awaited<ReturnType<typeof currentUser>>>) {
   return user.fullName
@@ -411,7 +422,15 @@ async function syncDeviceBinding(input: {
   reason: string;
   staffMember: { fullName: string; id: string };
   userAgent: string | null;
-}) {
+}): Promise<DeviceBindingResult> {
+  const sharedDeviceOwner = await findSharedAttendanceDeviceOwner({
+    deviceHash: input.deviceHash,
+    staffId: input.staffMember.id,
+  });
+  if (sharedDeviceOwner) {
+    return { device: input.existingDevice || null, sharedDeviceOwner, trusted: false };
+  }
+
   const device = input.existingDevice || await db.select()
     .from(staffDevice)
     .where(eq(staffDevice.staffId, input.staffMember.id))
@@ -721,6 +740,36 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message, result, ...responseExtra }, { status });
   }
 
+  async function auditSharedAttendanceDeviceBlock(input: {
+    location?: LocationValidationResult | null;
+    reason: string;
+    sharedDeviceOwner: SharedAttendanceDeviceOwner;
+    staffMember: { fullName: string; id: string };
+  }) {
+    await writeAuditEvent({
+      entityType: 'staff_device',
+      entityId: input.staffMember.id,
+      action: 'ALERT',
+      before: null,
+      after: {
+        attemptedStaffId: input.staffMember.id,
+        attemptedStaffName: input.staffMember.fullName,
+        date: clock.dateKey,
+        deviceFingerprint: deviceHash?.slice(0, 12) || null,
+        linkedDeviceId: input.sharedDeviceOwner.deviceId,
+        linkedStaffId: input.sharedDeviceOwner.staffId,
+        linkedStaffName: input.sharedDeviceOwner.fullName,
+        location: locationForAudit(input.location),
+        networkIp: currentIp,
+        networkIpSource: currentIpInfo.source,
+        result: SHARED_ATTENDANCE_DEVICE_RESULT,
+        userEmail: actorEmail,
+      },
+      actor: { email: actor.actorEmail, id: actor.actorUserId },
+      reason: input.reason,
+    });
+  }
+
   try {
     if (actorEmail === 'unknown') {
       return block('NO_EMAIL', 'Your login account does not have an email address.');
@@ -802,6 +851,26 @@ export async function POST(request: NextRequest) {
     }
     const responseLocationPolicy = serializeLocationPolicy(officeLocation);
     const officeLocationExtra = { officeLocationId: officeLocation?.id };
+    const sharedDeviceOwner = await findSharedAttendanceDeviceOwner({
+      deviceHash: trustedDeviceHash,
+      staffId: staffMember.id,
+    });
+    if (sharedDeviceOwner) {
+      await auditSharedAttendanceDeviceBlock({
+        location: locationValidation,
+        reason: 'attendance-shared-device-block',
+        sharedDeviceOwner,
+        staffMember: { fullName: staffMember.fullName, id: staffMember.id },
+      });
+      return block(
+        SHARED_ATTENDANCE_DEVICE_RESULT,
+        SHARED_ATTENDANCE_DEVICE_MESSAGE,
+        403,
+        staffMember.id,
+        locationValidation,
+        officeLocationExtra,
+      );
+    }
 
     if (action === 'request_device_transfer') {
       if (!registeredDevice) {
@@ -940,8 +1009,12 @@ export async function POST(request: NextRequest) {
         userAgent,
       });
 
+      if (!syncResult.trusted) {
+        return false;
+      }
+
       resolvedDevice = syncResult.device;
-      return syncResult.trusted;
+      return true;
     }
 
     if (existingAttendance) {

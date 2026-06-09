@@ -13,6 +13,7 @@ const attendancePermissionsApiPath = path.join(__dirname, '../src/app/api/attend
 const notificationsApiPath = path.join(__dirname, '../src/app/api/notifications/route.ts');
 const generalPardonApiPath = path.join(__dirname, '../src/app/api/attendance/permissions/general-pardon/route.ts');
 const reconciliationPath = path.join(__dirname, '../src/lib/attendance-permission-reconciliation.ts');
+const attendanceDeviceSecurityLibPath = path.join(__dirname, '../src/lib/attendance-device-security.ts');
 const pushSubscriptionsLibPath = path.join(__dirname, '../src/lib/push-subscriptions.ts');
 
 test('attendance QR print sheet does not show the raw install URL text', () => {
@@ -311,4 +312,43 @@ test('device transfer request still requires verified office location', () => {
   assert.match(source, /locationValidation\.message/);
   assert.ok(source.indexOf('if (!locationValidation.ok)') < source.indexOf("if (action === 'request_device_transfer')"));
   assert.match(source, /body\?\.action === 'request_device_transfer'/);
+});
+
+test('attendance device binding rejects browser tokens already linked to another active staff member', () => {
+  const route = fs.readFileSync(attendanceCheckInApiPath, 'utf8');
+  const helper = fs.readFileSync(attendanceDeviceSecurityLibPath, 'utf8');
+
+  assert.match(helper, /findSharedAttendanceDeviceOwner/);
+  assert.match(helper, /eq\(staffDevice\.deviceHash, input\.deviceHash\)/);
+  assert.match(helper, /ne\(staffDevice\.staffId, input\.staffId\)/);
+  assert.match(helper, /or\(eq\(staff\.active, true\), isNull\(staff\.active\)\)/);
+  assert.match(helper, /or\(eq\(staff\.archived, false\), isNull\(staff\.archived\)\)/);
+  assert.match(route, /const sharedDeviceOwner = await findSharedAttendanceDeviceOwner\(\{\s*deviceHash: input\.deviceHash/);
+  assert.match(route, /SHARED_ATTENDANCE_DEVICE_MESSAGE/);
+  assert.match(route, /SHARED_ATTENDANCE_DEVICE_RESULT/);
+  assert.ok(route.indexOf('deviceHash: input.deviceHash') < route.indexOf('const [createdDevice] = await db.insert(staffDevice)'));
+});
+
+test('check-in and transfer request block reused attendance devices before binding or requesting transfer', () => {
+  const route = fs.readFileSync(attendanceCheckInApiPath, 'utf8');
+
+  const sharedDeviceCheck = route.indexOf('reason: \'attendance-shared-device-block\'');
+  assert.ok(sharedDeviceCheck > -1);
+  assert.ok(sharedDeviceCheck < route.indexOf("if (action === 'request_device_transfer')"));
+  assert.ok(sharedDeviceCheck < route.indexOf('async function syncTrustedDevice()'));
+  assert.match(route, /return block\(\s*SHARED_ATTENDANCE_DEVICE_RESULT,\s*SHARED_ATTENDANCE_DEVICE_MESSAGE,\s*403/);
+  assert.match(route, /entityType: 'staff_device'/);
+  assert.match(route, /linkedStaffId: input\.sharedDeviceOwner\.staffId/);
+});
+
+test('device transfer approval rejects shared attendance devices before upsert', () => {
+  const route = fs.readFileSync(deviceTransferRoutePath, 'utf8');
+
+  assert.match(route, /findSharedAttendanceDeviceOwner\(\{\s*deviceHash: transfer\.deviceHash,\s*staffId: transfer\.staffId/);
+  assert.match(route, /SHARED_ATTENDANCE_DEVICE_MESSAGE/);
+  assert.match(route, /SHARED_ATTENDANCE_DEVICE_RESULT/);
+  assert.match(route, /status: 409/);
+  assert.match(route, /reason: 'attendance-device-transfer-shared-device-block'/);
+  assert.ok(route.indexOf('const sharedDeviceOwner = await findSharedAttendanceDeviceOwner') < route.indexOf('const deviceValues = {'));
+  assert.ok(route.indexOf('error: SHARED_ATTENDANCE_DEVICE_MESSAGE') < route.indexOf('await db.insert(staffDevice)'));
 });

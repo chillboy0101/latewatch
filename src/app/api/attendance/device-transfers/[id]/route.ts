@@ -3,6 +3,11 @@ import { eq } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { deviceTransferRequest, staff, staffDevice } from '@/db/schema';
+import {
+  findSharedAttendanceDeviceOwner,
+  SHARED_ATTENDANCE_DEVICE_MESSAGE,
+  SHARED_ATTENDANCE_DEVICE_RESULT,
+} from '@/lib/attendance-device-security';
 import { writeAuditEvent } from '@/lib/audit';
 import { disableActivePushSubscriptionsForStaff } from '@/lib/push-subscriptions';
 import { publishRealtime } from '@/lib/realtime';
@@ -64,6 +69,36 @@ export async function PATCH(
     let nextDevice: typeof staffDevice.$inferSelect | null = beforeDevice || null;
 
     if (action === 'approve') {
+      const sharedDeviceOwner = await findSharedAttendanceDeviceOwner({
+        deviceHash: transfer.deviceHash,
+        staffId: transfer.staffId,
+      });
+      if (sharedDeviceOwner) {
+        await writeAuditEvent({
+          entityType: 'staff_device_transfer',
+          entityId: transfer.id,
+          action: 'ALERT',
+          before: {
+            device: beforeDevice,
+            request: transfer,
+          },
+          after: {
+            attemptedStaffId: transfer.staffId,
+            linkedDeviceId: sharedDeviceOwner.deviceId,
+            linkedStaffId: sharedDeviceOwner.staffId,
+            linkedStaffName: sharedDeviceOwner.fullName,
+            result: SHARED_ATTENDANCE_DEVICE_RESULT,
+          },
+          actor: { email: actorEmail, id: user.id },
+          reason: 'attendance-device-transfer-shared-device-block',
+        });
+
+        return NextResponse.json({
+          error: SHARED_ATTENDANCE_DEVICE_MESSAGE,
+          result: SHARED_ATTENDANCE_DEVICE_RESULT,
+        }, { status: 409 });
+      }
+
       const deviceValues = {
         deviceHash: transfer.deviceHash,
         deviceLabel: transfer.deviceLabel,
