@@ -160,9 +160,11 @@ type LiveLocation =
 type AttendanceAction = 'check_in' | 'sign_out';
 type BrowserNotificationPermission = NotificationPermission | 'unsupported';
 type LocalCatchUpReminderType = 'sign_in' | 'sign_out';
+type DeviceTransferReviewStatus = 'approved' | 'rejected';
 
 const CHECK_IN_FEEDBACK_DISMISS_MS = 4_000;
 const LOCAL_CATCH_UP_REMINDER_STORAGE_PREFIX = 'latewatch.local-reminder.v1';
+const DEVICE_TRANSFER_REVIEW_STORAGE_PREFIX = 'latewatch.device-transfer-review.v1';
 const SIGN_IN_REMINDER_START_MINUTE = 8 * 60 + 15;
 const SIGN_IN_REMINDER_END_MINUTE = 17 * 60;
 const SIGN_OUT_REMINDER_START_MINUTE = 16 * 60 + 30;
@@ -347,6 +349,8 @@ function localCatchUpReminderStorageKey(status: CheckInStatus, reminderType: Loc
 function getLocalCatchUpReminder(status: CheckInStatus | null, pushStatus: PushReminderStatus | null) {
   if (!status?.staff || status.isWeekend || status.isHoliday) return null;
   if (status.permission?.permissionType === 'absence') return null;
+  if (!status.device?.registered || !status.device.trusted) return null;
+  if (status.transferRequest?.status === 'pending') return null;
 
   const subscription = pushStatus?.subscription;
   if (!subscription || subscription.disabledAt) return null;
@@ -383,6 +387,50 @@ function getLocalCatchUpReminder(status: CheckInStatus | null, pushStatus: PushR
   }
 
   return null;
+}
+
+function deviceTransferReviewStorageKey(status: CheckInStatus, reviewStatus: DeviceTransferReviewStatus) {
+  return `${DEVICE_TRANSFER_REVIEW_STORAGE_PREFIX}:${status.staff?.id || 'unknown'}:${status.transferRequest?.id || 'unknown'}:${reviewStatus}`;
+}
+
+function deviceTransferReviewCopy(reviewStatus: DeviceTransferReviewStatus) {
+  if (reviewStatus === 'approved') {
+    return {
+      body: 'You can now use this browser for attendance. Enable reminders again on this device if needed.',
+      title: 'Device transfer approved',
+    };
+  }
+
+  return {
+    body: 'Ask an admin if this device should be reviewed again.',
+    title: 'Device transfer rejected',
+  };
+}
+
+async function showDeviceTransferReviewNotification(reviewStatus: DeviceTransferReviewStatus) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (!('serviceWorker' in navigator)) return;
+
+  try {
+    await navigator.serviceWorker.register('/sw.js');
+    const registration = await navigator.serviceWorker.ready;
+    if (typeof registration.showNotification !== 'function') return;
+
+    const copy = deviceTransferReviewCopy(reviewStatus);
+    await registration.showNotification(copy.title, {
+      badge: '/latewatch-logo.png',
+      body: copy.body,
+      data: {
+        source: 'device_transfer_review',
+        url: '/check-in',
+      },
+      icon: '/latewatch-logo.png',
+      requireInteraction: true,
+      tag: `latewatch-device-transfer-${reviewStatus}`,
+    });
+  } catch (error) {
+    console.warn('Device transfer review notification could not display:', error);
+  }
 }
 
 async function showLocalCatchUpReminder(reminder: NonNullable<ReturnType<typeof getLocalCatchUpReminder>>) {
@@ -558,6 +606,25 @@ export default function CheckInPage() {
       cancelled = true;
     };
   }, [notificationPermission, pushReminderStatus, status]);
+
+  useEffect(() => {
+    if (!status) return;
+
+    const reviewStatus = status?.transferRequest?.status;
+    if (reviewStatus !== 'approved' && reviewStatus !== 'rejected') return;
+
+    const storageKey = deviceTransferReviewStorageKey(status, reviewStatus);
+    if (window.localStorage.getItem(storageKey)) return;
+
+    window.localStorage.setItem(storageKey, new Date().toISOString());
+    setMessage({
+      type: reviewStatus === 'approved' ? 'success' : 'error',
+      text: reviewStatus === 'approved'
+        ? 'Device transfer approved. You can use this browser for attendance now.'
+        : 'Device transfer rejected. Ask an admin if this device should be reviewed again.',
+    });
+    void showDeviceTransferReviewNotification(reviewStatus);
+  }, [status]);
 
   const fetchStatus = useCallback(async (options?: { preserveMessage?: boolean; silent?: boolean }) => {
     if (!deviceToken) return;
@@ -974,6 +1041,7 @@ export default function CheckInPage() {
   const signInReminderEnabled = Boolean(pushReminderStatus?.subscription?.signInEnabled && !pushReminderStatus.subscription.disabledAt);
   const signOutReminderEnabled = Boolean(pushReminderStatus?.subscription?.signOutEnabled && !pushReminderStatus.subscription.disabledAt);
   const reminderControlsLocked = Boolean(!status?.device?.registered || !status.device.trusted);
+  const transferRequestPending = status?.transferRequest?.status === 'pending';
 
   return (
     <main className="h-dvh overflow-hidden bg-background px-3 py-3 text-foreground sm:px-6 sm:py-4">
@@ -1135,13 +1203,13 @@ export default function CheckInPage() {
                 {status?.device?.registered && !status.device.trusted && (
                   <Button
                     className="h-10 w-full gap-2 text-sm sm:h-11 sm:text-base"
-                    disabled={requestingTransfer || Boolean(status.transferRequest) || locationBlocksAction}
+                    disabled={requestingTransfer || transferRequestPending || locationBlocksAction}
                     onClick={requestDeviceTransfer}
                     type="button"
                     variant="outline"
                   >
                     {requestingTransfer ? <Loader2 className="h-5 w-5 animate-spin" /> : <ShieldCheck className="h-5 w-5" />}
-                    {status.transferRequest ? 'Transfer Request Pending' : 'Request Device Transfer'}
+                    {transferRequestPending ? 'Transfer Request Pending' : 'Request Device Transfer'}
                   </Button>
                 )}
               </div>

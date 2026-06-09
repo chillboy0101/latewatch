@@ -276,6 +276,7 @@ test('attendance device reset also disables old push notification subscriptions'
 test('device transfer approval disables push subscriptions but rejection does not', () => {
   const route = fs.readFileSync(deviceTransferRoutePath, 'utf8');
   const page = fs.readFileSync(attendancePagePath, 'utf8');
+  const notifications = fs.readFileSync(notificationsApiPath, 'utf8');
 
   assert.match(route, /disableActivePushSubscriptionsForStaff\(transfer\.staffId, now\)/);
   assert.match(route, /let disabledPushSubscriptions = 0/);
@@ -286,4 +287,18 @@ test('device transfer approval disables push subscriptions but rejection does no
   assert.match(page, /Device transfer rejected/);
   assert.match(page, /old notification device/);
   assert.match(page, /Reminders must be enabled again on the new device/);
+  assert.match(notifications, /staff_device_transfer/);
+  assert.match(notifications, /Device transfer requested/);
+  assert.match(notifications, /Device transfer approved/);
+  assert.match(notifications, /Device transfer rejected/);
+  assert.match(notifications, /Reminders must be enabled again on the new device/);
+});
+
+test('check-in status returns current device transfer review state', () => {
+  const source = fs.readFileSync(attendanceCheckInApiPath, 'utf8');
+
+  assert.match(source, /currentDeviceTransfer/);
+  assert.match(source, /eq\(deviceTransferRequest\.deviceHash, deviceHash\)/);
+  assert.match(source, /const statusTransfer = pendingTransfer \|\| currentDeviceTransfer \|\| null/);
+  assert.match(source, /transferRequest: statusTransfer/);
 });

@@ -148,6 +148,8 @@ test('check-in page replaces auto attendance controls with reminder notification
   assert.match(source, /getPushReminderPublicKey/);
   assert.match(source, /LOCAL_CATCH_UP_REMINDER_STORAGE_PREFIX/);
   assert.match(source, /getLocalCatchUpReminder\(status, pushReminderStatus\)/);
+  assert.match(source, /if \(!status\.device\?\.registered \|\| !status\.device\.trusted\) return null/);
+  assert.match(source, /if \(status\.transferRequest\?\.status === 'pending'\) return null/);
   assert.match(source, /localCatchUpReminderStorageKey\(status, reminder\.reminderType\)/);
   assert.match(source, /showLocalCatchUpReminder\(reminder\)/);
   assert.match(source, /window\.localStorage\.setItem\(storageKey, 'pending'\)/);
@@ -160,6 +162,12 @@ test('check-in page replaces auto attendance controls with reminder notification
   assert.match(source, /'x-latewatch-device': deviceToken/);
   assert.match(source, /JSON\.stringify\(\{ deviceToken, endpoint: currentEndpoint \}\)/);
   assert.match(source, /deviceToken,\s+signInEnabled: next\.signInEnabled/);
+  assert.match(source, /DEVICE_TRANSFER_REVIEW_STORAGE_PREFIX/);
+  assert.match(source, /device_transfer_review/);
+  assert.match(source, /Device transfer approved/);
+  assert.match(source, /const transferRequestPending = status\?\.transferRequest\?\.status === 'pending'/);
+  assert.match(source, /disabled=\{requestingTransfer \|\| transferRequestPending \|\| locationBlocksAction\}/);
+  assert.match(source, /\{transferRequestPending \? 'Transfer Request Pending' : 'Request Device Transfer'\}/);
   assert.doesNotMatch(source, /disabled=\{disabled \|\| !configured \|\| notificationPermission === 'unsupported'\}/);
   assert.match(source, /disabled=\{disabled \|\| notificationPermission === 'unsupported'\}/);
   assert.doesNotMatch(source, /AutoAttendancePanel/);

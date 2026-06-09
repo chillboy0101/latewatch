@@ -572,7 +572,18 @@ export async function GET(request: NextRequest) {
         .orderBy(desc(deviceTransferRequest.requestedAt))
         .limit(1)
       : [];
+    const [currentDeviceTransfer] = member && deviceHash
+      ? await db.select()
+        .from(deviceTransferRequest)
+        .where(and(
+          eq(deviceTransferRequest.staffId, member.id),
+          eq(deviceTransferRequest.deviceHash, deviceHash),
+        ))
+        .orderBy(desc(deviceTransferRequest.requestedAt))
+        .limit(1)
+      : [];
     let resolvedDevice = registeredDevice || null;
+    const statusTransfer = pendingTransfer || currentDeviceTransfer || null;
 
     if (member && existingAttendance && !resolvedDevice && deviceHash) {
       const syncResult = await syncDeviceBinding({
@@ -610,11 +621,11 @@ export async function GET(request: NextRequest) {
       permission: serializePermission(permission),
       staff: member ? { id: member.id, fullName: member.fullName, email: member.email } : null,
       time: clock.timeKey,
-      transferRequest: pendingTransfer
+      transferRequest: statusTransfer
         ? {
-            id: pendingTransfer.id,
-            requestedAt: pendingTransfer.requestedAt,
-            status: pendingTransfer.status,
+            id: statusTransfer.id,
+            requestedAt: statusTransfer.requestedAt,
+            status: statusTransfer.status,
           }
         : null,
     }), {

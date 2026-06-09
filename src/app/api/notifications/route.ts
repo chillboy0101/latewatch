@@ -134,6 +134,7 @@ function getNotificationHref(entityType: string) {
     case 'attendance_attempt':
     case 'attendance_permission':
     case 'staff_device':
+    case 'staff_device_transfer':
       return '/attendance';
     case 'office_network':
       return '/location';
@@ -159,6 +160,7 @@ function getCategory(entityType: string): NotificationCategory {
     case 'attendance_attempt':
     case 'attendance_permission':
     case 'staff_device':
+    case 'staff_device_transfer':
       return 'attendance';
     case 'calendar':
       return 'calendar';
@@ -349,6 +351,18 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
         );
       }
 
+      if (event.entityType === 'staff_device_transfer') {
+        return makeNotification(
+          event,
+          read,
+          'Device transfer requested',
+          `${afterData?.staffName || 'Staff member'} requested to use a new attendance device.`,
+          'alert',
+          'high',
+          { href: '/attendance' },
+        );
+      }
+
       if (event.entityType === 'calendar') {
         return makeNotification(
           event,
@@ -490,6 +504,18 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
         );
       }
 
+      if (event.entityType === 'staff_device_transfer') {
+        return makeNotification(
+          event,
+          read,
+          'Device transfer request updated',
+          `${afterData?.staffName || beforeData?.staffName || 'Staff member'} updated a device transfer request.`,
+          'info',
+          'normal',
+          { href: '/attendance' },
+        );
+      }
+
       return makeNotification(event, read, 'Record updated', `${getAuditEntityLabel(event.entityType)} was modified.`, 'info', 'normal');
 
     case 'DELETE':
@@ -568,6 +594,30 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
       );
 
     default:
+      if (operation === 'APPROVE' && event.entityType === 'staff_device_transfer') {
+        return makeNotification(
+          event,
+          read,
+          'Device transfer approved',
+          `${afterData?.staffName || beforeData?.staffName || 'Staff member'} can now use the approved attendance device. Reminders must be enabled again on the new device.`,
+          'success',
+          'normal',
+          { href: '/attendance' },
+        );
+      }
+
+      if (operation === 'REJECT' && event.entityType === 'staff_device_transfer') {
+        return makeNotification(
+          event,
+          read,
+          'Device transfer rejected',
+          `${afterData?.staffName || beforeData?.staffName || 'Staff member'} device transfer request was rejected.`,
+          'warning',
+          'high',
+          { href: '/attendance' },
+        );
+      }
+
       if (operation === 'ALERT' && event.entityType === 'attendance_attempt') {
         return makeNotification(
           event,

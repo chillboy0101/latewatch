@@ -51,6 +51,7 @@ const ENTITY_LABELS: Record<string, string> = {
   office_network: 'Office Network',
   staff: 'Staff Member',
   staff_device: 'Staff Device',
+  staff_device_transfer: 'Staff Device Transfer',
   system: 'System',
 };
 
