@@ -8,7 +8,7 @@ type ClerkUser = Awaited<ReturnType<ClerkClient['users']['getUser']>>;
 
 export type StaffSessionRevocationResult = {
   revokedSessions: number;
-  status: 'clerk_not_configured' | 'no_clerk_user' | 'no_active_sessions' | 'revoked';
+  status: 'clerk_not_configured' | 'no_clerk_user' | 'no_session_id' | 'no_active_sessions' | 'revoked';
   userId: string | null;
 };
 
@@ -131,4 +131,41 @@ export async function revokeStaffLoginSessions(input: {
   }
 
   return { revokedSessions, status: 'revoked', userId: user.id };
+}
+
+export async function revokeStaffLoginSessionById(input: {
+  expectedUserId?: string | null;
+  sessionId?: string | null;
+}): Promise<StaffSessionRevocationResult> {
+  const client = getClerkClient();
+  if (!client) {
+    return { revokedSessions: 0, status: 'clerk_not_configured', userId: null };
+  }
+
+  if (!input.sessionId) {
+    return { revokedSessions: 0, status: 'no_session_id', userId: input.expectedUserId || null };
+  }
+
+  try {
+    const session = await client.sessions.getSession(input.sessionId);
+    if (input.expectedUserId && session.userId !== input.expectedUserId) {
+      return { revokedSessions: 0, status: 'no_clerk_user', userId: session.userId };
+    }
+
+    if (session.status !== 'active') {
+      return { revokedSessions: 0, status: 'no_active_sessions', userId: session.userId };
+    }
+
+    await client.sessions.revokeSession(session.id);
+    return { revokedSessions: 1, status: 'revoked', userId: session.userId };
+  } catch (error) {
+    if (isNotFound(error)) {
+      return { revokedSessions: 0, status: 'no_active_sessions', userId: input.expectedUserId || null };
+    }
+
+    throw new StaffSessionRevocationError(
+      'Could not revoke the old trusted-device Clerk session for this staff member.',
+      { revokedSessions: 0, userId: input.expectedUserId || 'unknown' },
+    );
+  }
 }

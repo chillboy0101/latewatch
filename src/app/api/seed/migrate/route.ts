@@ -357,6 +357,7 @@ export async function POST() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS staff_device_staff_id_idx ON staff_device(staff_id)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS staff_device_device_hash_idx ON staff_device(device_hash)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS staff_device_user_id_idx ON staff_device(user_id)`);
+    await db.execute(sql`ALTER TABLE staff_device ADD COLUMN IF NOT EXISTS clerk_session_id text`);
     await db.execute(sql`ALTER TABLE staff_device ADD COLUMN IF NOT EXISTS device_label text`);
     await db.execute(sql`ALTER TABLE staff_device ADD COLUMN IF NOT EXISTS last_verified_at timestamp`);
     await db.execute(sql`ALTER TABLE staff_device ADD COLUMN IF NOT EXISTS last_verification_method text`);
@@ -387,6 +388,7 @@ export async function POST() {
         updated_at timestamp DEFAULT now()
       )
     `);
+    await db.execute(sql`ALTER TABLE device_transfer_request ADD COLUMN IF NOT EXISTS clerk_session_id text`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS device_transfer_request_staff_status_idx ON device_transfer_request(staff_id, status)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS device_transfer_request_status_idx ON device_transfer_request(status)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS staff_active_archived_idx ON staff(active, archived)`);

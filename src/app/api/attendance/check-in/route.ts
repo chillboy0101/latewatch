@@ -1,4 +1,4 @@
-import { currentUser } from '@clerk/nextjs/server';
+import { auth, currentUser } from '@clerk/nextjs/server';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
@@ -413,6 +413,7 @@ async function readActiveOfficeLocation() {
 async function syncDeviceBinding(input: {
   actorEmail: string;
   actorUserId: string;
+  clerkSessionId: string | null;
   currentIp: string;
   deviceHash: string;
   deviceLabel: string;
@@ -444,6 +445,7 @@ async function syncDeviceBinding(input: {
 
     const [updatedDevice] = await db.update(staffDevice)
       .set({
+        clerkSessionId: input.clerkSessionId || device.clerkSessionId,
         deviceLabel: input.deviceLabel,
         lastDistanceMeters: input.location?.distanceMeters == null ? null : input.location.distanceMeters.toString(),
         lastSeenAt: input.now,
@@ -462,6 +464,7 @@ async function syncDeviceBinding(input: {
 
   const [createdDevice] = await db.insert(staffDevice)
     .values({
+      clerkSessionId: input.clerkSessionId,
       deviceHash: input.deviceHash,
       deviceLabel: input.deviceLabel,
       lastDistanceMeters: input.location?.distanceMeters == null ? null : input.location.distanceMeters.toString(),
@@ -512,6 +515,7 @@ async function syncDeviceBinding(input: {
 
   const [updatedDevice] = await db.update(staffDevice)
     .set({
+      clerkSessionId: input.clerkSessionId || currentDevice.clerkSessionId,
       deviceLabel: input.deviceLabel,
       lastDistanceMeters: input.location?.distanceMeters == null ? null : input.location.distanceMeters.toString(),
       lastSeenAt: input.now,
@@ -530,11 +534,13 @@ async function syncDeviceBinding(input: {
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await auth();
     const user = await currentUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const clerkSessionId = session.sessionId || null;
     const actorEmails = getUserEmailAddresses(user);
     const actorEmail = actorEmails[0] || 'unknown';
     const actorFullName = getUserFullName(user);
@@ -608,6 +614,7 @@ export async function GET(request: NextRequest) {
       const syncResult = await syncDeviceBinding({
         actorEmail,
         actorUserId: user.id,
+        clerkSessionId,
         currentIp,
         deviceHash,
         deviceLabel: getDeviceLabel(null, userAgent),
@@ -657,11 +664,13 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const session = await auth();
   const user = await currentUser();
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const clerkSessionId = session.sessionId || null;
   const actorEmails = getUserEmailAddresses(user);
   const actorEmail = actorEmails[0] || 'unknown';
   const userId = user.id;
@@ -906,6 +915,7 @@ export async function POST(request: NextRequest) {
         .limit(1);
       const transferValues = {
         ...locationForDb(locationValidation),
+        clerkSessionId,
         deviceHash: trustedDeviceHash,
         deviceLabel,
         networkIp: currentIp,
@@ -998,6 +1008,7 @@ export async function POST(request: NextRequest) {
       const syncResult = await syncDeviceBinding({
         actorEmail: actor.actorEmail,
         actorUserId: userId,
+        clerkSessionId,
         currentIp,
         deviceHash: trustedDeviceHash,
         deviceLabel,

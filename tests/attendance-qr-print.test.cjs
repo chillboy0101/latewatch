@@ -16,6 +16,9 @@ const reconciliationPath = path.join(__dirname, '../src/lib/attendance-permissio
 const attendanceDeviceSecurityLibPath = path.join(__dirname, '../src/lib/attendance-device-security.ts');
 const clerkSessionRevocationLibPath = path.join(__dirname, '../src/lib/clerk-session-revocation.ts');
 const pushSubscriptionsLibPath = path.join(__dirname, '../src/lib/push-subscriptions.ts');
+const schemaPath = path.join(__dirname, '../src/db/schema.ts');
+const seedMigrateRoutePath = path.join(__dirname, '../src/app/api/seed/migrate/route.ts');
+const attendanceDeviceSessionMigrationPath = path.join(__dirname, '../drizzle/0028_attendance_device_session_ids.sql');
 
 test('attendance QR print sheet does not show the raw install URL text', () => {
   const source = fs.readFileSync(attendancePagePath, 'utf8');
@@ -294,6 +297,34 @@ test('attendance device reset revokes staff Clerk sessions before device cleanup
   assert.ok(route.indexOf('revokeStaffLoginSessions({') < route.indexOf('await db.delete(staffDevice)'));
 });
 
+test('attendance transfer stores Clerk session ids for targeted old-device logout', () => {
+  const schema = fs.readFileSync(schemaPath, 'utf8');
+  const seedMigration = fs.readFileSync(seedMigrateRoutePath, 'utf8');
+  const migration = fs.readFileSync(attendanceDeviceSessionMigrationPath, 'utf8');
+  const checkInRoute = fs.readFileSync(attendanceCheckInApiPath, 'utf8');
+  const transferRoute = fs.readFileSync(deviceTransferRoutePath, 'utf8');
+  const helper = fs.readFileSync(clerkSessionRevocationLibPath, 'utf8');
+
+  assert.match(schema, /clerkSessionId: text\('clerk_session_id'\)/);
+  assert.match(migration, /ALTER TABLE staff_device ADD COLUMN IF NOT EXISTS clerk_session_id text/);
+  assert.match(migration, /ALTER TABLE device_transfer_request ADD COLUMN IF NOT EXISTS clerk_session_id text/);
+  assert.match(seedMigration, /ALTER TABLE staff_device ADD COLUMN IF NOT EXISTS clerk_session_id text/);
+  assert.match(seedMigration, /ALTER TABLE device_transfer_request ADD COLUMN IF NOT EXISTS clerk_session_id text/);
+  assert.match(checkInRoute, /import \{ auth, currentUser \} from '@clerk\/nextjs\/server'/);
+  assert.equal((checkInRoute.match(/const session = await auth\(\);/g) || []).length, 2);
+  assert.match(checkInRoute, /const clerkSessionId = session\.sessionId \|\| null/);
+  assert.match(checkInRoute, /clerkSessionId: input\.clerkSessionId \|\| device\.clerkSessionId/);
+  assert.match(checkInRoute, /clerkSessionId: input\.clerkSessionId,/);
+  assert.match(checkInRoute, /clerkSessionId: input\.clerkSessionId \|\| currentDevice\.clerkSessionId/);
+  assert.match(checkInRoute, /const transferValues = \{[\s\S]*clerkSessionId,[\s\S]*deviceHash: trustedDeviceHash/);
+  assert.match(transferRoute, /const oldTrustedSessionId = beforeDevice\?\.clerkSessionId && beforeDevice\.clerkSessionId !== transfer\.clerkSessionId/);
+  assert.match(transferRoute, /sessionId: oldTrustedSessionId/);
+  assert.match(transferRoute, /clerkSessionId: transfer\.clerkSessionId/);
+  assert.match(helper, /export async function revokeStaffLoginSessionById/);
+  assert.match(helper, /client\.sessions\.getSession\(input\.sessionId\)/);
+  assert.match(helper, /status: 'no_session_id'/);
+});
+
 test('device transfer approval disables push subscriptions but rejection does not', () => {
   const route = fs.readFileSync(deviceTransferRoutePath, 'utf8');
   const page = fs.readFileSync(attendancePagePath, 'utf8');
@@ -315,18 +346,19 @@ test('device transfer approval disables push subscriptions but rejection does no
   assert.match(notifications, /Reminders must be enabled again on the new device/);
 });
 
-test('device transfer approval revokes staff Clerk sessions but rejection does not', () => {
+test('device transfer approval revokes only the old trusted-device Clerk session', () => {
   const route = fs.readFileSync(deviceTransferRoutePath, 'utf8');
 
-  assert.match(route, /revokeStaffLoginSessions\(\{\s*deviceUserId: beforeDevice\?\.userId,\s*staffEmail: member\?\.email/);
+  assert.match(route, /revokeStaffLoginSessionById\(\{\s*expectedUserId: beforeDevice\?\.userId \|\| transfer\.userId,\s*sessionId: oldTrustedSessionId/);
+  assert.doesNotMatch(route, /revokeStaffLoginSessions\(/);
   assert.match(route, /let revokedSessions = 0/);
   assert.match(route, /let sessionRevocation: StaffSessionRevocationResult \| null = null/);
   assert.match(route, /revokedSessions/);
   assert.match(route, /sessionRevocation/);
   assert.match(route, /SESSION_REVOCATION_FAILED/);
-  assert.ok(route.indexOf('revokeStaffLoginSessions({') < route.indexOf('const deviceValues = {'));
-  assert.ok(route.indexOf('revokeStaffLoginSessions({') < route.indexOf('await db.insert(staffDevice)'));
-  assert.doesNotMatch(route, /action === 'reject'[\s\S]{0,400}revokeStaffLoginSessions/);
+  assert.ok(route.indexOf('revokeStaffLoginSessionById({') < route.indexOf('const deviceValues = {'));
+  assert.ok(route.indexOf('revokeStaffLoginSessionById({') < route.indexOf('await db.insert(staffDevice)'));
+  assert.doesNotMatch(route, /action === 'reject'[\s\S]{0,400}revokeStaffLoginSessionById/);
 });
 
 test('check-in status returns current device transfer review state', () => {

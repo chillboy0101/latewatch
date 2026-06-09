@@ -11,7 +11,7 @@ import {
 import { writeAuditEvent } from '@/lib/audit';
 import {
   isStaffSessionRevocationError,
-  revokeStaffLoginSessions,
+  revokeStaffLoginSessionById,
   type StaffSessionRevocationResult,
 } from '@/lib/clerk-session-revocation';
 import { disableActivePushSubscriptionsForStaff } from '@/lib/push-subscriptions';
@@ -107,13 +107,17 @@ export async function PATCH(
         }, { status: 409 });
       }
 
-      sessionRevocation = await revokeStaffLoginSessions({
-        deviceUserId: beforeDevice?.userId,
-        staffEmail: member?.email,
+      const oldTrustedSessionId = beforeDevice?.clerkSessionId && beforeDevice.clerkSessionId !== transfer.clerkSessionId
+        ? beforeDevice.clerkSessionId
+        : null;
+      sessionRevocation = await revokeStaffLoginSessionById({
+        expectedUserId: beforeDevice?.userId || transfer.userId,
+        sessionId: oldTrustedSessionId,
       });
       revokedSessions = sessionRevocation.revokedSessions;
 
       const deviceValues = {
+        clerkSessionId: transfer.clerkSessionId,
         deviceHash: transfer.deviceHash,
         deviceLabel: transfer.deviceLabel,
         lastDistanceMeters: transfer.distanceMeters,
@@ -186,9 +190,9 @@ export async function PATCH(
     });
   } catch (error) {
     if (isStaffSessionRevocationError(error)) {
-      console.error('Failed to revoke staff login sessions during device transfer approval:', error);
+      console.error('Failed to revoke old trusted-device login session during device transfer approval:', error);
       return NextResponse.json({
-        error: 'Could not revoke staff login sessions. Try again before approving the device transfer.',
+        error: 'Could not revoke the old trusted-device login session. Try again before approving the device transfer.',
         result: 'SESSION_REVOCATION_FAILED',
         revokedSessions: error.revokedSessions,
       }, { status: 502 });
