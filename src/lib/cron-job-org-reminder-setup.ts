@@ -160,7 +160,8 @@ async function cronJobOrgRequest<T = Record<string, unknown>>(path: string, apiK
   const body = text ? JSON.parse(text) : {};
 
   if (!response.ok) {
-    throw new Error(`cron-job.org ${options.method || 'GET'} ${path} failed (${response.status})`);
+    const detail = text ? `: ${text.slice(0, 500)}` : '';
+    throw new Error(`cron-job.org ${options.method || 'GET'} ${path} failed (${response.status})${detail}`);
   }
 
   return body as T;

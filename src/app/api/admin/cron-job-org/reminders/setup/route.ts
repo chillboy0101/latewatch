@@ -62,6 +62,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Failed to configure cron-job.org reminder jobs:', error);
-    return NextResponse.json({ error: 'Failed to configure cron-job.org reminder jobs' }, { status: 500 });
+    return NextResponse.json({
+      detail: error instanceof Error ? error.message : 'Unknown error',
+      error: 'Failed to configure cron-job.org reminder jobs',
+    }, { status: 500 });
   }
 }
