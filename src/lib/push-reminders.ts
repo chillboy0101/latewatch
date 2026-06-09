@@ -31,6 +31,11 @@ type ReminderEligibilityInput = {
   };
 };
 
+type PushReminderDeliveryRow = {
+  createdAt?: Date | string | null;
+  status: string;
+};
+
 let vapidConfigured = false;
 
 const INVISIBLE_KEY_CHARS = /[\uFEFF\u200B-\u200D\u2060\s]/g;
@@ -188,7 +193,7 @@ export function isExpiredPushEndpoint(error: unknown) {
   return statusCode === 404 || statusCode === 410;
 }
 
-function isStalePendingDelivery(delivery: typeof pushReminderDelivery.$inferSelect) {
+function isStalePendingDelivery(delivery: PushReminderDeliveryRow) {
   if (delivery.status !== 'pending') return false;
 
   const createdAt = delivery.createdAt instanceof Date
