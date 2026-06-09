@@ -392,7 +392,7 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
         icon: '/latewatch-logo.png',
       }), {
         TTL: reminderPushTtlSeconds(reminderType, clock.timeKey),
-      }));
+      });
 
       await db.update(pushReminderDelivery)
         .set({
