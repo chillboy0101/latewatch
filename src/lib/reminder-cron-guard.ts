@@ -7,6 +7,8 @@ import { getAccraClock } from '@/lib/attendance';
 const EXTERNAL_CRON_HEADER = 'x-latewatch-cron';
 const EXTERNAL_CRON_HEADER_VALUE = 'external';
 const REMINDER_CRON_WINDOW_MINUTES = 30;
+const MORNING_REMINDER_CRON_WINDOW_MINUTES = 526;
+const SIGN_OUT_REMINDER_CRON_WINDOW_MINUTES = 450;
 const VERCEL_CRON_USER_AGENT = 'vercel-cron/1.0';
 
 export const REMINDER_CRON_SCHEDULES = {
@@ -14,21 +16,25 @@ export const REMINDER_CRON_SCHEDULES = {
     expectedSchedule: '15 8 * * *',
     scheduledHour: 8,
     scheduledMinute: 15,
+    windowMinutes: MORNING_REMINDER_CRON_WINDOW_MINUTES,
   },
   signIn: {
     expectedSchedule: '15 8 * * 1-5',
     scheduledHour: 8,
     scheduledMinute: 15,
+    windowMinutes: MORNING_REMINDER_CRON_WINDOW_MINUTES,
   },
   signOut: {
     expectedSchedule: '30 16 * * 1-5',
     scheduledHour: 16,
     scheduledMinute: 30,
+    windowMinutes: SIGN_OUT_REMINDER_CRON_WINDOW_MINUTES,
   },
   holiday: {
     expectedSchedule: '15 8 * * *',
     scheduledHour: 8,
     scheduledMinute: 15,
+    windowMinutes: MORNING_REMINDER_CRON_WINDOW_MINUTES,
   },
 } as const;
 

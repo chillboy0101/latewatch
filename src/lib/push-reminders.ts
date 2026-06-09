@@ -34,6 +34,8 @@ type ReminderEligibilityInput = {
 let vapidConfigured = false;
 
 const INVISIBLE_KEY_CHARS = /[\uFEFF\u200B-\u200D\u2060\s]/g;
+const MIN_REMINDER_PUSH_TTL_SECONDS = 5 * 60;
+const STALE_PENDING_DELIVERY_MS = 5 * 60 * 1000;
 
 function cleanEnvValue(value: string | undefined) {
   return (value || '')
@@ -135,6 +137,19 @@ function staffFirstName(staffName: string | null | undefined) {
     .join('-');
 }
 
+function secondsUntilAccraTime(timeKey: string, expiresAt: string) {
+  const [currentHour = '0', currentMinute = '0', currentSecond = '0'] = timeKey.split(':');
+  const [expiryHour = '0', expiryMinute = '0'] = expiresAt.split(':');
+  const currentSeconds = Number(currentHour) * 3600 + Number(currentMinute) * 60 + Number(currentSecond);
+  const expirySeconds = Number(expiryHour) * 3600 + Number(expiryMinute) * 60;
+
+  return Math.max(MIN_REMINDER_PUSH_TTL_SECONDS, expirySeconds - currentSeconds);
+}
+
+export function reminderPushTtlSeconds(reminderType: PushReminderType, timeKey: string) {
+  return secondsUntilAccraTime(timeKey, reminderType === 'sign_out' ? '23:59' : '17:00');
+}
+
 export function reminderCopy(
   reminderType: PushReminderType,
   staffName?: string | null,
@@ -171,6 +186,71 @@ export function isExpiredPushEndpoint(error: unknown) {
     : null;
 
   return statusCode === 404 || statusCode === 410;
+}
+
+function isStalePendingDelivery(delivery: typeof pushReminderDelivery.$inferSelect) {
+  if (delivery.status !== 'pending') return false;
+
+  const createdAt = delivery.createdAt instanceof Date
+    ? delivery.createdAt
+    : delivery.createdAt
+      ? new Date(delivery.createdAt)
+      : null;
+
+  return Boolean(createdAt && Date.now() - createdAt.getTime() >= STALE_PENDING_DELIVERY_MS);
+}
+
+async function reservePushReminderDelivery(input: {
+  date: string;
+  reminderType: PushReminderType;
+  staffId: string;
+  subscriptionId: string;
+}) {
+  const [delivery] = await db.insert(pushReminderDelivery)
+    .values({
+      date: input.date,
+      reminderType: input.reminderType,
+      staffId: input.staffId,
+      status: 'pending',
+      subscriptionId: input.subscriptionId,
+    })
+    .onConflictDoNothing({
+      target: [
+        pushReminderDelivery.subscriptionId,
+        pushReminderDelivery.date,
+        pushReminderDelivery.reminderType,
+      ],
+    })
+    .returning();
+
+  if (delivery) return delivery;
+
+  const [existingDelivery] = await db.select()
+    .from(pushReminderDelivery)
+    .where(and(
+      eq(pushReminderDelivery.subscriptionId, input.subscriptionId),
+      eq(pushReminderDelivery.date, input.date),
+      eq(pushReminderDelivery.reminderType, input.reminderType),
+    ))
+    .limit(1);
+
+  if (!existingDelivery || existingDelivery.status === 'sent' || existingDelivery.status === 'disabled') {
+    return null;
+  }
+
+  if (existingDelivery.status === 'pending' && !isStalePendingDelivery(existingDelivery)) {
+    return null;
+  }
+
+  const [retryDelivery] = await db.update(pushReminderDelivery)
+    .set({
+      error: null,
+      status: 'pending',
+    })
+    .where(eq(pushReminderDelivery.id, existingDelivery.id))
+    .returning();
+
+  return retryDelivery || null;
 }
 
 export async function sendAttendanceReminderBatch(reminderType: PushReminderType) {
@@ -277,22 +357,12 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
       continue;
     }
 
-    const [delivery] = await db.insert(pushReminderDelivery)
-      .values({
-        date,
-        reminderType,
-        staffId: row.staffId,
-        status: 'pending',
-        subscriptionId: row.subscriptionId,
-      })
-      .onConflictDoNothing({
-        target: [
-          pushReminderDelivery.subscriptionId,
-          pushReminderDelivery.date,
-          pushReminderDelivery.reminderType,
-        ],
-      })
-      .returning();
+    const delivery = await reservePushReminderDelivery({
+      date,
+      reminderType,
+      staffId: row.staffId,
+      subscriptionId: row.subscriptionId,
+    });
 
     if (!delivery) {
       summary.skipped += 1;
@@ -315,6 +385,10 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
           url: '/check-in',
         },
         icon: '/latewatch-logo.png',
+      }), {
+        TTL: reminderPushTtlSeconds(reminderType, clock.timeKey),
+        topic: copy.tag,
+        urgency: 'high',
       }));
 
       await db.update(pushReminderDelivery)

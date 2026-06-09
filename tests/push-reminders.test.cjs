@@ -116,6 +116,13 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.match(pushReminderLib, /base64UrlDecodedLength\(publicKey\) === 65/);
   assert.match(pushReminderLib, /base64UrlDecodedLength\(privateKey\) === 32/);
   assert.match(pushReminderLib, /webpush\.setVapidDetails\(subject, publicKey, privateKey\)/);
+  assert.match(pushReminderLib, /reminderPushTtlSeconds/);
+  assert.match(pushReminderLib, /TTL: reminderPushTtlSeconds\(reminderType, clock\.timeKey\)/);
+  assert.match(pushReminderLib, /urgency: 'high'/);
+  assert.match(pushReminderLib, /reservePushReminderDelivery/);
+  assert.match(pushReminderLib, /existingDelivery\.status === 'sent'/);
+  assert.match(pushReminderLib, /existingDelivery\.status === 'disabled'/);
+  assert.match(pushReminderLib, /existingDelivery\.status === 'pending' && !isStalePendingDelivery\(existingDelivery\)/);
   assert.match(morningRoute, /export async function GET\(request: NextRequest\)/);
   assert.match(signInRoute, /export async function GET\(request: NextRequest\)/);
   assert.match(signOutRoute, /export async function GET\(request: NextRequest\)/);
@@ -140,6 +147,10 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.doesNotMatch(cronGuard, /if \(cronScheduleHeader !== schedule\.expectedSchedule\)/);
   assert.match(cronGuard, /getAccraClock\(\)/);
   assert.match(cronGuard, /REMINDER_CRON_WINDOW_MINUTES = 30/);
+  assert.match(cronGuard, /MORNING_REMINDER_CRON_WINDOW_MINUTES = 526/);
+  assert.match(cronGuard, /SIGN_OUT_REMINDER_CRON_WINDOW_MINUTES = 450/);
+  assert.match(cronGuard, /windowMinutes: MORNING_REMINDER_CRON_WINDOW_MINUTES/);
+  assert.match(cronGuard, /windowMinutes: SIGN_OUT_REMINDER_CRON_WINDOW_MINUTES/);
   assert.doesNotMatch(cronGuard, /allowWholeScheduledHour/);
   assert.match(cronGuard, /input\.scheduledHour \* 60 \+ input\.scheduledMinute/);
   assert.match(cronGuard, /isWithinAccraReminderCronWindow/);
