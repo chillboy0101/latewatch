@@ -118,7 +118,6 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.match(pushReminderLib, /webpush\.setVapidDetails\(subject, publicKey, privateKey\)/);
   assert.match(pushReminderLib, /reminderPushTtlSeconds/);
   assert.match(pushReminderLib, /TTL: reminderPushTtlSeconds\(reminderType, clock\.timeKey\)/);
-  assert.match(pushReminderLib, /urgency: 'high'/);
   assert.match(pushReminderLib, /reservePushReminderDelivery/);
   assert.match(pushReminderLib, /existingDelivery\.status === 'sent'/);
   assert.match(pushReminderLib, /existingDelivery\.status === 'disabled'/);
