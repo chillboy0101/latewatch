@@ -6,8 +6,7 @@ import { getAccraClock } from '@/lib/attendance';
 
 const EXTERNAL_CRON_HEADER = 'x-latewatch-cron';
 const EXTERNAL_CRON_HEADER_VALUE = 'external';
-const EXTERNAL_REMINDER_CRON_WINDOW_MINUTES = 30;
-const VERCEL_REMINDER_CRON_WINDOW_MINUTES = 60;
+const REMINDER_CRON_WINDOW_MINUTES = 30;
 const VERCEL_CRON_USER_AGENT = 'vercel-cron/1.0';
 
 export const REMINDER_CRON_SCHEDULES = {
@@ -57,17 +56,14 @@ function minutesSinceMidnight(timeKey: string) {
 }
 
 export function isWithinAccraReminderCronWindow(input: {
-  allowWholeScheduledHour?: boolean;
   scheduledHour: number;
   scheduledMinute: number;
   timeKey: string;
   windowMinutes?: number;
 }) {
   const currentMinute = minutesSinceMidnight(input.timeKey);
-  const scheduledStartMinute = input.allowWholeScheduledHour
-    ? input.scheduledHour * 60
-    : input.scheduledHour * 60 + input.scheduledMinute;
-  const windowMinutes = input.windowMinutes ?? EXTERNAL_REMINDER_CRON_WINDOW_MINUTES;
+  const scheduledStartMinute = input.scheduledHour * 60 + input.scheduledMinute;
+  const windowMinutes = input.windowMinutes ?? REMINDER_CRON_WINDOW_MINUTES;
 
   return currentMinute >= scheduledStartMinute && currentMinute < scheduledStartMinute + windowMinutes;
 }
@@ -105,10 +101,8 @@ export function validateReminderCronRequest(
   }
 
   const clock = getAccraClock();
-  const windowMinutes = schedule.windowMinutes
-    ?? (isVercelCron ? VERCEL_REMINDER_CRON_WINDOW_MINUTES : EXTERNAL_REMINDER_CRON_WINDOW_MINUTES);
+  const windowMinutes = schedule.windowMinutes ?? REMINDER_CRON_WINDOW_MINUTES;
   if (!isWithinAccraReminderCronWindow({
-    allowWholeScheduledHour: isVercelCron,
     scheduledHour: schedule.scheduledHour,
     scheduledMinute: schedule.scheduledMinute,
     timeKey: clock.timeKey,
