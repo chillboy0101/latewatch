@@ -159,8 +159,14 @@ type LiveLocation =
   | { blocking: true; distanceMeters?: number | null; message: string; state: 'error' | 'outside' | 'weak' };
 type AttendanceAction = 'check_in' | 'sign_out';
 type BrowserNotificationPermission = NotificationPermission | 'unsupported';
+type LocalCatchUpReminderType = 'sign_in' | 'sign_out';
 
 const CHECK_IN_FEEDBACK_DISMISS_MS = 4_000;
+const LOCAL_CATCH_UP_REMINDER_STORAGE_PREFIX = 'latewatch.local-reminder.v1';
+const SIGN_IN_REMINDER_START_MINUTE = 8 * 60 + 15;
+const SIGN_IN_REMINDER_END_MINUTE = 17 * 60;
+const SIGN_OUT_REMINDER_START_MINUTE = 16 * 60 + 30;
+const SIGN_OUT_REMINDER_END_MINUTE = 24 * 60;
 
 function canSignOut(status: CheckInStatus | null) {
   return Boolean(status?.attendance && !status.attendance.signOutTime && status.time?.slice(0, 5) >= '16:30');
@@ -328,6 +334,89 @@ async function showReminderToggleConfirmation(confirmation: ReminderToggleConfir
   }
 }
 
+function minutesFromTimeKey(timeKey: string | null | undefined) {
+  const [hour = '0', minute = '0'] = (timeKey || '').split(':');
+
+  return Number(hour) * 60 + Number(minute);
+}
+
+function localCatchUpReminderStorageKey(status: CheckInStatus, reminderType: LocalCatchUpReminderType) {
+  return `${LOCAL_CATCH_UP_REMINDER_STORAGE_PREFIX}:${status.staff?.id || 'unknown'}:${status.date}:${reminderType}`;
+}
+
+function getLocalCatchUpReminder(status: CheckInStatus | null, pushStatus: PushReminderStatus | null) {
+  if (!status?.staff || status.isWeekend || status.isHoliday) return null;
+  if (status.permission?.permissionType === 'absence') return null;
+
+  const subscription = pushStatus?.subscription;
+  if (!subscription || subscription.disabledAt) return null;
+
+  const currentMinute = minutesFromTimeKey(status.time);
+
+  if (
+    subscription.signInEnabled &&
+    !status.attendance &&
+    currentMinute >= SIGN_IN_REMINDER_START_MINUTE &&
+    currentMinute < SIGN_IN_REMINDER_END_MINUTE
+  ) {
+    return {
+      body: 'Please sign in for today.',
+      reminderType: 'sign_in' as const,
+      tag: 'latewatch-local-sign-in-reminder',
+      title: 'Time to sign in',
+    };
+  }
+
+  if (
+    subscription.signOutEnabled &&
+    status.attendance?.checkInTime &&
+    !status.attendance.signOutTime &&
+    currentMinute >= SIGN_OUT_REMINDER_START_MINUTE &&
+    currentMinute < SIGN_OUT_REMINDER_END_MINUTE
+  ) {
+    return {
+      body: 'Please sign out for today.',
+      reminderType: 'sign_out' as const,
+      tag: 'latewatch-local-sign-out-reminder',
+      title: 'Time to sign out',
+    };
+  }
+
+  return null;
+}
+
+async function showLocalCatchUpReminder(reminder: NonNullable<ReturnType<typeof getLocalCatchUpReminder>>) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return false;
+  if (!('serviceWorker' in navigator)) return false;
+
+  try {
+    await navigator.serviceWorker.register('/sw.js');
+    const registration = await navigator.serviceWorker.ready;
+    if (typeof registration.showNotification !== 'function') return false;
+
+    const options = {
+      badge: '/latewatch-logo.png',
+      body: reminder.body,
+      data: {
+        reminderType: reminder.reminderType,
+        source: 'local_catch_up',
+        url: '/check-in',
+      },
+      icon: '/latewatch-logo.png',
+      renotify: true,
+      requireInteraction: true,
+      tag: reminder.tag,
+    } as NotificationOptions & { renotify: boolean };
+
+    await registration.showNotification(reminder.title, options);
+
+    return true;
+  } catch (error) {
+    console.warn('Local reminder catch-up could not display:', error);
+    return false;
+  }
+}
+
 function locationStateFromValidation(validation: LocationValidationResult): LiveLocation {
   if (validation.ok) {
     return {
@@ -443,6 +532,32 @@ export default function CheckInPage() {
 
     return () => window.clearTimeout(timeout);
   }, [message]);
+
+  useEffect(() => {
+    if (notificationPermission !== 'granted' || !status) return;
+
+    const reminder = getLocalCatchUpReminder(status, pushReminderStatus);
+    if (!reminder) return;
+
+    const storageKey = localCatchUpReminderStorageKey(status, reminder.reminderType);
+    if (window.localStorage.getItem(storageKey)) return;
+
+    let cancelled = false;
+    window.localStorage.setItem(storageKey, 'pending');
+
+    (async () => {
+      const displayed = await showLocalCatchUpReminder(reminder);
+      if (displayed && !cancelled) {
+        window.localStorage.setItem(storageKey, new Date().toISOString());
+      } else if (!displayed && !cancelled) {
+        window.localStorage.removeItem(storageKey);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [notificationPermission, pushReminderStatus, status]);
 
   const fetchStatus = useCallback(async (options?: { preserveMessage?: boolean; silent?: boolean }) => {
     if (!deviceToken) return;

@@ -164,6 +164,8 @@ export function reminderCopy(
   if (reminderType === 'sign_in') {
     return {
       body: 'Please sign in for today.',
+      renotify: true,
+      requireInteraction: true,
       tag: 'latewatch-sign-in-reminder',
       title: firstName ? `${firstName}, time to sign in` : 'Time to sign in',
     };
@@ -180,6 +182,8 @@ export function reminderCopy(
 
   return {
     body: 'Please sign out for today.',
+    renotify: true,
+    requireInteraction: true,
     tag: 'latewatch-sign-out-reminder',
     title: firstName ? `${firstName}, time to sign out` : 'Time to sign out',
   };

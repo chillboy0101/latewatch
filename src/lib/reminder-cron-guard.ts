@@ -128,3 +128,27 @@ export function validateReminderCronRequest(
 
   return { ok: true };
 }
+
+export function validateReminderCronAuth(request: Pick<NextRequest, 'headers'>): ReminderCronGuardResult {
+  const cronSecret = process.env.CRON_SECRET;
+  const authHeader = request.headers.get('authorization');
+
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    return {
+      ok: false,
+      response: noStoreJson({ error: 'Unauthorized' }, 401),
+    };
+  }
+
+  const userAgent = request.headers.get('user-agent') ?? '';
+  const isVercelCron = userAgent.includes(VERCEL_CRON_USER_AGENT);
+  const isExternalCron = request.headers.get(EXTERNAL_CRON_HEADER)?.toLowerCase() === EXTERNAL_CRON_HEADER_VALUE;
+  if (!isVercelCron && !isExternalCron) {
+    return {
+      ok: false,
+      response: noStoreJson({ error: 'Invalid cron caller' }, 403),
+    };
+  }
+
+  return { ok: true };
+}

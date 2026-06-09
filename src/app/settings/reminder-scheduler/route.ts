@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/roles';
 import {
-  apiKeyFromSetupRequest,
   appUrlFromSetupRequest,
+  scheduleCronJobOrgProofTest,
+  schedulerRequestFromSetupRequest,
   setupCronJobOrgReminderJobs,
   setupFormHtml,
   setupResultHtml,
@@ -51,17 +52,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'CRON_SECRET is not configured in Vercel.' }, { status: 500 });
   }
 
-  const apiKey = await apiKeyFromSetupRequest(request);
-  if (!apiKey) {
+  const schedulerRequest = await schedulerRequestFromSetupRequest(request);
+  if (!schedulerRequest.apiKey) {
     return NextResponse.json({ error: 'cron-job.org API key is required.' }, { status: 400 });
   }
 
   try {
-    const result = await setupCronJobOrgReminderJobs({
-      apiKey,
-      appUrl: appUrlFromSetupRequest(request),
-      cronSecret,
-    });
+    const appUrl = appUrlFromSetupRequest(request);
+    const result = schedulerRequest.action === 'proof-test'
+      ? await scheduleCronJobOrgProofTest({
+          apiKey: schedulerRequest.apiKey,
+          appUrl,
+          cronSecret,
+          proofTestTime: schedulerRequest.proofTestTime || '',
+        })
+      : await setupCronJobOrgReminderJobs({
+          apiKey: schedulerRequest.apiKey,
+          appUrl,
+          cronSecret,
+        });
 
     return htmlResponse(setupResultHtml(result));
   } catch (error) {
