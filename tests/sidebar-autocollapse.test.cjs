@@ -95,6 +95,8 @@ test('sidebar groups attendance routes under an accessible disclosure', () => {
   assert.match(source, /aria-expanded=\{showChildren\}/);
   assert.match(source, /id=\{ATTENDANCE_NAV_ID\}/);
   assert.match(source, /tabIndex=\{showChildren \? undefined : -1\}/);
+  assert.match(source, /ml-10 flex h-8 min-w-0 items-center rounded-md pl-2 pr-3/);
+  assert.doesNotMatch(source, /ml-12 flex h-8 min-w-0 items-center rounded-md px-3/);
 });
 
 test('attendance disclosure opens on active child routes and stays hidden in compact mode', () => {

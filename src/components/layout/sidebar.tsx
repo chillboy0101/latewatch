@@ -273,7 +273,7 @@ export function Sidebar() {
                                 title={child.name}
                                 tabIndex={showChildren ? undefined : -1}
                                 className={cn(
-                                  'ml-12 flex h-8 min-w-0 items-center rounded-md px-3 text-sm font-medium transition-colors duration-150 ease-out',
+                                  'ml-10 flex h-8 min-w-0 items-center rounded-md pl-2 pr-3 text-sm font-medium transition-colors duration-150 ease-out',
                                   isChildActive
                                     ? 'bg-primary text-primary-foreground'
                                     : 'text-muted hover:bg-background hover:text-foreground',
