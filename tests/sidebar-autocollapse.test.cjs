@@ -5,6 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const dashboardLayoutPath = path.join(__dirname, '../src/components/layout/dashboard-layout.tsx');
+const globalsPath = path.join(__dirname, '../src/app/globals.css');
 const headerPath = path.join(__dirname, '../src/components/layout/header.tsx');
 const sidebarPath = path.join(__dirname, '../src/components/layout/sidebar.tsx');
 
@@ -57,6 +58,7 @@ test('sidebar mode toggle is icon-only and glides with the rail edge', () => {
   const source = fs.readFileSync(sidebarPath, 'utf8');
 
   assert.match(source, /const toggleButtonClassName = cn\(/);
+  assert.match(source, /absolute bottom-3 left-\[14px\] z-20/);
   assert.match(source, /transition-\[transform,background-color,color\]/);
   assert.match(source, /will-change-transform/);
   assert.match(source, /isExpanded \? 'translate-x-48' : 'translate-x-0'/);
@@ -79,6 +81,7 @@ test('sidebar uses a fixed icon rail so icons do not shift while expanding', () 
 
 test('sidebar scrolls only the middle navigation while portal controls stay fixed', () => {
   const source = fs.readFileSync(sidebarPath, 'utf8');
+  const globals = fs.readFileSync(globalsPath, 'utf8');
   const navIndex = source.indexOf('aria-label="Admin navigation"');
   const mainPortalIndex = source.indexOf('aria-label="Main Portal"');
   const toggleIndex = source.indexOf('onClick={toggleSidebarMode}');
@@ -88,9 +91,11 @@ test('sidebar scrolls only the middle navigation while portal controls stay fixe
   assert.notEqual(toggleIndex, -1);
   assert.ok(navIndex < mainPortalIndex);
   assert.ok(mainPortalIndex < toggleIndex);
-  assert.match(source, /className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-2 py-3 \[-ms-overflow-style:none\] \[scrollbar-width:none\] \[&::-webkit-scrollbar\]:hidden"/);
+  assert.match(source, /className="sidebar-nav-scroll min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-2 py-3"/);
   assert.match(source, /className="relative z-10 shrink-0 space-y-2 border-t border-border bg-card px-2 pb-14 pt-3"/);
   assert.match(source, /className="flex h-16 shrink-0 items-center px-4"/);
+  assert.match(globals, /\.sidebar-nav-scroll \{\s*-ms-overflow-style: none;\s*scrollbar-width: none;\s*\}/);
+  assert.match(globals, /\.sidebar-nav-scroll::\-webkit-scrollbar \{\s*display: none;\s*height: 0;\s*width: 0;\s*\}/);
 });
 
 test('dashboard shell draws one continuous header divider', () => {

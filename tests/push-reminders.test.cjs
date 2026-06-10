@@ -432,15 +432,14 @@ test('check-in page does not expose test reminder controls', () => {
   assert.doesNotMatch(source, /Test reminder sent to/);
 });
 
-test('check-in page guides permission setup and refreshes after device security events', () => {
+test('check-in page keeps reminder controls compact and refreshes after device security events', () => {
   const source = fs.readFileSync(checkInPagePath, 'utf8');
 
-  assert.match(source, /PermissionSetupPanel/);
-  assert.match(source, /label="Location"/);
-  assert.match(source, /label="Notifications"/);
-  assert.match(source, /label="Reminders"/);
-  assert.match(source, /Use Chrome, Edge, or Safari for web push/);
-  assert.match(source, /In Brave, enable push messaging/);
+  assert.doesNotMatch(source, /PermissionSetupPanel/);
+  assert.doesNotMatch(source, /SetupStep/);
+  assert.doesNotMatch(source, /label="Location"/);
+  assert.doesNotMatch(source, /label="Notifications"/);
+  assert.doesNotMatch(source, /label="Reminders"/);
   assert.match(source, /useClerk/);
   assert.match(source, /handleSessionInvalidated/);
   assert.match(source, /Your device was reset or transferred\. Sign in again on the trusted device\./);

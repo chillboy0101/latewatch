@@ -155,7 +155,7 @@ export function Sidebar() {
   const itemIconClassName = 'flex h-10 w-12 shrink-0 items-center justify-center';
 
   const toggleButtonClassName = cn(
-    'absolute bottom-3 left-[14px] flex h-9 w-9 items-center justify-center rounded-md border border-border/80 bg-card text-muted shadow-sm transition-[transform,background-color,color] will-change-transform hover:bg-background hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/35',
+    'absolute bottom-3 left-[14px] z-20 flex h-9 w-9 items-center justify-center rounded-md border border-border/80 bg-card text-muted shadow-sm transition-[transform,background-color,color] will-change-transform hover:bg-background hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/35',
     SIDEBAR_MOTION_CLASS,
     isExpanded ? 'translate-x-48' : 'translate-x-0',
   );
@@ -194,7 +194,7 @@ export function Sidebar() {
         </div>
         <nav
           aria-label="Admin navigation"
-          className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-2 py-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="sidebar-nav-scroll min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-2 py-3"
         >
           {navigation.map((item) => {
             const isActive = activeNavigation?.href === item.href;

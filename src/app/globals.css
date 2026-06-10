@@ -85,6 +85,17 @@
   background-color: var(--scrollbar-thumb-hover);
 }
 
+.sidebar-nav-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.sidebar-nav-scroll::-webkit-scrollbar {
+  display: none;
+  height: 0;
+  width: 0;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
