@@ -14,23 +14,20 @@ import {
   Table2,
   Download,
   Calendar,
-  BellRing,
   ClipboardCheck,
   PhoneCall,
   Shield,
-  ShieldAlert,
   MapPin,
   PanelLeftClose,
   PanelLeftOpen,
   ReceiptText,
   HandCoins,
-  Smartphone,
   type LucideIcon,
 } from 'lucide-react';
 
 type SidebarMode = 'auto' | 'fixed';
-type NavigationChild = { name: string; href: string; icon: LucideIcon };
-type NavigationLink = NavigationChild;
+type NavigationChild = { name: string; href: string };
+type NavigationLink = NavigationChild & { icon: LucideIcon };
 type NavigationGroup = { name: string; icon: LucideIcon; children: NavigationChild[] };
 type NavigationItem = NavigationLink | NavigationGroup;
 
@@ -41,10 +38,10 @@ const SIDEBAR_LABEL_MOTION_CLASS = 'duration-200 ease-out motion-reduce:transiti
 let rememberedAutoExpanded = false;
 
 const attendanceChildren = [
-  { name: 'Overview', href: '/attendance', icon: ClipboardCheck },
-  { name: 'Reminders', href: '/attendance/reminders', icon: BellRing },
-  { name: 'Devices', href: '/attendance/devices', icon: Smartphone },
-  { name: 'Security Alerts', href: '/attendance/security-alerts', icon: ShieldAlert },
+  { name: 'Overview', href: '/attendance' },
+  { name: 'Reminders', href: '/attendance/reminders' },
+  { name: 'Devices', href: '/attendance/devices' },
+  { name: 'Security Alerts', href: '/attendance/security-alerts' },
 ];
 
 const navigation: NavigationItem[] = [
@@ -273,7 +270,6 @@ export function Sidebar() {
                       <ul className={cn('min-h-0 space-y-1 overflow-hidden', showChildren && 'pt-1')}>
                         {item.children.map((child) => {
                           const isChildActive = activeNavigation?.href === child.href;
-                          const ChildIcon = child.icon;
                           return (
                             <li key={child.name}>
                               <Link
@@ -287,9 +283,7 @@ export function Sidebar() {
                                   isChildActive ? activeItemClassName : inactiveItemClassName,
                                 )}
                               >
-                                <span className={itemIconClassName} aria-hidden="true">
-                                  <ChildIcon className="h-5 w-5 shrink-0" />
-                                </span>
+                                <span className={itemIconClassName} aria-hidden="true" />
                                 <span className={labelClassName}>{child.name}</span>
                               </Link>
                             </li>
