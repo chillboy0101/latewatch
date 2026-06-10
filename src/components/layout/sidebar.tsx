@@ -264,7 +264,7 @@ export function Sidebar() {
                         !isExpanded && 'hidden',
                       )}
                     >
-                      <ul className={cn('min-h-0 overflow-hidden', showChildren && 'py-1')}>
+                      <ul className={cn('min-h-0 space-y-1 overflow-hidden', showChildren && 'pt-1')}>
                         {item.children.map((child) => {
                           const isChildActive = activeNavigation?.href === child.href;
                           const ChildIcon = child.icon;

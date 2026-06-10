@@ -114,7 +114,8 @@ test('attendance disclosure opens on active child routes and stays hidden in com
   assert.match(source, /if \(attendanceSectionActive\) setAttendanceDisclosureOpen\(true\)/);
   assert.match(source, /const showChildren = isExpanded && attendanceDisclosureOpen/);
   assert.match(source, /showChildren \? 'grid-rows-\[1fr\] opacity-100' : 'grid-rows-\[0fr\] opacity-0'/);
-  assert.match(source, /className=\{cn\('min-h-0 overflow-hidden', showChildren && 'py-1'\)\}/);
+  assert.match(source, /className=\{cn\('min-h-0 space-y-1 overflow-hidden', showChildren && 'pt-1'\)\}/);
+  assert.doesNotMatch(source, /className=\{cn\('min-h-0 overflow-hidden', showChildren && 'py-1'\)\}/);
   assert.match(source, /!isExpanded && 'hidden'/);
   assert.match(source, /showChildren && 'rotate-180'/);
   assert.match(source, /isExpanded \? 'ml-auto mr-3 w-4 opacity-70' : 'm-0 w-0 opacity-0'/);
