@@ -97,6 +97,11 @@ test('sidebar groups attendance routes under an accessible disclosure', () => {
   assert.match(source, /tabIndex=\{showChildren \? undefined : -1\}/);
   assert.match(source, /ml-10 flex h-8 min-w-0 items-center rounded-md pl-2 pr-3/);
   assert.doesNotMatch(source, /ml-12 flex h-8 min-w-0 items-center rounded-md px-3/);
+  assert.match(source, /const activeItemClassName = 'bg-primary text-primary-foreground'/);
+  assert.match(source, /const inactiveItemClassName = 'text-muted hover:bg-background hover:text-foreground'/);
+  assert.match(source, /attendanceSectionActive \? activeItemClassName : inactiveItemClassName/);
+  assert.match(source, /isChildActive \? activeItemClassName : inactiveItemClassName/);
+  assert.doesNotMatch(source, /bg-primary\/10 text-primary/);
 });
 
 test('attendance disclosure opens on active child routes and stays hidden in compact mode', () => {
@@ -107,6 +112,7 @@ test('attendance disclosure opens on active child routes and stays hidden in com
   assert.match(source, /if \(attendanceSectionActive\) setAttendanceDisclosureOpen\(true\)/);
   assert.match(source, /const showChildren = isExpanded && attendanceDisclosureOpen/);
   assert.match(source, /showChildren \? 'grid-rows-\[1fr\] opacity-100' : 'grid-rows-\[0fr\] opacity-0'/);
+  assert.match(source, /className=\{cn\('min-h-0 overflow-hidden', showChildren && 'py-1'\)\}/);
   assert.match(source, /!isExpanded && 'hidden'/);
   assert.match(source, /showChildren && 'rotate-180'/);
   assert.match(source, /isExpanded \? 'ml-auto mr-3 w-4 opacity-70' : 'm-0 w-0 opacity-0'/);

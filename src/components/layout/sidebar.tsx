@@ -173,6 +173,8 @@ export function Sidebar() {
   );
 
   const itemIconClassName = 'flex h-10 w-12 shrink-0 items-center justify-center';
+  const activeItemClassName = 'bg-primary text-primary-foreground';
+  const inactiveItemClassName = 'text-muted hover:bg-background hover:text-foreground';
 
   const toggleButtonClassName = cn(
     'absolute bottom-3 left-[14px] z-20 flex h-9 w-9 items-center justify-center rounded-md border border-border/80 bg-card text-muted shadow-sm transition-[transform,background-color,color] will-change-transform hover:bg-background hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/35',
@@ -234,9 +236,7 @@ export function Sidebar() {
                       className={cn(
                         itemClassName,
                         'border-0 p-0 text-left',
-                        attendanceSectionActive
-                          ? 'bg-primary/10 text-primary'
-                          : 'text-muted hover:bg-background hover:text-foreground',
+                        attendanceSectionActive ? activeItemClassName : inactiveItemClassName,
                       )}
                     >
                       <span className={itemIconClassName} aria-hidden="true">
@@ -261,7 +261,7 @@ export function Sidebar() {
                         !isExpanded && 'hidden',
                       )}
                     >
-                      <ul className="min-h-0 overflow-hidden py-1">
+                      <ul className={cn('min-h-0 overflow-hidden', showChildren && 'py-1')}>
                         {item.children.map((child) => {
                           const isChildActive = activeNavigation?.href === child.href;
                           return (
@@ -274,9 +274,7 @@ export function Sidebar() {
                                 tabIndex={showChildren ? undefined : -1}
                                 className={cn(
                                   'ml-10 flex h-8 min-w-0 items-center rounded-md pl-2 pr-3 text-sm font-medium transition-colors duration-150 ease-out',
-                                  isChildActive
-                                    ? 'bg-primary text-primary-foreground'
-                                    : 'text-muted hover:bg-background hover:text-foreground',
+                                  isChildActive ? activeItemClassName : inactiveItemClassName,
                                 )}
                               >
                                 <span className="truncate">{child.name}</span>
@@ -300,9 +298,7 @@ export function Sidebar() {
                     title={item.name}
                     className={cn(
                       itemClassName,
-                      isActive
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-muted hover:bg-background hover:text-foreground',
+                      isActive ? activeItemClassName : inactiveItemClassName,
                     )}
                   >
                     <span className={itemIconClassName} aria-hidden="true">
