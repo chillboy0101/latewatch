@@ -340,14 +340,18 @@ test('admin reminder delivery monitor is protected and explains delivery outcome
   assert.match(helper, /Already signed in at/);
   assert.match(helper, /Already signed out at/);
   assert.match(helper, /Sent to \$\{counts\.sent\} devices/);
-  assert.match(helper, /summary: \{/);
+  assert.match(helper, /const summary = \{/);
   assert.match(helper, /missing: rows\.filter\(\(row\) => row\.status === 'missing'\)\.length/);
+  assert.match(helper, /eligible staff but zero successful sends/);
+  assert.match(helper, /staff have no enabled reminder device/);
+  assert.match(helper, /scheduledPassed/);
 
   assert.match(page, /Reminder Delivery Monitor/);
   assert.match(page, /\/api\/attendance\/reminder-monitor\?date=/);
   assert.match(page, /8:15 Sent/);
   assert.match(page, /4:30 Sent/);
   assert.match(page, /Needs Review/);
+  assert.match(page, /section\.alerts\.map/);
   assert.match(page, /ReminderSection section=\{data\.sections\.signIn\}/);
   assert.match(page, /ReminderSection section=\{data\.sections\.signOut\}/);
   assert.match(sidebar, /Reminders/);
@@ -426,6 +430,24 @@ test('check-in page does not expose test reminder controls', () => {
   assert.doesNotMatch(source, /onSendTest/);
   assert.doesNotMatch(source, /\/api\/attendance\/check-in\/push-subscription\/test/);
   assert.doesNotMatch(source, /Test reminder sent to/);
+});
+
+test('check-in page guides permission setup and refreshes after device security events', () => {
+  const source = fs.readFileSync(checkInPagePath, 'utf8');
+
+  assert.match(source, /PermissionSetupPanel/);
+  assert.match(source, /label="Location"/);
+  assert.match(source, /label="Notifications"/);
+  assert.match(source, /label="Reminders"/);
+  assert.match(source, /Use Chrome, Edge, or Safari for web push/);
+  assert.match(source, /In Brave, enable push messaging/);
+  assert.match(source, /useClerk/);
+  assert.match(source, /handleSessionInvalidated/);
+  assert.match(source, /Your device was reset or transferred\. Sign in again on the trusted device\./);
+  assert.match(source, /signOut\(\{ redirectUrl: '\/sign-in' \}\)/);
+  assert.match(source, /\['attendance', 'notifications'\]\.map/);
+  assert.match(source, /fetchStatus\(\{ preserveMessage: true, silent: true \}\)/);
+  assert.match(source, /fetchPushReminderStatus\(\{ silent: true \}\)/);
 });
 
 test('reminder toggle confirmation only appears when enabling reminders', () => {

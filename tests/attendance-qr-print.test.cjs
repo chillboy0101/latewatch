@@ -11,6 +11,15 @@ const attendanceDeviceRoutePath = path.join(__dirname, '../src/app/api/attendanc
 const deviceTransferRoutePath = path.join(__dirname, '../src/app/api/attendance/device-transfers/[id]/route.ts');
 const attendancePermissionsApiPath = path.join(__dirname, '../src/app/api/attendance/permissions/route.ts');
 const notificationsApiPath = path.join(__dirname, '../src/app/api/notifications/route.ts');
+const deviceHealthApiPath = path.join(__dirname, '../src/app/api/attendance/device-health/route.ts');
+const deviceHealthLibPath = path.join(__dirname, '../src/lib/device-session-health.ts');
+const deviceHealthPagePath = path.join(__dirname, '../src/app/attendance/devices/page.tsx');
+const securityAlertsApiPath = path.join(__dirname, '../src/app/api/attendance/security-alerts/route.ts');
+const securityAlertsLibPath = path.join(__dirname, '../src/lib/security-alerts.ts');
+const securityAlertsPagePath = path.join(__dirname, '../src/app/attendance/security-alerts/page.tsx');
+const settingsSecurityPagePath = path.join(__dirname, '../src/app/settings/security/page.tsx');
+const settingsPagePath = path.join(__dirname, '../src/app/settings/page.tsx');
+const sidebarPath = path.join(__dirname, '../src/components/layout/sidebar.tsx');
 const generalPardonApiPath = path.join(__dirname, '../src/app/api/attendance/permissions/general-pardon/route.ts');
 const reconciliationPath = path.join(__dirname, '../src/lib/attendance-permission-reconciliation.ts');
 const attendanceDeviceSecurityLibPath = path.join(__dirname, '../src/lib/attendance-device-security.ts');
@@ -375,6 +384,71 @@ test('device transfer approval revokes old sessions while preserving the new tru
   assert.ok(route.indexOf('revokeStaffLoginSessionsExcept({') < route.indexOf('const deviceValues = {'));
   assert.ok(route.indexOf('const deviceValues = {') < route.indexOf('await db.insert(staffDevice)'));
   assert.doesNotMatch(route, /action === 'reject'[\s\S]{0,600}revokeStaffLoginSession/);
+});
+
+test('device health dashboard exposes trusted devices, reminder devices, and session cleanup', () => {
+  assert.equal(fs.existsSync(deviceHealthApiPath), true);
+  assert.equal(fs.existsSync(deviceHealthLibPath), true);
+  assert.equal(fs.existsSync(deviceHealthPagePath), true);
+
+  const api = fs.readFileSync(deviceHealthApiPath, 'utf8');
+  const helper = fs.readFileSync(deviceHealthLibPath, 'utf8');
+  const page = fs.readFileSync(deviceHealthPagePath, 'utf8');
+  const sidebar = fs.readFileSync(sidebarPath, 'utf8');
+
+  assert.match(api, /requireRole\(\['admin'\]\)/);
+  assert.match(api, /getDeviceSessionHealth/);
+  assert.match(api, /Cache-Control': 'no-store'/);
+  assert.match(helper, /staffDevice/);
+  assert.match(helper, /pushSubscription/);
+  assert.match(helper, /deviceTransferRequest/);
+  assert.match(helper, /auditEvent/);
+  assert.match(helper, /clerkSessionId/);
+  assert.match(helper, /revokedSessionsFromAudit/);
+  assert.match(helper, /Multiple active reminder devices/);
+  assert.match(page, /Device \+ Session Health/);
+  assert.match(page, /\/api\/attendance\/device-health/);
+  assert.match(page, /Trusted Device/);
+  assert.match(page, /Reminder Devices/);
+  assert.match(page, /revoked sessions/);
+  assert.match(sidebar, /href: '\/attendance\/devices'/);
+});
+
+test('security alerts dashboard surfaces suspicious attendance audit alerts', () => {
+  assert.equal(fs.existsSync(securityAlertsApiPath), true);
+  assert.equal(fs.existsSync(securityAlertsLibPath), true);
+  assert.equal(fs.existsSync(securityAlertsPagePath), true);
+
+  const api = fs.readFileSync(securityAlertsApiPath, 'utf8');
+  const helper = fs.readFileSync(securityAlertsLibPath, 'utf8');
+  const page = fs.readFileSync(securityAlertsPagePath, 'utf8');
+  const sidebar = fs.readFileSync(sidebarPath, 'utf8');
+
+  assert.match(api, /requireRole\(\['admin'\]\)/);
+  assert.match(api, /getSecurityAlerts/);
+  assert.match(api, /Cache-Control': 'no-store'/);
+  assert.match(helper, /eq\(auditEvent\.action, 'ALERT'\)/);
+  assert.match(helper, /SHARED_ATTENDANCE_DEVICE/);
+  assert.match(helper, /REGISTERED_DEVICE_REQUIRED/);
+  assert.match(helper, /TRANSFER_SESSION_REQUIRED/);
+  assert.match(helper, /critical/);
+  assert.match(page, /Admin Security Alerts/);
+  assert.match(page, /\/api\/attendance\/security-alerts/);
+  assert.match(page, /Recent Alerts/);
+  assert.match(sidebar, /href: '\/attendance\/security-alerts'/);
+});
+
+test('security settings page documents MFA and passkey handoff through Clerk', () => {
+  assert.equal(fs.existsSync(settingsSecurityPagePath), true);
+  const page = fs.readFileSync(settingsSecurityPagePath, 'utf8');
+  const settingsPage = fs.readFileSync(settingsPagePath, 'utf8');
+
+  assert.match(page, /Security Hardening/);
+  assert.match(page, /Clerk multi-factor authentication/);
+  assert.match(page, /Enable passkeys where available/);
+  assert.match(page, /Open Clerk Dashboard/);
+  assert.match(page, /\/attendance\/security-alerts/);
+  assert.match(settingsPage, /\/settings\/security/);
 });
 
 test('Clerk session cleanup script is dry-run first and preserves trusted attendance sessions', () => {

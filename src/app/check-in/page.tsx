@@ -1,10 +1,10 @@
 'use client';
 
-import { UserButton, useUser } from '@clerk/nextjs';
+import { UserButton, useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, LogOut, MapPin, Moon, ReceiptText, ShieldCheck, Sun, X, XCircle } from 'lucide-react';
+import { type ReactNode, useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, Loader2, LogOut, MapPin, Moon, ReceiptText, ShieldCheck, Smartphone, Sun, X, XCircle } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -536,6 +536,7 @@ async function getCurrentLocationEvidence(): Promise<LocationEvidence> {
 
 export default function CheckInPage() {
   const { isLoaded, user } = useUser();
+  const { signOut } = useClerk();
   const router = useRouter();
   const isDark = useSyncExternalStore(subscribeThemeChange, getIsDarkTheme, () => true);
   const [status, setStatus] = useState<CheckInStatus | null>(null);
@@ -558,6 +559,7 @@ export default function CheckInPage() {
     state: 'idle',
   });
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+  const [forcedSessionNotice, setForcedSessionNotice] = useState<string | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDark);
@@ -626,6 +628,15 @@ export default function CheckInPage() {
     void showDeviceTransferReviewNotification(reviewStatus);
   }, [status]);
 
+  const handleSessionInvalidated = useCallback(() => {
+    const text = 'Your device was reset or transferred. Sign in again on the trusted device.';
+    setForcedSessionNotice(text);
+    setMessage(null);
+    window.setTimeout(() => {
+      void signOut({ redirectUrl: '/sign-in' });
+    }, 1600);
+  }, [signOut]);
+
   const fetchStatus = useCallback(async (options?: { preserveMessage?: boolean; silent?: boolean }) => {
     if (!deviceToken) return;
     if (!options?.silent) setLoading(true);
@@ -636,9 +647,18 @@ export default function CheckInPage() {
         cache: 'no-store',
         headers: { 'x-latewatch-device': deviceToken },
       });
+      const contentType = response.headers.get('content-type') || '';
+      if (response.redirected || response.status === 401 || (!contentType.includes('application/json') && response.url.includes('/sign-in'))) {
+        handleSessionInvalidated();
+        return;
+      }
+
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.error || 'Could not load check-in status');
+      }
+      if (!contentType.includes('application/json')) {
+        throw new Error('Could not load check-in status');
       }
       setStatus(await response.json());
     } catch (error) {
@@ -649,7 +669,7 @@ export default function CheckInPage() {
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, [deviceToken]);
+  }, [deviceToken, handleSessionInvalidated]);
 
   const fetchPushReminderStatus = useCallback(async (options?: { silent?: boolean }) => {
     if (!isLoaded || !user) return;
@@ -764,6 +784,39 @@ export default function CheckInPage() {
       cleanup?.();
     };
   }, [fetchReceiptNotifications, isLoaded, user]);
+
+  useEffect(() => {
+    if (!deviceToken || !isLoaded || !user) return;
+
+    let cleanups: Array<() => void> = [];
+    let mounted = true;
+
+    (async () => {
+      const unsubscribers = await Promise.all(
+        ['attendance', 'notifications'].map((channel) =>
+          subscribeRealtimeChannel({
+            channel,
+            events: ['invalidate'],
+            onEvent: () => {
+              void fetchStatus({ preserveMessage: true, silent: true });
+              void fetchPushReminderStatus({ silent: true });
+            },
+          }),
+        ),
+      );
+
+      if (mounted) {
+        cleanups = unsubscribers;
+      } else {
+        unsubscribers.forEach((unsubscribe) => unsubscribe());
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      cleanups.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [deviceToken, fetchPushReminderStatus, fetchStatus, isLoaded, user]);
 
   useEffect(() => {
     if (!deviceToken) return;
@@ -1163,6 +1216,15 @@ export default function CheckInPage() {
                   </div>
                 )}
 
+                <PermissionSetupPanel
+                  liveLocation={liveLocation}
+                  notificationPermission={notificationPermission}
+                  reminderControlsLocked={reminderControlsLocked}
+                  signInEnabled={signInReminderEnabled}
+                  signOutEnabled={signOutReminderEnabled}
+                  status={status}
+                />
+
                 <ReminderNotificationPanel
                   disabled={!status?.staff || reminderControlsLocked || pushReminderLoading || savingPushReminder}
                   loading={pushReminderLoading || savingPushReminder}
@@ -1182,6 +1244,13 @@ export default function CheckInPage() {
                     });
                   }}
                 />
+
+                {forcedSessionNotice && (
+                  <div className="flex items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
+                    <AlertTriangle className="h-4 w-4" />
+                    {forcedSessionNotice}
+                  </div>
+                )}
 
                 {message && (
                   <div className={cn(
@@ -1524,6 +1593,100 @@ function ReceiptNotificationToast({
       </div>
     </div>
   );
+}
+
+function PermissionSetupPanel({
+  liveLocation,
+  notificationPermission,
+  reminderControlsLocked,
+  signInEnabled,
+  signOutEnabled,
+  status,
+}: {
+  liveLocation: LiveLocation;
+  notificationPermission: BrowserNotificationPermission;
+  reminderControlsLocked: boolean;
+  signInEnabled: boolean;
+  signOutEnabled: boolean;
+  status: CheckInStatus | null;
+}) {
+  const locationReady = Boolean(status?.locationConfigured && liveLocation.state === 'inside');
+  const locationBlocked = Boolean(status?.locationConfigured && liveLocation.blocking);
+  const notificationReady = notificationPermission === 'granted';
+  const notificationBlocked = notificationPermission === 'denied' || notificationPermission === 'unsupported';
+  const reminderReady = !reminderControlsLocked && (signInEnabled || signOutEnabled);
+  const reminderLocked = reminderControlsLocked;
+  const permissionHelp = notificationHelpText(notificationPermission);
+
+  return (
+    <div className="rounded-md border border-border bg-card p-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <SetupStep
+          icon={<MapPin className="h-4 w-4" />}
+          label="Location"
+          state={locationReady ? 'Ready' : locationBlocked ? 'Needs attention' : 'Checking'}
+          tone={locationReady ? 'success' : locationBlocked ? 'danger' : 'warning'}
+        />
+        <SetupStep
+          icon={<BellRing className="h-4 w-4" />}
+          label="Notifications"
+          state={notificationReady ? 'Allowed' : notificationBlocked ? 'Blocked' : 'Not allowed yet'}
+          tone={notificationReady ? 'success' : notificationBlocked ? 'danger' : 'warning'}
+        />
+        <SetupStep
+          icon={<Smartphone className="h-4 w-4" />}
+          label="Reminders"
+          state={reminderReady ? 'Enabled' : reminderLocked ? 'Trusted device required' : 'Off'}
+          tone={reminderReady ? 'success' : reminderLocked ? 'warning' : 'neutral'}
+        />
+      </div>
+      {permissionHelp && (
+        <div className="mt-2 rounded-md border border-warning/25 bg-warning/10 px-3 py-2 text-xs leading-5 text-warning">
+          {permissionHelp}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SetupStep({
+  icon,
+  label,
+  state,
+  tone,
+}: {
+  icon: ReactNode;
+  label: string;
+  state: string;
+  tone: 'danger' | 'neutral' | 'success' | 'warning';
+}) {
+  return (
+    <div className={cn(
+      'flex min-w-0 items-center gap-2 rounded-md border px-3 py-2',
+      tone === 'success' && 'border-success/25 bg-success/10 text-success',
+      tone === 'danger' && 'border-danger/25 bg-danger/10 text-danger',
+      tone === 'warning' && 'border-warning/25 bg-warning/10 text-warning',
+      tone === 'neutral' && 'border-border bg-background text-muted-foreground',
+    )}>
+      <span className="shrink-0">{icon}</span>
+      <span className="min-w-0">
+        <span className="block truncate text-xs font-semibold">{label}</span>
+        <span className="block truncate text-xs text-current/75">{state}</span>
+      </span>
+    </div>
+  );
+}
+
+function notificationHelpText(permission: BrowserNotificationPermission) {
+  if (permission === 'unsupported') {
+    return 'Use Chrome, Edge, or Safari for web push. In Brave, enable push messaging in browser settings first.';
+  }
+
+  if (permission === 'denied') {
+    return 'Notifications are blocked. Open the browser site settings for LateWatch, allow notifications, then refresh this page.';
+  }
+
+  return null;
 }
 
 function ReminderNotificationPanel({

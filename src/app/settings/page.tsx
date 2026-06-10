@@ -72,6 +72,7 @@ export default function SettingsPage() {
               <QuickLink href="/staff" label="Staff Management" desc="Manage staff members" />
               <QuickLink href="/exports" label="Exports" desc="Generate lateness and attendance reports" />
               <QuickLink href="/calendar" label="Calendar" desc="View holidays" />
+              <QuickLink href="/settings/security" label="Security" desc="MFA, passkeys, and attendance hardening" />
             </div>
           </div>
         </Card>

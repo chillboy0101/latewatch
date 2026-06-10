@@ -38,9 +38,14 @@ interface ReminderMonitorRow {
 }
 
 interface ReminderMonitorSection {
+  alerts: Array<{
+    message: string;
+    tone: 'danger' | 'warning';
+  }>;
   label: string;
   reminderType: string;
   rows: ReminderMonitorRow[];
+  scheduledPassed: boolean;
   scheduledTime: string;
   summary: {
     eligible: number;
@@ -109,8 +114,6 @@ function SummaryMetric({ label, value, tone = 'neutral' }: { label: string; valu
 }
 
 function ReminderSection({ section }: { section: ReminderMonitorSection }) {
-  const problemCount = section.summary.failed + section.summary.missing;
-
   return (
     <Card className="overflow-hidden">
       <div className="flex flex-col gap-4 border-b border-border p-5 xl:flex-row xl:items-center xl:justify-between">
@@ -129,9 +132,19 @@ function ReminderSection({ section }: { section: ReminderMonitorSection }) {
         </div>
       </div>
 
-      {problemCount > 0 && (
-        <div className="border-b border-danger/25 bg-danger/10 px-5 py-3 text-sm text-danger">
-          {problemCount} eligible staff need attention for this reminder window.
+      {section.alerts.length > 0 && (
+        <div className="divide-y divide-border border-b border-border">
+          {section.alerts.map((alert) => (
+            <div
+              key={alert.message}
+              className={cn(
+                'px-5 py-3 text-sm',
+                alert.tone === 'danger' ? 'bg-danger/10 text-danger' : 'bg-warning/10 text-warning',
+              )}
+            >
+              {alert.message}
+            </div>
+          ))}
         </div>
       )}
 

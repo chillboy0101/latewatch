@@ -22,6 +22,8 @@ import {
   PanelLeftOpen,
   ReceiptText,
   HandCoins,
+  Smartphone,
+  ShieldAlert,
 } from 'lucide-react';
 
 type SidebarMode = 'auto' | 'fixed';
@@ -37,6 +39,8 @@ const navigation = [
   { name: 'Emergency', href: '/emergency-contacts', icon: PhoneCall },
   { name: 'Attendance', href: '/attendance', icon: ClipboardCheck },
   { name: 'Reminders', href: '/attendance/reminders', icon: BellRing },
+  { name: 'Devices', href: '/attendance/devices', icon: Smartphone },
+  { name: 'Security', href: '/attendance/security-alerts', icon: ShieldAlert },
   { name: 'Location', href: '/location', icon: MapPin },
   { name: 'Entries', href: '/entries', icon: Table2 },
   { name: 'Exports', href: '/exports', icon: Download },

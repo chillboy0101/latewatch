@@ -238,22 +238,48 @@ export async function getReminderDeliveryMonitor(date: string) {
 
   function buildSection(reminderType: ReminderMonitorType) {
     const rows = buildRows(reminderType);
+    const scheduledPassed = hasScheduledTimePassed({ date, reminderType });
+    const summary = {
+      eligible: rows.filter((row) => row.eligible).length,
+      failed: rows.filter((row) => row.status === 'failed').length,
+      missing: rows.filter((row) => row.status === 'missing').length,
+      noDevice: rows.filter((row) => row.status === 'no_device').length,
+      pending: rows.filter((row) => row.status === 'pending').length,
+      sent: rows.filter((row) => row.status === 'sent').length,
+      skipped: rows.filter((row) => row.status === 'skipped').length,
+      waiting: rows.filter((row) => row.status === 'waiting').length,
+    };
+    const alerts: Array<{ message: string; tone: 'danger' | 'warning' }> = [];
+
+    if (scheduledPassed && summary.eligible > 0 && summary.sent === 0) {
+      alerts.push({
+        message: `${REMINDER_SCHEDULES[reminderType].label} has eligible staff but zero successful sends.`,
+        tone: 'danger',
+      });
+    }
+
+    if (summary.failed > 0 || summary.missing > 0) {
+      alerts.push({
+        message: `${summary.failed + summary.missing} eligible staff need reminder delivery review.`,
+        tone: 'danger',
+      });
+    }
+
+    if (summary.noDevice > 0) {
+      alerts.push({
+        message: `${summary.noDevice} staff have no enabled reminder device for this reminder type.`,
+        tone: 'warning',
+      });
+    }
 
     return {
+      alerts,
       label: REMINDER_SCHEDULES[reminderType].label,
       reminderType,
       rows,
+      scheduledPassed,
       scheduledTime: REMINDER_SCHEDULES[reminderType].scheduledTime,
-      summary: {
-        eligible: rows.filter((row) => row.eligible).length,
-        failed: rows.filter((row) => row.status === 'failed').length,
-        missing: rows.filter((row) => row.status === 'missing').length,
-        noDevice: rows.filter((row) => row.status === 'no_device').length,
-        pending: rows.filter((row) => row.status === 'pending').length,
-        sent: rows.filter((row) => row.status === 'sent').length,
-        skipped: rows.filter((row) => row.status === 'skipped').length,
-        waiting: rows.filter((row) => row.status === 'waiting').length,
-      },
+      summary,
     };
   }
 
