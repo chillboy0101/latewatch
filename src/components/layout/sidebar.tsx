@@ -92,6 +92,12 @@ export function Sidebar() {
   }, []);
 
   useEffect(() => {
+    return () => {
+      rememberedAutoExpanded = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!hasLoadedSidebarMode) return;
 
     try {

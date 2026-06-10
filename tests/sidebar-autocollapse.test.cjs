@@ -39,6 +39,14 @@ test('auto-hide sidebar stays expanded through navigation until the pointer leav
   assert.doesNotMatch(source, /\[pathname, sidebarMode\]/);
 });
 
+test('auto-hide sidebar forgets transient expansion when the admin shell unmounts', () => {
+  const source = fs.readFileSync(sidebarPath, 'utf8');
+
+  assert.match(source, /return \(\) => \{\s*rememberedAutoExpanded = false;\s*\}/);
+  assert.match(source, /const \[isAutoExpanded, setIsAutoExpanded\] = useState\(\(\) => rememberedAutoExpanded\)/);
+  assert.match(source, /rememberedAutoExpanded = value/);
+});
+
 test('sidebar uses longer smooth motion classes for expanding and contracting', () => {
   const source = fs.readFileSync(sidebarPath, 'utf8');
 
