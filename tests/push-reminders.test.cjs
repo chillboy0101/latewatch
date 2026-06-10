@@ -25,6 +25,9 @@ const holidayReminderRoutePath = path.join(root, 'src/app/api/attendance/reminde
 const proxyPath = path.join(root, 'src/proxy.ts');
 const pushClientLibPath = path.join(root, 'src/lib/push-client.ts');
 const pushReminderProofTestLibPath = path.join(root, 'src/lib/push-reminder-proof-test.ts');
+const reminderDeliveryMonitorLibPath = path.join(root, 'src/lib/reminder-delivery-monitor.ts');
+const reminderDeliveryMonitorApiPath = path.join(root, 'src/app/api/attendance/reminder-monitor/route.ts');
+const reminderDeliveryMonitorPagePath = path.join(root, 'src/app/attendance/reminders/page.tsx');
 const pushReminderToggleConfirmationLibPath = path.join(root, 'src/lib/push-reminder-toggle-confirmation.ts');
 const pushReminderLibPath = path.join(root, 'src/lib/push-reminders.ts');
 const reminderCronGuardPath = path.join(root, 'src/lib/reminder-cron-guard.ts');
@@ -304,6 +307,52 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.doesNotMatch(vercel, /"path": "\/api\/attendance\/reminders\/sign-in"/);
   assert.doesNotMatch(vercel, /"path": "\/api\/attendance\/reminders\/holiday"/);
   assert.doesNotMatch(vercel, /"path": "\/api\/calendar\/sync"/);
+});
+
+test('admin reminder delivery monitor is protected and explains delivery outcomes', () => {
+  assert.equal(fs.existsSync(reminderDeliveryMonitorLibPath), true);
+  assert.equal(fs.existsSync(reminderDeliveryMonitorApiPath), true);
+  assert.equal(fs.existsSync(reminderDeliveryMonitorPagePath), true);
+
+  const helper = fs.readFileSync(reminderDeliveryMonitorLibPath, 'utf8');
+  const api = fs.readFileSync(reminderDeliveryMonitorApiPath, 'utf8');
+  const page = fs.readFileSync(reminderDeliveryMonitorPagePath, 'utf8');
+  const proxy = fs.readFileSync(proxyPath, 'utf8');
+  const sidebar = fs.readFileSync(path.join(root, 'src/components/layout/sidebar.tsx'), 'utf8');
+
+  assert.match(api, /requireRole\(\['admin'\]\)/);
+  assert.match(api, /getReminderDeliveryMonitor\(date\)/);
+  assert.match(api, /isIsoDateKey\(date\)/);
+  assert.match(api, /Cache-Control': 'no-store'/);
+  assert.match(proxy, /\/api\/attendance\/reminders\(\.\*\)/);
+  assert.doesNotMatch(api, /validateReminderCronAuth/);
+  assert.doesNotMatch(api, /\/api\/attendance\/reminders/);
+
+  assert.match(helper, /pushReminderDelivery/);
+  assert.match(helper, /pushSubscription/);
+  assert.match(helper, /attendanceRecord/);
+  assert.match(helper, /attendancePermission/);
+  assert.match(helper, /getHolidayForDate\(date\)/);
+  assert.match(helper, /isWeekendDate\(date\)/);
+  assert.match(helper, /Eligible but no delivery record found/);
+  assert.match(helper, /No enabled sign-in reminder device/);
+  assert.match(helper, /No enabled sign-out reminder device/);
+  assert.match(helper, /Already signed in at/);
+  assert.match(helper, /Already signed out at/);
+  assert.match(helper, /Sent to \$\{counts\.sent\} devices/);
+  assert.match(helper, /summary: \{/);
+  assert.match(helper, /missing: rows\.filter\(\(row\) => row\.status === 'missing'\)\.length/);
+
+  assert.match(page, /Reminder Delivery Monitor/);
+  assert.match(page, /\/api\/attendance\/reminder-monitor\?date=/);
+  assert.match(page, /8:15 Sent/);
+  assert.match(page, /4:30 Sent/);
+  assert.match(page, /Needs Review/);
+  assert.match(page, /ReminderSection section=\{data\.sections\.signIn\}/);
+  assert.match(page, /ReminderSection section=\{data\.sections\.signOut\}/);
+  assert.match(sidebar, /Reminders/);
+  assert.match(sidebar, /href: '\/attendance\/reminders'/);
+  assert.match(sidebar, /activeNavigation/);
 });
 
 test('push client normalizes pasted VAPID public keys before browser subscribe', () => {

@@ -13,6 +13,7 @@ import {
   Table2,
   Download,
   Calendar,
+  BellRing,
   ClipboardCheck,
   PhoneCall,
   Shield,
@@ -35,6 +36,7 @@ const navigation = [
   { name: 'Staff', href: '/staff', icon: Users },
   { name: 'Emergency', href: '/emergency-contacts', icon: PhoneCall },
   { name: 'Attendance', href: '/attendance', icon: ClipboardCheck },
+  { name: 'Reminders', href: '/attendance/reminders', icon: BellRing },
   { name: 'Location', href: '/location', icon: MapPin },
   { name: 'Entries', href: '/entries', icon: Table2 },
   { name: 'Exports', href: '/exports', icon: Download },
@@ -50,6 +52,9 @@ function isSidebarMode(value: string | null): value is SidebarMode {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const activeNavigation = navigation
+    .filter((item) => pathname === item.href || pathname?.startsWith(`${item.href}/`))
+    .sort((a, b) => b.href.length - a.href.length)[0];
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>('auto');
   const [isAutoExpanded, setIsAutoExpanded] = useState(() => rememberedAutoExpanded);
   const [hasLoadedSidebarMode, setHasLoadedSidebarMode] = useState(false);
@@ -185,8 +190,7 @@ export function Sidebar() {
         </div>
         <nav className="flex-1 space-y-1 px-2 py-4">
           {navigation.map((item) => {
-            const isActive =
-              pathname === item.href || pathname?.startsWith(`${item.href}/`);
+            const isActive = activeNavigation?.href === item.href;
             return (
               <Link
                 key={item.name}
