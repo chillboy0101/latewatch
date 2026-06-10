@@ -165,11 +165,11 @@ export function Sidebar() {
   }
 
   const labelClassName = cn(
-    'min-w-0 overflow-hidden whitespace-nowrap transition-[opacity,transform] will-change-[opacity,transform]',
+    'min-w-0 overflow-hidden whitespace-nowrap transition-[opacity,width]',
     SIDEBAR_LABEL_MOTION_CLASS,
     isExpanded
-      ? 'w-auto translate-x-0 opacity-100'
-      : 'pointer-events-none w-0 -translate-x-1 opacity-0',
+      ? 'w-auto opacity-100'
+      : 'pointer-events-none w-0 opacity-0',
   );
 
   const itemClassName = cn(
@@ -280,10 +280,10 @@ export function Sidebar() {
                                 tabIndex={showChildren ? undefined : -1}
                                 className={cn(
                                   itemClassName,
+                                  'pl-12',
                                   isChildActive ? activeItemClassName : inactiveItemClassName,
                                 )}
                               >
-                                <span className={itemIconClassName} aria-hidden="true" />
                                 <span className={labelClassName}>{child.name}</span>
                               </Link>
                             </li>

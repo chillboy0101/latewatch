@@ -74,7 +74,10 @@ test('sidebar uses a fixed icon rail so icons do not shift while expanding', () 
   assert.match(source, /isExpanded \? 'w-full justify-start' : 'w-12 justify-start'/);
   assert.match(source, /<span className=\{itemIconClassName\} aria-hidden="true">/);
   assert.match(source, /<span className=\{itemIconClassName\} aria-hidden="true">[\s\S]*<Home className="h-5 w-5 shrink-0" \/>/);
-  assert.match(source, /pointer-events-none w-0 -translate-x-1 opacity-0/);
+  assert.match(source, /pointer-events-none w-0 opacity-0/);
+  assert.match(source, /transition-\[opacity,width\]/);
+  assert.doesNotMatch(source, /will-change-\[opacity,transform\]/);
+  assert.doesNotMatch(source, /-translate-x-1/);
   assert.match(source, /relative z-10 shrink-0 space-y-2 border-t border-border bg-card px-2 pb-14 pt-3/);
   assert.doesNotMatch(source, /pb-16/);
 });
@@ -99,8 +102,8 @@ test('sidebar groups attendance routes under an accessible disclosure', () => {
   assert.match(source, /tabIndex=\{showChildren \? undefined : -1\}/);
   assert.doesNotMatch(source, /const ChildIcon = child\.icon/);
   assert.doesNotMatch(source, /<ChildIcon className="h-5 w-5 shrink-0" \/>/);
-  assert.match(source, /<span className=\{itemIconClassName\} aria-hidden="true" \/>/);
-  assert.match(source, /className=\{cn\(\s*itemClassName,\s*isChildActive \? activeItemClassName : inactiveItemClassName,/);
+  assert.doesNotMatch(source, /<span className=\{itemIconClassName\} aria-hidden="true" \/>/);
+  assert.match(source, /className=\{cn\(\s*itemClassName,\s*'pl-12',\s*isChildActive \? activeItemClassName : inactiveItemClassName,/);
   assert.doesNotMatch(source, /ml-10 flex h-8 min-w-0 items-center rounded-md pl-2 pr-3/);
   assert.doesNotMatch(source, /ml-12 flex h-8 min-w-0 items-center rounded-md px-3/);
   assert.match(source, /const activeItemClassName = 'bg-primary text-primary-foreground'/);
