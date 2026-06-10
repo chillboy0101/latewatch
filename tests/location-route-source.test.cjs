@@ -5,6 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const root = path.join(__dirname, '..');
+const appShellPath = path.join(root, 'src/components/layout/app-shell.tsx');
 const locationPagePath = path.join(root, 'src/app/location/page.tsx');
 const legacyWifiPagePath = path.join(root, 'src/app/wifi/page.tsx');
 const notificationsPath = path.join(root, 'src/app/api/notifications/route.ts');
@@ -18,7 +19,9 @@ test('office location admin page uses the location route with a protected wifi r
 
   const locationPage = fs.readFileSync(locationPagePath, 'utf8');
   const legacyWifiPage = fs.readFileSync(legacyWifiPagePath, 'utf8');
+  const appShell = fs.readFileSync(appShellPath, 'utf8');
 
+  assert.match(appShell, /location: 'Office Location'/);
   assert.match(locationPage, /DashboardLayout title="Office Location"/);
   assert.match(locationPage, /export default function LocationPage/);
   assert.match(legacyWifiPage, /from 'next\/navigation'/);

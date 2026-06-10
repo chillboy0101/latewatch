@@ -12,6 +12,7 @@ const WORKSPACE_TITLES: Record<string, string> = {
   entries: 'Entries',
   'emergency-contacts': 'Emergency Contacts',
   exports: 'Exports',
+  location: 'Office Location',
   payments: 'Payments',
   settings: 'Settings',
   staff: 'Staff',
