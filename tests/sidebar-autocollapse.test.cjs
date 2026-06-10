@@ -79,6 +79,37 @@ test('sidebar uses a fixed icon rail so icons do not shift while expanding', () 
   assert.doesNotMatch(source, /pb-16/);
 });
 
+test('sidebar groups attendance routes under an accessible disclosure', () => {
+  const source = fs.readFileSync(sidebarPath, 'utf8');
+
+  assert.match(source, /const attendanceChildren = \[/);
+  assert.match(source, /\{ name: 'Overview', href: '\/attendance' \}/);
+  assert.match(source, /\{ name: 'Reminders', href: '\/attendance\/reminders' \}/);
+  assert.match(source, /\{ name: 'Devices', href: '\/attendance\/devices' \}/);
+  assert.match(source, /\{ name: 'Security Alerts', href: '\/attendance\/security-alerts' \}/);
+  assert.match(source, /\{ name: 'Attendance', icon: ClipboardCheck, children: attendanceChildren \}/);
+  assert.doesNotMatch(source, /\{ name: 'Reminders', href: '\/attendance\/reminders', icon:/);
+  assert.doesNotMatch(source, /\{ name: 'Devices', href: '\/attendance\/devices', icon:/);
+  assert.doesNotMatch(source, /\{ name: 'Security', href: '\/attendance\/security-alerts', icon:/);
+  assert.match(source, /aria-controls=\{ATTENDANCE_NAV_ID\}/);
+  assert.match(source, /aria-expanded=\{showChildren\}/);
+  assert.match(source, /id=\{ATTENDANCE_NAV_ID\}/);
+  assert.match(source, /tabIndex=\{showChildren \? undefined : -1\}/);
+});
+
+test('attendance disclosure opens on active child routes and stays hidden in compact mode', () => {
+  const source = fs.readFileSync(sidebarPath, 'utf8');
+
+  assert.match(source, /const navigationLeaves = navigation\.flatMap/);
+  assert.match(source, /const attendanceSectionActive = attendanceChildren\.some/);
+  assert.match(source, /if \(attendanceSectionActive\) setAttendanceDisclosureOpen\(true\)/);
+  assert.match(source, /const showChildren = isExpanded && attendanceDisclosureOpen/);
+  assert.match(source, /showChildren \? 'grid-rows-\[1fr\] opacity-100' : 'grid-rows-\[0fr\] opacity-0'/);
+  assert.match(source, /!isExpanded && 'hidden'/);
+  assert.match(source, /showChildren && 'rotate-180'/);
+  assert.match(source, /isExpanded \? 'ml-auto mr-3 w-4 opacity-70' : 'm-0 w-0 opacity-0'/);
+});
+
 test('sidebar scrolls only the middle navigation while portal controls stay fixed', () => {
   const source = fs.readFileSync(sidebarPath, 'utf8');
   const globals = fs.readFileSync(globalsPath, 'utf8');
