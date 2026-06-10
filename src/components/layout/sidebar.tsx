@@ -184,7 +184,7 @@ export function Sidebar() {
           !isFixed && isAutoExpanded && 'shadow-xl',
         )}
       >
-        <div className="flex h-16 items-center px-4">
+        <div className="flex h-16 shrink-0 items-center px-4">
           <div className="flex min-w-0 items-center gap-2.5">
             <LateWatchMark size="sm" />
             <span className={cn('text-lg font-semibold leading-tight', labelClassName)}>
@@ -192,7 +192,10 @@ export function Sidebar() {
             </span>
           </div>
         </div>
-        <nav className="flex-1 space-y-1 px-2 py-4">
+        <nav
+          aria-label="Admin navigation"
+          className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-2 py-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
           {navigation.map((item) => {
             const isActive = activeNavigation?.href === item.href;
             return (
@@ -217,7 +220,7 @@ export function Sidebar() {
             );
           })}
         </nav>
-        <div className="space-y-2 border-t border-border px-2 pb-14 pt-3">
+        <div className="relative z-10 shrink-0 space-y-2 border-t border-border bg-card px-2 pb-14 pt-3">
           <Link
             href="/"
             aria-label="Main Portal"

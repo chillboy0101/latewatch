@@ -73,8 +73,24 @@ test('sidebar uses a fixed icon rail so icons do not shift while expanding', () 
   assert.match(source, /<span className=\{itemIconClassName\} aria-hidden="true">/);
   assert.match(source, /<span className=\{itemIconClassName\} aria-hidden="true">[\s\S]*<Home className="h-5 w-5 shrink-0" \/>/);
   assert.match(source, /pointer-events-none w-0 -translate-x-1 opacity-0/);
-  assert.match(source, /border-t border-border px-2 pb-14 pt-3/);
+  assert.match(source, /relative z-10 shrink-0 space-y-2 border-t border-border bg-card px-2 pb-14 pt-3/);
   assert.doesNotMatch(source, /pb-16/);
+});
+
+test('sidebar scrolls only the middle navigation while portal controls stay fixed', () => {
+  const source = fs.readFileSync(sidebarPath, 'utf8');
+  const navIndex = source.indexOf('aria-label="Admin navigation"');
+  const mainPortalIndex = source.indexOf('aria-label="Main Portal"');
+  const toggleIndex = source.indexOf('onClick={toggleSidebarMode}');
+
+  assert.notEqual(navIndex, -1);
+  assert.notEqual(mainPortalIndex, -1);
+  assert.notEqual(toggleIndex, -1);
+  assert.ok(navIndex < mainPortalIndex);
+  assert.ok(mainPortalIndex < toggleIndex);
+  assert.match(source, /className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-2 py-3 \[-ms-overflow-style:none\] \[scrollbar-width:none\] \[&::-webkit-scrollbar\]:hidden"/);
+  assert.match(source, /className="relative z-10 shrink-0 space-y-2 border-t border-border bg-card px-2 pb-14 pt-3"/);
+  assert.match(source, /className="flex h-16 shrink-0 items-center px-4"/);
 });
 
 test('dashboard shell draws one continuous header divider', () => {
@@ -84,7 +100,7 @@ test('dashboard shell draws one continuous header divider', () => {
 
   assert.match(dashboardLayoutSource, /absolute left-0 right-0 top-16 z-50 h-px bg-border/);
   assert.match(headerSource, /className="flex h-16 items-center justify-between bg-card px-6"/);
-  assert.match(sidebarSource, /className="flex h-16 items-center px-4"/);
+  assert.match(sidebarSource, /className="flex h-16 shrink-0 items-center px-4"/);
   assert.match(sidebarSource, /!isExpanded && 'border-r border-border'/);
   assert.match(sidebarSource, /isExpanded && 'border-r border-border'/);
   assert.doesNotMatch(headerSource, /justify-between border-b border-border bg-card/);
