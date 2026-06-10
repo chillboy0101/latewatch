@@ -105,8 +105,13 @@ export function Sidebar() {
   }, [hasLoadedSidebarMode, sidebarMode]);
 
   useEffect(() => {
+    if (!isExpanded) {
+      setAttendanceDisclosureOpen(false);
+      return;
+    }
+
     if (attendanceSectionActive) setAttendanceDisclosureOpen(true);
-  }, [attendanceSectionActive]);
+  }, [attendanceSectionActive, isExpanded]);
 
   const setAutoExpanded = useCallback((value: boolean) => {
     rememberedAutoExpanded = value;
@@ -227,6 +232,7 @@ export function Sidebar() {
 
               if ('children' in item) {
                 const showChildren = isExpanded && attendanceDisclosureOpen;
+                const attendanceParentActive = attendanceSectionActive && !isExpanded;
                 return (
                   <li key={item.name}>
                     <button
@@ -239,7 +245,7 @@ export function Sidebar() {
                       className={cn(
                         itemClassName,
                         'border-0 p-0 text-left',
-                        inactiveItemClassName,
+                        attendanceParentActive ? activeItemClassName : inactiveItemClassName,
                       )}
                     >
                       <span className={itemIconClassName} aria-hidden="true">

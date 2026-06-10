@@ -100,7 +100,8 @@ test('sidebar groups attendance routes under an accessible disclosure', () => {
   assert.doesNotMatch(source, /ml-12 flex h-8 min-w-0 items-center rounded-md px-3/);
   assert.match(source, /const activeItemClassName = 'bg-primary text-primary-foreground'/);
   assert.match(source, /const inactiveItemClassName = 'text-muted hover:bg-background hover:text-foreground'/);
-  assert.match(source, /'border-0 p-0 text-left',\s*inactiveItemClassName,/);
+  assert.match(source, /const attendanceParentActive = attendanceSectionActive && !isExpanded/);
+  assert.match(source, /'border-0 p-0 text-left',\s*attendanceParentActive \? activeItemClassName : inactiveItemClassName,/);
   assert.doesNotMatch(source, /attendanceSectionActive \? activeItemClassName : inactiveItemClassName/);
   assert.match(source, /isChildActive \? activeItemClassName : inactiveItemClassName/);
   assert.doesNotMatch(source, /bg-primary\/10 text-primary/);
@@ -111,7 +112,9 @@ test('attendance disclosure opens on active child routes and stays hidden in com
 
   assert.match(source, /const navigationLeaves = navigation\.flatMap/);
   assert.match(source, /const attendanceSectionActive = attendanceChildren\.some/);
+  assert.match(source, /if \(!isExpanded\) \{\s*setAttendanceDisclosureOpen\(false\);\s*return;\s*\}/);
   assert.match(source, /if \(attendanceSectionActive\) setAttendanceDisclosureOpen\(true\)/);
+  assert.match(source, /\[attendanceSectionActive, isExpanded\]/);
   assert.match(source, /const showChildren = isExpanded && attendanceDisclosureOpen/);
   assert.match(source, /showChildren \? 'grid-rows-\[1fr\] opacity-100' : 'grid-rows-\[0fr\] opacity-0'/);
   assert.match(source, /className=\{cn\('min-h-0 space-y-1 overflow-hidden', showChildren && 'pt-1'\)\}/);
