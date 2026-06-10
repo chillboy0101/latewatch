@@ -14,20 +14,23 @@ import {
   Table2,
   Download,
   Calendar,
+  BellRing,
   ClipboardCheck,
   PhoneCall,
   Shield,
+  ShieldAlert,
   MapPin,
   PanelLeftClose,
   PanelLeftOpen,
   ReceiptText,
   HandCoins,
+  Smartphone,
   type LucideIcon,
 } from 'lucide-react';
 
 type SidebarMode = 'auto' | 'fixed';
-type NavigationChild = { name: string; href: string };
-type NavigationLink = NavigationChild & { icon: LucideIcon };
+type NavigationChild = { name: string; href: string; icon: LucideIcon };
+type NavigationLink = NavigationChild;
 type NavigationGroup = { name: string; icon: LucideIcon; children: NavigationChild[] };
 type NavigationItem = NavigationLink | NavigationGroup;
 
@@ -38,10 +41,10 @@ const SIDEBAR_LABEL_MOTION_CLASS = 'duration-200 ease-out motion-reduce:transiti
 let rememberedAutoExpanded = false;
 
 const attendanceChildren = [
-  { name: 'Overview', href: '/attendance' },
-  { name: 'Reminders', href: '/attendance/reminders' },
-  { name: 'Devices', href: '/attendance/devices' },
-  { name: 'Security Alerts', href: '/attendance/security-alerts' },
+  { name: 'Overview', href: '/attendance', icon: ClipboardCheck },
+  { name: 'Reminders', href: '/attendance/reminders', icon: BellRing },
+  { name: 'Devices', href: '/attendance/devices', icon: Smartphone },
+  { name: 'Security Alerts', href: '/attendance/security-alerts', icon: ShieldAlert },
 ];
 
 const navigation: NavigationItem[] = [
@@ -236,7 +239,7 @@ export function Sidebar() {
                       className={cn(
                         itemClassName,
                         'border-0 p-0 text-left',
-                        attendanceSectionActive ? activeItemClassName : inactiveItemClassName,
+                        inactiveItemClassName,
                       )}
                     >
                       <span className={itemIconClassName} aria-hidden="true">
@@ -264,6 +267,7 @@ export function Sidebar() {
                       <ul className={cn('min-h-0 overflow-hidden', showChildren && 'py-1')}>
                         {item.children.map((child) => {
                           const isChildActive = activeNavigation?.href === child.href;
+                          const ChildIcon = child.icon;
                           return (
                             <li key={child.name}>
                               <Link
@@ -273,11 +277,14 @@ export function Sidebar() {
                                 title={child.name}
                                 tabIndex={showChildren ? undefined : -1}
                                 className={cn(
-                                  'ml-10 flex h-8 min-w-0 items-center rounded-md pl-2 pr-3 text-sm font-medium transition-colors duration-150 ease-out',
+                                  itemClassName,
                                   isChildActive ? activeItemClassName : inactiveItemClassName,
                                 )}
                               >
-                                <span className="truncate">{child.name}</span>
+                                <span className={itemIconClassName} aria-hidden="true">
+                                  <ChildIcon className="h-5 w-5 shrink-0" />
+                                </span>
+                                <span className={labelClassName}>{child.name}</span>
                               </Link>
                             </li>
                           );
