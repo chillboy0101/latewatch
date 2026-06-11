@@ -31,6 +31,7 @@ type ReminderStatusFilter =
   | 'reminder_off'
   | 'sent'
   | 'skipped';
+type ReminderMonitorType = 'sign_in' | 'sign_out';
 type ReminderTypeKey = 'signIn' | 'signOut';
 
 interface ReminderMonitorRow {
@@ -45,6 +46,7 @@ interface ReminderMonitorRow {
   };
   enabledReminderDevices: number;
   eligible: boolean;
+  reminderType: ReminderMonitorType;
   reason: string;
   staff: {
     department: string | null;
@@ -229,6 +231,23 @@ function MiniMetric({ label, value, tone = 'neutral' }: { label: string; value: 
   );
 }
 
+function formatReminderDeviceText(row: ReminderMonitorRow) {
+  if (row.activeReminderDevices === 0) return 'No notification device';
+
+  const activeNoun = row.activeReminderDevices === 1 ? 'device' : 'devices';
+  if (row.enabledReminderDevices === 0) {
+    if (row.reminderType === 'sign_in') return `Sign-in off on ${row.activeReminderDevices} ${activeNoun}`;
+    return `Sign-out off on ${row.activeReminderDevices} ${activeNoun}`;
+  }
+
+  const enabledNoun = row.enabledReminderDevices === 1 ? 'device' : 'devices';
+  if (row.enabledReminderDevices === row.activeReminderDevices) {
+    return `${row.enabledReminderDevices} ${enabledNoun} enabled`;
+  }
+
+  return `${row.enabledReminderDevices} of ${row.activeReminderDevices} devices enabled`;
+}
+
 function ReminderSection({ section }: { section: ReminderMonitorSection }) {
   return (
     <Card className="overflow-hidden">
@@ -302,8 +321,7 @@ function ReminderSection({ section }: { section: ReminderMonitorSection }) {
                   {row.reason}
                 </td>
                 <td className="px-4 py-3 align-top">
-                  <div className="font-medium">{row.enabledReminderDevices} enabled</div>
-                  <div className="mt-1 text-xs text-muted-foreground">{row.activeReminderDevices} active subscription{row.activeReminderDevices === 1 ? '' : 's'}</div>
+                  <div className="font-medium">{formatReminderDeviceText(row)}</div>
                 </td>
                 <td className="px-4 py-3 align-top">
                   <div className="font-medium">
