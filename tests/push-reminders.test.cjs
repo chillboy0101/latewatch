@@ -377,7 +377,7 @@ test('admin reminder delivery monitor is protected and explains delivery outcome
   assert.match(page, /Notifications not registered/);
   assert.match(page, /Reminder off/);
   assert.match(page, /formatReminderDeviceText/);
-  assert.match(page, /row\.status === 'skipped'\) return '-'/);
+  assert.match(page, /row\.status === 'skipped'\) return 'Not needed'/);
   assert.match(page, /No notification device/);
   assert.match(page, /Sign-in off on/);
   assert.match(page, /Sign-out off on/);
