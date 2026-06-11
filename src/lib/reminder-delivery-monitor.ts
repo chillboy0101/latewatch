@@ -33,10 +33,16 @@ const REMINDER_SCHEDULES: Record<ReminderMonitorType, { label: string; scheduled
 };
 
 function minutesFromTimeKey(timeKey: string | null | undefined) {
-  const [hourText = '', minuteText = ''] = (timeKey || '').split(':');
-  const hour = Number(hourText);
-  const minute = Number(minuteText);
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  if (typeof timeKey !== 'string') return null;
+  const match = timeKey.trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!match) return null;
+
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return null;
+  }
+
   return hour * 60 + minute;
 }
 

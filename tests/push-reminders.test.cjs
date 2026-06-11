@@ -342,6 +342,9 @@ test('admin reminder delivery monitor is protected and explains delivery outcome
   assert.match(helper, /getHolidayForDate\(date\)/);
   assert.match(helper, /isWeekendDate\(date\)/);
   assert.match(helper, /Eligible but no delivery record found/);
+  assert.match(helper, /typeof timeKey !== 'string'\) return null/);
+  assert.match(helper, /timeKey\.trim\(\)\.match/);
+  assert.match(helper, /hour < 0 \|\| hour > 23 \|\| minute < 0 \|\| minute > 59/);
   assert.match(helper, /function isAtOrBeforeReminderSchedule/);
   assert.match(helper, /function isAfterReminderSchedule/);
   assert.match(helper, /function missingDeliveryReason/);
@@ -388,7 +391,7 @@ test('admin reminder delivery monitor is protected and explains delivery outcome
   assert.match(page, /Notifications not registered/);
   assert.match(page, /Reminder off/);
   assert.match(page, /formatReminderDeviceText/);
-  assert.match(page, /row\.status === 'skipped'\) return 'Not needed'/);
+  assert.doesNotMatch(page, /Not needed/);
   assert.match(page, /No notification device/);
   assert.match(page, /Sign-in off on/);
   assert.match(page, /Sign-out off on/);

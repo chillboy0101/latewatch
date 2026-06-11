@@ -232,7 +232,6 @@ function MiniMetric({ label, value, tone = 'neutral' }: { label: string; value: 
 }
 
 function formatReminderDeviceText(row: ReminderMonitorRow) {
-  if (row.status === 'skipped') return 'Not needed';
   if (row.activeReminderDevices === 0) return 'No notification device';
 
   const activeNoun = row.activeReminderDevices === 1 ? 'device' : 'devices';
