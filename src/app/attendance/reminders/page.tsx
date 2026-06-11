@@ -232,6 +232,7 @@ function MiniMetric({ label, value, tone = 'neutral' }: { label: string; value: 
 }
 
 function formatReminderDeviceText(row: ReminderMonitorRow) {
+  if (row.status === 'skipped') return '-';
   if (row.activeReminderDevices === 0) return 'No notification device';
 
   const activeNoun = row.activeReminderDevices === 1 ? 'device' : 'devices';
@@ -286,20 +287,19 @@ function ReminderSection({ section }: { section: ReminderMonitorSection }) {
       )}
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[920px] text-sm">
+        <table className="w-full min-w-[820px] text-sm">
           <thead className="border-b border-border bg-card text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
               <th className="px-4 py-3 font-medium">Staff</th>
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 font-medium">Reason</th>
               <th className="px-4 py-3 font-medium">Devices</th>
-              <th className="px-4 py-3 font-medium">Delivery</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {section.rows.length === 0 ? (
               <tr>
-                <td className="px-4 py-8 text-center text-muted-foreground" colSpan={5}>
+                <td className="px-4 py-8 text-center text-muted-foreground" colSpan={4}>
                   No reminder rows in this filter.
                 </td>
               </tr>
@@ -322,14 +322,6 @@ function ReminderSection({ section }: { section: ReminderMonitorSection }) {
                 </td>
                 <td className="px-4 py-3 align-top">
                   <div className="font-medium">{formatReminderDeviceText(row)}</div>
-                </td>
-                <td className="px-4 py-3 align-top">
-                  <div className="font-medium">
-                    {row.delivery.sent} sent / {row.delivery.failed + row.delivery.disabled} failed
-                  </div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {row.delivery.latestSentAt ? formatDisplayDateTime(row.delivery.latestSentAt) : row.delivery.pending ? `${row.delivery.pending} pending` : '-'}
-                  </div>
                 </td>
               </tr>
             ))}

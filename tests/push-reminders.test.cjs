@@ -377,12 +377,16 @@ test('admin reminder delivery monitor is protected and explains delivery outcome
   assert.match(page, /Notifications not registered/);
   assert.match(page, /Reminder off/);
   assert.match(page, /formatReminderDeviceText/);
+  assert.match(page, /row\.status === 'skipped'\) return '-'/);
   assert.match(page, /No notification device/);
   assert.match(page, /Sign-in off on/);
   assert.match(page, /Sign-out off on/);
   assert.match(page, /\$\{row\.enabledReminderDevices\} \$\{enabledNoun\} enabled/);
   assert.match(page, /\$\{row\.enabledReminderDevices\} of \$\{row\.activeReminderDevices\} devices enabled/);
   assert.doesNotMatch(page, /active subscription/);
+  assert.doesNotMatch(page, />Delivery<\/th>/);
+  assert.doesNotMatch(page, /\{row\.delivery\.sent\} sent \/ \{row\.delivery\.failed \+ row\.delivery\.disabled\} failed/);
+  assert.match(page, /colSpan=\{4\}/);
   assert.match(page, /Last updated/);
   assert.match(page, /subscribeRealtimeChannel/);
   assert.match(page, /SummaryFilter active=\{statusFilter === 'sent'\}/);
