@@ -2,11 +2,20 @@ import 'server-only';
 
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '@/db';
-import { attendancePermission, attendanceRecord, pushReminderDelivery, pushSubscription, staff } from '@/db/schema';
+import { attendancePermission, attendanceRecord, pushReminderDelivery, pushSubscription, staff, staffDevice } from '@/db/schema';
 import { getAccraClock, getHolidayForDate, isWeekendDate } from '@/lib/attendance';
 
 export type ReminderMonitorType = 'sign_in' | 'sign_out';
-export type ReminderMonitorRowStatus = 'sent' | 'failed' | 'pending' | 'missing' | 'waiting' | 'skipped' | 'no_device';
+export type ReminderMonitorRowStatus =
+  | 'failed'
+  | 'missing'
+  | 'no_trusted_device'
+  | 'notifications_not_registered'
+  | 'pending'
+  | 'reminder_off'
+  | 'sent'
+  | 'skipped'
+  | 'waiting';
 
 const REMINDER_TYPES: ReminderMonitorType[] = ['sign_in', 'sign_out'];
 
@@ -72,9 +81,27 @@ function deliveryCounts(rows: Array<{ error: string | null; sentAt: Date | strin
 function statusTone(status: ReminderMonitorRowStatus) {
   if (status === 'sent') return 'success';
   if (status === 'failed' || status === 'missing') return 'danger';
-  if (status === 'pending' || status === 'waiting') return 'warning';
-  if (status === 'no_device') return 'muted';
+  if (status === 'pending' || status === 'waiting' || status === 'no_trusted_device' || status === 'notifications_not_registered') return 'warning';
+  if (status === 'reminder_off') return 'muted';
   return 'neutral';
+}
+
+function sentReason(input: {
+  attendance: { checkInTime?: string | null; signOutTime?: string | null } | null;
+  reminderType: ReminderMonitorType;
+  sent: number;
+}) {
+  const base = input.sent === 1 ? 'Sent to 1 device' : `Sent to ${input.sent} devices`;
+
+  if (input.reminderType === 'sign_in' && input.attendance?.checkInTime) {
+    return `${base}; signed in at ${input.attendance.checkInTime}`;
+  }
+
+  if (input.reminderType === 'sign_out' && input.attendance?.signOutTime) {
+    return `${base}; signed out at ${input.attendance.signOutTime}`;
+  }
+
+  return base;
 }
 
 export async function getReminderDeliveryMonitor(date: string) {
@@ -99,7 +126,7 @@ export async function getReminderDeliveryMonitor(date: string) {
     .orderBy(asc(staff.displayOrder), asc(staff.fullName));
 
   const staffIds = staffRows.map((row) => row.id);
-  const [attendanceRows, permissionRows, subscriptionRows, deliveryRows] = staffIds.length
+  const [attendanceRows, permissionRows, subscriptionRows, deliveryRows, deviceRows] = staffIds.length
     ? await Promise.all([
         db.select({
           checkInTime: attendanceRecord.checkInTime,
@@ -147,11 +174,17 @@ export async function getReminderDeliveryMonitor(date: string) {
             inArray(pushReminderDelivery.staffId, staffIds),
             inArray(pushReminderDelivery.reminderType, REMINDER_TYPES),
           )),
+        db.select({
+          staffId: staffDevice.staffId,
+        })
+          .from(staffDevice)
+          .where(inArray(staffDevice.staffId, staffIds)),
       ])
-    : [[], [], [], []];
+    : [[], [], [], [], []];
 
   const attendanceByStaffId = new Map(attendanceRows.map((row) => [row.staffId, row]));
   const permissionByStaffId = new Map(permissionRows.map((row) => [row.staffId, row]));
+  const trustedDeviceStaffIds = new Set(deviceRows.map((row) => row.staffId));
   const subscriptionsByStaffId = new Map<string, typeof subscriptionRows>();
   const deliveriesByStaffAndType = new Map<string, typeof deliveryRows>();
 
@@ -174,6 +207,7 @@ export async function getReminderDeliveryMonitor(date: string) {
     return staffRows.map((member) => {
       const attendance = attendanceByStaffId.get(member.id) || null;
       const permission = permissionByStaffId.get(member.id) || null;
+      const hasTrustedDevice = trustedDeviceStaffIds.has(member.id);
       const subscriptions = subscriptionsByStaffId.get(member.id) || [];
       const enabledSubscriptions = subscriptions.filter((subscription) => (
         reminderType === 'sign_in' ? subscription.signInEnabled : subscription.signOutEnabled
@@ -185,7 +219,19 @@ export async function getReminderDeliveryMonitor(date: string) {
       let reason = '';
       let status: ReminderMonitorRowStatus = 'skipped';
 
-      if (isWeekend) {
+      if (counts.sent > 0) {
+        eligible = true;
+        status = 'sent';
+        reason = sentReason({ attendance, reminderType, sent: counts.sent });
+      } else if (counts.failed > 0 || counts.disabled > 0) {
+        eligible = true;
+        status = 'failed';
+        reason = counts.latestError || (counts.disabled > 0 ? 'Expired push endpoint disabled' : 'Push send failed');
+      } else if (counts.pending > 0) {
+        eligible = true;
+        status = 'pending';
+        reason = 'Delivery reserved; waiting for send result';
+      } else if (isWeekend) {
         reason = 'Weekend';
       } else if (isHoliday) {
         reason = holiday?.holidayNote ? `Holiday: ${holiday.holidayNote}` : 'Holiday';
@@ -197,23 +243,20 @@ export async function getReminderDeliveryMonitor(date: string) {
         reason = 'Not signed in yet';
       } else if (reminderType === 'sign_out' && attendance?.signOutTime) {
         reason = `Already signed out at ${attendance.signOutTime}`;
+      } else if (!hasTrustedDevice) {
+        status = 'no_trusted_device';
+        reason = 'No trusted attendance device';
+      } else if (subscriptions.length === 0) {
+        status = 'notifications_not_registered';
+        reason = 'Notifications not registered';
       } else if (enabledSubscriptions.length === 0) {
-        status = 'no_device';
+        status = 'reminder_off';
         reason = reminderType === 'sign_in'
-          ? 'No enabled sign-in reminder device'
-          : 'No enabled sign-out reminder device';
+          ? 'Sign-in reminder off'
+          : 'Sign-out reminder off';
       } else {
         eligible = true;
-        if (counts.sent > 0) {
-          status = 'sent';
-          reason = counts.sent === 1 ? 'Sent to 1 device' : `Sent to ${counts.sent} devices`;
-        } else if (counts.failed > 0 || counts.disabled > 0) {
-          status = 'failed';
-          reason = counts.latestError || (counts.disabled > 0 ? 'Expired push endpoint disabled' : 'Push send failed');
-        } else if (counts.pending > 0) {
-          status = 'pending';
-          reason = 'Delivery reserved; waiting for send result';
-        } else if (scheduledPassed) {
+        if (scheduledPassed) {
           status = 'missing';
           reason = 'Eligible but no delivery record found';
         } else {
@@ -243,8 +286,10 @@ export async function getReminderDeliveryMonitor(date: string) {
       eligible: rows.filter((row) => row.eligible).length,
       failed: rows.filter((row) => row.status === 'failed').length,
       missing: rows.filter((row) => row.status === 'missing').length,
-      noDevice: rows.filter((row) => row.status === 'no_device').length,
+      noTrustedDevice: rows.filter((row) => row.status === 'no_trusted_device').length,
+      notificationsNotRegistered: rows.filter((row) => row.status === 'notifications_not_registered').length,
       pending: rows.filter((row) => row.status === 'pending').length,
+      reminderOff: rows.filter((row) => row.status === 'reminder_off').length,
       sent: rows.filter((row) => row.status === 'sent').length,
       skipped: rows.filter((row) => row.status === 'skipped').length,
       waiting: rows.filter((row) => row.status === 'waiting').length,
@@ -265,9 +310,23 @@ export async function getReminderDeliveryMonitor(date: string) {
       });
     }
 
-    if (summary.noDevice > 0) {
+    if (summary.noTrustedDevice > 0) {
       alerts.push({
-        message: `${summary.noDevice} staff have no enabled reminder device for this reminder type.`,
+        message: `${summary.noTrustedDevice} staff have no trusted attendance device.`,
+        tone: 'warning',
+      });
+    }
+
+    if (summary.notificationsNotRegistered > 0) {
+      alerts.push({
+        message: `${summary.notificationsNotRegistered} staff have a trusted device but have not registered browser notifications.`,
+        tone: 'warning',
+      });
+    }
+
+    if (summary.reminderOff > 0) {
+      alerts.push({
+        message: `${summary.reminderOff} staff have notification devices but this reminder toggle is off.`,
         tone: 'warning',
       });
     }

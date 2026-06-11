@@ -5,6 +5,7 @@ import webpush from 'web-push';
 import { db } from '@/db';
 import { attendancePermission, attendanceRecord, pushReminderDelivery, pushSubscription, staff } from '@/db/schema';
 import { getAccraClock, getHolidayForDate, isWeekendDate } from '@/lib/attendance';
+import { publishRealtime } from '@/lib/realtime';
 
 export type PushReminderType = 'sign_in' | 'sign_out' | 'holiday';
 
@@ -34,6 +35,19 @@ type ReminderEligibilityInput = {
 type PushReminderDeliveryRow = {
   createdAt?: Date | string | null;
   status: string;
+};
+
+type PushReminderSummary = {
+  configured: boolean;
+  date: string;
+  disabled: number;
+  failed: number;
+  holidayName: string | null;
+  isHoliday: boolean;
+  isWeekend: boolean;
+  reminderType: PushReminderType;
+  sent: number;
+  skipped: number;
 };
 
 let vapidConfigured = false;
@@ -262,6 +276,19 @@ async function reservePushReminderDelivery(input: {
   return retryDelivery || null;
 }
 
+function publishReminderMonitorRefresh(summary: PushReminderSummary) {
+  publishRealtime('attendance', 'invalidate', {
+    date: summary.date,
+    reason: 'push-reminder-batch',
+    reminderType: summary.reminderType,
+  });
+  publishRealtime('notifications', 'invalidate', {
+    date: summary.date,
+    reason: 'push-reminder-batch',
+    reminderType: summary.reminderType,
+  });
+}
+
 export async function sendAttendanceReminderBatch(reminderType: PushReminderType) {
   const clock = getAccraClock();
   const date = clock.dateKey;
@@ -283,10 +310,12 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
   };
 
   if (reminderType === 'holiday' ? !isHoliday : isWeekend || isHoliday) {
+    publishReminderMonitorRefresh(summary);
     return summary;
   }
 
   if (!ensureVapidConfig()) {
+    publishReminderMonitorRefresh(summary);
     return summary;
   }
 
@@ -321,6 +350,7 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
     ));
 
   if (subscriptionRows.length === 0) {
+    publishReminderMonitorRefresh(summary);
     return summary;
   }
 
@@ -427,5 +457,6 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
     }
   }
 
+  publishReminderMonitorRefresh(summary);
   return summary;
 }

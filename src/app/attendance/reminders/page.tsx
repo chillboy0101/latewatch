@@ -9,10 +9,28 @@ import { DateField } from '@/components/ui/date-field';
 import { Input } from '@/components/ui/input';
 import { formatDisplayDate, formatDisplayDateTime } from '@/lib/date-format';
 import { getAccraDateKey } from '@/lib/date-key';
+import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 
-type ReminderMonitorRowStatus = 'sent' | 'failed' | 'pending' | 'missing' | 'waiting' | 'skipped' | 'no_device';
-type ReminderStatusFilter = 'all' | 'sent' | 'needs_review' | 'no_device' | 'pending' | 'skipped';
+type ReminderMonitorRowStatus =
+  | 'failed'
+  | 'missing'
+  | 'no_trusted_device'
+  | 'notifications_not_registered'
+  | 'pending'
+  | 'reminder_off'
+  | 'sent'
+  | 'skipped'
+  | 'waiting';
+type ReminderStatusFilter =
+  | 'all'
+  | 'needs_review'
+  | 'no_trusted_device'
+  | 'notifications_not_registered'
+  | 'pending'
+  | 'reminder_off'
+  | 'sent'
+  | 'skipped';
 type ReminderTypeKey = 'signIn' | 'signOut';
 
 interface ReminderMonitorRow {
@@ -53,8 +71,10 @@ interface ReminderMonitorSection {
     eligible: number;
     failed: number;
     missing: number;
-    noDevice: number;
+    noTrustedDevice: number;
+    notificationsNotRegistered: number;
     pending: number;
+    reminderOff: number;
     sent: number;
     skipped: number;
     waiting: number;
@@ -79,15 +99,17 @@ function statusLabel(status: ReminderMonitorRowStatus) {
   if (status === 'pending') return 'Pending';
   if (status === 'missing') return 'Missing';
   if (status === 'waiting') return 'Waiting';
-  if (status === 'no_device') return 'No device';
+  if (status === 'no_trusted_device') return 'No trusted device';
+  if (status === 'notifications_not_registered') return 'Notifications not registered';
+  if (status === 'reminder_off') return 'Reminder off';
   return 'Skipped';
 }
 
 function statusClass(status: ReminderMonitorRowStatus) {
   if (status === 'sent') return 'border-success/25 bg-success/10 text-success';
   if (status === 'failed' || status === 'missing') return 'border-danger/25 bg-danger/10 text-danger';
-  if (status === 'pending' || status === 'waiting') return 'border-warning/25 bg-warning/10 text-warning';
-  if (status === 'no_device') return 'border-border bg-muted/20 text-muted-foreground';
+  if (status === 'pending' || status === 'waiting' || status === 'no_trusted_device' || status === 'notifications_not_registered') return 'border-warning/25 bg-warning/10 text-warning';
+  if (status === 'reminder_off') return 'border-border bg-muted/20 text-muted-foreground';
   return 'border-border bg-card text-muted-foreground';
 }
 
@@ -95,7 +117,7 @@ function StatusIcon({ status }: { status: ReminderMonitorRowStatus }) {
   if (status === 'sent') return <CheckCircle2 className="h-3.5 w-3.5" />;
   if (status === 'failed' || status === 'missing') return <XCircle className="h-3.5 w-3.5" />;
   if (status === 'pending' || status === 'waiting') return <Clock3 className="h-3.5 w-3.5" />;
-  if (status === 'no_device') return <Smartphone className="h-3.5 w-3.5" />;
+  if (status === 'no_trusted_device' || status === 'notifications_not_registered' || status === 'reminder_off') return <Smartphone className="h-3.5 w-3.5" />;
   return <AlertTriangle className="h-3.5 w-3.5" />;
 }
 
@@ -222,7 +244,9 @@ function ReminderSection({ section }: { section: ReminderMonitorSection }) {
           <MiniMetric label="Sent" value={section.summary.sent} tone="success" />
           <MiniMetric label="Failed" value={section.summary.failed} tone={section.summary.failed ? 'danger' : 'muted'} />
           <MiniMetric label="Missing" value={section.summary.missing} tone={section.summary.missing ? 'danger' : 'muted'} />
-          <MiniMetric label="No Device" value={section.summary.noDevice} tone={section.summary.noDevice ? 'warning' : 'muted'} />
+          <MiniMetric label="No Trusted" value={section.summary.noTrustedDevice} tone={section.summary.noTrustedDevice ? 'warning' : 'muted'} />
+          <MiniMetric label="Not Registered" value={section.summary.notificationsNotRegistered} tone={section.summary.notificationsNotRegistered ? 'warning' : 'muted'} />
+          <MiniMetric label="Off" value={section.summary.reminderOff} tone="muted" />
         </div>
       </div>
 
@@ -307,8 +331,8 @@ export default function ReminderDeliveryMonitorPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<ReminderStatusFilter>('all');
 
-  const loadData = useCallback(async (signal?: AbortSignal) => {
-    setLoading(true);
+  const loadData = useCallback(async (signal?: AbortSignal, options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true);
     setError('');
 
     try {
@@ -324,7 +348,7 @@ export default function ReminderDeliveryMonitorPage() {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load reminder monitor');
       setData(null);
     } finally {
-      if (!signal?.aborted) setLoading(false);
+      if (!signal?.aborted && !options?.silent) setLoading(false);
     }
   }, [date]);
 
@@ -334,6 +358,34 @@ export default function ReminderDeliveryMonitorPage() {
     return () => controller.abort();
   }, [loadData, refreshKey]);
 
+  useEffect(() => {
+    let cleanups: Array<() => void> = [];
+    let mounted = true;
+
+    (async () => {
+      const unsubscribers = await Promise.all(
+        ['attendance', 'notifications'].map((channel) =>
+          subscribeRealtimeChannel({
+            channel,
+            events: ['invalidate'],
+            onEvent: () => loadData(undefined, { silent: true }),
+          }),
+        ),
+      );
+
+      if (mounted) {
+        cleanups = unsubscribers;
+      } else {
+        unsubscribers.forEach((unsubscribe) => unsubscribe());
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      cleanups.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [loadData]);
+
   const dayLabel = useMemo(() => {
     if (!data) return formatDisplayDate(date);
     if (data.day.isHoliday) return `${formatDisplayDate(data.date)} / ${data.day.holidayName || 'Holiday'}`;
@@ -342,12 +394,24 @@ export default function ReminderDeliveryMonitorPage() {
   }, [data, date]);
 
   const totals = useMemo(() => {
-    if (!data) return { needsReview: 0, noDevice: 0, pending: 0, sent: 0, skipped: 0 };
+    if (!data) {
+      return {
+        needsReview: 0,
+        noTrustedDevice: 0,
+        notificationsNotRegistered: 0,
+        pending: 0,
+        reminderOff: 0,
+        sent: 0,
+        skipped: 0,
+      };
+    }
     const sections = [data.sections.signIn, data.sections.signOut];
     return {
       needsReview: sections.reduce((total, section) => total + section.summary.failed + section.summary.missing, 0),
-      noDevice: sections.reduce((total, section) => total + section.summary.noDevice, 0),
+      noTrustedDevice: sections.reduce((total, section) => total + section.summary.noTrustedDevice, 0),
+      notificationsNotRegistered: sections.reduce((total, section) => total + section.summary.notificationsNotRegistered, 0),
       pending: sections.reduce((total, section) => total + section.summary.pending + section.summary.waiting, 0),
+      reminderOff: sections.reduce((total, section) => total + section.summary.reminderOff, 0),
       sent: sections.reduce((total, section) => total + section.summary.sent, 0),
       skipped: sections.reduce((total, section) => total + section.summary.skipped, 0),
     };
@@ -370,7 +434,9 @@ export default function ReminderDeliveryMonitorPage() {
             <div className="min-w-0">
               <div className="mb-1.5 flex items-center justify-between gap-3">
                 <label className="block text-xs font-medium uppercase text-muted-foreground">Search</label>
-                <span className="truncate text-xs text-muted-foreground">{dayLabel}</span>
+                <span className="truncate text-xs text-muted-foreground">
+                  {dayLabel}{data?.generatedAt ? ` / Last updated ${formatDisplayDateTime(data.generatedAt)}` : ''}
+                </span>
               </div>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -392,7 +458,9 @@ export default function ReminderDeliveryMonitorPage() {
               <option value="all">All statuses</option>
               <option value="sent">Sent</option>
               <option value="needs_review">Needs review</option>
-              <option value="no_device">No device</option>
+              <option value="no_trusted_device">No trusted device</option>
+              <option value="notifications_not_registered">Notifications not registered</option>
+              <option value="reminder_off">Reminder off</option>
               <option value="pending">Pending / waiting</option>
               <option value="skipped">Skipped</option>
             </SelectField>
@@ -423,12 +491,13 @@ export default function ReminderDeliveryMonitorPage() {
           </Card>
         ) : data && filteredSections ? (
           <>
-            <div className="grid auto-cols-[minmax(8rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-5 xl:overflow-visible xl:pb-0">
+            <div className="grid auto-cols-[minmax(8rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-6 xl:overflow-visible xl:pb-0">
               <SummaryFilter active={statusFilter === 'all'} label="Staff" value={data.totalStaff} onClick={() => setStatusFilter('all')} />
               <SummaryFilter active={statusFilter === 'sent'} label="Sent" value={totals.sent} tone="success" onClick={() => setStatusFilter('sent')} />
               <SummaryFilter active={statusFilter === 'needs_review'} label="Needs Review" value={totals.needsReview} tone={totals.needsReview ? 'danger' : 'muted'} onClick={() => setStatusFilter('needs_review')} />
-              <SummaryFilter active={statusFilter === 'no_device'} label="No Device" value={totals.noDevice} tone={totals.noDevice ? 'warning' : 'muted'} onClick={() => setStatusFilter('no_device')} />
-              <SummaryFilter active={statusFilter === 'pending'} label="Pending" value={totals.pending} tone={totals.pending ? 'warning' : 'muted'} onClick={() => setStatusFilter('pending')} />
+              <SummaryFilter active={statusFilter === 'no_trusted_device'} label="No Trusted" value={totals.noTrustedDevice} tone={totals.noTrustedDevice ? 'warning' : 'muted'} onClick={() => setStatusFilter('no_trusted_device')} />
+              <SummaryFilter active={statusFilter === 'notifications_not_registered'} label="Not Registered" value={totals.notificationsNotRegistered} tone={totals.notificationsNotRegistered ? 'warning' : 'muted'} onClick={() => setStatusFilter('notifications_not_registered')} />
+              <SummaryFilter active={statusFilter === 'reminder_off'} label="Reminder Off" value={totals.reminderOff} tone="muted" onClick={() => setStatusFilter('reminder_off')} />
             </div>
 
             <ReminderSection section={filteredSections.signIn} />

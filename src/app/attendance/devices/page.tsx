@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { formatDisplayDateTime } from '@/lib/date-format';
+import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 
 type DeviceHealthFilter = 'all' | 'attention' | 'trusted' | 'missing' | 'session_untracked' | 'pending_transfer' | 'multiple_reminders';
@@ -77,7 +78,7 @@ function staffMeta(row: DeviceHealthRow) {
 function deviceMatchesFilter(row: DeviceHealthRow, filter: DeviceHealthFilter) {
   if (filter === 'all') return true;
   if (filter === 'attention') return row.attention;
-  if (filter === 'trusted') return row.trustedDevice.registered && row.trustedDevice.sessionTracked;
+  if (filter === 'trusted') return row.trustedDevice.registered;
   if (filter === 'missing') return !row.trustedDevice.registered;
   if (filter === 'session_untracked') return row.trustedDevice.registered && !row.trustedDevice.sessionTracked;
   if (filter === 'pending_transfer') return row.transfer.pending > 0;
@@ -177,7 +178,7 @@ function DeviceStatusBadge({ row }: { row: DeviceHealthRow }) {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full border border-warning/25 bg-warning/10 px-2.5 py-1 text-xs font-semibold text-warning">
         <Clock3 className="h-3.5 w-3.5" />
-        Session not tracked
+        Session needs refresh
       </span>
     );
   }
@@ -188,6 +189,30 @@ function DeviceStatusBadge({ row }: { row: DeviceHealthRow }) {
       Trusted
     </span>
   );
+}
+
+function issueHelpText(reason: string) {
+  if (reason.startsWith('Legacy trusted device')) {
+    return 'Ask the staff member to open Check-In on that trusted device. Reset if they no longer have it.';
+  }
+
+  if (reason === 'Multiple notification devices') {
+    return 'Reset the device to disable old notification devices, then enable reminders again on the trusted device.';
+  }
+
+  if (reason === 'No trusted attendance device') {
+    return 'Staff must link a trusted device at the office or request a device transfer.';
+  }
+
+  if (reason === 'Device transfer pending') {
+    return 'Review the pending transfer before the staff member can use the new device.';
+  }
+
+  if (reason === 'Recent device security alert') {
+    return 'Open Security Alerts to inspect the blocked attempt.';
+  }
+
+  return '';
 }
 
 export default function DeviceSessionHealthPage() {
@@ -201,8 +226,8 @@ export default function DeviceSessionHealthPage() {
   const [resetTarget, setResetTarget] = useState<DeviceHealthRow | null>(null);
   const [resettingStaffId, setResettingStaffId] = useState<string | null>(null);
 
-  const loadData = useCallback(async (signal?: AbortSignal) => {
-    setLoading(true);
+  const loadData = useCallback(async (signal?: AbortSignal, options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true);
     setError('');
 
     try {
@@ -218,7 +243,7 @@ export default function DeviceSessionHealthPage() {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load device health');
       setData(null);
     } finally {
-      if (!signal?.aborted) setLoading(false);
+      if (!signal?.aborted && !options?.silent) setLoading(false);
     }
   }, []);
 
@@ -227,6 +252,34 @@ export default function DeviceSessionHealthPage() {
     loadData(controller.signal);
     return () => controller.abort();
   }, [loadData, refreshKey]);
+
+  useEffect(() => {
+    let cleanups: Array<() => void> = [];
+    let mounted = true;
+
+    (async () => {
+      const unsubscribers = await Promise.all(
+        ['attendance', 'notifications'].map((channel) =>
+          subscribeRealtimeChannel({
+            channel,
+            events: ['invalidate'],
+            onEvent: () => loadData(undefined, { silent: true }),
+          }),
+        ),
+      );
+
+      if (mounted) {
+        cleanups = unsubscribers;
+      } else {
+        unsubscribers.forEach((unsubscribe) => unsubscribe());
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      cleanups.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [loadData]);
 
   const filteredRows = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -239,7 +292,8 @@ export default function DeviceSessionHealthPage() {
     return {
       missing: rows.filter((row) => !row.trustedDevice.registered).length,
       multipleReminderDevices: rows.filter((row) => row.reminders.activeSubscriptions > 1).length,
-      trusted: rows.filter((row) => row.trustedDevice.registered && row.trustedDevice.sessionTracked).length,
+      sessionRefresh: rows.filter((row) => row.trustedDevice.registered && !row.trustedDevice.sessionTracked).length,
+      trusted: rows.filter((row) => row.trustedDevice.registered).length,
     };
   }, [data?.rows]);
 
@@ -289,11 +343,11 @@ export default function DeviceSessionHealthPage() {
             <SelectField label="Health" value={healthFilter} onChange={setHealthFilter}>
               <option value="all">All staff</option>
               <option value="attention">Needs attention</option>
-              <option value="trusted">Trusted and tracked</option>
+              <option value="trusted">Trusted device</option>
               <option value="missing">No trusted device</option>
-              <option value="session_untracked">Session not tracked</option>
+              <option value="session_untracked">Session needs refresh</option>
               <option value="pending_transfer">Pending transfer</option>
-              <option value="multiple_reminders">Multiple reminder devices</option>
+              <option value="multiple_reminders">Multiple notification devices</option>
             </SelectField>
             <Button
               className="h-10 w-full gap-2 xl:self-end"
@@ -327,16 +381,22 @@ export default function DeviceSessionHealthPage() {
           </Card>
         ) : data ? (
           <>
-            <div className="grid auto-cols-[minmax(8rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-6 xl:overflow-visible xl:pb-0">
+            <div className="grid auto-cols-[minmax(8rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-7 xl:overflow-visible xl:pb-0">
               <SummaryFilter active={healthFilter === 'all'} label="Staff" value={data.summary.staff} onClick={() => setHealthFilter('all')} />
               <SummaryFilter active={healthFilter === 'trusted'} label="Trusted" value={derivedCounts.trusted} tone="success" onClick={() => setHealthFilter('trusted')} />
               <SummaryFilter active={healthFilter === 'attention'} label="Attention" value={data.summary.attention} tone={data.summary.attention ? 'danger' : 'muted'} onClick={() => setHealthFilter('attention')} />
-              <SummaryFilter active={healthFilter === 'missing'} label="No Device" value={derivedCounts.missing} tone={derivedCounts.missing ? 'warning' : 'muted'} onClick={() => setHealthFilter('missing')} />
+              <SummaryFilter active={healthFilter === 'missing'} label="No Trusted" value={derivedCounts.missing} tone={derivedCounts.missing ? 'warning' : 'muted'} onClick={() => setHealthFilter('missing')} />
               <SummaryFilter active={healthFilter === 'pending_transfer'} label="Transfers" value={data.summary.pendingTransfers} tone={data.summary.pendingTransfers ? 'warning' : 'muted'} onClick={() => setHealthFilter('pending_transfer')} />
-              <SummaryFilter active={healthFilter === 'multiple_reminders'} label="Multiple Devices" value={derivedCounts.multipleReminderDevices} tone={derivedCounts.multipleReminderDevices ? 'warning' : 'muted'} onClick={() => setHealthFilter('multiple_reminders')} />
+              <SummaryFilter active={healthFilter === 'session_untracked'} label="Refresh Session" value={derivedCounts.sessionRefresh} tone={derivedCounts.sessionRefresh ? 'warning' : 'muted'} onClick={() => setHealthFilter('session_untracked')} />
+              <SummaryFilter active={healthFilter === 'multiple_reminders'} label="Multiple Notifications" value={derivedCounts.multipleReminderDevices} tone={derivedCounts.multipleReminderDevices ? 'warning' : 'muted'} onClick={() => setHealthFilter('multiple_reminders')} />
             </div>
 
             <Card className="overflow-hidden">
+              {data.generatedAt && (
+                <div className="border-b border-border px-5 py-3 text-xs text-muted-foreground">
+                  Last updated {formatDisplayDateTime(data.generatedAt)}
+                </div>
+              )}
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[1120px] text-sm">
                   <thead className="border-b border-border bg-card text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -386,12 +446,17 @@ export default function DeviceSessionHealthPage() {
                             Reset: {row.security.latestResetAt ? formatDisplayDateTime(row.security.latestResetAt) : '-'}
                           </div>
                           {row.attentionReasons.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-1.5">
+                            <div className="mt-2 space-y-1.5">
                               {row.attentionReasons.map((reason) => (
-                                <span key={reason} className="inline-flex items-center gap-1.5 rounded-full border border-warning/25 bg-warning/10 px-2 py-1 text-xs font-medium text-warning">
-                                  <Shield className="h-3 w-3" />
-                                  {reason}
-                                </span>
+                                <div key={reason}>
+                                  <span className="inline-flex items-center gap-1.5 rounded-full border border-warning/25 bg-warning/10 px-2 py-1 text-xs font-medium text-warning">
+                                    <Shield className="h-3 w-3" />
+                                    {reason}
+                                  </span>
+                                  {issueHelpText(reason) && (
+                                    <div className="mt-1 text-xs text-muted-foreground">{issueHelpText(reason)}</div>
+                                  )}
+                                </div>
                               ))}
                             </div>
                           )}

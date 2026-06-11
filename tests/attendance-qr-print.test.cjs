@@ -405,10 +405,16 @@ test('device health dashboard exposes trusted devices, reminder devices, session
   assert.match(helper, /auditEvent/);
   assert.match(helper, /clerkSessionId/);
   assert.match(helper, /revokedSessionsFromAudit/);
-  assert.match(helper, /Multiple active reminder devices/);
+  assert.match(helper, /Legacy trusted device: open Check-In on this device to refresh session/);
+  assert.match(helper, /Multiple notification devices/);
   assert.match(page, /\/api\/attendance\/device-health/);
   assert.match(page, /Search/);
   assert.match(page, /Health/);
+  assert.match(page, /Session needs refresh/);
+  assert.match(page, /Refresh Session/);
+  assert.match(page, /issueHelpText/);
+  assert.match(page, /subscribeRealtimeChannel/);
+  assert.match(page, /Last updated/);
   assert.match(page, /Trusted Device/);
   assert.match(page, /Reminder Devices/);
   assert.match(page, /revoked sessions/);
@@ -417,6 +423,9 @@ test('device health dashboard exposes trusted devices, reminder devices, session
   assert.match(page, /notification devices will be disabled/);
   assert.match(page, /disabledPushSubscriptions/);
   assert.match(page, /revokedSessions/);
+  assert.doesNotMatch(helper, /Multiple active reminder devices/);
+  assert.doesNotMatch(page, /Session not tracked/);
+  assert.doesNotMatch(page, /Trusted device has no stored Clerk session/);
   assert.match(sidebar, /href: '\/attendance\/devices'/);
 });
 

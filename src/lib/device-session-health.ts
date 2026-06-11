@@ -166,9 +166,9 @@ export async function getDeviceSessionHealth() {
 
     const attentionReasons: string[] = [];
     if (!device) attentionReasons.push('No trusted attendance device');
-    if (device && !sessionTracked) attentionReasons.push('Trusted device has no stored Clerk session');
+    if (device && !sessionTracked) attentionReasons.push('Legacy trusted device: open Check-In on this device to refresh session');
     if (pendingTransfers.length > 0) attentionReasons.push('Device transfer pending');
-    if (activeSubscriptions.length > 1) attentionReasons.push('Multiple active reminder devices');
+    if (activeSubscriptions.length > 1) attentionReasons.push('Multiple notification devices');
     if (latestAlert) attentionReasons.push('Recent device security alert');
 
     return {
