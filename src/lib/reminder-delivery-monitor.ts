@@ -32,9 +32,12 @@ const REMINDER_SCHEDULES: Record<ReminderMonitorType, { label: string; scheduled
   },
 };
 
-function minutesFromTimeKey(timeKey: string) {
-  const [hour = '0', minute = '0'] = timeKey.split(':');
-  return Number(hour) * 60 + Number(minute);
+function minutesFromTimeKey(timeKey: string | null | undefined) {
+  const [hourText = '', minuteText = ''] = (timeKey || '').split(':');
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  return hour * 60 + minute;
 }
 
 function hasScheduledTimePassed(input: { date: string; reminderType: ReminderMonitorType }) {
@@ -42,7 +45,35 @@ function hasScheduledTimePassed(input: { date: string; reminderType: ReminderMon
   if (input.date < clock.dateKey) return true;
   if (input.date > clock.dateKey) return false;
 
-  return minutesFromTimeKey(clock.timeKey) >= REMINDER_SCHEDULES[input.reminderType].scheduledMinutes;
+  const currentMinutes = minutesFromTimeKey(clock.timeKey);
+  return currentMinutes !== null && currentMinutes >= REMINDER_SCHEDULES[input.reminderType].scheduledMinutes;
+}
+
+function isAtOrBeforeReminderSchedule(timeKey: string | null | undefined, reminderType: ReminderMonitorType) {
+  const minutes = minutesFromTimeKey(timeKey);
+  return minutes !== null && minutes <= REMINDER_SCHEDULES[reminderType].scheduledMinutes;
+}
+
+function isAfterReminderSchedule(timeKey: string | null | undefined, reminderType: ReminderMonitorType) {
+  const minutes = minutesFromTimeKey(timeKey);
+  return minutes !== null && minutes > REMINDER_SCHEDULES[reminderType].scheduledMinutes;
+}
+
+function missingDeliveryReason(input: {
+  attendance: { checkInTime?: string | null; signOutTime?: string | null } | null;
+  reminderType: ReminderMonitorType;
+}) {
+  const scheduledTime = REMINDER_SCHEDULES[input.reminderType].scheduledTime;
+
+  if (input.reminderType === 'sign_in' && isAfterReminderSchedule(input.attendance?.checkInTime, input.reminderType)) {
+    return `No delivery record; signed in after ${scheduledTime} at ${input.attendance?.checkInTime}`;
+  }
+
+  if (input.reminderType === 'sign_out' && isAfterReminderSchedule(input.attendance?.signOutTime, input.reminderType)) {
+    return `No delivery record; signed out after ${scheduledTime} at ${input.attendance?.signOutTime}`;
+  }
+
+  return 'Eligible but no delivery record found';
 }
 
 function permissionLabel(permissionType: string | null | undefined) {
@@ -214,6 +245,9 @@ export async function getReminderDeliveryMonitor(date: string) {
       ));
       const deliveries = deliveriesByStaffAndType.get(`${member.id}:${reminderType}`) || [];
       const counts = deliveryCounts(deliveries);
+      const signedInByReminder = isAtOrBeforeReminderSchedule(attendance?.checkInTime, 'sign_in');
+      const signedInBySignOutReminder = isAtOrBeforeReminderSchedule(attendance?.checkInTime, 'sign_out');
+      const signedOutByReminder = isAtOrBeforeReminderSchedule(attendance?.signOutTime, 'sign_out');
 
       let eligible = false;
       let reason = '';
@@ -235,14 +269,16 @@ export async function getReminderDeliveryMonitor(date: string) {
         reason = 'Weekend';
       } else if (isHoliday) {
         reason = holiday?.holidayNote ? `Holiday: ${holiday.holidayNote}` : 'Holiday';
-      } else if (reminderType === 'sign_in' && attendance?.checkInTime) {
-        reason = `Already signed in at ${attendance.checkInTime}`;
+      } else if (reminderType === 'sign_in' && signedInByReminder) {
+        reason = `Already signed in at ${attendance?.checkInTime}`;
       } else if (reminderType === 'sign_in' && ['absence', 'late_arrival'].includes(permission?.permissionType || '')) {
         reason = permissionLabel(permission?.permissionType);
-      } else if (reminderType === 'sign_out' && !attendance?.checkInTime) {
-        reason = 'Not signed in yet';
-      } else if (reminderType === 'sign_out' && attendance?.signOutTime) {
-        reason = `Already signed out at ${attendance.signOutTime}`;
+      } else if (reminderType === 'sign_out' && !signedInBySignOutReminder) {
+        reason = attendance?.checkInTime
+          ? `Not signed in by ${REMINDER_SCHEDULES.sign_out.scheduledTime}; signed in at ${attendance.checkInTime}`
+          : 'Not signed in yet';
+      } else if (reminderType === 'sign_out' && signedOutByReminder) {
+        reason = `Already signed out at ${attendance?.signOutTime}`;
       } else if (!hasTrustedDevice) {
         status = 'no_trusted_device';
         reason = 'No trusted attendance device';
@@ -258,7 +294,7 @@ export async function getReminderDeliveryMonitor(date: string) {
         eligible = true;
         if (scheduledPassed) {
           status = 'missing';
-          reason = 'Eligible but no delivery record found';
+          reason = missingDeliveryReason({ attendance, reminderType });
         } else {
           status = 'waiting';
           reason = `Scheduled for ${REMINDER_SCHEDULES[reminderType].scheduledTime}`;

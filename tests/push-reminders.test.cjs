@@ -342,6 +342,11 @@ test('admin reminder delivery monitor is protected and explains delivery outcome
   assert.match(helper, /getHolidayForDate\(date\)/);
   assert.match(helper, /isWeekendDate\(date\)/);
   assert.match(helper, /Eligible but no delivery record found/);
+  assert.match(helper, /function isAtOrBeforeReminderSchedule/);
+  assert.match(helper, /function isAfterReminderSchedule/);
+  assert.match(helper, /function missingDeliveryReason/);
+  assert.match(helper, /No delivery record; signed in after/);
+  assert.match(helper, /No delivery record; signed out after/);
   assert.match(helper, /No trusted attendance device/);
   assert.match(helper, /Notifications not registered/);
   assert.match(helper, /Sign-in reminder off/);
@@ -349,8 +354,14 @@ test('admin reminder delivery monitor is protected and explains delivery outcome
   assert.match(helper, /Already signed in at/);
   assert.match(helper, /Already signed out at/);
   assert.match(helper, /sentReason\(\{ attendance, reminderType, sent: counts\.sent \}\)/);
-  assert.ok(helper.indexOf('counts.sent > 0') < helper.indexOf("reminderType === 'sign_in' && attendance?.checkInTime"));
-  assert.ok(helper.indexOf('counts.sent > 0') < helper.indexOf("reminderType === 'sign_out' && attendance?.signOutTime"));
+  assert.match(helper, /const signedInByReminder = isAtOrBeforeReminderSchedule\(attendance\?\.checkInTime, 'sign_in'\)/);
+  assert.match(helper, /const signedInBySignOutReminder = isAtOrBeforeReminderSchedule\(attendance\?\.checkInTime, 'sign_out'\)/);
+  assert.match(helper, /const signedOutByReminder = isAtOrBeforeReminderSchedule\(attendance\?\.signOutTime, 'sign_out'\)/);
+  assert.match(helper, /reminderType === 'sign_in' && signedInByReminder/);
+  assert.match(helper, /reminderType === 'sign_out' && signedOutByReminder/);
+  assert.match(helper, /missingDeliveryReason\(\{ attendance, reminderType \}\)/);
+  assert.ok(helper.indexOf('counts.sent > 0') < helper.indexOf("reminderType === 'sign_in' && signedInByReminder"));
+  assert.ok(helper.indexOf('counts.sent > 0') < helper.indexOf("reminderType === 'sign_out' && signedOutByReminder"));
   assert.match(helper, /const summary = \{/);
   assert.match(helper, /missing: rows\.filter\(\(row\) => row\.status === 'missing'\)\.length/);
   assert.match(helper, /noTrustedDevice: rows\.filter\(\(row\) => row\.status === 'no_trusted_device'\)\.length/);
