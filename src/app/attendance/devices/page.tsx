@@ -1,12 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Clock3, Loader2, RefreshCcw, Shield, Smartphone } from 'lucide-react';
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, CheckCircle2, ChevronDown, Clock3, Loader2, RefreshCcw, RotateCcw, Search, Shield } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { formatDisplayDateTime } from '@/lib/date-format';
 import { cn } from '@/lib/utils';
+
+type DeviceHealthFilter = 'all' | 'attention' | 'trusted' | 'missing' | 'session_untracked' | 'pending_transfer' | 'multiple_reminders';
 
 interface DeviceHealthRow {
   attention: boolean;
@@ -66,19 +70,96 @@ interface DeviceHealthResponse {
   };
 }
 
-function SummaryMetric({ label, value, tone = 'neutral' }: { label: string; value: number; tone?: 'danger' | 'muted' | 'neutral' | 'success' | 'warning' }) {
+function staffMeta(row: DeviceHealthRow) {
+  return [row.staff.department, row.staff.unit].filter(Boolean).join(' / ') || row.staff.email || '-';
+}
+
+function deviceMatchesFilter(row: DeviceHealthRow, filter: DeviceHealthFilter) {
+  if (filter === 'all') return true;
+  if (filter === 'attention') return row.attention;
+  if (filter === 'trusted') return row.trustedDevice.registered && row.trustedDevice.sessionTracked;
+  if (filter === 'missing') return !row.trustedDevice.registered;
+  if (filter === 'session_untracked') return row.trustedDevice.registered && !row.trustedDevice.sessionTracked;
+  if (filter === 'pending_transfer') return row.transfer.pending > 0;
+  return row.reminders.activeSubscriptions > 1;
+}
+
+function deviceMatchesQuery(row: DeviceHealthRow, query: string) {
+  if (!query) return true;
+
+  return [
+    row.staff.fullName,
+    row.staff.email || '',
+    row.staff.department || '',
+    row.staff.unit || '',
+    row.trustedDevice.deviceLabel || '',
+    row.transfer.latestStatus || '',
+    ...row.attentionReasons,
+  ].join(' ').toLowerCase().includes(query);
+}
+
+function SelectField({
+  children,
+  label,
+  onChange,
+  value,
+}: {
+  children: ReactNode;
+  label: string;
+  onChange: (value: DeviceHealthFilter) => void;
+  value: DeviceHealthFilter;
+}) {
   return (
-    <div className={cn(
-      'rounded-md border px-3 py-2',
-      tone === 'success' && 'border-success/25 bg-success/10 text-success',
-      tone === 'danger' && 'border-danger/25 bg-danger/10 text-danger',
-      tone === 'warning' && 'border-warning/25 bg-warning/10 text-warning',
-      tone === 'muted' && 'border-border bg-muted/15 text-muted-foreground',
-      tone === 'neutral' && 'border-border bg-card text-foreground',
-    )}>
-      <p className="text-xs font-medium uppercase text-current/75">{label}</p>
-      <p className="mt-1 text-2xl font-semibold leading-none">{value}</p>
+    <div className="min-w-0">
+      <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">{label}</label>
+      <div className="relative">
+        <select
+          className="h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-9 text-sm font-medium text-foreground outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/35"
+          value={value}
+          onChange={(event) => onChange(event.target.value as DeviceHealthFilter)}
+        >
+          {children}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      </div>
     </div>
+  );
+}
+
+function SummaryFilter({
+  active,
+  label,
+  onClick,
+  tone = 'neutral',
+  value,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+  tone?: 'danger' | 'muted' | 'neutral' | 'success' | 'warning';
+  value: number;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        'min-h-20 rounded-lg border border-border bg-card px-3 py-3 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary/35',
+        active && 'border-primary/60 bg-primary/5',
+      )}
+    >
+      <p className={cn(
+        'font-mono text-xl font-bold leading-none',
+        tone === 'success' && 'text-success',
+        tone === 'danger' && 'text-danger',
+        tone === 'warning' && 'text-warning',
+        tone === 'muted' && 'text-muted-foreground',
+      )}>
+        {value}
+      </p>
+      <p className="mt-1.5 text-xs font-medium uppercase text-muted-foreground">{label}</p>
+    </button>
   );
 }
 
@@ -112,8 +193,13 @@ function DeviceStatusBadge({ row }: { row: DeviceHealthRow }) {
 export default function DeviceSessionHealthPage() {
   const [data, setData] = useState<DeviceHealthResponse | null>(null);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [healthFilter, setHealthFilter] = useState<DeviceHealthFilter>('all');
+  const [resetTarget, setResetTarget] = useState<DeviceHealthRow | null>(null);
+  const [resettingStaffId, setResettingStaffId] = useState<string | null>(null);
 
   const loadData = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -142,30 +228,93 @@ export default function DeviceSessionHealthPage() {
     return () => controller.abort();
   }, [loadData, refreshKey]);
 
+  const filteredRows = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return (data?.rows || [])
+      .filter((row) => deviceMatchesQuery(row, query) && deviceMatchesFilter(row, healthFilter));
+  }, [data?.rows, healthFilter, searchQuery]);
+
+  const derivedCounts = useMemo(() => {
+    const rows = data?.rows || [];
+    return {
+      missing: rows.filter((row) => !row.trustedDevice.registered).length,
+      multipleReminderDevices: rows.filter((row) => row.reminders.activeSubscriptions > 1).length,
+      trusted: rows.filter((row) => row.trustedDevice.registered && row.trustedDevice.sessionTracked).length,
+    };
+  }, [data?.rows]);
+
+  async function resetDevice() {
+    if (!resetTarget) return;
+
+    setResettingStaffId(resetTarget.staff.id);
+    setError('');
+    setNotice('');
+
+    try {
+      const response = await fetch(`/api/attendance/devices/${resetTarget.staff.id}`, { method: 'DELETE' });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || 'Could not reset device');
+
+      const disabledCount = Number(body.disabledPushSubscriptions || 0);
+      const revokedCount = Number(body.revokedSessions || 0);
+      const resetCopy = body.reset === false ? 'No trusted attendance device was registered.' : 'Attendance device reset.';
+      setNotice(`${resetTarget.staff.fullName}: ${resetCopy} ${disabledCount} notification device${disabledCount === 1 ? '' : 's'} disabled and ${revokedCount} login session${revokedCount === 1 ? '' : 's'} revoked.`);
+      setResetTarget(null);
+      await loadData();
+    } catch (err) {
+      console.error('Failed to reset attendance device:', err);
+      setError(err instanceof Error ? err.message : 'Could not reset device');
+    } finally {
+      setResettingStaffId(null);
+    }
+  }
+
   return (
     <DashboardLayout title="Device Health">
       <div className="space-y-5">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-semibold tracking-tight">Device + Session Health</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Trusted attendance devices, reminder devices, transfer state, and session cleanup.
-            </p>
+        <Card>
+          <div className="grid gap-4 p-5 xl:grid-cols-[minmax(18rem,1fr)_13rem_7.5rem] xl:items-end">
+            <div className="min-w-0">
+              <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Search</label>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search staff, email, device, or issue"
+                  className="h-10 pl-9"
+                />
+              </div>
+            </div>
+            <SelectField label="Health" value={healthFilter} onChange={setHealthFilter}>
+              <option value="all">All staff</option>
+              <option value="attention">Needs attention</option>
+              <option value="trusted">Trusted and tracked</option>
+              <option value="missing">No trusted device</option>
+              <option value="session_untracked">Session not tracked</option>
+              <option value="pending_transfer">Pending transfer</option>
+              <option value="multiple_reminders">Multiple reminder devices</option>
+            </SelectField>
+            <Button
+              className="h-10 w-full gap-2 xl:self-end"
+              variant="outline"
+              onClick={() => setRefreshKey((value) => value + 1)}
+              disabled={loading}
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+              Refresh
+            </Button>
           </div>
-          <Button
-            className="h-10 gap-2 self-start xl:self-auto"
-            variant="outline"
-            onClick={() => setRefreshKey((value) => value + 1)}
-            disabled={loading}
-          >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-            Refresh
-          </Button>
-        </div>
+        </Card>
 
         {error && (
           <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
             {error}
+          </div>
+        )}
+        {notice && (
+          <div className="rounded-md border border-success/30 bg-success/10 px-4 py-3 text-sm text-success">
+            {notice}
           </div>
         )}
 
@@ -178,42 +327,40 @@ export default function DeviceSessionHealthPage() {
           </Card>
         ) : data ? (
           <>
-            <div className="grid grid-cols-6 gap-3">
-              <SummaryMetric label="Staff" value={data.summary.staff} />
-              <SummaryMetric label="Trusted" value={data.summary.registeredDevices} tone="success" />
-              <SummaryMetric label="Tracked" value={data.summary.sessionTrackedDevices} tone="success" />
-              <SummaryMetric label="Reminder Devices" value={data.summary.activeReminderDevices} />
-              <SummaryMetric label="Transfers" value={data.summary.pendingTransfers} tone={data.summary.pendingTransfers ? 'warning' : 'muted'} />
-              <SummaryMetric label="Attention" value={data.summary.attention} tone={data.summary.attention ? 'danger' : 'muted'} />
+            <div className="grid auto-cols-[minmax(8rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-6 xl:overflow-visible xl:pb-0">
+              <SummaryFilter active={healthFilter === 'all'} label="Staff" value={data.summary.staff} onClick={() => setHealthFilter('all')} />
+              <SummaryFilter active={healthFilter === 'trusted'} label="Trusted" value={derivedCounts.trusted} tone="success" onClick={() => setHealthFilter('trusted')} />
+              <SummaryFilter active={healthFilter === 'attention'} label="Attention" value={data.summary.attention} tone={data.summary.attention ? 'danger' : 'muted'} onClick={() => setHealthFilter('attention')} />
+              <SummaryFilter active={healthFilter === 'missing'} label="No Device" value={derivedCounts.missing} tone={derivedCounts.missing ? 'warning' : 'muted'} onClick={() => setHealthFilter('missing')} />
+              <SummaryFilter active={healthFilter === 'pending_transfer'} label="Transfers" value={data.summary.pendingTransfers} tone={data.summary.pendingTransfers ? 'warning' : 'muted'} onClick={() => setHealthFilter('pending_transfer')} />
+              <SummaryFilter active={healthFilter === 'multiple_reminders'} label="Multiple Devices" value={derivedCounts.multipleReminderDevices} tone={derivedCounts.multipleReminderDevices ? 'warning' : 'muted'} onClick={() => setHealthFilter('multiple_reminders')} />
             </div>
 
             <Card className="overflow-hidden">
-              <div className="border-b border-border p-5">
-                <div className="flex items-center gap-2">
-                  <Smartphone className="h-4 w-4 text-primary" />
-                  <h2 className="text-lg font-semibold">Staff Device Status</h2>
-                </div>
-              </div>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1080px] text-sm">
-                  <thead className="border-b border-border bg-muted/20 text-left text-xs uppercase text-muted-foreground">
+                <table className="w-full min-w-[1120px] text-sm">
+                  <thead className="border-b border-border bg-card text-left text-xs uppercase tracking-wide text-muted-foreground">
                     <tr>
                       <th className="px-4 py-3 font-medium">Staff</th>
                       <th className="px-4 py-3 font-medium">Trusted Device</th>
                       <th className="px-4 py-3 font-medium">Reminder Devices</th>
                       <th className="px-4 py-3 font-medium">Transfer</th>
                       <th className="px-4 py-3 font-medium">Security</th>
-                      <th className="px-4 py-3 font-medium">Attention</th>
+                      <th className="px-4 py-3 font-medium">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {data.rows.map((row) => (
-                      <tr key={row.staff.id} className="hover:bg-muted/15">
+                    {filteredRows.length === 0 ? (
+                      <tr>
+                        <td className="px-4 py-8 text-center text-muted-foreground" colSpan={6}>
+                          No staff device rows in this filter.
+                        </td>
+                      </tr>
+                    ) : filteredRows.map((row) => (
+                      <tr key={row.staff.id} className="transition-colors hover:bg-card/50">
                         <td className="px-4 py-3 align-top">
                           <div className="font-medium">{row.staff.fullName}</div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {[row.staff.department, row.staff.unit].filter(Boolean).join(' / ') || row.staff.email || '-'}
-                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">{staffMeta(row)}</div>
                         </td>
                         <td className="px-4 py-3 align-top">
                           <DeviceStatusBadge row={row} />
@@ -233,25 +380,37 @@ export default function DeviceSessionHealthPage() {
                             Latest: {row.transfer.latestStatus || '-'}
                           </div>
                         </td>
-                        <td className="px-4 py-3 align-top">
+                        <td className="max-w-xs px-4 py-3 align-top">
                           <div className="font-medium">{row.security.revokedSessions} revoked sessions</div>
                           <div className="mt-1 text-xs text-muted-foreground">
                             Reset: {row.security.latestResetAt ? formatDisplayDateTime(row.security.latestResetAt) : '-'}
                           </div>
-                        </td>
-                        <td className="max-w-xs px-4 py-3 align-top">
-                          {row.attentionReasons.length > 0 ? (
-                            <div className="space-y-1">
+                          {row.attentionReasons.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
                               {row.attentionReasons.map((reason) => (
-                                <div key={reason} className="inline-flex items-center gap-1.5 rounded-full border border-warning/25 bg-warning/10 px-2 py-1 text-xs font-medium text-warning">
+                                <span key={reason} className="inline-flex items-center gap-1.5 rounded-full border border-warning/25 bg-warning/10 px-2 py-1 text-xs font-medium text-warning">
                                   <Shield className="h-3 w-3" />
                                   {reason}
-                                </div>
+                                </span>
                               ))}
                             </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">Clear</span>
                           )}
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                          <Button
+                            className="h-8 gap-1.5 px-2"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setResetTarget(row)}
+                            disabled={resettingStaffId === row.staff.id}
+                          >
+                            {resettingStaffId === row.staff.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <RotateCcw className="h-3.5 w-3.5" />
+                            )}
+                            Reset
+                          </Button>
                         </td>
                       </tr>
                     ))}
@@ -261,6 +420,34 @@ export default function DeviceSessionHealthPage() {
             </Card>
           </>
         ) : null}
+
+        <Dialog
+          open={Boolean(resetTarget)}
+          onOpenChange={(open) => {
+            if (!open && !resettingStaffId) setResetTarget(null);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reset attendance device</DialogTitle>
+              <DialogDescription>
+                {resetTarget?.staff.fullName || 'This staff member'} will be signed out of old sessions, old notification devices will be disabled, and reminders must be enabled again on the trusted device.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
+              This is a security action. Use it only when the staff member should start fresh on a trusted device.
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setResetTarget(null)} disabled={Boolean(resettingStaffId)}>
+                Cancel
+              </Button>
+              <Button className="gap-2" onClick={resetDevice} disabled={Boolean(resettingStaffId)}>
+                {resettingStaffId ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                Reset Device
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );

@@ -386,7 +386,7 @@ test('device transfer approval revokes old sessions while preserving the new tru
   assert.doesNotMatch(route, /action === 'reject'[\s\S]{0,600}revokeStaffLoginSession/);
 });
 
-test('device health dashboard exposes trusted devices, reminder devices, and session cleanup', () => {
+test('device health dashboard exposes trusted devices, reminder devices, session cleanup, and reset controls', () => {
   assert.equal(fs.existsSync(deviceHealthApiPath), true);
   assert.equal(fs.existsSync(deviceHealthLibPath), true);
   assert.equal(fs.existsSync(deviceHealthPagePath), true);
@@ -406,11 +406,17 @@ test('device health dashboard exposes trusted devices, reminder devices, and ses
   assert.match(helper, /clerkSessionId/);
   assert.match(helper, /revokedSessionsFromAudit/);
   assert.match(helper, /Multiple active reminder devices/);
-  assert.match(page, /Device \+ Session Health/);
   assert.match(page, /\/api\/attendance\/device-health/);
+  assert.match(page, /Search/);
+  assert.match(page, /Health/);
   assert.match(page, /Trusted Device/);
   assert.match(page, /Reminder Devices/);
   assert.match(page, /revoked sessions/);
+  assert.match(page, /\/api\/attendance\/devices\/\$\{resetTarget\.staff\.id\}/);
+  assert.match(page, /Reset Device/);
+  assert.match(page, /notification devices will be disabled/);
+  assert.match(page, /disabledPushSubscriptions/);
+  assert.match(page, /revokedSessions/);
   assert.match(sidebar, /href: '\/attendance\/devices'/);
 });
 
@@ -432,9 +438,14 @@ test('security alerts dashboard surfaces suspicious attendance audit alerts', ()
   assert.match(helper, /REGISTERED_DEVICE_REQUIRED/);
   assert.match(helper, /TRANSFER_SESSION_REQUIRED/);
   assert.match(helper, /critical/);
-  assert.match(page, /Admin Security Alerts/);
   assert.match(page, /\/api\/attendance\/security-alerts/);
-  assert.match(page, /Recent Alerts/);
+  assert.match(page, /Search/);
+  assert.match(page, /Severity/);
+  assert.match(page, /Type/);
+  assert.match(page, /shared_device/);
+  assert.match(page, /untrusted_device/);
+  assert.doesNotMatch(page, /method: 'DELETE'/);
+  assert.doesNotMatch(page, /Clear Alerts|Delete Alert|Resolve Alert/);
   assert.match(sidebar, /href: '\/attendance\/security-alerts'/);
 });
 

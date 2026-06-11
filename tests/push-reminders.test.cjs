@@ -346,14 +346,20 @@ test('admin reminder delivery monitor is protected and explains delivery outcome
   assert.match(helper, /staff have no enabled reminder device/);
   assert.match(helper, /scheduledPassed/);
 
-  assert.match(page, /Reminder Delivery Monitor/);
+  assert.match(page, /Reminder Monitor/);
   assert.match(page, /\/api\/attendance\/reminder-monitor\?date=/);
-  assert.match(page, /8:15 Sent/);
-  assert.match(page, /4:30 Sent/);
+  assert.match(page, /Search/);
+  assert.match(page, /Status/);
+  assert.match(page, /value="sent"/);
+  assert.match(page, /value="no_device"/);
   assert.match(page, /Needs Review/);
+  assert.match(page, /No Device/);
+  assert.match(page, /SummaryFilter active=\{statusFilter === 'sent'\}/);
+  assert.match(page, /No reminder rows in this filter/);
+  assert.doesNotMatch(page, /send test reminder|resend reminder|manual resend/i);
   assert.match(page, /section\.alerts\.map/);
-  assert.match(page, /ReminderSection section=\{data\.sections\.signIn\}/);
-  assert.match(page, /ReminderSection section=\{data\.sections\.signOut\}/);
+  assert.match(page, /ReminderSection section=\{filteredSections\.signIn\}/);
+  assert.match(page, /ReminderSection section=\{filteredSections\.signOut\}/);
   assert.match(sidebar, /Reminders/);
   assert.match(sidebar, /href: '\/attendance\/reminders'/);
   assert.match(sidebar, /activeNavigation/);
