@@ -1,5 +1,6 @@
 // lib/google-calendar.ts
 import { google } from 'googleapis';
+import { applyGhanaHolidayOverrides } from '@/lib/ghana-holidays';
 
 // Ghana public holidays calendar ID (official Google calendar)
 const GHANA_HOLIDAYS_CALENDAR_ID = 'en.gh#holiday@group.v.calendar.google.com';
@@ -61,7 +62,7 @@ export async function fetchGhanaHolidays(
 
     const events = response.data.items || [];
 
-    return events
+    return applyGhanaHolidayOverrides(events
       .filter((event): event is GoogleCalendarEvent =>
         !!(event.summary && event.start?.date)
       )
@@ -69,7 +70,10 @@ export async function fetchGhanaHolidays(
         date: event.start.date,
         name: event.summary,
         source: 'google' as const,
-      }));
+      })), {
+        month,
+        year: year ?? new Date().getFullYear(),
+      });
   } catch (error) {
     console.error('Failed to fetch Ghana holidays from Google Calendar:', error);
     return [];

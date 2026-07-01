@@ -459,8 +459,8 @@ test('holiday reminder source uses corrected work calendar data', () => {
   assert.match(source, /const isHoliday = Boolean\(holiday\)/);
   assert.match(source, /reminderType === 'holiday'/);
   assert.match(source, /latewatch-holiday-reminder/);
-  assert.match(attendanceSource, /eq\(workCalendar\.isHoliday, true\)/);
-  assert.match(attendanceSource, /eq\(workCalendar\.isRemoved, false\)/);
+  assert.match(attendanceSource, /isSuppressedGhanaHolidayDate\(dateKey\)/);
+  assert.match(attendanceSource, /calendarDay\.isHoliday && !calendarDay\.isRemoved/);
   assert.doesNotMatch(source, /African Union Day/);
 });
 

@@ -3,6 +3,7 @@ import 'server-only';
 import { and, desc, eq, ilike, isNull, or } from 'drizzle-orm';
 import { db } from '@/db';
 import { attendanceAttempt, attendancePermission, officeLocation, officeNetwork, staff, workCalendar } from '@/db/schema';
+import { getObservedGhanaHolidayForDate, isSuppressedGhanaHolidayDate } from '@/lib/ghana-holidays';
 import { resolveOfficeLocationForDate } from '@/lib/office-location-policy';
 import { normalizeStaffEmail, normalizeStaffName } from '@/lib/staff-normalize';
 export { getClientIp, getClientIpInfo, resolveClientIp, resolveClientIpInfo } from '@/lib/request-ip';
@@ -143,19 +144,30 @@ export async function getOrAutoLinkStaffByEmail(input: {
 }
 
 export async function getHolidayForDate(dateKey: string) {
-  const [holiday] = await db.select({
+  if (isSuppressedGhanaHolidayDate(dateKey)) {
+    return null;
+  }
+
+  const [calendarDay] = await db.select({
     id: workCalendar.id,
+    isHoliday: workCalendar.isHoliday,
+    isRemoved: workCalendar.isRemoved,
     holidayNote: workCalendar.holidayNote,
   })
     .from(workCalendar)
-    .where(and(
-      eq(workCalendar.date, dateKey),
-      eq(workCalendar.isHoliday, true),
-      eq(workCalendar.isRemoved, false),
-    ))
+    .where(eq(workCalendar.date, dateKey))
     .limit(1);
 
-  return holiday || null;
+  if (calendarDay) {
+    return calendarDay.isHoliday && !calendarDay.isRemoved
+      ? { id: calendarDay.id, holidayNote: calendarDay.holidayNote }
+      : null;
+  }
+
+  const observedHoliday = getObservedGhanaHolidayForDate(dateKey);
+  return observedHoliday
+    ? { id: `ghana-holiday:${observedHoliday.date}`, holidayNote: observedHoliday.name }
+    : null;
 }
 
 export async function getApprovedAttendancePermission(staffId: string, dateKey: string) {

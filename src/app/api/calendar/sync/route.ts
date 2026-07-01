@@ -3,9 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { workCalendar } from '@/db/schema';
 import { fetchGhanaHolidaysForYear } from '@/lib/google-calendar';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
+import { getSuppressedGhanaHolidayDatesForScope } from '@/lib/ghana-holidays';
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,6 +28,24 @@ export async function POST(request: NextRequest) {
       let added = 0;
       let skipped = 0;
       let updated = 0;
+      const suppressedDates = getSuppressedGhanaHolidayDatesForScope({ year });
+
+      if (suppressedDates.length > 0) {
+        const removed = await db.update(workCalendar)
+          .set({
+            isHoliday: false,
+            isRemoved: true,
+            updatedAt: new Date(),
+          })
+          .where(and(
+            inArray(workCalendar.date, suppressedDates),
+            eq(workCalendar.source, 'google'),
+            eq(workCalendar.isHoliday, true),
+          ))
+          .returning({ id: workCalendar.id });
+
+        updated += removed.length;
+      }
 
       for (const holiday of googleHolidays) {
         // Check if this date already exists
