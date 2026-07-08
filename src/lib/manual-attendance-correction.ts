@@ -88,6 +88,7 @@ export function resolveManualPenalty(input: {
   didNotSignOut: boolean;
   isAttendanceOnly?: boolean;
   isNssPersonnel?: boolean;
+  noSignIn?: boolean;
 }) {
   if (
     input.activePermission?.status === 'approved' &&
@@ -139,6 +140,7 @@ export function resolveManualPenalty(input: {
     isAttendanceOnly: input.isAttendanceOnly,
     isNssPersonnel: input.isNssPersonnel,
     isHoliday: false,
+    noSignIn: input.noSignIn,
   });
 
   return {

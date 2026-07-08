@@ -15,6 +15,11 @@ import {
   resolveManualAttendanceCorrection,
   resolveManualPenalty,
 } from '@/lib/manual-attendance-correction';
+import {
+  NO_SHOW_SIGN_IN_AMOUNT,
+  NO_SHOW_SIGN_IN_REASON,
+  NO_SHOW_SIGN_IN_WAIVED_REASON,
+} from '@/lib/penalty-calculator';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +33,9 @@ async function getAttendanceRowsForEntries(start: string, end: string) {
     noSignOutWaived: attendanceRecord.noSignOutWaived,
     noSignOutWaivedAt: attendanceRecord.noSignOutWaivedAt,
     noSignOutWaivedReason: attendanceRecord.noSignOutWaivedReason,
+    noShowSignInWaived: attendanceRecord.noShowSignInWaived,
+    noShowSignInWaivedAt: attendanceRecord.noShowSignInWaivedAt,
+    noShowSignInWaivedReason: attendanceRecord.noShowSignInWaivedReason,
     signOutTime: attendanceRecord.signOutTime,
     source: attendanceRecord.source,
     computedAmount: attendanceRecord.computedAmount,
@@ -262,6 +270,12 @@ export async function POST(request: NextRequest) {
         : null;
       const existing = existingByStaffId.get(entry.staffId);
       const existingAttendance = attendanceByStaffId.get(entry.staffId);
+      const existingReason = existing?.reason || (typeof entry.reason === 'string' ? entry.reason : '');
+      const isNoShowSignInEntry =
+        existingReason === NO_SHOW_SIGN_IN_REASON ||
+        existingReason === NO_SHOW_SIGN_IN_WAIVED_REASON ||
+        entry.noShowSignInWaived === true ||
+        existingAttendance?.noShowSignInWaived === true;
       const hasSubmittedSignOutTime = hasOwn(entry, 'signOutTime');
       if (
         hasSubmittedSignOutTime &&
@@ -283,6 +297,145 @@ export async function POST(request: NextRequest) {
         : hasOwn(entry, 'noSignOutWaived')
           ? entry.noSignOutWaived === true
           : existingAttendance?.noSignOutWaived === true;
+      const requestedNoShowSignInWaived = hasOwn(entry, 'noShowSignInWaived')
+        ? entry.noShowSignInWaived === true
+        : existingAttendance?.noShowSignInWaived === true;
+      const noShowSignInWaivedChanged =
+        entry.noShowSignInWaivedChanged === true ||
+        (hasOwn(entry, 'noShowSignInWaived') &&
+          (existingAttendance?.noShowSignInWaived === true) !== requestedNoShowSignInWaived);
+
+      if (isNoShowSignInEntry && noShowSignInWaivedChanged && !arrivalTime) {
+        const attendanceValues: Partial<typeof attendanceRecord.$inferInsert> = {
+          computedAmount: requestedNoShowSignInWaived ? '0.00' : NO_SHOW_SIGN_IN_AMOUNT.toFixed(2),
+          noShowSignInWaived: requestedNoShowSignInWaived,
+          noShowSignInWaivedAt: requestedNoShowSignInWaived ? new Date() : null,
+          noShowSignInWaivedByEmail: requestedNoShowSignInWaived ? actor.actorEmail : null,
+          noShowSignInWaivedByUserId: requestedNoShowSignInWaived ? actor.actorUserId : null,
+          noShowSignInWaivedReason: requestedNoShowSignInWaived ? 'entries_no_show_sign_in_cleared' : null,
+          reason: requestedNoShowSignInWaived ? NO_SHOW_SIGN_IN_WAIVED_REASON : null,
+          status: requestedNoShowSignInWaived ? 'absent' : 'present',
+          updatedAt: new Date(),
+        };
+
+        if (existingAttendance) {
+          const [updatedAttendance] = await db.update(attendanceRecord)
+            .set(attendanceValues)
+            .where(eq(attendanceRecord.id, existingAttendance.id))
+            .returning();
+
+          if (updatedAttendance) {
+            attendanceByStaffId.set(entry.staffId, updatedAttendance);
+            await writeAuditEvent({
+              entityType: 'attendance',
+              entityId: updatedAttendance.id,
+              action: 'UPDATE',
+              before: existingAttendance,
+              after: {
+                ...updatedAttendance,
+                staff: { fullName: staffMap.get(entry.staffId) || 'Unknown' },
+              },
+              actor: { email: actor.actorEmail, id: actor.actorUserId },
+              reason: 'entries',
+            });
+            attendanceChangedCount += 1;
+          }
+        } else if (requestedNoShowSignInWaived && activeStaffIds.has(entry.staffId)) {
+          const [createdAttendance] = await db.insert(attendanceRecord)
+            .values({
+              staffId: entry.staffId,
+              date,
+              checkInAt: null,
+              checkInTime: null,
+              status: 'absent',
+              source: 'no_show_sign_in_waiver',
+              networkIp: 'no_show_sign_in_waiver',
+              userAgent: request.headers.get('user-agent') || 'manual_entries',
+              computedAmount: '0.00',
+              reason: NO_SHOW_SIGN_IN_WAIVED_REASON,
+              noShowSignInWaived: true,
+              noShowSignInWaivedAt: new Date(),
+              noShowSignInWaivedByEmail: actor.actorEmail,
+              noShowSignInWaivedByUserId: actor.actorUserId,
+              noShowSignInWaivedReason: 'entries_no_show_sign_in_cleared',
+            })
+            .returning();
+
+          if (createdAttendance) {
+            attendanceByStaffId.set(entry.staffId, createdAttendance);
+            await writeAuditEvent({
+              entityType: 'attendance',
+              entityId: createdAttendance.id,
+              action: 'CREATE',
+              before: null,
+              after: {
+                ...createdAttendance,
+                staff: { fullName: staffMap.get(entry.staffId) || 'Unknown' },
+              },
+              actor: { email: actor.actorEmail, id: actor.actorUserId },
+              reason: 'entries',
+            });
+            attendanceChangedCount += 1;
+          }
+        }
+
+        const nextEntryValues = {
+          arrivalTime: null,
+          didNotSignOut: false,
+          computedAmount: requestedNoShowSignInWaived ? '0.00' : NO_SHOW_SIGN_IN_AMOUNT.toFixed(2),
+          reason: requestedNoShowSignInWaived ? NO_SHOW_SIGN_IN_WAIVED_REASON : NO_SHOW_SIGN_IN_REASON,
+        };
+
+        if (existing) {
+          const before = { ...existing };
+          const [result] = await db.update(latenessEntry)
+            .set({ ...nextEntryValues, updatedAt: new Date() })
+            .where(eq(latenessEntry.id, existing.id))
+            .returning();
+
+          if (result) {
+            await writeAuditEvent({
+              entityType: 'entry',
+              entityId: result.id,
+              action: 'UPDATE',
+              before,
+              after: {
+                ...result,
+                staff: { fullName: staffMap.get(entry.staffId) || 'Unknown' },
+              },
+              reason: 'entries',
+            });
+            results.push(result);
+          }
+        } else {
+          const [result] = await db.insert(latenessEntry)
+            .values({
+              staffId: entry.staffId,
+              date,
+              ...nextEntryValues,
+            })
+            .returning();
+
+          if (result) {
+            await writeAuditEvent({
+              entityType: 'entry',
+              entityId: result.id,
+              action: 'CREATE',
+              before: null,
+              after: {
+                ...result,
+                staff: { fullName: staffMap.get(entry.staffId) || 'Unknown' },
+              },
+              reason: 'entries',
+            });
+            results.push(result);
+          }
+        }
+
+        markStaffChanged(entry.staffId);
+        continue;
+      }
+
       const didNotSignOut = submittedSignOutTime || requestedNoSignOutWaived
         ? false
         : entry.didNotSignOut === true;

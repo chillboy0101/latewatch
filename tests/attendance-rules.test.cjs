@@ -4,7 +4,11 @@ const test = require('node:test');
 
 require('tsx/cjs');
 
-const { computePenalty } = require('../src/lib/penalty-calculator.ts');
+const {
+  computePenalty,
+  NO_SHOW_SIGN_IN_AMOUNT,
+  NO_SHOW_SIGN_IN_REASON,
+} = require('../src/lib/penalty-calculator.ts');
 const { getAuditFieldChanges, getAuditTargetName } = require('../src/lib/audit-display.ts');
 const { DEFAULT_OFFICE_RADIUS_METERS, validateAttendanceLocation } = require('../src/lib/geo-location.ts');
 const { getClientIp, getClientIpInfo, isLoopbackIp } = require('../src/lib/request-ip.ts');
@@ -109,6 +113,29 @@ test('attendance monitoring only staff are never charged penalties', () => {
   );
   assert.deepEqual(
     computePenalty({ arrivalTime: null, didNotSignOut: true, isHoliday: false, isAttendanceOnly: true }),
+    { amount: 0, reason: '' },
+  );
+});
+
+test('no-show sign-in penalty is a flat GHC 50 and overrides no-sign-out', () => {
+  assert.deepEqual(
+    computePenalty({ arrivalTime: null, didNotSignOut: false, isHoliday: false, noSignIn: true }),
+    { amount: NO_SHOW_SIGN_IN_AMOUNT, reason: NO_SHOW_SIGN_IN_REASON },
+  );
+  assert.deepEqual(
+    computePenalty({ arrivalTime: null, didNotSignOut: true, isHoliday: false, noSignIn: true }),
+    { amount: NO_SHOW_SIGN_IN_AMOUNT, reason: NO_SHOW_SIGN_IN_REASON },
+  );
+  assert.deepEqual(
+    computePenalty({ arrivalTime: null, didNotSignOut: true, isHoliday: false, isNssPersonnel: true, noSignIn: true }),
+    { amount: NO_SHOW_SIGN_IN_AMOUNT, reason: NO_SHOW_SIGN_IN_REASON },
+  );
+  assert.deepEqual(
+    computePenalty({ arrivalTime: null, didNotSignOut: true, isHoliday: true, noSignIn: true }),
+    { amount: 0, reason: 'HOLIDAY' },
+  );
+  assert.deepEqual(
+    computePenalty({ arrivalTime: null, didNotSignOut: true, isHoliday: false, isAttendanceOnly: true, noSignIn: true }),
     { amount: 0, reason: '' },
   );
 });

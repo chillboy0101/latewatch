@@ -1,5 +1,5 @@
 import { getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/attendance-permissions';
-import { computePenalty } from '@/lib/penalty-calculator';
+import { computePenalty, NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/penalty-calculator';
 import { shouldAlertNoSignOut } from '@/lib/work-hours';
 
 type AttendanceRecordLike = {
@@ -8,6 +8,7 @@ type AttendanceRecordLike = {
   date: Date | string;
   id: string;
   noSignOutWaived?: boolean | null;
+  noShowSignInWaived?: boolean | null;
   reason: string | null;
   signOutTime?: string | null;
   status: string;
@@ -133,8 +134,19 @@ function resolvePenaltyState(input: {
   didNotSignOut: boolean;
   isAttendanceOnly: boolean;
   isNssPersonnel: boolean;
+  noSignIn?: boolean;
   permission: PermissionLike | null;
 }): PenaltyState {
+  if (input.noSignIn && input.permission?.status === 'approved' && input.permission.permissionType === 'absence') {
+    return {
+      amount: 0,
+      amountText: '0.00',
+      didNotSignOut: false,
+      reason: null,
+      status: 'present',
+    };
+  }
+
   const permissionClearsLatePenalty = Boolean(
     input.permission?.status === 'approved' &&
     input.permission.permissionType === 'late_arrival' &&
@@ -171,6 +183,7 @@ function resolvePenaltyState(input: {
     isAttendanceOnly: input.isAttendanceOnly,
     isNssPersonnel: input.isNssPersonnel,
     isHoliday: false,
+    noSignIn: input.noSignIn,
   });
 
   return {
@@ -230,6 +243,12 @@ export function planStaffPenaltyRecalculation(input: {
     const existingEntries = entriesByDate.get(date) || [];
     const existingEntry = existingEntries[0] || null;
     const arrivalTime = normalizeTime(attendance.checkInTime);
+    const noSignIn = !arrivalTime && (
+      attendance.noShowSignInWaived === true ||
+      attendance.reason === NO_SHOW_SIGN_IN_REASON ||
+      attendance.reason === NO_SHOW_SIGN_IN_WAIVED_REASON ||
+      attendance.status === 'absent'
+    );
     const didNotSignOut = shouldApplyNoSignOutPenalty({
       checkInTime: arrivalTime,
       currentDateKey: currentClock.dateKey,
@@ -245,8 +264,25 @@ export function planStaffPenaltyRecalculation(input: {
       didNotSignOut,
       isAttendanceOnly: input.isAttendanceOnly === true,
       isNssPersonnel: input.isNssPersonnel,
+      noSignIn,
       permission: permissionsByDate.get(date) || null,
     });
+
+    if (noSignIn && attendance.noShowSignInWaived === true) {
+      for (const existingEntryForDate of existingEntries) {
+        handledEntryIds.add(existingEntryForDate.id);
+        if (existingEntryForDate.reason === NO_SHOW_SIGN_IN_REASON) {
+          plan.latenessUpdates.push({
+            arrivalTime: null,
+            computedAmount: '0.00',
+            didNotSignOut: false,
+            id: existingEntryForDate.id,
+            reason: NO_SHOW_SIGN_IN_WAIVED_REASON,
+          });
+        }
+      }
+      continue;
+    }
 
     if (
       normalizeAmount(attendance.computedAmount) !== next.amountText ||
@@ -306,6 +342,7 @@ export function planStaffPenaltyRecalculation(input: {
       didNotSignOut: entry.didNotSignOut === true,
       isAttendanceOnly: input.isAttendanceOnly === true,
       isNssPersonnel: input.isNssPersonnel,
+      noSignIn: entry.reason === NO_SHOW_SIGN_IN_REASON,
       permission: permissionsByDate.get(date) || null,
     });
 

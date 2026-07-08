@@ -497,3 +497,19 @@ test('sync converts legacy entries fallback sign-outs into waivers instead of de
   assert.equal(fixture.attendanceRecord[0].status, 'present');
   assert.equal(fixture.latenessEntry.length, 0);
 });
+
+test('sync creates one no-show sign-in penalty for staff with no attendance row', async () => {
+  resetFixture();
+  fixture.attendancePermission = [];
+  fixture.attendanceRecord = [];
+  fixture.latenessEntry = [];
+
+  await syncLatenessEntriesFromAttendanceForDate('2026-05-14');
+  await syncLatenessEntriesFromAttendanceForDate('2026-05-14');
+
+  assert.equal(fixture.latenessEntry.length, 1);
+  assert.equal(fixture.latenessEntry[0].arrivalTime, null);
+  assert.equal(fixture.latenessEntry[0].computedAmount, '50.00');
+  assert.equal(fixture.latenessEntry[0].didNotSignOut, false);
+  assert.equal(fixture.latenessEntry[0].reason, "DIDN'T SIGN IN BEFORE 4:30PM");
+});

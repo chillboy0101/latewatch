@@ -13,6 +13,7 @@ export type LatenessEntryPresentationRow = {
   isExcusedAbsence?: boolean | null;
   id: string;
   isGeneralPardon?: boolean | null;
+  noShowSignInWaived?: boolean | null;
   noSignOutWaived?: boolean | null;
   reason?: string | null;
   signOutTime?: string | null;
@@ -25,6 +26,9 @@ export type AttendanceEntryPresentationRow = {
   createdAt?: Date | string | null;
   date: string;
   id: string;
+  noShowSignInWaived?: boolean | null;
+  noShowSignInWaivedAt?: Date | string | null;
+  noShowSignInWaivedReason?: string | null;
   noSignOutWaived?: boolean | null;
   noSignOutWaivedAt?: Date | string | null;
   noSignOutWaivedReason?: string | null;
@@ -88,7 +92,9 @@ function hasVisibleAttendanceState(row: AttendanceEntryPresentationRow) {
     amountNumber(row.computedAmount) > 0 ||
     Boolean(row.reason) ||
     row.noSignOutWaived === true ||
+    row.noShowSignInWaived === true ||
     row.source === 'entries_manual_check_in' ||
+    row.source === 'no_show_sign_in_waiver' ||
     row.status === 'late' ||
     row.status === 'excused'
   );
@@ -108,6 +114,7 @@ export function mergeAttendanceRowsIntoEntryRows(input: {
     return {
       ...entry,
       isGeneralPardon: entry.isGeneralPardon ?? isGeneralPardonEntryReason(entry.reason),
+      noShowSignInWaived: entry.noShowSignInWaived ?? (attendance?.noShowSignInWaived === true),
       noSignOutWaived: entry.noSignOutWaived ?? (attendance?.noSignOutWaived === true),
       signOutTime: entry.signOutTime ?? attendance?.signOutTime ?? null,
     };
@@ -127,8 +134,9 @@ export function mergeAttendanceRowsIntoEntryRows(input: {
       id: `attendance:${row.id}`,
       isExcusedAbsence: isExcusedAbsenceEntry(row),
       isGeneralPardon: isGeneralPardonEntryReason(row.reason),
+      noShowSignInWaived: row.noShowSignInWaived === true,
       noSignOutWaived: row.noSignOutWaived === true,
-      reason: row.reason || (row.noSignOutWaived === true ? 'No sign-out waived' : null),
+      reason: row.reason || (row.noShowSignInWaived === true ? 'No-show waived' : row.noSignOutWaived === true ? 'No sign-out waived' : null),
       signOutTime: row.signOutTime || null,
       staffId: row.staffId,
     }));
@@ -148,6 +156,7 @@ export function mergeAttendanceRowsIntoEntryRows(input: {
       id: `permission:${row.id}`,
       isExcusedAbsence: isExcusedAbsenceEntry(row),
       isGeneralPardon: isGeneralPardonEntryReason(row.reason),
+      noShowSignInWaived: false,
       noSignOutWaived: false,
       reason: formatPermissionFallbackReason(row),
       signOutTime: null,

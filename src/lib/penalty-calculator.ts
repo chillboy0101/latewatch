@@ -2,12 +2,17 @@
 
 import { WORKDAY_START_TIME } from '@/lib/work-hours';
 
+export const NO_SHOW_SIGN_IN_AMOUNT = 50;
+export const NO_SHOW_SIGN_IN_REASON = 'DIDN\'T SIGN IN BEFORE 4:30PM';
+export const NO_SHOW_SIGN_IN_WAIVED_REASON = 'No-show waived';
+
 interface PenaltyInput {
   arrivalTime: string | null;  // HH:MM format
   didNotSignOut: boolean;
   isAttendanceOnly?: boolean;
   isHoliday: boolean;
   isNssPersonnel?: boolean;
+  noSignIn?: boolean;
 }
 
 interface PenaltyOutput {
@@ -33,6 +38,10 @@ export function computePenalty(input: PenaltyInput): PenaltyOutput {
   // Holiday: no penalty, block entry
   if (input.isHoliday) {
     return { amount: 0, reason: 'HOLIDAY' };
+  }
+
+  if (input.noSignIn) {
+    return { amount: NO_SHOW_SIGN_IN_AMOUNT, reason: NO_SHOW_SIGN_IN_REASON };
   }
 
   // Blank time: not late

@@ -30,6 +30,12 @@ export const REMINDER_CRON_SCHEDULES = {
     scheduledMinute: 30,
     windowMinutes: SIGN_OUT_REMINDER_CRON_WINDOW_MINUTES,
   },
+  noShowSignIn: {
+    expectedSchedule: '30 16 * * 1-5',
+    scheduledHour: 16,
+    scheduledMinute: 30,
+    windowMinutes: SIGN_OUT_REMINDER_CRON_WINDOW_MINUTES,
+  },
   holiday: {
     expectedSchedule: '15 8 * * *',
     scheduledHour: 8,

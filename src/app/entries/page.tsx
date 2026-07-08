@@ -10,6 +10,7 @@ import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { addDays, format, isValid, parseISO } from 'date-fns';
 import { Save, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Clock, RefreshCw, Search } from 'lucide-react';
 import { computePenalty } from '@/lib/penalty-calculator';
+import { NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/penalty-calculator';
 import { getAccraDateKey } from '@/lib/date-key';
 import { formatLongDisplayDate } from '@/lib/date-format';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
@@ -36,6 +37,7 @@ interface Entry {
   amount: number;
   isExcusedAbsence: boolean;
   isGeneralPardon: boolean;
+  noShowSignInWaived: boolean;
   noSignOutWaived: boolean;
   reason: string;
 }
@@ -54,11 +56,12 @@ interface ExistingEntry {
   computedAmount: string | number | null;
   isExcusedAbsence?: boolean | null;
   isGeneralPardon?: boolean | null;
+  noShowSignInWaived?: boolean | null;
   noSignOutWaived?: boolean | null;
   reason: string | null;
 }
 
-type EntrySnapshot = Pick<Entry, 'arrivalTime' | 'didNotSignOut' | 'signOutTime' | 'noSignOutWaived'>;
+type EntrySnapshot = Pick<Entry, 'arrivalTime' | 'didNotSignOut' | 'signOutTime' | 'noShowSignInWaived' | 'noSignOutWaived'>;
 type SearchableValue = string | number | null | undefined;
 
 function normalizeTimeValue(value: string | null | undefined) {
@@ -105,6 +108,7 @@ function snapshotEntry(entry: Entry): EntrySnapshot {
   return {
     arrivalTime: normalizeTimeValue(entry.arrivalTime),
     didNotSignOut: entry.didNotSignOut === true,
+    noShowSignInWaived: entry.noShowSignInWaived === true,
     noSignOutWaived: entry.noSignOutWaived === true,
     signOutTime: normalizeTimeValue(entry.signOutTime),
   };
@@ -116,6 +120,7 @@ function entryMatchesSnapshot(entry: Entry, snapshot: EntrySnapshot | undefined)
   return (
     normalizeTimeValue(entry.arrivalTime) === normalizeTimeValue(snapshot.arrivalTime) &&
     entry.didNotSignOut === snapshot.didNotSignOut &&
+    entry.noShowSignInWaived === snapshot.noShowSignInWaived &&
     entry.noSignOutWaived === snapshot.noSignOutWaived &&
     normalizeTimeValue(entry.signOutTime) === normalizeTimeValue(snapshot.signOutTime)
   );
@@ -184,6 +189,7 @@ export default function EntriesPage() {
           amount: existing ? parseFloat(String(existing.computedAmount || '0')) : 0,
           isExcusedAbsence: existing?.isExcusedAbsence === true,
           isGeneralPardon: existing?.isGeneralPardon === true,
+          noShowSignInWaived: existing?.noShowSignInWaived === true,
           noSignOutWaived: existing?.noSignOutWaived === true,
           reason: existing?.reason || '',
         };
@@ -235,14 +241,18 @@ export default function EntriesPage() {
   
   function applyPenaltyDisplay(entry: Entry, member: StaffMember | undefined): Entry {
     const hasSignOutTime = Boolean(normalizeTimeValue(entry.signOutTime));
+    const hasSignInTime = Boolean(normalizeTimeValue(entry.arrivalTime));
     const isExcusedAbsence = entry.isExcusedAbsence === true;
+    const noShowSignInWaived = hasSignInTime || isExcusedAbsence ? false : entry.noShowSignInWaived;
     const noSignOutWaived = hasSignOutTime || isExcusedAbsence ? false : entry.noSignOutWaived;
-    const didNotSignOut = hasSignOutTime || isExcusedAbsence || noSignOutWaived ? false : entry.didNotSignOut;
+    const didNotSignOut = hasSignOutTime || isExcusedAbsence || noSignOutWaived || noShowSignInWaived ? false : entry.didNotSignOut;
     const normalizedEntry = {
       ...entry,
       didNotSignOut,
       isExcusedAbsence,
+      noShowSignInWaived,
       noSignOutWaived,
+      arrivalTime: normalizeTimeValue(entry.arrivalTime),
       signOutTime: normalizeTimeValue(entry.signOutTime),
     };
 
@@ -272,6 +282,29 @@ export default function EntriesPage() {
       };
     }
 
+    if (noShowSignInWaived && !hasSignInTime) {
+      return {
+        ...normalizedEntry,
+        amount: 0,
+        didNotSignOut: false,
+        isGeneralPardon: false,
+        reason: NO_SHOW_SIGN_IN_WAIVED_REASON,
+      };
+    }
+
+    if (!hasSignInTime && normalizedEntry.reason === NO_SHOW_SIGN_IN_REASON) {
+      return {
+        ...normalizedEntry,
+        amount: normalizedEntry.amount,
+        didNotSignOut: false,
+        isExcusedAbsence: false,
+        isGeneralPardon: false,
+        noShowSignInWaived: false,
+        noSignOutWaived: false,
+        reason: NO_SHOW_SIGN_IN_REASON,
+      };
+    }
+
     const penalty = computePenalty({
       arrivalTime: normalizedEntry.arrivalTime || null,
       didNotSignOut,
@@ -285,23 +318,29 @@ export default function EntriesPage() {
       amount: penalty.amount,
       isExcusedAbsence: false,
       isGeneralPardon: false,
+      noShowSignInWaived: false,
       noSignOutWaived: false,
       reason: penalty.reason,
     };
   }
 
-  const updateEntry = <K extends keyof Entry>(staffId: string, field: K, value: Entry[K]) => {
+  function updateArrivalTime(staffId: string, value: string) {
     setEntries((prev) =>
       prev.map((entry) => {
-        if (entry.staffId === staffId) {
-          const updated = { ...entry, [field]: value };
-          const member = staff.find((s) => s.id === staffId);
-          return applyPenaltyDisplay(updated, member);
-        }
-        return entry;
-      })
+        if (entry.staffId !== staffId) return entry;
+
+        const arrivalTime = normalizeTimeValue(value);
+        const updated = {
+          ...entry,
+          arrivalTime,
+          noShowSignInWaived: false,
+          reason: arrivalTime && entry.reason === NO_SHOW_SIGN_IN_REASON ? '' : entry.reason,
+        };
+        const member = staff.find((s) => s.id === staffId);
+        return applyPenaltyDisplay(updated, member);
+      }),
     );
-  };
+  }
 
   function updateSignOutTime(staffId: string, value: string) {
     setEntries((prev) =>
@@ -333,6 +372,26 @@ export default function EntriesPage() {
           didNotSignOut: nextWaived ? false : !normalizeTimeValue(entry.signOutTime),
           noSignOutWaived: nextWaived,
           signOutTime: '',
+        };
+        const member = staff.find((s) => s.id === staffId);
+        return applyPenaltyDisplay(updated, member);
+      }),
+    );
+  }
+
+  function toggleNoShowSignInWaiver(staffId: string) {
+    setEntries((prev) =>
+      prev.map((entry) => {
+        if (entry.staffId !== staffId) return entry;
+        if (entry.isExcusedAbsence || normalizeTimeValue(entry.arrivalTime)) return entry;
+
+        const nextWaived = !entry.noShowSignInWaived;
+        const updated = {
+          ...entry,
+          didNotSignOut: false,
+          noShowSignInWaived: nextWaived,
+          noSignOutWaived: false,
+          reason: nextWaived ? NO_SHOW_SIGN_IN_WAIVED_REASON : NO_SHOW_SIGN_IN_REASON,
         };
         const member = staff.find((s) => s.id === staffId);
         return applyPenaltyDisplay(updated, member);
@@ -399,6 +458,7 @@ export default function EntriesPage() {
             ...entry,
             didNotSignOutChanged: entry.didNotSignOut !== originalEntrySnapshots[entry.staffId]?.didNotSignOut,
             noSignOutWaivedChanged: entry.noSignOutWaived !== originalEntrySnapshots[entry.staffId]?.noSignOutWaived,
+            noShowSignInWaivedChanged: entry.noShowSignInWaived !== originalEntrySnapshots[entry.staffId]?.noShowSignInWaived,
             signOutTimeChanged:
               normalizeTimeValue(entry.signOutTime) !==
               normalizeTimeValue(originalEntrySnapshots[entry.staffId]?.signOutTime),
@@ -449,6 +509,9 @@ export default function EntriesPage() {
   const selectedDateKey = format(selectedDate, 'yyyy-MM-dd');
   const isWeekend = selectedDate.getDay() === 0 || selectedDate.getDay() === 6;
   const entriesDisabled = isHoliday || isWeekend;
+  const todayDateKey = getAccraDateKey();
+  const isSelectedDateInPastOrToday = selectedDateKey <= todayDateKey;
+  const noShowSignInWaiveAvailable = isSelectedDateInPastOrToday;
 
   const totals = entries.reduce(
     (acc, entry) => ({
@@ -628,6 +691,18 @@ export default function EntriesPage() {
                   </tr>
                 ) : visibleEntries.map(({ entry, index }) => {
                   const member = staff.find((s) => s.id === entry.staffId);
+                  const isMonitoringStaff = member?.isAttendanceOnly === true;
+                  const showNoShowSignInWaiverButton =
+                    !entriesDisabled &&
+                    !entry.arrivalTime &&
+                    !entry.isExcusedAbsence &&
+                    !isMonitoringStaff &&
+                    (
+                      noShowSignInWaiveAvailable ||
+                      entry.reason === NO_SHOW_SIGN_IN_REASON ||
+                      entry.reason === NO_SHOW_SIGN_IN_WAIVED_REASON ||
+                      entry.noShowSignInWaived
+                    );
                   return (
                     <tr key={entry.staffId} className="hover:bg-card/50 transition-colors">
                       <td className="px-4 py-3 text-sm text-muted-foreground">
@@ -644,12 +719,34 @@ export default function EntriesPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <TimeSelector
-                          value={entry.arrivalTime}
-                          onChange={(value) => updateEntry(entry.staffId, 'arrivalTime', value)}
-                          disabled={entriesDisabled}
-                          label="Sign-in time"
-                        />
+                        <div className="flex items-center gap-2">
+                          <TimeSelector
+                            value={entry.arrivalTime}
+                            onChange={(value) => updateArrivalTime(entry.staffId, value)}
+                            disabled={entriesDisabled}
+                            label="Sign-in time"
+                          />
+                          {showNoShowSignInWaiverButton && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={entriesDisabled}
+                              onClick={() => toggleNoShowSignInWaiver(entry.staffId)}
+                            >
+                              {entry.noShowSignInWaived ? (
+                                <>Remove waiver</>
+                              ) : (
+                                <>Mark as waived</>
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                        {!entry.arrivalTime && (entry.reason === NO_SHOW_SIGN_IN_REASON || entry.noShowSignInWaived) && (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {entry.noShowSignInWaived ? 'Waived' : 'No sign-in'}
+                          </p>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
@@ -694,7 +791,7 @@ export default function EntriesPage() {
                           <span className="rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">General pardon</span>
                         ) : entry.isExcusedAbsence ? (
                           <span className="rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">Excused</span>
-                        ) : entry.noSignOutWaived ? (
+                        ) : entry.noSignOutWaived || entry.noShowSignInWaived ? (
                           <span className="rounded-full border border-warning/30 bg-warning/10 px-2 py-1 text-xs font-semibold text-warning">Waived</span>
                         ) : (
                           <span className="text-muted-foreground">-</span>

@@ -118,6 +118,25 @@ test('lateness export summary counts combined late and no-sign-out rows in both 
   });
 });
 
+test('lateness export summary includes no-show amount without late or sign-out counts', () => {
+  const rows = [
+    {
+      computedAmount: '50.00',
+      didNotSignOut: false,
+      reason: "DIDN'T SIGN IN BEFORE 4:30PM",
+    },
+  ];
+
+  assert.equal(countLateArrivals(rows), 0);
+  assert.equal(countSignOutEntries(rows), 0);
+  assert.equal(sumAmounts(rows), 50);
+  assert.deepEqual(summarizeLatenessExportEntries(rows), {
+    lateArrivals: 0,
+    signOut: 0,
+    amount: 50,
+  });
+});
+
 test('lateness summary API is database-sourced and syncs before reading totals', () => {
   assert.equal(fs.existsSync(summaryRoutePath), true);
   const source = fs.readFileSync(summaryRoutePath, 'utf8');
