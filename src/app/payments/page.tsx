@@ -185,8 +185,6 @@ export default function PenaltyPaymentsPage() {
   const [offenceBookSaving, setOffenceBookSaving] = useState(false);
   const [offenceBookMessage, setOffenceBookMessage] = useState<{ text: string; type: 'error' | 'success' } | null>(null);
   const [openingBalance, setOpeningBalance] = useState('');
-  const [openingBalanceInherited, setOpeningBalanceInherited] = useState(false);
-  const [canEditOpeningBalance, setCanEditOpeningBalance] = useState(true);
   const [closingBalance, setClosingBalance] = useState('');
   const [paymentsCollected, setPaymentsCollected] = useState('0.00');
   const [externalMoneyDrafts, setExternalMoneyDrafts] = useState<OffenceBookDraftItem[]>(() => [createOffenceBookDraftItem()]);
@@ -235,15 +233,11 @@ export default function PenaltyPaymentsPage() {
       setExternalMoneyDrafts(offenceBookDraftsFromRows(body.externalMoney || []));
       setExpenditureDrafts(offenceBookDraftsFromRows(body.expenditure || []));
       setOpeningBalance(body.openingBalance || body.carriedOpeningBalance || '');
-      setOpeningBalanceInherited(!body.openingBalance && Boolean(body.carriedOpeningBalance));
-      setCanEditOpeningBalance(body.canEditOpeningBalance ?? true);
       setClosingBalance(body.closingBalance || body.calculatedClosingBalance || '');
       setPaymentsCollected(body.paymentsCollected || '0.00');
     } catch (error) {
       console.error('Failed to load offence book inputs:', error);
       setOpeningBalance('');
-      setOpeningBalanceInherited(false);
-      setCanEditOpeningBalance(true);
       setClosingBalance('');
       setPaymentsCollected('0.00');
       setExternalMoneyDrafts([createOffenceBookDraftItem()]);
@@ -392,7 +386,7 @@ export default function PenaltyPaymentsPage() {
           expenditure: expenditureDrafts.map(({ amount, label }) => ({ amount, label })),
           externalMoney: externalMoneyDrafts.map(({ amount, label }) => ({ amount, label })),
           month: offenceBookMonth,
-          openingBalance: canEditOpeningBalance && !openingBalanceInherited ? openingBalance : '',
+          openingBalance: '',
           year: offenceBookYear,
         }),
       });
@@ -402,8 +396,6 @@ export default function PenaltyPaymentsPage() {
       setExternalMoneyDrafts(offenceBookDraftsFromRows(body.externalMoney || []));
       setExpenditureDrafts(offenceBookDraftsFromRows(body.expenditure || []));
       setOpeningBalance(body.openingBalance || body.carriedOpeningBalance || '');
-      setOpeningBalanceInherited(!body.openingBalance && Boolean(body.carriedOpeningBalance));
-      setCanEditOpeningBalance(body.canEditOpeningBalance ?? true);
       setClosingBalance(body.closingBalance || body.calculatedClosingBalance || '');
       setPaymentsCollected(body.paymentsCollected || '0.00');
       setOffenceBookMessage({ type: 'success', text: 'Offence book inputs saved.' });
@@ -510,22 +502,10 @@ export default function PenaltyPaymentsPage() {
                     <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Opening Balance</label>
                     <Input
                       value={openingBalance}
-                      onChange={(event) => {
-                        if (!canEditOpeningBalance) return;
-                        setOpeningBalance(normalizePaymentAmountInput(event.target.value));
-                        setOpeningBalanceInherited(false);
-                      }}
-                      readOnly={!canEditOpeningBalance}
-                      placeholder="0.00"
-                      inputMode="decimal"
-                      disabled={offenceBookLoading || offenceBookSaving}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Payments Collected</label>
-                    <Input
-                      value={paymentsCollected}
                       readOnly
+                      tabIndex={-1}
+                      onMouseDown={(event) => event.preventDefault()}
+                      className="cursor-default select-none"
                       placeholder="0.00"
                       inputMode="decimal"
                       disabled={offenceBookLoading || offenceBookSaving}
@@ -536,6 +516,22 @@ export default function PenaltyPaymentsPage() {
                     <Input
                       value={closingBalance}
                       readOnly
+                      tabIndex={-1}
+                      onMouseDown={(event) => event.preventDefault()}
+                      className="cursor-default select-none"
+                      placeholder="0.00"
+                      inputMode="decimal"
+                      disabled={offenceBookLoading || offenceBookSaving}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Payments Collected</label>
+                    <Input
+                      value={paymentsCollected}
+                      readOnly
+                      tabIndex={-1}
+                      onMouseDown={(event) => event.preventDefault()}
+                      className="cursor-default select-none"
                       placeholder="0.00"
                       inputMode="decimal"
                       disabled={offenceBookLoading || offenceBookSaving}
