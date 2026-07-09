@@ -33,8 +33,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(result, {
       headers: { 'Cache-Control': 'no-store' },
     });
-  } catch (error) {
-    console.error('Failed to load reminder delivery monitor:', error);
-    return NextResponse.json({ error: 'Failed to load reminder delivery monitor' }, { status: 500 });
+  } catch (firstError) {
+    console.error('Failed to load reminder delivery monitor (retrying once):', firstError);
+
+    try {
+      const result = await getReminderDeliveryMonitor(date);
+
+      return NextResponse.json(result, {
+        headers: { 'Cache-Control': 'no-store' },
+      });
+    } catch (error) {
+      console.error('Failed to load reminder delivery monitor (retry also failed):', error);
+      return NextResponse.json({ error: 'Failed to load reminder delivery monitor' }, { status: 500 });
+    }
   }
 }
