@@ -133,6 +133,7 @@ function groupItems(
   rows: Array<typeof offenceBookItem.$inferSelect>,
   carriedOpeningBalance = '',
   calculatedClosingBalance = '',
+  paymentsCollected = '0.00',
 ) {
   const openingBalance = rows.find((row) => row.itemType === 'opening_balance')?.amount || '';
 
@@ -143,6 +144,7 @@ function groupItems(
     expenditure: rows.filter((row) => row.itemType === 'expenditure'),
     externalMoney: rows.filter((row) => row.itemType === 'external_money'),
     openingBalance,
+    paymentsCollected,
   };
 }
 
@@ -266,7 +268,7 @@ export async function GET(request: NextRequest) {
 
     if (isFutureMonth(parsed.monthKey)) {
       return NextResponse.json({
-        ...groupItems([], '', '0.00'),
+        ...groupItems([], '', '0.00', '0.00'),
         canEditOpeningBalance: true,
         month: parsed.month,
         monthKey: parsed.monthKey,
@@ -282,7 +284,7 @@ export async function GET(request: NextRequest) {
     const canEditOpeningBalance = !(await hasOpeningBalanceAnchorBefore(parsed.monthKey));
 
     return NextResponse.json({
-      ...groupItems(rows, carriedOpeningBalance, summary.calculatedClosingBalance),
+      ...groupItems(rows, carriedOpeningBalance, summary.calculatedClosingBalance, summary.totalPaid),
       canEditOpeningBalance,
       month: parsed.month,
       monthKey: parsed.monthKey,
@@ -367,7 +369,7 @@ export async function PUT(request: NextRequest) {
     });
 
     return NextResponse.json({
-      ...groupItems(rows, carriedOpeningBalance, summary.calculatedClosingBalance),
+      ...groupItems(rows, carriedOpeningBalance, summary.calculatedClosingBalance, summary.totalPaid),
       canEditOpeningBalance,
       month: parsed.month,
       monthKey: parsed.monthKey,

@@ -63,6 +63,7 @@ interface OffenceBookItemsResponse {
   month: number;
   monthKey: string;
   openingBalance: string;
+  paymentsCollected: string;
   year: number;
 }
 
@@ -187,6 +188,7 @@ export default function PenaltyPaymentsPage() {
   const [openingBalanceInherited, setOpeningBalanceInherited] = useState(false);
   const [canEditOpeningBalance, setCanEditOpeningBalance] = useState(true);
   const [closingBalance, setClosingBalance] = useState('');
+  const [paymentsCollected, setPaymentsCollected] = useState('0.00');
   const [externalMoneyDrafts, setExternalMoneyDrafts] = useState<OffenceBookDraftItem[]>(() => [createOffenceBookDraftItem()]);
   const [expenditureDrafts, setExpenditureDrafts] = useState<OffenceBookDraftItem[]>(() => [createOffenceBookDraftItem()]);
 
@@ -236,12 +238,14 @@ export default function PenaltyPaymentsPage() {
       setOpeningBalanceInherited(!body.openingBalance && Boolean(body.carriedOpeningBalance));
       setCanEditOpeningBalance(body.canEditOpeningBalance ?? true);
       setClosingBalance(body.closingBalance || body.calculatedClosingBalance || '');
+      setPaymentsCollected(body.paymentsCollected || '0.00');
     } catch (error) {
       console.error('Failed to load offence book inputs:', error);
       setOpeningBalance('');
       setOpeningBalanceInherited(false);
       setCanEditOpeningBalance(true);
       setClosingBalance('');
+      setPaymentsCollected('0.00');
       setExternalMoneyDrafts([createOffenceBookDraftItem()]);
       setExpenditureDrafts([createOffenceBookDraftItem()]);
       const text = error instanceof Error && error.name === 'TimeoutError'
@@ -401,6 +405,7 @@ export default function PenaltyPaymentsPage() {
       setOpeningBalanceInherited(!body.openingBalance && Boolean(body.carriedOpeningBalance));
       setCanEditOpeningBalance(body.canEditOpeningBalance ?? true);
       setClosingBalance(body.closingBalance || body.calculatedClosingBalance || '');
+      setPaymentsCollected(body.paymentsCollected || '0.00');
       setOffenceBookMessage({ type: 'success', text: 'Offence book inputs saved.' });
     } catch (error) {
       console.error('Offence book save failed:', error);
@@ -469,7 +474,7 @@ export default function PenaltyPaymentsPage() {
             <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
               <div>
                 <h2 className="text-base font-semibold">Offence book inputs</h2>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
                   <div>
                     <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Month</label>
                     <select
@@ -511,6 +516,16 @@ export default function PenaltyPaymentsPage() {
                         setOpeningBalanceInherited(false);
                       }}
                       readOnly={!canEditOpeningBalance}
+                      placeholder="0.00"
+                      inputMode="decimal"
+                      disabled={offenceBookLoading || offenceBookSaving}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Payments Collected</label>
+                    <Input
+                      value={paymentsCollected}
+                      readOnly
                       placeholder="0.00"
                       inputMode="decimal"
                       disabled={offenceBookLoading || offenceBookSaving}
