@@ -1,5 +1,5 @@
 import { currentUser } from '@clerk/nextjs/server';
-import { and, asc, eq, inArray, lte } from 'drizzle-orm';
+import { and, asc, eq, inArray, lt, lte } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { latenessEntry, latenessPaymentAllocation, offenceBookItem, staff } from '@/db/schema';
@@ -157,6 +157,21 @@ async function loadOffenceBookItemsThroughMonth(monthKey: string) {
     .orderBy(asc(offenceBookItem.monthKey), asc(offenceBookItem.itemType), asc(offenceBookItem.displayOrder));
 }
 
+/**
+ * Only the ledger's very first tracked month may hold a manual opening-balance
+ * anchor - every later month must inherit the previous month's live closing
+ * balance so the two can never drift apart again. A month qualifies as
+ * "first" only if no anchor has ever been saved for an earlier month.
+ */
+async function hasOpeningBalanceAnchorBefore(monthKey: string) {
+  const rows = await db.select({ id: offenceBookItem.id })
+    .from(offenceBookItem)
+    .where(and(eq(offenceBookItem.itemType, 'opening_balance'), lt(offenceBookItem.monthKey, monthKey)))
+    .limit(1);
+
+  return rows.length > 0;
+}
+
 async function loadFinancialSummary(input: { month: number; monthKey: string; year: number }, itemRows: Array<typeof offenceBookItem.$inferSelect>) {
   const monthEnd = formatDateKey(new Date(input.year, input.month + 1, 0));
 
@@ -252,6 +267,7 @@ export async function GET(request: NextRequest) {
     if (isFutureMonth(parsed.monthKey)) {
       return NextResponse.json({
         ...groupItems([], '', '0.00'),
+        canEditOpeningBalance: true,
         month: parsed.month,
         monthKey: parsed.monthKey,
         year: parsed.year,
@@ -263,9 +279,11 @@ export async function GET(request: NextRequest) {
     const itemRows = await loadOffenceBookItemsThroughMonth(parsed.monthKey);
     const rows = currentMonthRows(itemRows, parsed.monthKey);
     const { carriedOpeningBalance, summary } = await loadFinancialSummary(parsed, itemRows);
+    const canEditOpeningBalance = !(await hasOpeningBalanceAnchorBefore(parsed.monthKey));
 
     return NextResponse.json({
       ...groupItems(rows, carriedOpeningBalance, summary.calculatedClosingBalance),
+      canEditOpeningBalance,
       month: parsed.month,
       monthKey: parsed.monthKey,
       year: parsed.year,
@@ -297,7 +315,10 @@ export async function PUT(request: NextRequest) {
 
     const externalMoney = normalizeItems((body as { externalMoney?: unknown })?.externalMoney, 'external_money');
     const expenditure = normalizeItems((body as { expenditure?: unknown })?.expenditure, 'expenditure');
-    const openingBalance = normalizeBalance((body as { openingBalance?: unknown })?.openingBalance, 'opening_balance');
+    const canEditOpeningBalance = !(await hasOpeningBalanceAnchorBefore(parsed.monthKey));
+    const openingBalance = canEditOpeningBalance
+      ? normalizeBalance((body as { openingBalance?: unknown })?.openingBalance, 'opening_balance')
+      : null;
     const before = await db.select()
       .from(offenceBookItem)
       .where(eq(offenceBookItem.monthKey, parsed.monthKey));
@@ -347,6 +368,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({
       ...groupItems(rows, carriedOpeningBalance, summary.calculatedClosingBalance),
+      canEditOpeningBalance,
       month: parsed.month,
       monthKey: parsed.monthKey,
       success: true,

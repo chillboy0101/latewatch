@@ -55,6 +55,7 @@ interface OffenceBookStoredItem {
 
 interface OffenceBookItemsResponse {
   calculatedClosingBalance: string;
+  canEditOpeningBalance: boolean;
   carriedOpeningBalance: string;
   closingBalance: string;
   expenditure: OffenceBookStoredItem[];
@@ -184,6 +185,7 @@ export default function PenaltyPaymentsPage() {
   const [offenceBookMessage, setOffenceBookMessage] = useState<{ text: string; type: 'error' | 'success' } | null>(null);
   const [openingBalance, setOpeningBalance] = useState('');
   const [openingBalanceInherited, setOpeningBalanceInherited] = useState(false);
+  const [canEditOpeningBalance, setCanEditOpeningBalance] = useState(true);
   const [closingBalance, setClosingBalance] = useState('');
   const [externalMoneyDrafts, setExternalMoneyDrafts] = useState<OffenceBookDraftItem[]>(() => [createOffenceBookDraftItem()]);
   const [expenditureDrafts, setExpenditureDrafts] = useState<OffenceBookDraftItem[]>(() => [createOffenceBookDraftItem()]);
@@ -232,11 +234,13 @@ export default function PenaltyPaymentsPage() {
       setExpenditureDrafts(offenceBookDraftsFromRows(body.expenditure || []));
       setOpeningBalance(body.openingBalance || body.carriedOpeningBalance || '');
       setOpeningBalanceInherited(!body.openingBalance && Boolean(body.carriedOpeningBalance));
+      setCanEditOpeningBalance(body.canEditOpeningBalance ?? true);
       setClosingBalance(body.closingBalance || body.calculatedClosingBalance || '');
     } catch (error) {
       console.error('Failed to load offence book inputs:', error);
       setOpeningBalance('');
       setOpeningBalanceInherited(false);
+      setCanEditOpeningBalance(true);
       setClosingBalance('');
       setExternalMoneyDrafts([createOffenceBookDraftItem()]);
       setExpenditureDrafts([createOffenceBookDraftItem()]);
@@ -384,7 +388,7 @@ export default function PenaltyPaymentsPage() {
           expenditure: expenditureDrafts.map(({ amount, label }) => ({ amount, label })),
           externalMoney: externalMoneyDrafts.map(({ amount, label }) => ({ amount, label })),
           month: offenceBookMonth,
-          openingBalance: openingBalanceInherited ? '' : openingBalance,
+          openingBalance: canEditOpeningBalance && !openingBalanceInherited ? openingBalance : '',
           year: offenceBookYear,
         }),
       });
@@ -395,6 +399,7 @@ export default function PenaltyPaymentsPage() {
       setExpenditureDrafts(offenceBookDraftsFromRows(body.expenditure || []));
       setOpeningBalance(body.openingBalance || body.carriedOpeningBalance || '');
       setOpeningBalanceInherited(!body.openingBalance && Boolean(body.carriedOpeningBalance));
+      setCanEditOpeningBalance(body.canEditOpeningBalance ?? true);
       setClosingBalance(body.closingBalance || body.calculatedClosingBalance || '');
       setOffenceBookMessage({ type: 'success', text: 'Offence book inputs saved.' });
     } catch (error) {
@@ -501,9 +506,11 @@ export default function PenaltyPaymentsPage() {
                     <Input
                       value={openingBalance}
                       onChange={(event) => {
+                        if (!canEditOpeningBalance) return;
                         setOpeningBalance(normalizePaymentAmountInput(event.target.value));
                         setOpeningBalanceInherited(false);
                       }}
+                      readOnly={!canEditOpeningBalance}
                       placeholder="0.00"
                       inputMode="decimal"
                       disabled={offenceBookLoading || offenceBookSaving}
