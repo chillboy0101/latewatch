@@ -118,25 +118,11 @@ async function fetchAllocationsForEntries(entryIds) {
   `;
 }
 
-async function deleteEntry(entry) {
-  await sql`delete from lateness_entry where id = ${entry.id}`;
+async function deleteEntriesBulk(entries) {
+  const ids = entries.map((entry) => entry.id);
+  if (ids.length === 0) return;
 
-  await writeAuditEvent({
-    action: 'DELETE',
-    after: null,
-    before: {
-      arrivalTime: entry.arrivalTime,
-      computedAmount: entry.computedAmount,
-      date: toDateKey(entry.date),
-      didNotSignOut: entry.didNotSignOut,
-      id: entry.id,
-      reason: entry.reason,
-      repairReason: REPAIR_REASON,
-      staffId: entry.staffId,
-    },
-    entityId: entry.id,
-    entityType: 'entry',
-  });
+  await sql`delete from lateness_entry where id = any(${ids})`;
 }
 
 console.log(`${applyChanges ? 'Applying' : 'Dry run'} retroactive no-show sign-in penalty correction...`);
@@ -161,10 +147,18 @@ for (const allocation of allocations) {
 const deletable = entries.filter((entry) => !allocationsByEntryId.has(entry.id));
 const blocked = entries.filter((entry) => allocationsByEntryId.has(entry.id));
 
+const byStaff = new Map();
+for (const entry of deletable) {
+  const summary = byStaff.get(entry.staffId) || { amount: 0, count: 0, staffName: entry.staffName || entry.staffId };
+  summary.count += 1;
+  summary.amount += Number(entry.computedAmount || 0);
+  byStaff.set(entry.staffId, summary);
+}
+
 console.log('');
 console.log(`Entries safe to delete (no payments recorded against them): ${deletable.length}`);
-for (const entry of deletable) {
-  console.log(`- ${entry.staffName || entry.staffId}: ${toDateKey(entry.date)} — GHC ${amountText(entry.computedAmount)} (${entry.reason})`);
+for (const summary of byStaff.values()) {
+  console.log(`- ${summary.staffName}: ${summary.count} entries, GHC ${summary.amount.toFixed(2)}`);
 }
 
 if (blocked.length > 0) {
@@ -178,22 +172,21 @@ if (blocked.length > 0) {
 
 const totalAmount = deletable.reduce((sum, entry) => sum + Number(entry.computedAmount || 0), 0);
 console.log('');
-console.log(`Staff affected: ${new Set(deletable.map((entry) => entry.staffId)).size}`);
+console.log(`Staff affected: ${byStaff.size}`);
 console.log(`Total amount to reverse: GHC ${totalAmount.toFixed(2)}`);
 
 if (!applyChanges) {
   console.log('');
   console.log('No records were changed. Run with --apply to delete these erroneous entries.');
 } else {
-  for (const entry of deletable) {
-    await deleteEntry(entry);
-  }
+  await deleteEntriesBulk(deletable);
 
   await writeAuditEvent({
     action: 'SYNC',
     after: {
       blockedCount: blocked.length,
       deletedCount: deletable.length,
+      deletedEntryIds: deletable.map((entry) => entry.id),
       effectiveDate: NO_SHOW_SIGN_IN_EFFECTIVE_DATE,
       totalAmountReversed: totalAmount.toFixed(2),
     },

@@ -50,6 +50,13 @@ test('check-in API repairs legacy entries fallback sign-outs', () => {
   assert.match(route, /attendance-sign-out-repair/);
 });
 
+test('approved absence permission only blocks check-in, never sign-out', () => {
+  const route = fs.readFileSync(checkInRoutePath, 'utf8');
+
+  assert.match(route, /if \(action === 'check_in' && permission\?\.permissionType === 'absence'\) \{/);
+  assert.doesNotMatch(route, /if \(permission\?\.permissionType === 'absence'\) \{/);
+});
+
 test('check-in page renders push reminder controls instead of auto actions', () => {
   const source = fs.readFileSync(checkInPagePath, 'utf8');
 

@@ -833,7 +833,7 @@ export async function POST(request: NextRequest) {
     let resolvedDevice = registeredDevice || null;
 
     const permission = await getApprovedAttendancePermission(staffMember.id, clock.dateKey);
-    if (permission?.permissionType === 'absence') {
+    if (action === 'check_in' && permission?.permissionType === 'absence') {
       return block(
         'PERMISSION_ABSENCE',
         'You have an approved absence for today. No check-in is required.',
