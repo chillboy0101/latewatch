@@ -3,6 +3,7 @@ import { endOfMonth, format, startOfMonth } from 'date-fns';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { latenessEntry, latenessPaymentAllocation, offenceBookItem, staff } from '@/db/schema';
+import { getAccraClock } from '@/lib/attendance';
 import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 import { getAuditActor, tryWriteAuditEvent } from '@/lib/audit';
 import { buildOffenceBookWorkbookFromData, type OffenceBookItemInput } from '@/lib/offence-book-export';
@@ -19,6 +20,14 @@ function parseExportInput(body: unknown) {
   if (!Number.isInteger(month) || month < 0 || month > 11) return null;
 
   return { month, year };
+}
+
+function isFutureMonth(year: number, month: number) {
+  const clock = getAccraClock();
+  const [currentYear, currentMonth] = clock.dateKey.split('-').map(Number);
+
+  if (year !== currentYear) return year > currentYear;
+  return month > currentMonth - 1;
 }
 
 function normalizeDateKey(value: string | Date) {
@@ -121,6 +130,10 @@ export async function POST(request: NextRequest) {
 
     if (!parsed) {
       return NextResponse.json({ error: 'Valid year and month are required' }, { status: 400 });
+    }
+
+    if (isFutureMonth(parsed.year, parsed.month)) {
+      return NextResponse.json({ error: 'Cannot export an offence book for a future month' }, { status: 400 });
     }
 
     const actor = await getAuditActor();

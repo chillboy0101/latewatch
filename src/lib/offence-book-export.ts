@@ -65,8 +65,6 @@ export type OffenceBookFinancialSummary = {
   externalMoneyCents: number;
   openingBalance: string;
   openingBalanceCents: number;
-  savedClosingBalance: string;
-  savedClosingBalanceCents: number | null;
   totalPaid: string;
   totalPaidCents: number;
   totalPenalty: string;
@@ -139,10 +137,6 @@ function monthStartKey(year: number, month: number) {
 
 function monthEndKey(year: number, month: number) {
   return format(new Date(year, month + 1, 0), 'yyyy-MM-dd');
-}
-
-function previousMonthStartKey(year: number, month: number) {
-  return format(new Date(year, month - 1, 1), 'yyyy-MM-dd');
 }
 
 function dateKey(value: string | Date) {
@@ -301,6 +295,77 @@ function summarizeWeeklyFinancialTotals(input: {
   );
 }
 
+const MAX_OPENING_BALANCE_LOOKBACK_MONTHS = 600;
+
+function shiftMonth(year: number, month: number, offset: number) {
+  const shifted = new Date(year, month + offset, 1);
+  return { month: shifted.getMonth(), year: shifted.getFullYear() };
+}
+
+/**
+ * A month's opening balance is either its own saved `opening_balance` anchor,
+ * or — if no anchor has ever been set anywhere in the ledger's history — the
+ * raw outstanding balance (every unpaid penalty dated before this month).
+ * Otherwise it's the previous month's *live* closing balance, found by
+ * walking backward through each intervening month's external money /
+ * payments / expenditure until the nearest anchor is reached. There is no
+ * separate saved "closing balance" snapshot to drift out of sync with.
+ */
+export function resolveOpeningBalanceCents(input: {
+  allocations: OffenceBookAllocationInput[];
+  entries: OffenceBookEntryInput[];
+  items: OffenceBookItemInput[];
+  month: number;
+  staff: OffenceBookStaffInput[];
+  year: number;
+}): number {
+  const selectedMonthKey = monthStartKey(input.year, input.month);
+  const openingBalanceItems = monthItems(input.items, 'opening_balance', selectedMonthKey);
+  if (openingBalanceItems.length > 0) {
+    return cents(openingBalanceItems[0].amount);
+  }
+
+  const hasAnchorBefore = input.items.some(
+    (item) => item.itemType === 'opening_balance' && dateKey(item.monthKey) < selectedMonthKey,
+  );
+
+  if (!hasAnchorBefore) {
+    const paidByEntry = paidCentsByEntry(input.allocations);
+    return sumEntryBalanceCents(input.entries, paidByEntry, (entry) => dateKey(entry.date) < selectedMonthKey);
+  }
+
+  let { month, year } = input;
+  let accumulatedFlowCents = 0;
+
+  for (let step = 0; step < MAX_OPENING_BALANCE_LOOKBACK_MONTHS; step++) {
+    const previous = shiftMonth(year, month, -1);
+    const previousMonthKey = monthStartKey(previous.year, previous.month);
+    const previousExternalMoneyCents = monthItems(input.items, 'external_money', previousMonthKey)
+      .reduce((sum, item) => sum + cents(item.amount), 0);
+    const previousExpenditureCents = monthItems(input.items, 'expenditure', previousMonthKey)
+      .reduce((sum, item) => sum + cents(item.amount), 0);
+    const previousWeeklyTotals = summarizeWeeklyFinancialTotals({
+      allocations: input.allocations,
+      entries: input.entries,
+      month: previous.month,
+      staff: input.staff,
+      year: previous.year,
+    });
+
+    accumulatedFlowCents += previousExternalMoneyCents + previousWeeklyTotals.paidCents - previousExpenditureCents;
+
+    const previousOpeningItems = monthItems(input.items, 'opening_balance', previousMonthKey);
+    if (previousOpeningItems.length > 0) {
+      return cents(previousOpeningItems[0].amount) + accumulatedFlowCents;
+    }
+
+    year = previous.year;
+    month = previous.month;
+  }
+
+  return accumulatedFlowCents;
+}
+
 export function calculateOffenceBookFinancialSummary({
   allocations,
   entries,
@@ -310,27 +375,13 @@ export function calculateOffenceBookFinancialSummary({
   year,
 }: Omit<BuildOffenceBookWorkbookInput, 'templatePath'>): OffenceBookFinancialSummary {
   const selectedMonthKey = monthStartKey(year, month);
-  const paidByEntry = paidCentsByEntry(allocations);
-  const calculatedOpeningBalanceCents = sumEntryBalanceCents(
-    entries,
-    paidByEntry,
-    (entry) => dateKey(entry.date) < selectedMonthKey,
-  );
-  const openingBalanceItems = monthItems(items, 'opening_balance', selectedMonthKey);
-  const previousClosingBalanceItems = monthItems(items, 'closing_balance', previousMonthStartKey(year, month));
-  const openingBalanceCents = openingBalanceItems.length > 0
-    ? cents(openingBalanceItems[0].amount)
-    : previousClosingBalanceItems.length > 0
-      ? cents(previousClosingBalanceItems[0].amount)
-    : calculatedOpeningBalanceCents;
+  const openingBalanceCents = resolveOpeningBalanceCents({ allocations, entries, items, month, staff, year });
   const externalMoneyCents = monthItems(items, 'external_money', selectedMonthKey)
     .reduce((sum, item) => sum + cents(item.amount), 0);
   const expenditureCents = monthItems(items, 'expenditure', selectedMonthKey)
     .reduce((sum, item) => sum + cents(item.amount), 0);
   const weeklyTotals = summarizeWeeklyFinancialTotals({ allocations, entries, month, staff, year });
   const calculatedClosingBalanceCents = openingBalanceCents + externalMoneyCents + weeklyTotals.paidCents - expenditureCents;
-  const closingBalanceItems = monthItems(items, 'closing_balance', selectedMonthKey);
-  const savedClosingBalanceCents = closingBalanceItems.length > 0 ? cents(closingBalanceItems[0].amount) : null;
 
   return {
     calculatedClosingBalance: moneyText(calculatedClosingBalanceCents),
@@ -343,8 +394,6 @@ export function calculateOffenceBookFinancialSummary({
     externalMoneyCents,
     openingBalance: moneyText(openingBalanceCents),
     openingBalanceCents,
-    savedClosingBalance: savedClosingBalanceCents == null ? '' : moneyText(savedClosingBalanceCents),
-    savedClosingBalanceCents,
     totalPaid: moneyText(weeklyTotals.paidCents),
     totalPaidCents: weeklyTotals.paidCents,
     totalPenalty: moneyText(weeklyTotals.penaltyCents),
@@ -455,18 +504,7 @@ export async function buildOffenceBookWorkbookFromData({
     selectedEntriesByStaffDate.set(key, list);
   }
 
-  const calculatedOpeningBalanceCents = sumEntryBalanceCents(
-    entries,
-    paidByEntry,
-    (entry) => dateKey(entry.date) < selectedMonthKey,
-  );
-  const openingBalanceItems = monthItems(items, 'opening_balance', selectedMonthKey);
-  const previousClosingBalanceItems = monthItems(items, 'closing_balance', previousMonthStartKey(year, month));
-  const openingBalanceCents = openingBalanceItems.length > 0
-    ? cents(openingBalanceItems[0].amount)
-    : previousClosingBalanceItems.length > 0
-      ? cents(previousClosingBalanceItems[0].amount)
-    : calculatedOpeningBalanceCents;
+  const openingBalanceCents = resolveOpeningBalanceCents({ allocations, entries, items, month, staff, year });
   const owedThroughMonthByStaff = new Map<string, number>();
   for (const member of staff) {
     owedThroughMonthByStaff.set(member.id, sumEntryBalanceCents(

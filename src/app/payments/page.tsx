@@ -381,7 +381,6 @@ export default function PenaltyPaymentsPage() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          closingBalance,
           expenditure: expenditureDrafts.map(({ amount, label }) => ({ amount, label })),
           externalMoney: externalMoneyDrafts.map(({ amount, label }) => ({ amount, label })),
           month: offenceBookMonth,
@@ -514,7 +513,7 @@ export default function PenaltyPaymentsPage() {
                     <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Closing Balance</label>
                     <Input
                       value={closingBalance}
-                      onChange={(event) => setClosingBalance(normalizePaymentAmountInput(event.target.value))}
+                      readOnly
                       placeholder="0.00"
                       inputMode="decimal"
                       disabled={offenceBookLoading || offenceBookSaving}

@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, lte } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { latenessEntry, latenessPaymentAllocation, offenceBookItem, staff } from '@/db/schema';
+import { getAccraClock } from '@/lib/attendance';
 import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 import { writeAuditEvent } from '@/lib/audit';
 import {
@@ -22,13 +23,22 @@ type EditableItem = {
   label?: unknown;
 };
 
-type OffenceBookBalanceItemType = Extract<OffenceBookItemType, 'opening_balance' | 'closing_balance'>;
-type OffenceBookListItemType = Exclude<OffenceBookItemType, OffenceBookBalanceItemType>;
+type OffenceBookBalanceItemType = Extract<OffenceBookItemType, 'opening_balance'>;
+type OffenceBookListItemType = Exclude<OffenceBookItemType, 'opening_balance' | 'closing_balance'>;
 
 function formatMonthKey(year: number, month: number) {
   const normalized = new Date(year, month, 1);
   return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, '0')}-01`;
 }
+
+function isFutureMonth(monthKey: string) {
+  const clock = getAccraClock();
+  const [currentYear, currentMonth] = clock.dateKey.split('-').map(Number);
+  const currentMonthKey = formatMonthKey(currentYear, currentMonth - 1);
+
+  return monthKey > currentMonthKey;
+}
+
 
 function formatDateKey(value: Date) {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
@@ -110,13 +120,12 @@ function normalizeItems(value: unknown, itemType: OffenceBookListItemType) {
 function normalizeBalance(value: unknown, itemType: OffenceBookBalanceItemType) {
   if (value === undefined || value === null || value === '') return null;
   const amount = amountString(value);
-  if (itemType === 'closing_balance' && Number(amount) <= 0) return null;
 
   return {
     amount,
     displayOrder: 0,
     itemType,
-    label: itemType === 'opening_balance' ? 'Opening balance' : 'Closing balance',
+    label: 'Opening balance',
   };
 }
 
@@ -188,37 +197,38 @@ async function loadFinancialSummary(input: { month: number; monthKey: string; ye
       .from(latenessPaymentAllocation)
       .where(inArray(latenessPaymentAllocation.entryId, entryIds));
 
-  return calculateOffenceBookFinancialSummary({
-    allocations: allocationRows,
-    entries: entryRows.map((entry) => ({
-      ...entry,
-      date: normalizeDateKey(entry.date),
-    })),
-    items: itemRows.map((item) => ({
-      amount: item.amount,
-      displayOrder: item.displayOrder,
-      itemType: item.itemType as OffenceBookItemInput['itemType'],
-      label: item.label,
-      monthKey: normalizeDateKey(item.monthKey),
-    })),
+  const allocations = allocationRows;
+  const entries = entryRows.map((entry) => ({
+    ...entry,
+    date: normalizeDateKey(entry.date),
+  }));
+  const items = itemRows.map((item) => ({
+    amount: item.amount,
+    displayOrder: item.displayOrder,
+    itemType: item.itemType as OffenceBookItemInput['itemType'],
+    label: item.label,
+    monthKey: normalizeDateKey(item.monthKey),
+  }));
+
+  const summary = calculateOffenceBookFinancialSummary({
+    allocations,
+    entries,
+    items,
     month: input.month,
     staff: staffRows,
     year: input.year,
   });
-}
+  const previousMonth = new Date(input.year, input.month - 1, 1);
+  const carriedSummary = calculateOffenceBookFinancialSummary({
+    allocations,
+    entries,
+    items,
+    month: previousMonth.getMonth(),
+    staff: staffRows,
+    year: previousMonth.getFullYear(),
+  });
 
-async function loadCarriedOpeningBalance(year: number, month: number) {
-  const previousMonthKey = formatMonthKey(year, month - 1);
-  const rows = await db.select({ amount: offenceBookItem.amount })
-    .from(offenceBookItem)
-    .where(and(
-      eq(offenceBookItem.monthKey, previousMonthKey),
-      eq(offenceBookItem.itemType, 'closing_balance'),
-    ))
-    .orderBy(asc(offenceBookItem.displayOrder))
-    .limit(1);
-
-  return rows[0]?.amount || '';
+  return { carriedOpeningBalance: carriedSummary.calculatedClosingBalance, summary };
 }
 
 function actorEmail(user: Awaited<ReturnType<typeof currentUser>>) {
@@ -239,13 +249,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Valid year and month are required' }, { status: 400 });
     }
 
+    if (isFutureMonth(parsed.monthKey)) {
+      return NextResponse.json({
+        ...groupItems([], '', '0.00'),
+        month: parsed.month,
+        monthKey: parsed.monthKey,
+        year: parsed.year,
+      }, {
+        headers: { 'Cache-Control': 'no-store' },
+      });
+    }
+
     const itemRows = await loadOffenceBookItemsThroughMonth(parsed.monthKey);
     const rows = currentMonthRows(itemRows, parsed.monthKey);
-    const carriedOpeningBalance = await loadCarriedOpeningBalance(parsed.year, parsed.month);
-    const financialSummary = await loadFinancialSummary(parsed, itemRows);
+    const { carriedOpeningBalance, summary } = await loadFinancialSummary(parsed, itemRows);
 
     return NextResponse.json({
-      ...groupItems(rows, carriedOpeningBalance, financialSummary.calculatedClosingBalance),
+      ...groupItems(rows, carriedOpeningBalance, summary.calculatedClosingBalance),
       month: parsed.month,
       monthKey: parsed.monthKey,
       year: parsed.year,
@@ -271,10 +291,13 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Valid year and month are required' }, { status: 400 });
     }
 
+    if (isFutureMonth(parsed.monthKey)) {
+      return NextResponse.json({ error: 'Cannot record offence book entries for a future month' }, { status: 400 });
+    }
+
     const externalMoney = normalizeItems((body as { externalMoney?: unknown })?.externalMoney, 'external_money');
     const expenditure = normalizeItems((body as { expenditure?: unknown })?.expenditure, 'expenditure');
     const openingBalance = normalizeBalance((body as { openingBalance?: unknown })?.openingBalance, 'opening_balance');
-    const closingBalance = normalizeBalance((body as { closingBalance?: unknown })?.closingBalance, 'closing_balance');
     const before = await db.select()
       .from(offenceBookItem)
       .where(eq(offenceBookItem.monthKey, parsed.monthKey));
@@ -287,7 +310,6 @@ export async function PUT(request: NextRequest) {
 
     const values = [
       ...(openingBalance ? [openingBalance] : []),
-      ...(closingBalance ? [closingBalance] : []),
       ...externalMoney,
       ...expenditure,
     ].map((item) => ({
@@ -304,8 +326,7 @@ export async function PUT(request: NextRequest) {
 
     const itemRows = await loadOffenceBookItemsThroughMonth(parsed.monthKey);
     const rows = currentMonthRows(itemRows, parsed.monthKey);
-    const carriedOpeningBalance = await loadCarriedOpeningBalance(parsed.year, parsed.month);
-    const financialSummary = await loadFinancialSummary(parsed, itemRows);
+    const { carriedOpeningBalance, summary } = await loadFinancialSummary(parsed, itemRows);
 
     await writeAuditEvent({
       entityType: 'offence_book_item',
@@ -325,7 +346,7 @@ export async function PUT(request: NextRequest) {
     });
 
     return NextResponse.json({
-      ...groupItems(rows, carriedOpeningBalance, financialSummary.calculatedClosingBalance),
+      ...groupItems(rows, carriedOpeningBalance, summary.calculatedClosingBalance),
       month: parsed.month,
       monthKey: parsed.monthKey,
       success: true,

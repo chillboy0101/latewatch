@@ -160,7 +160,7 @@ test('offence book financial summary exposes the calculated closing balance for 
   assert.equal(summary.closingBalance, '990.00');
 });
 
-test('offence book financial summary keeps calculated closing balance separate from saved override', () => {
+test('offence book financial summary ignores a stray closing_balance item — closing balance is always calculated', () => {
   const summary = calculateOffenceBookFinancialSummary({
     allocations,
     entries,
@@ -181,7 +181,7 @@ test('offence book financial summary keeps calculated closing balance separate f
 
   assert.equal(summary.calculatedClosingBalance, '990.00');
   assert.equal(summary.closingBalance, '990.00');
-  assert.equal(summary.savedClosingBalance, '555.00');
+  assert.equal(summary.savedClosingBalance, undefined);
 });
 
 test('offence book export preserves template layout and fills monthly payment values', async () => {
@@ -354,17 +354,17 @@ test('offence book export uses saved opening balance input when present', async 
   assert.equal(resultOf(sheet.getCell('T11').value), 1230);
 });
 
-test('offence book export carries previous month closing balance into next opening balance', async () => {
+test('offence book export carries the previous month\'s live closing balance into next month\'s opening balance', async () => {
   const workbook = await buildOffenceBookWorkbookFromData({
     allocations,
     entries,
     items: [
       ...items,
       {
-        amount: '777.00',
+        amount: '1000.00',
         displayOrder: 0,
-        itemType: 'closing_balance',
-        label: 'Closing balance',
+        itemType: 'opening_balance',
+        label: 'Opening balance',
         monthKey: '2026-04-01',
       },
     ],
@@ -375,11 +375,50 @@ test('offence book export carries previous month closing balance into next openi
   });
   const sheet = workbook.getWorksheet('MAY 2026');
 
+  // April's live closing balance = its 1000.00 opening anchor plus the 5.00
+  // payment recorded against "entry-before" (dated 2026-04-30) — 1005.00 —
+  // not a separately-saved closing balance snapshot for April.
   assert.ok(sheet);
-  assert.equal(sheet.getCell('P5').value, 777);
-  assert.equal(resultOf(sheet.getCell('T5').value), 1767);
-  assert.equal(resultOf(sheet.getCell('T8').value), 1807);
-  assert.equal(resultOf(sheet.getCell('T11').value), 1757);
+  assert.equal(sheet.getCell('P5').value, 1005);
+});
+
+test('offence book financial summary carries the previous month\'s live closing balance forward with no saved closing_balance item', () => {
+  const aprilSummary = calculateOffenceBookFinancialSummary({
+    allocations,
+    entries,
+    items: [
+      {
+        amount: '1000.00',
+        displayOrder: 0,
+        itemType: 'opening_balance',
+        label: 'Opening balance',
+        monthKey: '2026-04-01',
+      },
+    ],
+    month: 3,
+    staff,
+    year: 2026,
+  });
+  const maySummary = calculateOffenceBookFinancialSummary({
+    allocations,
+    entries,
+    items: [
+      {
+        amount: '1000.00',
+        displayOrder: 0,
+        itemType: 'opening_balance',
+        label: 'Opening balance',
+        monthKey: '2026-04-01',
+      },
+      ...items,
+    ],
+    month: 4,
+    staff,
+    year: 2026,
+  });
+
+  assert.equal(aprilSummary.calculatedClosingBalance, '1005.00');
+  assert.equal(maySummary.openingBalance, aprilSummary.calculatedClosingBalance);
 });
 
 test('offence book export keeps current closing balance calculated when saved closing input exists', async () => {
