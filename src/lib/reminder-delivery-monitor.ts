@@ -239,7 +239,7 @@ export async function getReminderDeliveryMonitor(date: string) {
   }
 
   function buildRows(reminderType: ReminderMonitorType) {
-    const scheduledPassed = hasScheduledTimePassed({ date, reminderType });
+    const scheduledPassed = hasScheduledTimePassed({ date: date, reminderType: reminderType });
 
     return staffRows.map((member) => {
       const attendance = attendanceByStaffId.get(member.id) || null;
@@ -262,7 +262,7 @@ export async function getReminderDeliveryMonitor(date: string) {
       if (counts.sent > 0) {
         eligible = true;
         status = 'sent';
-        reason = sentReason({ attendance, reminderType, sent: counts.sent });
+        reason = sentReason({ attendance: attendance, reminderType: reminderType, sent: counts.sent });
       } else if (counts.failed > 0 || counts.disabled > 0) {
         eligible = true;
         status = 'failed';
@@ -300,7 +300,7 @@ export async function getReminderDeliveryMonitor(date: string) {
         eligible = true;
         if (scheduledPassed) {
           status = 'missing';
-          reason = missingDeliveryReason({ attendance, reminderType });
+          reason = missingDeliveryReason({ attendance: attendance, reminderType: reminderType });
         } else {
           status = 'waiting';
           reason = `Scheduled for ${REMINDER_SCHEDULES[reminderType].scheduledTime}`;
@@ -323,7 +323,7 @@ export async function getReminderDeliveryMonitor(date: string) {
 
   function buildSection(reminderType: ReminderMonitorType) {
     const rows = buildRows(reminderType);
-    const scheduledPassed = hasScheduledTimePassed({ date, reminderType });
+    const scheduledPassed = hasScheduledTimePassed({ date: date, reminderType: reminderType });
     const summary = {
       eligible: rows.filter((row) => row.eligible).length,
       failed: rows.filter((row) => row.status === 'failed').length,

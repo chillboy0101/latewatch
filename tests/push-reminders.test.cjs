@@ -357,13 +357,13 @@ test('admin reminder delivery monitor is protected and explains delivery outcome
   assert.match(helper, /Sign-out reminder off/);
   assert.match(helper, /Already signed in at/);
   assert.match(helper, /Already signed out at/);
-  assert.match(helper, /sentReason\(\{ attendance, reminderType, sent: counts\.sent \}\)/);
+  assert.match(helper, /sentReason\(\{ attendance: attendance, reminderType: reminderType, sent: counts\.sent \}\)/);
   assert.match(helper, /const signedInByReminder = isAtOrBeforeReminderSchedule\(attendance\?\.checkInTime, 'sign_in'\)/);
   assert.match(helper, /const signedInBySignOutReminder = isAtOrBeforeReminderSchedule\(attendance\?\.checkInTime, 'sign_out'\)/);
   assert.match(helper, /const signedOutByReminder = isAtOrBeforeReminderSchedule\(attendance\?\.signOutTime, 'sign_out'\)/);
   assert.match(helper, /reminderType === 'sign_in' && signedInByReminder/);
   assert.match(helper, /reminderType === 'sign_out' && signedOutByReminder/);
-  assert.match(helper, /missingDeliveryReason\(\{ attendance, reminderType \}\)/);
+  assert.match(helper, /missingDeliveryReason\(\{ attendance: attendance, reminderType: reminderType \}\)/);
   assert.ok(helper.indexOf('counts.sent > 0') < helper.indexOf("reminderType === 'sign_in' && signedInByReminder"));
   assert.ok(helper.indexOf('counts.sent > 0') < helper.indexOf("reminderType === 'sign_out' && signedOutByReminder"));
   assert.match(helper, /const summary = \{/);
