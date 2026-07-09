@@ -18,6 +18,8 @@ const REPAIR_REASON = 'no-sign-out-waiver-repair';
 const LEGACY_REASON = 'legacy_entries_fallback_sign_out';
 const AUDIT_REASON = 'audit_confirmed_no_sign_out_cleared';
 const ABSENCE_PERMISSION_BLOCK_REASON = 'absence-permission-sign-out-block-repair';
+const INCIDENT_2026_07_06_DATE = '2026-07-06';
+const INCIDENT_2026_07_06_REASON = 'system-blocked-sign-out-2026-07-06';
 const INVALIDATION_CHANNELS = [
   'entries',
   'attendance',
@@ -280,6 +282,32 @@ async function fetchAbsencePermissionBlockedRows() {
   `;
 }
 
+async function fetchIncident20260706UnsignedOutRows() {
+  return sql`
+    select
+      ar.id,
+      ar.staff_id as "staffId",
+      ar.date,
+      ar.check_in_time as "checkInTime",
+      ar.sign_out_time as "signOutTime",
+      ar.sign_out_network_ip as "signOutNetworkIp",
+      ar.computed_amount as "computedAmount",
+      ar.reason,
+      ar.status,
+      ar.no_sign_out_waived as "noSignOutWaived",
+      s.full_name as "staffName",
+      coalesce(s.is_attendance_only, false) as "isAttendanceOnly",
+      coalesce(s.is_nss_personnel, false) as "isNssPersonnel"
+    from attendance_record ar
+    left join staff s on s.id = ar.staff_id
+    where
+      ar.date = ${INCIDENT_2026_07_06_DATE}
+      and ar.check_in_time is not null
+      and ar.sign_out_time is null
+      and coalesce(ar.no_sign_out_waived, false) = false
+  `;
+}
+
 async function fetchAmbiguousAuditCount() {
   const rows = await sql`
     select count(distinct ar.id)::int as count
@@ -527,7 +555,7 @@ async function applyPlan({ attendanceRows, latenessRows, plan }) {
   }
 }
 
-function buildTargets({ absencePermissionRows, auditRows, cleanupRows, legacyRows }) {
+function buildTargets({ absencePermissionRows, auditRows, cleanupRows, incident20260706Rows, legacyRows }) {
   const targets = new Map();
 
   for (const row of legacyRows) {
@@ -556,6 +584,15 @@ function buildTargets({ absencePermissionRows, auditRows, cleanupRows, legacyRow
     });
   }
 
+  for (const row of incident20260706Rows) {
+    if (targets.has(row.id)) continue;
+    targets.set(row.id, {
+      reason: INCIDENT_2026_07_06_REASON,
+      row,
+      source: 'incident_2026_07_06',
+    });
+  }
+
   for (const row of cleanupRows) {
     if (targets.has(row.id)) continue;
     targets.set(row.id, {
@@ -571,14 +608,15 @@ function buildTargets({ absencePermissionRows, auditRows, cleanupRows, legacyRow
 
 await assertWaiverColumnsPresent();
 
-const [legacyRows, auditRows, cleanupRows, ambiguousSkipped, absencePermissionRows] = await Promise.all([
+const [legacyRows, auditRows, cleanupRows, ambiguousSkipped, absencePermissionRows, incident20260706Rows] = await Promise.all([
   fetchLegacyRows(),
   fetchAuditConfirmedRows(),
   fetchAlreadyWaivedChargedRows(),
   fetchAmbiguousAuditCount(),
   fetchAbsencePermissionBlockedRows(),
+  fetchIncident20260706UnsignedOutRows(),
 ]);
-const targets = buildTargets({ absencePermissionRows, auditRows, cleanupRows, legacyRows });
+const targets = buildTargets({ absencePermissionRows, auditRows, cleanupRows, incident20260706Rows, legacyRows });
 const waiverTargets = [...targets.values()].filter((target) => target.alreadyWaived !== true);
 const byStaff = new Map();
 
@@ -601,6 +639,7 @@ console.log(`${applyChanges ? 'Applying' : 'Dry run'} no-sign-out waiver repair.
 console.log(`Legacy fake sign-outs found: ${legacyRows.length}`);
 console.log(`Audit-confirmed cleared no-sign-out rows found: ${auditRows.length}`);
 console.log(`Absence-permission sign-out blocks found: ${absencePermissionRows.length}`);
+console.log(`2026-07-06 unsigned-out check-ins found: ${incident20260706Rows.length}`);
 console.log(`Already waived charged rows to clean: ${cleanupRows.length}`);
 console.log(`Attendance rows to waive: ${waiverTargets.length}`);
 console.log(`Ambiguous rows skipped: ${ambiguousSkipped}`);
@@ -675,6 +714,7 @@ if (!applyChanges) {
     after: {
       ambiguousSkipped,
       absencePermissionBlocksFound: absencePermissionRows.length,
+      incident20260706RowsFound: incident20260706Rows.length,
       alreadyWaivedChargedRowsCleaned: cleanupRows.length,
       attendanceRowsWaived: waiverTargets.length,
       auditConfirmedRowsFound: auditRows.length,
