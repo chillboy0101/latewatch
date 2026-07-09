@@ -14,7 +14,8 @@
     "clerk:staff-metadata": "node scripts/sync-clerk-staff-metadata.mjs",
     "cronjob-org:reminders": "node scripts/setup-cron-job-org-reminders.mjs",
     "penalties:recalculate": "node scripts/recalculate-regular-staff-penalties.mjs",
-    "no-signout:repair-waivers": "node scripts/repair-no-signout-waivers.mjs"
+    "no-signout:repair-waivers": "node scripts/repair-no-signout-waivers.mjs",
+    "attendance:repair-retroactive-no-show": "node scripts/repair-retroactive-no-show-sign-in-penalties.mjs"
   },
   "dependencies": {
     "@clerk/themes": "^2.4.57",

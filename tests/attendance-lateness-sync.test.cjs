@@ -22,6 +22,7 @@ const fixture = {
   attendanceRecord: [],
   latenessEntry: [],
   staff: [],
+  workCalendar: [],
 };
 
 function resetFixture() {
@@ -56,6 +57,7 @@ function resetFixture() {
     },
   ];
   fixture.latenessEntry = [];
+  fixture.workCalendar = [];
   fixture.staff = [
     {
       fullName: 'PARDONED STAFF',
@@ -218,6 +220,7 @@ const schema = {
   ]),
   latenessEntry: createTable('latenessEntry', ['id', 'date', 'staffId']),
   staff: createTable('staff', ['id', 'fullName', 'isAttendanceOnly', 'isNssPersonnel']),
+  workCalendar: createTable('workCalendar', ['date', 'isHoliday', 'isRemoved']),
 };
 
 Module._load = function patchedLoad(request, ...args) {
@@ -227,8 +230,8 @@ Module._load = function patchedLoad(request, ...args) {
   if (request === '@/lib/attendance') {
     return {
       getAccraClock: () => ({
-        dateKey: '2026-05-18',
-        now: new Date('2026-05-18T12:00:00.000Z'),
+        dateKey: '2026-07-09',
+        now: new Date('2026-07-09T12:00:00.000Z'),
         timeKey: '12:00:00',
       }),
     };
@@ -504,12 +507,23 @@ test('sync creates one no-show sign-in penalty for staff with no attendance row'
   fixture.attendanceRecord = [];
   fixture.latenessEntry = [];
 
-  await syncLatenessEntriesFromAttendanceForDate('2026-05-14');
-  await syncLatenessEntriesFromAttendanceForDate('2026-05-14');
+  await syncLatenessEntriesFromAttendanceForDate('2026-07-08');
+  await syncLatenessEntriesFromAttendanceForDate('2026-07-08');
 
   assert.equal(fixture.latenessEntry.length, 1);
   assert.equal(fixture.latenessEntry[0].arrivalTime, null);
   assert.equal(fixture.latenessEntry[0].computedAmount, '50.00');
   assert.equal(fixture.latenessEntry[0].didNotSignOut, false);
   assert.equal(fixture.latenessEntry[0].reason, "DIDN'T SIGN IN BEFORE 4:30PM");
+});
+
+test('sync does not create a no-show sign-in penalty for dates before the rule took effect', async () => {
+  resetFixture();
+  fixture.attendancePermission = [];
+  fixture.attendanceRecord = [];
+  fixture.latenessEntry = [];
+
+  await syncLatenessEntriesFromAttendanceForDate('2026-07-07');
+
+  assert.equal(fixture.latenessEntry.length, 0);
 });

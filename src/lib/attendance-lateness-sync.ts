@@ -2,11 +2,27 @@ import 'server-only';
 
 import { and, eq, gte, lte } from 'drizzle-orm';
 import { db } from '@/db';
-import { attendancePermission, attendanceRecord, latenessEntry, staff } from '@/db/schema';
+import { attendancePermission, attendanceRecord, latenessEntry, staff, workCalendar } from '@/db/schema';
 import { getAccraClock, getHolidayForDate, isWeekendDate } from '@/lib/attendance';
+import { getObservedGhanaHolidayForDate, isSuppressedGhanaHolidayDate } from '@/lib/ghana-holidays';
 import { resolveManualPenalty } from '@/lib/manual-attendance-correction';
 import { NO_SHOW_SIGN_IN_CUTOFF_TIME, shouldAlertNoSignOut } from '@/lib/work-hours';
-import { NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/penalty-calculator';
+import {
+  NO_SHOW_SIGN_IN_EFFECTIVE_DATE,
+  NO_SHOW_SIGN_IN_REASON,
+  NO_SHOW_SIGN_IN_WAIVED_REASON,
+} from '@/lib/penalty-calculator';
+
+function enumerateDateKeys(startDate: string, endDate: string) {
+  const dates: string[] = [];
+  for (let current = startDate; current <= endDate;) {
+    dates.push(current);
+    const next = new Date(`${current}T00:00:00.000Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    current = next.toISOString().slice(0, 10);
+  }
+  return dates;
+}
 
 function normalizeDateKey(value: unknown) {
   if (value instanceof Date) return value.toISOString().slice(0, 10);
@@ -62,6 +78,7 @@ function shouldApplyNoShowSignInPenalty(input: {
   currentTimeKey: string;
   date: string;
 }) {
+  if (input.date < NO_SHOW_SIGN_IN_EFFECTIVE_DATE) return false;
   if (input.date < input.currentDateKey) return true;
   if (input.date > input.currentDateKey) return false;
   return input.currentTimeKey.slice(0, 5) >= NO_SHOW_SIGN_IN_CUTOFF_TIME;
@@ -200,6 +217,170 @@ export async function applyNoShowSignInPenaltiesForDate(dateKey: string) {
       })
       .onConflictDoNothing();
     inserted += 1;
+  }
+
+  return { deleted: 0, inserted, skipped, updated };
+}
+
+export async function applyNoShowSignInPenaltiesForRange(startDate: string, endDate: string) {
+  const clock = getAccraClock();
+  const candidateDates = enumerateDateKeys(startDate, endDate).filter((date) => {
+    if (typeof isWeekendDate === 'function' && isWeekendDate(date)) return false;
+    return shouldApplyNoShowSignInPenalty({
+      currentDateKey: clock.dateKey,
+      currentTimeKey: clock.timeKey,
+      date,
+    });
+  });
+
+  if (candidateDates.length === 0) {
+    return { deleted: 0, inserted: 0, skipped: 0, updated: 0 };
+  }
+
+  const calendarRows = await db.select({
+    date: workCalendar.date,
+    isHoliday: workCalendar.isHoliday,
+    isRemoved: workCalendar.isRemoved,
+  })
+    .from(workCalendar)
+    .where(and(gte(workCalendar.date, startDate), lte(workCalendar.date, endDate)));
+  const calendarByDate = new Map(calendarRows.map((row) => [normalizeDateKey(row.date), row]));
+
+  const workingDates = candidateDates.filter((date) => {
+    if (isSuppressedGhanaHolidayDate(date)) return true;
+    const calendarDay = calendarByDate.get(date);
+    if (calendarDay) return !(calendarDay.isHoliday && !calendarDay.isRemoved);
+    return !getObservedGhanaHolidayForDate(date);
+  });
+
+  if (workingDates.length === 0) {
+    return { deleted: 0, inserted: 0, skipped: 0, updated: 0 };
+  }
+
+  const staffRows = await db.select({
+    id: staff.id,
+    isAttendanceOnly: staff.isAttendanceOnly,
+    isNssPersonnel: staff.isNssPersonnel,
+  })
+    .from(staff)
+    .where(and(eq(staff.active, true), eq(staff.archived, false)));
+
+  const attendanceRows = await db.select({
+    checkInTime: attendanceRecord.checkInTime,
+    date: attendanceRecord.date,
+    id: attendanceRecord.id,
+    noShowSignInWaived: attendanceRecord.noShowSignInWaived,
+    source: attendanceRecord.source,
+    staffId: attendanceRecord.staffId,
+  })
+    .from(attendanceRecord)
+    .where(and(gte(attendanceRecord.date, startDate), lte(attendanceRecord.date, endDate)));
+  const attendanceByKey = new Map(
+    attendanceRows.map((row) => [rowKey(row.staffId, normalizeDateKey(row.date)), row]),
+  );
+
+  const permissionRows = await db.select()
+    .from(attendancePermission)
+    .where(and(
+      gte(attendancePermission.date, startDate),
+      lte(attendancePermission.date, endDate),
+      eq(attendancePermission.status, 'approved'),
+    ));
+  const permissionsByKey = new Map(
+    permissionRows.map((row) => [rowKey(row.staffId, normalizeDateKey(row.date)), row]),
+  );
+
+  const existingRows = await db.select()
+    .from(latenessEntry)
+    .where(and(gte(latenessEntry.date, startDate), lte(latenessEntry.date, endDate)));
+  const existingByKey = new Map(
+    existingRows.map((row) => [rowKey(row.staffId, normalizeDateKey(row.date)), row]),
+  );
+
+  let inserted = 0;
+  let skipped = 0;
+  let updated = 0;
+
+  for (const date of workingDates) {
+    for (const member of staffRows) {
+      if (member.isAttendanceOnly === true) {
+        skipped += 1;
+        continue;
+      }
+
+      const key = rowKey(member.id, date);
+      const attendance = attendanceByKey.get(key);
+      if (attendance?.noShowSignInWaived === true || attendance?.source === 'no_show_sign_in_waiver') {
+        skipped += 1;
+        continue;
+      }
+      if (attendance && normalizeTimeKey(attendance.checkInTime)) {
+        skipped += 1;
+        continue;
+      }
+
+      const permission = permissionsByKey.get(key);
+      if (permission?.permissionType === 'absence') {
+        skipped += 1;
+        continue;
+      }
+
+      const penalty = resolveManualPenalty({
+        activePermission: permission || null,
+        arrivalTime: null,
+        didNotSignOut: false,
+        isAttendanceOnly: false,
+        isNssPersonnel: member.isNssPersonnel === true,
+        noSignIn: true,
+      });
+      if (penalty.amount <= 0) {
+        skipped += 1;
+        continue;
+      }
+
+      const existing = existingByKey.get(key);
+      const computedAmount = amountText(penalty.amount);
+      if (existing) {
+        if (
+          amountText(amountNumber(existing.computedAmount)) === computedAmount &&
+          normalizeTimeKey(existing.arrivalTime) === null &&
+          existing.didNotSignOut !== true &&
+          existing.reason === NO_SHOW_SIGN_IN_REASON
+        ) {
+          skipped += 1;
+          continue;
+        }
+
+        if (existing.reason === NO_SHOW_SIGN_IN_WAIVED_REASON) {
+          skipped += 1;
+          continue;
+        }
+
+        await db.update(latenessEntry)
+          .set({
+            arrivalTime: null,
+            computedAmount,
+            didNotSignOut: false,
+            reason: NO_SHOW_SIGN_IN_REASON,
+            updatedAt: new Date(),
+          })
+          .where(eq(latenessEntry.id, existing.id));
+        updated += 1;
+        continue;
+      }
+
+      await db.insert(latenessEntry)
+        .values({
+          arrivalTime: null,
+          computedAmount,
+          date,
+          didNotSignOut: false,
+          reason: NO_SHOW_SIGN_IN_REASON,
+          staffId: member.id,
+        })
+        .onConflictDoNothing();
+      inserted += 1;
+    }
   }
 
   return { deleted: 0, inserted, skipped, updated };
@@ -429,15 +610,10 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     updated += 1;
   }
 
-  for (let current = startDate; current <= endDate;) {
-    const result = await applyNoShowSignInPenaltiesForDate(current);
-    deleted += result.deleted;
-    inserted += result.inserted;
-    updated += result.updated;
-    const next = new Date(`${current}T00:00:00.000Z`);
-    next.setUTCDate(next.getUTCDate() + 1);
-    current = next.toISOString().slice(0, 10);
-  }
+  const noShowSignInResult = await applyNoShowSignInPenaltiesForRange(startDate, endDate);
+  deleted += noShowSignInResult.deleted;
+  inserted += noShowSignInResult.inserted;
+  updated += noShowSignInResult.updated;
 
   return { attendanceUpdated, deleted, inserted, updated };
 }

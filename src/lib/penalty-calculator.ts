@@ -5,6 +5,7 @@ import { WORKDAY_START_TIME } from '@/lib/work-hours';
 export const NO_SHOW_SIGN_IN_AMOUNT = 50;
 export const NO_SHOW_SIGN_IN_REASON = 'DIDN\'T SIGN IN BEFORE 4:30PM';
 export const NO_SHOW_SIGN_IN_WAIVED_REASON = 'No-show waived';
+export const NO_SHOW_SIGN_IN_EFFECTIVE_DATE = '2026-07-08';
 
 interface PenaltyInput {
   arrivalTime: string | null;  // HH:MM format

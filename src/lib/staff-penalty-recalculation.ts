@@ -1,5 +1,10 @@
 import { getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/attendance-permissions';
-import { computePenalty, NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/penalty-calculator';
+import {
+  computePenalty,
+  NO_SHOW_SIGN_IN_EFFECTIVE_DATE,
+  NO_SHOW_SIGN_IN_REASON,
+  NO_SHOW_SIGN_IN_WAIVED_REASON,
+} from '@/lib/penalty-calculator';
 import { shouldAlertNoSignOut } from '@/lib/work-hours';
 
 type AttendanceRecordLike = {
@@ -243,7 +248,7 @@ export function planStaffPenaltyRecalculation(input: {
     const existingEntries = entriesByDate.get(date) || [];
     const existingEntry = existingEntries[0] || null;
     const arrivalTime = normalizeTime(attendance.checkInTime);
-    const noSignIn = !arrivalTime && (
+    const noSignIn = date >= NO_SHOW_SIGN_IN_EFFECTIVE_DATE && !arrivalTime && (
       attendance.noShowSignInWaived === true ||
       attendance.reason === NO_SHOW_SIGN_IN_REASON ||
       attendance.reason === NO_SHOW_SIGN_IN_WAIVED_REASON ||

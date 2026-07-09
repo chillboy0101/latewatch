@@ -281,6 +281,57 @@ test('staff penalty recalculation creates no-show sign-in penalties for absent s
     attendanceRecords: [{
       checkInTime: null,
       computedAmount: '0.00',
+      date: '2026-07-08',
+      id: 'attendance-no-show',
+      reason: null,
+      status: 'absent',
+    }],
+    currentDateKey: '2026-07-08',
+    currentTimeKey: '16:30',
+    isNssPersonnel: false,
+    latenessEntries: [],
+    permissions: [],
+    staffId: 'staff-1',
+  });
+
+  assert.deepEqual(plan.latenessCreates, [{
+    arrivalTime: null,
+    computedAmount: '50.00',
+    date: '2026-07-08',
+    didNotSignOut: false,
+    reason: "DIDN'T SIGN IN BEFORE 4:30PM",
+    staffId: 'staff-1',
+  }]);
+});
+
+test('staff penalty recalculation does not recreate waived no-show sign-in penalties', () => {
+  const plan = planStaffPenaltyRecalculation({
+    attendanceRecords: [{
+      checkInTime: null,
+      computedAmount: '0.00',
+      date: '2026-07-08',
+      id: 'attendance-no-show',
+      noShowSignInWaived: true,
+      reason: 'No-show waived',
+      status: 'absent',
+    }],
+    currentDateKey: '2026-07-08',
+    currentTimeKey: '16:30',
+    isNssPersonnel: false,
+    latenessEntries: [],
+    permissions: [],
+    staffId: 'staff-1',
+  });
+
+  assert.deepEqual(plan.latenessCreates, []);
+  assert.deepEqual(plan.latenessUpdates, []);
+});
+
+test('staff penalty recalculation does not create no-show sign-in penalties before the rule took effect', () => {
+  const plan = planStaffPenaltyRecalculation({
+    attendanceRecords: [{
+      checkInTime: null,
+      computedAmount: '0.00',
       date: '2026-05-06',
       id: 'attendance-no-show',
       reason: null,
@@ -294,35 +345,11 @@ test('staff penalty recalculation creates no-show sign-in penalties for absent s
     staffId: 'staff-1',
   });
 
-  assert.deepEqual(plan.latenessCreates, [{
-    arrivalTime: null,
-    computedAmount: '50.00',
-    date: '2026-05-06',
-    didNotSignOut: false,
-    reason: "DIDN'T SIGN IN BEFORE 4:30PM",
-    staffId: 'staff-1',
-  }]);
-});
-
-test('staff penalty recalculation does not recreate waived no-show sign-in penalties', () => {
-  const plan = planStaffPenaltyRecalculation({
-    attendanceRecords: [{
-      checkInTime: null,
-      computedAmount: '0.00',
-      date: '2026-05-06',
-      id: 'attendance-no-show',
-      noShowSignInWaived: true,
-      reason: 'No-show waived',
-      status: 'absent',
-    }],
-    currentDateKey: '2026-05-06',
-    currentTimeKey: '16:30',
-    isNssPersonnel: false,
-    latenessEntries: [],
-    permissions: [],
-    staffId: 'staff-1',
-  });
-
   assert.deepEqual(plan.latenessCreates, []);
-  assert.deepEqual(plan.latenessUpdates, []);
+  assert.deepEqual(plan.attendanceUpdates, [{
+    computedAmount: '0.00',
+    id: 'attendance-no-show',
+    reason: null,
+    status: 'present',
+  }]);
 });

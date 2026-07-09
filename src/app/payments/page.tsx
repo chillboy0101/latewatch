@@ -192,9 +192,12 @@ export default function PenaltyPaymentsPage() {
     setLoading(true);
     setMessage(null);
 
+    const timeout = AbortSignal.timeout(20_000);
+
     try {
       const response = await fetch('/api/payments/lateness', {
         cache: 'no-store',
+        signal: timeout,
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || `Payments request failed (${response.status})`);
@@ -202,7 +205,10 @@ export default function PenaltyPaymentsPage() {
     } catch (error) {
       console.error('Failed to load lateness payments:', error);
       setData(null);
-      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Could not load payments' });
+      const text = error instanceof Error && error.name === 'TimeoutError'
+        ? 'Loading payments timed out. Please try again.'
+        : error instanceof Error ? error.message : 'Could not load payments';
+      setMessage({ type: 'error', text });
     } finally {
       setLoading(false);
     }
@@ -212,9 +218,12 @@ export default function PenaltyPaymentsPage() {
     setOffenceBookLoading(true);
     setOffenceBookMessage(null);
 
+    const timeout = AbortSignal.timeout(20_000);
+
     try {
       const response = await fetch(`/api/payments/offence-book-items?year=${offenceBookYear}&month=${offenceBookMonth}`, {
         cache: 'no-store',
+        signal: timeout,
       });
       const body = await response.json().catch(() => ({})) as Partial<OffenceBookItemsResponse> & { error?: string };
       if (!response.ok) throw new Error(body.error || `Offence book request failed (${response.status})`);
@@ -231,7 +240,10 @@ export default function PenaltyPaymentsPage() {
       setClosingBalance('');
       setExternalMoneyDrafts([createOffenceBookDraftItem()]);
       setExpenditureDrafts([createOffenceBookDraftItem()]);
-      setOffenceBookMessage({ type: 'error', text: error instanceof Error ? error.message : 'Could not load offence book inputs' });
+      const text = error instanceof Error && error.name === 'TimeoutError'
+        ? 'Loading offence book inputs timed out. Please try again.'
+        : error instanceof Error ? error.message : 'Could not load offence book inputs';
+      setOffenceBookMessage({ type: 'error', text });
     } finally {
       setOffenceBookLoading(false);
     }
