@@ -349,9 +349,19 @@ export default function ReminderDeliveryMonitorPage() {
         cache: 'no-store',
         signal,
       });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.error || 'Failed to load reminder monitor');
-      setData(payload);
+      const text = await response.text();
+      let payload: ReminderMonitorResponse | { error?: string } | null = null;
+      if (text) {
+        try {
+          payload = JSON.parse(text);
+        } catch {
+          throw new Error(`Failed to load reminder monitor (${response.status})`);
+        }
+      }
+      if (!response.ok || !payload) {
+        throw new Error((payload as { error?: string } | null)?.error || `Failed to load reminder monitor (${response.status})`);
+      }
+      setData(payload as ReminderMonitorResponse);
     } catch (loadError) {
       if ((loadError as Error).name === 'AbortError') return;
       setError(loadError instanceof Error ? loadError.message : 'Failed to load reminder monitor');
