@@ -44,7 +44,8 @@ export async function GET(request: NextRequest) {
       });
     } catch (error) {
       console.error('Failed to load reminder delivery monitor (retry also failed):', error);
-      return NextResponse.json({ error: 'Failed to load reminder delivery monitor' }, { status: 500 });
+      const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      return NextResponse.json({ error: `Failed to load reminder delivery monitor - ${detail}` }, { status: 500 });
     }
   }
 }
