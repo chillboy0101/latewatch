@@ -20,7 +20,6 @@ type StaffRef = {
 };
 
 type PermissionRecord = typeof attendancePermission.$inferSelect;
-type AttendanceRecord = typeof attendanceRecord.$inferSelect;
 type LatenessRecord = typeof latenessEntry.$inferSelect;
 
 function normalizeTime(value: string | null | undefined) {
@@ -42,12 +41,12 @@ function approvedAbsenceReason(permission: PermissionRecord) {
 }
 
 function resolveNextAttendanceState(input: {
-  attendance: AttendanceRecord;
+  arrivalTime: string | null;
   existingLateness: LatenessRecord | null;
   permission: PermissionRecord | null;
   staffMember: StaffRef;
 }) {
-  const arrivalTime = normalizeTime(input.attendance.checkInTime);
+  const arrivalTime = input.arrivalTime;
   const didNotSignOut = input.existingLateness?.didNotSignOut === true;
 
   if (
@@ -123,10 +122,6 @@ export async function reconcileAttendanceForPermission(input: {
     ))
     .limit(1);
 
-  if (!attendance) {
-    return { changed: false, reason: 'no_attendance' };
-  }
-
   const [existingLateness] = await db.select()
     .from(latenessEntry)
     .where(and(
@@ -135,8 +130,14 @@ export async function reconcileAttendanceForPermission(input: {
     ))
     .limit(1);
 
+  if (!attendance && !existingLateness) {
+    return { changed: false, reason: 'no_attendance' };
+  }
+
+  const arrivalTime = normalizeTime(attendance?.checkInTime) ?? normalizeTime(existingLateness?.arrivalTime);
+
   const next = resolveNextAttendanceState({
-    attendance,
+    arrivalTime,
     existingLateness: existingLateness || null,
     permission: input.activePermission,
     staffMember: input.staffMember,
@@ -146,9 +147,10 @@ export async function reconcileAttendanceForPermission(input: {
   let changed = false;
 
   if (
-    attendance.status !== next.status ||
+    attendance &&
+    (attendance.status !== next.status ||
     amountText(Number(attendance.computedAmount || 0)) !== nextAmount ||
-    (attendance.reason || null) !== (next.reason || null)
+    (attendance.reason || null) !== (next.reason || null))
   ) {
     const [updatedAttendance] = await db.update(attendanceRecord)
       .set({
@@ -187,7 +189,7 @@ export async function reconcileAttendanceForPermission(input: {
       ) {
         const [updatedEntry] = await db.update(latenessEntry)
           .set({
-            arrivalTime: normalizeTime(attendance.checkInTime),
+            arrivalTime,
             computedAmount: nextAmount,
             didNotSignOut: next.didNotSignOut,
             reason: next.reason || '',
@@ -215,7 +217,7 @@ export async function reconcileAttendanceForPermission(input: {
     } else {
       const [createdEntry] = await db.insert(latenessEntry)
         .values({
-          arrivalTime: normalizeTime(attendance.checkInTime),
+          arrivalTime,
           computedAmount: nextAmount,
           date: input.date,
           didNotSignOut: next.didNotSignOut,
