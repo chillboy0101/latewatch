@@ -231,6 +231,21 @@ export default function EntriesPage() {
   }, [fetchStaffAndEntries]);
 
   useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') void fetchStaffAndEntries();
+    };
+    const handleFocus = () => void fetchStaffAndEntries();
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [fetchStaffAndEntries]);
+
+  useEffect(() => {
     let cleanups: Array<() => void> = [];
     let mounted = true;
 

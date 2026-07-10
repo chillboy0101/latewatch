@@ -261,6 +261,27 @@ export default function PenaltyPaymentsPage() {
   }, [loadOffenceBookItems]);
 
   useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void loadPayments();
+        void loadOffenceBookItems();
+      }
+    };
+    const handleFocus = () => {
+      void loadPayments();
+      void loadOffenceBookItems();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [loadOffenceBookItems, loadPayments]);
+
+  useEffect(() => {
     let cleanups: Array<() => void> = [];
     let mounted = true;
 
