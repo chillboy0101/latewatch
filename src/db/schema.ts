@@ -499,8 +499,23 @@ export const pushReminderDelivery = pgTable('push_reminder_delivery', {
   status: text('status').notNull(),
   error: text('error'),
   sentAt: timestamp('sent_at'),
+  deliveredAt: timestamp('delivered_at'),
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => [
   index('push_reminder_delivery_date_type_idx').on(table.date, table.reminderType),
   unique().on(table.subscriptionId, table.date, table.reminderType),
+]);
+
+export const reminderCronRun = pgTable('reminder_cron_run', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  reminderType: text('reminder_type').notNull(),
+  date: date('date').notNull(),
+  ranAt: timestamp('ran_at').defaultNow(),
+  sentCount: integer('sent_count').default(0).notNull(),
+  failedCount: integer('failed_count').default(0).notNull(),
+  skippedCount: integer('skipped_count').default(0).notNull(),
+  disabledCount: integer('disabled_count').default(0).notNull(),
+  source: text('source').notNull(),
+}, (table) => [
+  index('reminder_cron_run_date_type_idx').on(table.date, table.reminderType),
 ]);

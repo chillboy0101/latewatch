@@ -26,9 +26,12 @@ type ReminderTypeKey = 'signIn' | 'signOut';
 
 interface ReminderMonitorRow {
   activeReminderDevices: number;
+  delivered: boolean;
   delivery: {
+    delivered: number;
     disabled: number;
     failed: number;
+    latestDeliveredAt: string | null;
     latestError: string | null;
     latestSentAt: string | null;
     pending: number;
@@ -55,11 +58,13 @@ interface ReminderMonitorSection {
     tone: 'danger' | 'warning';
   }>;
   label: string;
+  lastRunAt: string | null;
   reminderType: string;
   rows: ReminderMonitorRow[];
   scheduledPassed: boolean;
   scheduledTime: string;
   summary: {
+    delivered: number;
     eligible: number;
     failed: number;
     missing: number;
@@ -306,7 +311,9 @@ export default function ReminderDeliveryMonitorPage() {
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
                 <p className="text-sm text-muted-foreground">
                   <span className="font-medium text-success">{section.summary.sent} sent</span>
-                  {' · '}
+                  {' ('}
+                  <span className={cn('font-medium', section.summary.delivered < section.summary.sent ? 'text-warning' : 'text-success')}>{section.summary.delivered} delivered</span>
+                  {') · '}
                   <span className={cn('font-medium', attentionCount > 0 ? 'text-danger' : 'text-muted-foreground')}>{attentionCount} need attention</span>
                 </p>
                 {section.rows.length > 0 && (

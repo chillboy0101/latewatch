@@ -1,3 +1,14 @@
+function reportPushDeliveryReceipt(deliveryId) {
+  if (!deliveryId) return Promise.resolve();
+
+  return fetch('/api/attendance/reminders/delivery-receipt', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deliveryId }),
+    keepalive: true,
+  }).catch(() => {});
+}
+
 self.addEventListener('push', (event) => {
   let payload = {};
 
@@ -11,6 +22,7 @@ self.addEventListener('push', (event) => {
   const options = {
     body: payload.body || 'Open LateWatch to update your attendance.',
     data: {
+      deliveryId: payload.data?.deliveryId || null,
       url: payload.data?.url || '/check-in',
     },
     icon: payload.icon || '/latewatch-logo.png',
@@ -20,7 +32,10 @@ self.addEventListener('push', (event) => {
     tag: payload.tag || 'latewatch-attendance-reminder',
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(Promise.all([
+    self.registration.showNotification(title, options),
+    reportPushDeliveryReceipt(payload.data?.deliveryId),
+  ]));
 });
 
 self.addEventListener('notificationclick', (event) => {

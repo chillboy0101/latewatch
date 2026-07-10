@@ -3,7 +3,7 @@ import 'server-only';
 import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import webpush from 'web-push';
 import { db } from '@/db';
-import { attendancePermission, attendanceRecord, pushReminderDelivery, pushSubscription, staff } from '@/db/schema';
+import { attendancePermission, attendanceRecord, pushReminderDelivery, pushSubscription, reminderCronRun, staff } from '@/db/schema';
 import { getAccraClock, getHolidayForDate, isWeekendDate } from '@/lib/attendance';
 import { publishRealtime } from '@/lib/realtime';
 
@@ -276,7 +276,19 @@ async function reservePushReminderDelivery(input: {
   return retryDelivery || null;
 }
 
-function publishReminderMonitorRefresh(summary: PushReminderSummary) {
+async function recordReminderCronHeartbeat(summary: PushReminderSummary, source: 'vercel' | 'external') {
+  await db.insert(reminderCronRun).values({
+    date: summary.date,
+    disabledCount: summary.disabled,
+    failedCount: summary.failed,
+    reminderType: summary.reminderType,
+    sentCount: summary.sent,
+    skippedCount: summary.skipped,
+    source,
+  });
+}
+
+async function finishReminderBatch(summary: PushReminderSummary, source: 'vercel' | 'external') {
   publishRealtime('attendance', 'invalidate', {
     date: summary.date,
     reason: 'push-reminder-batch',
@@ -287,9 +299,11 @@ function publishReminderMonitorRefresh(summary: PushReminderSummary) {
     reason: 'push-reminder-batch',
     reminderType: summary.reminderType,
   });
+
+  await recordReminderCronHeartbeat(summary, source);
 }
 
-export async function sendAttendanceReminderBatch(reminderType: PushReminderType) {
+export async function sendAttendanceReminderBatch(reminderType: PushReminderType, source: 'vercel' | 'external' = 'vercel') {
   const clock = getAccraClock();
   const date = clock.dateKey;
   const isWeekend = isWeekendDate(date);
@@ -310,12 +324,12 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
   };
 
   if (reminderType === 'holiday' ? !isHoliday : isWeekend || isHoliday) {
-    publishReminderMonitorRefresh(summary);
+    await finishReminderBatch(summary, source);
     return summary;
   }
 
   if (!ensureVapidConfig()) {
-    publishReminderMonitorRefresh(summary);
+    await finishReminderBatch(summary, source);
     return summary;
   }
 
@@ -350,7 +364,7 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
     ));
 
   if (subscriptionRows.length === 0) {
-    publishReminderMonitorRefresh(summary);
+    await finishReminderBatch(summary, source);
     return summary;
   }
 
@@ -420,6 +434,7 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
       }, JSON.stringify({
         ...copy,
         data: {
+          deliveryId: delivery.id,
           reminderType,
           url: '/check-in',
         },
@@ -457,6 +472,6 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
     }
   }
 
-  publishReminderMonitorRefresh(summary);
+  await finishReminderBatch(summary, source);
   return summary;
 }

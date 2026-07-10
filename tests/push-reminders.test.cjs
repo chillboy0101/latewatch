@@ -255,7 +255,9 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.match(proofTestLib, /signInEnabled: false/);
   assert.match(proofTestLib, /signOutEnabled: false/);
   assert.doesNotMatch(proofTestRoute, /pushReminderDelivery/);
-  assert.doesNotMatch(proofTestLib, /pushReminderDelivery/);
+  assert.match(proofTestLib, /pushReminderDelivery/);
+  assert.match(proofTestLib, /deliveryId: delivery\?\.id/);
+  assert.match(proofTestLib, /reminderType: testId/);
   assert.match(pushReminderLib, /function cleanVapidKey/);
   assert.match(pushReminderLib, /base64UrlDecodedLength\(publicKey\) === 65/);
   assert.match(pushReminderLib, /base64UrlDecodedLength\(privateKey\) === 32/);
@@ -268,18 +270,20 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.match(pushReminderLib, /existingDelivery\.status === 'sent'/);
   assert.match(pushReminderLib, /existingDelivery\.status === 'disabled'/);
   assert.match(pushReminderLib, /existingDelivery\.status === 'pending' && !isStalePendingDelivery\(existingDelivery\)/);
-  assert.match(pushReminderLib, /publishReminderMonitorRefresh\(summary\)/);
+  assert.match(pushReminderLib, /finishReminderBatch\(summary, source\)/);
   assert.match(pushReminderLib, /reason: 'push-reminder-batch'/);
   assert.match(pushReminderLib, /publishRealtime\('attendance', 'invalidate'/);
   assert.match(pushReminderLib, /publishRealtime\('notifications', 'invalidate'/);
+  assert.match(pushReminderLib, /reminderCronRun/);
+  assert.match(pushReminderLib, /deliveryId: delivery\.id/);
   assert.match(morningRoute, /export async function GET\(request: NextRequest\)/);
   assert.match(signInRoute, /export async function GET\(request: NextRequest\)/);
   assert.match(signOutRoute, /export async function GET\(request: NextRequest\)/);
-  assert.match(morningRoute, /sendAttendanceReminderBatch\('holiday'\)/);
-  assert.match(morningRoute, /sendAttendanceReminderBatch\('sign_in'\)/);
-  assert.match(signInRoute, /sendAttendanceReminderBatch\('sign_in'\)/);
-  assert.match(signOutRoute, /sendAttendanceReminderBatch\('sign_out'\)/);
-  assert.match(holidayRoute, /sendAttendanceReminderBatch\('holiday'\)/);
+  assert.match(morningRoute, /sendAttendanceReminderBatch\('holiday', source\)/);
+  assert.match(morningRoute, /sendAttendanceReminderBatch\('sign_in', source\)/);
+  assert.match(signInRoute, /sendAttendanceReminderBatch\('sign_in', reminderCronSource\(request\)\)/);
+  assert.match(signOutRoute, /sendAttendanceReminderBatch\('sign_out', reminderCronSource\(request\)\)/);
+  assert.match(holidayRoute, /sendAttendanceReminderBatch\('holiday', reminderCronSource\(request\)\)/);
   assert.match(morningRoute, /validateReminderCronRequest\(request, REMINDER_CRON_SCHEDULES\.morning\)/);
   assert.match(signInRoute, /validateReminderCronRequest\(request, REMINDER_CRON_SCHEDULES\.signIn\)/);
   assert.match(signOutRoute, /validateReminderCronRequest\(request, REMINDER_CRON_SCHEDULES\.signOut\)/);
@@ -357,7 +361,12 @@ test('admin reminder delivery monitor is protected and explains delivery outcome
   assert.match(helper, /Sign-out reminder off/);
   assert.match(helper, /Already signed in at/);
   assert.match(helper, /Already signed out at/);
-  assert.match(helper, /sentReason\(\{ attendance: attendance, reminderType: reminderType, sent: counts\.sent \}\)/);
+  assert.match(helper, /sentReason\(\{ attendance: attendance, delivered: counts\.delivered, reminderType: reminderType, sent: counts\.sent \}\)/);
+  assert.match(helper, /reminderCronRun/);
+  assert.match(helper, /deliveredAt/);
+  assert.match(helper, /delivered: rows\.filter\(\(row\) => row\.status === 'sent' && row\.delivered\)\.length/);
+  assert.match(helper, /reminder job has not run today/);
+  assert.match(helper, /lastRunAt/);
   assert.match(helper, /const signedInByReminder = isAtOrBeforeReminderSchedule\(attendance\?\.checkInTime, 'sign_in'\)/);
   assert.match(helper, /const signedInBySignOutReminder = isAtOrBeforeReminderSchedule\(attendance\?\.checkInTime, 'sign_out'\)/);
   assert.match(helper, /const signedOutByReminder = isAtOrBeforeReminderSchedule\(attendance\?\.signOutTime, 'sign_out'\)/);
@@ -574,4 +583,33 @@ test('reminder eligibility follows workday, permission, and attendance rules', (
   assert.equal(shouldSendPushReminder({ ...base, reminderType: 'holiday', isHoliday: false, isWeekend: true }), false);
   assert.equal(shouldSendPushReminder({ ...base, reminderType: 'holiday', isHoliday: false }), false);
   assert.equal(shouldSendPushReminder({ ...base, reminderType: 'holiday', isHoliday: true, subscription: { signInEnabled: false, signOutEnabled: false, disabledAt: null } }), false);
+});
+
+test('reminder cron window math and source detection actually execute correctly', () => {
+  require('tsx/cjs');
+  const originalLoad = Module._load;
+  Module._load = function patchedLoad(request, parent, isMain) {
+    if (request === 'server-only') return {};
+    return originalLoad.call(this, request, parent, isMain);
+  };
+  const { isWithinAccraReminderCronWindow, reminderCronSource } = require(reminderCronGuardPath);
+  Module._load = originalLoad;
+
+  // Morning window: 08:15 (495 min) + 526 min -> opens exactly at 08:15, closes just before 17:01 (1021 min).
+  assert.equal(isWithinAccraReminderCronWindow({ scheduledHour: 8, scheduledMinute: 15, timeKey: '08:14', windowMinutes: 526 }), false);
+  assert.equal(isWithinAccraReminderCronWindow({ scheduledHour: 8, scheduledMinute: 15, timeKey: '08:15', windowMinutes: 526 }), true);
+  assert.equal(isWithinAccraReminderCronWindow({ scheduledHour: 8, scheduledMinute: 15, timeKey: '12:00', windowMinutes: 526 }), true);
+  assert.equal(isWithinAccraReminderCronWindow({ scheduledHour: 8, scheduledMinute: 15, timeKey: '17:00', windowMinutes: 526 }), true);
+  assert.equal(isWithinAccraReminderCronWindow({ scheduledHour: 8, scheduledMinute: 15, timeKey: '17:01', windowMinutes: 526 }), false);
+
+  // Sign-out window: 16:30 for 450 minutes -> closes just before 23:59, not into the next day.
+  assert.equal(isWithinAccraReminderCronWindow({ scheduledHour: 16, scheduledMinute: 30, timeKey: '16:29', windowMinutes: 450 }), false);
+  assert.equal(isWithinAccraReminderCronWindow({ scheduledHour: 16, scheduledMinute: 30, timeKey: '23:59', windowMinutes: 450 }), true);
+  assert.equal(isWithinAccraReminderCronWindow({ scheduledHour: 16, scheduledMinute: 30, timeKey: '00:00', windowMinutes: 450 }), false);
+
+  const headerMap = (entries) => ({ get: (key) => entries[key.toLowerCase()] ?? null });
+  assert.equal(reminderCronSource({ headers: headerMap({}) }), 'vercel');
+  assert.equal(reminderCronSource({ headers: headerMap({ 'user-agent': 'vercel-cron/1.0' }) }), 'vercel');
+  assert.equal(reminderCronSource({ headers: headerMap({ 'x-latewatch-cron': 'external' }) }), 'external');
+  assert.equal(reminderCronSource({ headers: headerMap({ 'x-latewatch-cron': 'EXTERNAL' }) }), 'external');
 });

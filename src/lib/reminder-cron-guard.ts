@@ -135,6 +135,11 @@ export function validateReminderCronRequest(
   return { ok: true };
 }
 
+export function reminderCronSource(request: Pick<NextRequest, 'headers'>): 'vercel' | 'external' {
+  const isExternalCron = request.headers.get(EXTERNAL_CRON_HEADER)?.toLowerCase() === EXTERNAL_CRON_HEADER_VALUE;
+  return isExternalCron ? 'external' : 'vercel';
+}
+
 export function validateReminderCronAuth(request: Pick<NextRequest, 'headers'>): ReminderCronGuardResult {
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = request.headers.get('authorization');

@@ -2,7 +2,7 @@ import 'server-only';
 
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '@/db';
-import { attendancePermission, attendanceRecord, pushReminderDelivery, pushSubscription, staff, staffDevice } from '@/db/schema';
+import { attendancePermission, attendanceRecord, pushReminderDelivery, pushSubscription, reminderCronRun, staff, staffDevice } from '@/db/schema';
 import { getAccraClock, getHolidayForDate, isWeekendDate } from '@/lib/attendance';
 
 export type ReminderMonitorType = 'sign_in' | 'sign_out';
@@ -98,16 +98,19 @@ function latestDate(values: Array<Date | string | null | undefined>) {
   return dates[0]?.toISOString() || null;
 }
 
-function deliveryCounts(rows: Array<{ error: string | null; sentAt: Date | string | null; status: string }>) {
+function deliveryCounts(rows: Array<{ deliveredAt: Date | string | null; error: string | null; sentAt: Date | string | null; status: string }>) {
   const sent = rows.filter((row) => row.status === 'sent').length;
   const failed = rows.filter((row) => row.status === 'failed').length;
   const disabled = rows.filter((row) => row.status === 'disabled').length;
   const pending = rows.filter((row) => row.status === 'pending').length;
+  const delivered = rows.filter((row) => row.status === 'sent' && row.deliveredAt).length;
   const latestError = rows.find((row) => row.error)?.error || null;
 
   return {
+    delivered,
     disabled,
     failed,
+    latestDeliveredAt: latestDate(rows.map((row) => row.deliveredAt)),
     latestError,
     latestSentAt: latestDate(rows.map((row) => row.sentAt)),
     pending,
@@ -125,10 +128,13 @@ function statusTone(status: ReminderMonitorRowStatus) {
 
 function sentReason(input: {
   attendance: { checkInTime?: string | null; signOutTime?: string | null } | null;
+  delivered: number;
   reminderType: ReminderMonitorType;
   sent: number;
 }) {
-  const base = input.sent === 1 ? 'Sent to 1 device' : `Sent to ${input.sent} devices`;
+  const base = input.delivered > 0
+    ? (input.sent === 1 ? 'Delivered to 1 device' : `Delivered to ${input.delivered} of ${input.sent} devices`)
+    : (input.sent === 1 ? 'Sent to 1 device (unconfirmed)' : `Sent to ${input.sent} devices (unconfirmed)`);
 
   if (input.reminderType === 'sign_in' && input.attendance?.checkInTime) {
     return `${base}; signed in at ${input.attendance.checkInTime}`;
@@ -198,6 +204,7 @@ export async function getReminderDeliveryMonitor(date: string) {
           )),
         db.select({
           createdAt: pushReminderDelivery.createdAt,
+          deliveredAt: pushReminderDelivery.deliveredAt,
           error: pushReminderDelivery.error,
           reminderType: pushReminderDelivery.reminderType,
           sentAt: pushReminderDelivery.sentAt,
@@ -218,6 +225,26 @@ export async function getReminderDeliveryMonitor(date: string) {
           .where(inArray(staffDevice.staffId, staffIds)),
       ])
     : [[], [], [], [], []];
+
+  const cronRunRows = await db.select({
+    ranAt: reminderCronRun.ranAt,
+    reminderType: reminderCronRun.reminderType,
+  })
+    .from(reminderCronRun)
+    .where(and(
+      eq(reminderCronRun.date, date),
+      inArray(reminderCronRun.reminderType, REMINDER_TYPES),
+    ));
+
+  const lastRunAtByType = new Map<string, string>();
+  for (const row of cronRunRows) {
+    const ranAt = row.ranAt instanceof Date ? row.ranAt : row.ranAt ? new Date(row.ranAt) : null;
+    if (!ranAt || Number.isNaN(ranAt.getTime())) continue;
+    const existing = lastRunAtByType.get(row.reminderType);
+    if (!existing || ranAt.toISOString() > existing) {
+      lastRunAtByType.set(row.reminderType, ranAt.toISOString());
+    }
+  }
 
   const attendanceByStaffId = new Map(attendanceRows.map((row) => [row.staffId, row]));
   const permissionByStaffId = new Map(permissionRows.map((row) => [row.staffId, row]));
@@ -262,7 +289,7 @@ export async function getReminderDeliveryMonitor(date: string) {
       if (counts.sent > 0) {
         eligible = true;
         status = 'sent';
-        reason = sentReason({ attendance: attendance, reminderType: reminderType, sent: counts.sent });
+        reason = sentReason({ attendance: attendance, delivered: counts.delivered, reminderType: reminderType, sent: counts.sent });
       } else if (counts.failed > 0 || counts.disabled > 0) {
         eligible = true;
         status = 'failed';
@@ -309,6 +336,7 @@ export async function getReminderDeliveryMonitor(date: string) {
 
       return {
         activeReminderDevices: subscriptions.length,
+        delivered: counts.delivered > 0,
         delivery: counts,
         enabledReminderDevices: enabledSubscriptions.length,
         eligible,
@@ -324,7 +352,9 @@ export async function getReminderDeliveryMonitor(date: string) {
   function buildSection(reminderType: ReminderMonitorType) {
     const rows = buildRows(reminderType);
     const scheduledPassed = hasScheduledTimePassed({ date: date, reminderType: reminderType });
+    const lastRunAt = lastRunAtByType.get(reminderType) || null;
     const summary = {
+      delivered: rows.filter((row) => row.status === 'sent' && row.delivered).length,
       eligible: rows.filter((row) => row.eligible).length,
       failed: rows.filter((row) => row.status === 'failed').length,
       missing: rows.filter((row) => row.status === 'missing').length,
@@ -338,7 +368,12 @@ export async function getReminderDeliveryMonitor(date: string) {
     };
     const alerts: Array<{ message: string; tone: 'danger' | 'warning' }> = [];
 
-    if (scheduledPassed && summary.eligible > 0 && summary.sent === 0) {
+    if (scheduledPassed && !lastRunAt) {
+      alerts.push({
+        message: `${REMINDER_SCHEDULES[reminderType].label} reminder job has not run today - check Vercel cron logs.`,
+        tone: 'danger',
+      });
+    } else if (scheduledPassed && summary.eligible > 0 && summary.sent === 0) {
       alerts.push({
         message: `${REMINDER_SCHEDULES[reminderType].label} has eligible staff but zero successful sends.`,
         tone: 'danger',
@@ -376,6 +411,7 @@ export async function getReminderDeliveryMonitor(date: string) {
     return {
       alerts,
       label: REMINDER_SCHEDULES[reminderType].label,
+      lastRunAt,
       reminderType,
       rows,
       scheduledPassed,
