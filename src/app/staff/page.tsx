@@ -374,7 +374,7 @@ export default function StaffPage() {
           s.rank || '',
           s.department || '',
           s.unit || '',
-          s.isAttendanceOnly ? 'attendance monitoring only no penalty' : s.isNssPersonnel ? 'nss national service personnel' : 'staff',
+          s.isAttendanceOnly ? 'attendance monitoring only special staff intern interns no penalty' : s.isNssPersonnel ? 'nss national service personnel' : 'staff',
         ].join(' ').toLowerCase();
 
         return searchTokens.every((token) => searchable.includes(token));
@@ -403,7 +403,7 @@ export default function StaffPage() {
     { key: 'inactive', label: 'Inactive', value: inactiveDisplay, valueClassName: 'text-muted-foreground' },
     { key: 'former', label: 'Former Personnel', value: formerDisplay, valueClassName: 'text-warning' },
     { key: 'nss', label: 'NSS Personnel', value: nssDisplay, valueClassName: 'text-primary' },
-    { key: 'attendanceOnly', label: 'Monitoring Only', value: attendanceOnlyDisplay, valueClassName: 'text-success' },
+    { key: 'attendanceOnly', label: 'Special Staff & Interns', value: attendanceOnlyDisplay, valueClassName: 'text-success' },
   ];
   const activeFilterLabel = staffFilterCards.find((card) => card.key === staffFilter)?.label || 'staff';
   const mainFilteredStaff = filteredStaff.filter((member) => member.isAttendanceOnly !== true && member.isNssPersonnel !== true);
@@ -412,7 +412,7 @@ export default function StaffPage() {
   const tableSections = [
     { key: 'main', members: mainFilteredStaff, title: 'Main Staff' },
     { key: 'nss', members: nssFilteredStaff, title: 'NSS Personnel' },
-    { key: 'attendanceOnly', members: attendanceOnlyFilteredStaff, title: 'Attendance Monitoring Only' },
+    { key: 'attendanceOnly', members: attendanceOnlyFilteredStaff, title: 'Attendance Monitoring Only (Special Staff & Interns)' },
   ].filter((section) => section.members.length > 0);
   const newIsMainStaff = !newIsAttendanceOnly && !newIsNssPersonnel;
   const addStaffMissingRequiredMetadata = !newGender.trim()
@@ -583,7 +583,7 @@ export default function StaffPage() {
                   <span>
                     <span className="font-medium">Attendance monitoring only</span>
                     <span className="mt-1 block text-muted-foreground">
-                      Tracks check-in and check-out only. No late or sign-out penalty is charged.
+                      For special staff and interns. Tracks check-in and check-out only &mdash; no late or sign-out penalty is charged.
                     </span>
                   </span>
                 </label>
@@ -747,7 +747,7 @@ export default function StaffPage() {
                             <span>
                               <span className="font-medium">Attendance monitoring only</span>
                               <span className="mt-1 block text-muted-foreground">
-                                Tracks attendance only. No penalties are charged.
+                                For special staff and interns. Tracks attendance only &mdash; no penalties are charged.
                               </span>
                             </span>
                           </label>
@@ -775,7 +775,7 @@ export default function StaffPage() {
                           <StaffField label="Rank" value={member.rank || '-'} />
                           <StaffField label="Department" value={member.department || '-'} />
                           <StaffField label="Unit" value={member.unit || '-'} />
-                          <StaffField label="Type" value={member.isAttendanceOnly ? 'Monitoring only' : member.isNssPersonnel ? 'NSS' : 'Staff'} />
+                          <StaffField label="Type" value={member.isAttendanceOnly ? 'Special staff / Intern' : member.isNssPersonnel ? 'NSS' : 'Staff'} />
                           <div className="min-w-0">
                             <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground xl:hidden">Status</p>
                             <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getStaffStatusClass(member)}`}>

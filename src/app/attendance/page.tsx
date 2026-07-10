@@ -600,7 +600,7 @@ export default function AttendancePage() {
           row.staff.email || '',
           row.staff.department || '',
           row.staff.unit || '',
-          row.staff.isAttendanceOnly ? 'attendance monitoring only special staff' : row.staff.isNssPersonnel ? 'nss personnel' : 'main staff',
+          row.staff.isAttendanceOnly ? 'attendance monitoring only special staff intern interns' : row.staff.isNssPersonnel ? 'nss personnel' : 'main staff',
         ].join(' ').toLowerCase().includes(query))
       : rows;
 
@@ -615,7 +615,7 @@ export default function AttendancePage() {
     return [
       { key: 'main', rows: mainAttendanceRows, title: 'Main Staff' },
       { key: 'nss', rows: nssAttendanceRows, title: 'NSS Personnel' },
-      { key: 'monitoringOnly', rows: monitoringOnlyAttendanceRows, title: 'Attendance Monitoring Only' },
+      { key: 'monitoringOnly', rows: monitoringOnlyAttendanceRows, title: 'Attendance Monitoring Only (Special Staff & Interns)' },
     ].filter((section) => section.rows.length > 0);
   }, [sortedRows]);
 
