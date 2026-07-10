@@ -28,7 +28,7 @@ test('entries page filters visible rows with a toolbar search without changing s
   const source = fs.readFileSync(entriesPagePath, 'utf8');
 
   assert.match(source, /Search/);
-  assert.match(source, /const \[searchQuery, setSearchQuery\] = useState\(''\)/);
+  assert.match(source, /const \[searchQuery, setSearchQuery\] = useState\(\(\) => deepLink\.query \|\| ''\)/);
   assert.match(source, /placeholder="Search staff or entry"/);
   assert.match(source, /aria-label="Search entries"/);
   assert.match(source, /const visibleEntries = useMemo/);

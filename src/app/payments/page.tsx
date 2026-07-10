@@ -1,7 +1,8 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Loader2, Plus, ReceiptText, Save, Search, Trash2 } from 'lucide-react';
+import Link from 'next/link';
+import { CheckCircle2, ExternalLink, Loader2, Plus, ReceiptText, Save, Search, Trash2 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -737,24 +738,41 @@ export default function PenaltyPaymentsPage() {
                             )}>
                               {compactPenaltyLine(entry)}
                             </span>
-                            {moneyNumber(entry.outstandingAmount) > 0 && (
+                            <div className="flex items-center gap-2">
                               <Button
+                                asChild
                                 type="button"
                                 variant="outline"
                                 size="sm"
                                 className="h-7 gap-1 px-2"
-                                disabled={Boolean(savingAction)}
-                                onClick={() => recordPayment({
-                                  actionKey: `day-${entry.entryId}`,
-                                  amount: moneyNumber(entry.outstandingAmount),
-                                  entryId: entry.entryId,
-                                  note: 'Marked day paid',
-                                })}
                               >
-                                {savingAction === `day-${entry.entryId}` && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                                Mark as paid
+                                <Link
+                                  href={`/entries?date=${entry.date}&q=${encodeURIComponent(selectedRow.fullName)}`}
+                                  aria-label={`Open in Entries to verify or correct ${formatDisplayDate(entry.date)}`}
+                                >
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                  Verify
+                                </Link>
                               </Button>
-                            )}
+                              {moneyNumber(entry.outstandingAmount) > 0 && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 gap-1 px-2"
+                                  disabled={Boolean(savingAction)}
+                                  onClick={() => recordPayment({
+                                    actionKey: `day-${entry.entryId}`,
+                                    amount: moneyNumber(entry.outstandingAmount),
+                                    entryId: entry.entryId,
+                                    note: 'Marked day paid',
+                                  })}
+                                >
+                                  {savingAction === `day-${entry.entryId}` && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                  Mark as paid
+                                </Button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       ))}

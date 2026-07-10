@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { DateField } from '@/components/ui/date-field';
@@ -8,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { addDays, format, isValid, parseISO } from 'date-fns';
-import { Save, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Clock, RefreshCw, Search } from 'lucide-react';
+import { ArrowLeft, Save, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Clock, RefreshCw, Search } from 'lucide-react';
 import { computePenalty } from '@/lib/penalty-calculator';
 import { NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/penalty-calculator';
 import { getAccraDateKey } from '@/lib/date-key';
@@ -66,6 +67,20 @@ type SearchableValue = string | number | null | undefined;
 
 function normalizeTimeValue(value: string | null | undefined) {
   return value ? value.slice(0, 5) : '';
+}
+
+function getEntriesDeepLinkParams() {
+  if (typeof window === 'undefined') return { date: null, fromPayments: false, query: null };
+
+  const params = new URLSearchParams(window.location.search);
+  const date = params.get('date');
+  const query = params.get('q');
+
+  return {
+    date,
+    fromPayments: Boolean(date || query),
+    query,
+  };
 }
 
 function normalizeSearchValue(value: SearchableValue) {
@@ -135,8 +150,13 @@ function formatChangedEntriesMessage(names: string[], count: number) {
 }
 
 export default function EntriesPage() {
+  const router = useRouter();
   const [staff, setStaff] = useState<StaffMember[]>([]);
-  const [selectedDate, setSelectedDate] = useState(() => parseISO(getAccraDateKey()));
+  const [deepLink] = useState(() => getEntriesDeepLinkParams());
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const parsed = deepLink.date ? parseISO(deepLink.date) : null;
+    return parsed && isValid(parsed) ? parsed : parseISO(getAccraDateKey());
+  });
   const [entries, setEntries] = useState<Entry[]>([]);
   const [originalEntrySnapshots, setOriginalEntrySnapshots] = useState<Record<string, EntrySnapshot>>({});
   const [loading, setLoading] = useState(true);
@@ -144,7 +164,7 @@ export default function EntriesPage() {
   const [isHoliday, setIsHoliday] = useState(false);
   const [holidayName, setHolidayName] = useState('');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => deepLink.query || '');
 
   const fetchStaffAndEntries = useCallback(async () => {
     try {
@@ -556,6 +576,18 @@ export default function EntriesPage() {
   return (
     <DashboardLayout title="Entries">
       <div className="space-y-6">
+        {deepLink.fromPayments && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => router.back()}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Payments
+          </Button>
+        )}
+
         {/* Success/Error Message */}
         {message && (
           <div className={`flex items-center gap-3 rounded-lg border p-4 ${
