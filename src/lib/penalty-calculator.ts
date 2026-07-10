@@ -72,12 +72,14 @@ export function computePenalty(input: PenaltyInput): PenaltyOutput {
     const hourly = input.isNssPersonnel ? 0 : HOURLY_INCREMENT * clockHourIncrements;
 
     let reason = 'DIDN\'T COME BEFORE 8:30AM';
-    let total = Math.min(base + hourly, NO_SHOW_SIGN_IN_AMOUNT);
+    let total = base + hourly;
 
     if (input.didNotSignOut) {
       total += SIGN_OUT_PENALTY;
       reason = 'DIDN\'T COME BEFORE 8:30AM AND DID NOT SIGN OUT';
     }
+
+    total = Math.min(total, NO_SHOW_SIGN_IN_AMOUNT);
 
     return { amount: total, reason };
   }

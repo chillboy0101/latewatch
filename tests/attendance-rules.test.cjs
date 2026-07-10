@@ -92,14 +92,26 @@ test('late-arrival penalty is capped at the 4:30 PM no-show fee (GHC 50)', () =>
 
   assert.equal(
     computePenalty({ arrivalTime: '17:01', didNotSignOut: true, isHoliday: false }).amount,
-    52,
-    'the GHC 2 no-signout penalty still stacks on top of the capped late-arrival amount',
+    50,
+    'GHC 50 is a hard ceiling for the day -- the no-signout penalty does not push a capped late arrival above it',
+  );
+
+  assert.equal(
+    computePenalty({ arrivalTime: '14:01', didNotSignOut: true, isHoliday: false }).amount,
+    42,
+    'the GHC 2 no-signout penalty still stacks normally below the cap',
   );
 
   assert.equal(
     computePenalty({ arrivalTime: '20:00', didNotSignOut: false, isHoliday: false, isNssPersonnel: true }).amount,
     10,
     'NSS personnel are unaffected by the cap since their hourly increment is always 0',
+  );
+
+  assert.equal(
+    computePenalty({ arrivalTime: '20:00', didNotSignOut: true, isHoliday: false, isNssPersonnel: true }).amount,
+    12,
+    'NSS personnel late plus no-signout stays well under the cap',
   );
 });
 
