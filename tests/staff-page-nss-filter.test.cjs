@@ -26,7 +26,7 @@ test('staff page keeps attendance monitoring only staff in a separate table sect
 
   assert.match(source, /isAttendanceOnly: boolean/);
   assert.match(source, /type StaffFilter = 'all' \| 'active' \| 'inactive' \| 'former' \| 'nss' \| 'attendanceOnly'/);
-  assert.match(source, /label: 'Monitoring Only'/);
+  assert.match(source, /label: 'Special Staff & Interns'/);
   assert.match(source, /grid auto-cols-\[minmax\(10\.5rem,1fr\)\] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-6/);
   assert.doesNotMatch(source, /xl:grid-cols-5/);
   assert.match(source, /Main Staff/);

@@ -177,5 +177,5 @@ test('exports page and API enforce weekly validation for NSS personnel', () => {
   assert.match(pageSource, /selectedAttendanceTemplate/);
   assert.match(pageSource, /setAttendanceTemplate\(selectedAttendanceTemplate\)/);
   assert.match(routeSource, /isAttendanceExportTemplateAllowedForGroup\(group, template\)/);
-  assert.match(routeSource, /NSS_ATTENDANCE_EXPORT_RESTRICTION_MESSAGE/);
+  assert.match(routeSource, /getAttendanceExportTemplateRestrictionMessage/);
 });

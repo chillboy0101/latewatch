@@ -72,6 +72,37 @@ test('regular staff penalties increase at one minute past each clock hour', () =
   }
 });
 
+test('late-arrival penalty is capped at the 4:30 PM no-show fee (GHC 50)', () => {
+  const cases = [
+    ['16:01', 50],
+    ['16:30', 50],
+    ['17:00', 50],
+    ['17:01', 50],
+    ['18:00', 50],
+    ['20:00', 50],
+  ];
+
+  for (const [arrivalTime, amount] of cases) {
+    assert.equal(
+      computePenalty({ arrivalTime, didNotSignOut: false, isHoliday: false }).amount,
+      amount,
+      `${arrivalTime} should be capped at GHC ${amount}`,
+    );
+  }
+
+  assert.equal(
+    computePenalty({ arrivalTime: '17:01', didNotSignOut: true, isHoliday: false }).amount,
+    52,
+    'the GHC 2 no-signout penalty still stacks on top of the capped late-arrival amount',
+  );
+
+  assert.equal(
+    computePenalty({ arrivalTime: '20:00', didNotSignOut: false, isHoliday: false, isNssPersonnel: true }).amount,
+    10,
+    'NSS personnel are unaffected by the cap since their hourly increment is always 0',
+  );
+});
+
 test('on-time attendance is based on actual check-in time', () => {
   assert.equal(isOnTimeCheckIn('08:29'), true);
   assert.equal(isOnTimeCheckIn('08:30'), true);
