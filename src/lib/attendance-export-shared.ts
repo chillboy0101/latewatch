@@ -9,18 +9,23 @@ export const ATTENDANCE_EXPORT_TEMPLATES = [
 export const ATTENDANCE_EXPORT_GROUPS = [
   'main',
   'nss',
+  'interns',
 ] as const;
 
 export type AttendanceExportTemplate = typeof ATTENDANCE_EXPORT_TEMPLATES[number];
 export type AttendanceExportGroup = typeof ATTENDANCE_EXPORT_GROUPS[number];
 
 export const NSS_ATTENDANCE_EXPORT_RESTRICTION_MESSAGE = 'NSS personnel attendance exports use Weekly Validation only';
+export const INTERNS_ATTENDANCE_EXPORT_RESTRICTION_MESSAGE = 'Special staff & intern attendance exports use Weekly Validation only';
 
-const NSS_ATTENDANCE_EXPORT_TEMPLATES = ['weekly-validation'] as const satisfies readonly AttendanceExportTemplate[];
+const WEEKLY_ONLY_ATTENDANCE_EXPORT_TEMPLATES = ['weekly-validation'] as const satisfies readonly AttendanceExportTemplate[];
+
+const WEEKLY_ONLY_ATTENDANCE_EXPORT_GROUPS: readonly AttendanceExportGroup[] = ['nss', 'interns'];
 
 const DEFAULT_ATTENDANCE_EXPORT_TEMPLATE_BY_GROUP: Record<AttendanceExportGroup, AttendanceExportTemplate> = {
   main: 'daily-summary',
   nss: 'weekly-validation',
+  interns: 'weekly-validation',
 };
 
 export function isAttendanceExportTemplate(value: unknown): value is AttendanceExportTemplate {
@@ -32,7 +37,7 @@ export function isAttendanceExportGroup(value: unknown): value is AttendanceExpo
 }
 
 export function getAttendanceExportTemplatesForGroup(group: AttendanceExportGroup): readonly AttendanceExportTemplate[] {
-  return group === 'nss' ? NSS_ATTENDANCE_EXPORT_TEMPLATES : ATTENDANCE_EXPORT_TEMPLATES;
+  return WEEKLY_ONLY_ATTENDANCE_EXPORT_GROUPS.includes(group) ? WEEKLY_ONLY_ATTENDANCE_EXPORT_TEMPLATES : ATTENDANCE_EXPORT_TEMPLATES;
 }
 
 export function getDefaultAttendanceExportTemplateForGroup(group: AttendanceExportGroup) {
@@ -46,6 +51,10 @@ export function isAttendanceExportTemplateAllowedForGroup(
   return getAttendanceExportTemplatesForGroup(group).includes(template);
 }
 
+export function getAttendanceExportTemplateRestrictionMessage(group: AttendanceExportGroup) {
+  return group === 'interns' ? INTERNS_ATTENDANCE_EXPORT_RESTRICTION_MESSAGE : NSS_ATTENDANCE_EXPORT_RESTRICTION_MESSAGE;
+}
+
 export function getAttendanceExportTemplateLabel(template: AttendanceExportTemplate) {
   if (template === 'daily-summary') return 'Daily Summary';
   if (template === 'monthly-matrix') return 'Monthly Matrix';
@@ -53,7 +62,9 @@ export function getAttendanceExportTemplateLabel(template: AttendanceExportTempl
 }
 
 export function getAttendanceExportGroupLabel(group: AttendanceExportGroup) {
-  return group === 'main' ? 'Main Staff' : 'NSS';
+  if (group === 'main') return 'Main Staff';
+  if (group === 'interns') return 'Special Staff & Interns';
+  return 'NSS';
 }
 
 export function getAttendanceExportFileName({
@@ -67,7 +78,7 @@ export function getAttendanceExportFileName({
   template: AttendanceExportTemplate;
   year: number;
 }) {
-  const groupLabel = group === 'main' ? 'Main_Staff' : 'NSS';
+  const groupLabel = group === 'main' ? 'Main_Staff' : group === 'interns' ? 'Special_Staff_Interns' : 'NSS';
   const templateLabel = getAttendanceExportTemplateLabel(template).replace(/\s+/g, '_');
   const monthLabel = format(new Date(year, month, 1), 'MMMM');
 

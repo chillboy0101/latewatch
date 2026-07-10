@@ -830,6 +830,7 @@ export default function ExportsPage() {
                       >
                         <option value="main">Main Staff</option>
                         <option value="nss">NSS Personnel</option>
+                        <option value="interns">Special Staff &amp; Interns</option>
                       </select>
                       <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     </div>

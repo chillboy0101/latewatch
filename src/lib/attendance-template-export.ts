@@ -6,8 +6,8 @@ import {
   type AttendanceExportGroup,
   type AttendanceExportTemplate,
   getAttendanceExportFileName,
+  getAttendanceExportTemplateRestrictionMessage,
   isAttendanceExportTemplateAllowedForGroup,
-  NSS_ATTENDANCE_EXPORT_RESTRICTION_MESSAGE,
 } from '@/lib/attendance-export-shared';
 import { formatAbsencePermissionReason } from '@/lib/attendance-permissions';
 import { getAccraDateKey } from '@/lib/date-key';
@@ -187,7 +187,9 @@ function getHolidaySet(rows: HolidayRow[]) {
 function sortedRoster(roster: RosterStaff[], group: AttendanceExportGroup) {
   return roster
     .filter((member) => {
-      if (member.archived === true || member.isAttendanceOnly === true) return false;
+      if (member.archived === true) return false;
+      if (group === 'interns') return member.isAttendanceOnly === true;
+      if (member.isAttendanceOnly === true) return false;
       return group === 'nss'
         ? member.isNssPersonnel === true
         : member.isNssPersonnel !== true;
@@ -362,11 +364,11 @@ function weeklyValidationRemarkLabel(status: DayStatus) {
 }
 
 function exportStaffNo(input: AttendanceWorkbookInput, member: RosterStaff) {
-  return input.group === 'nss' ? null : member.staffNo || null;
+  return input.group === 'main' ? member.staffNo || null : null;
 }
 
 function exportRank(input: AttendanceWorkbookInput, member: RosterStaff) {
-  return input.group === 'nss' ? null : member.rank || null;
+  return input.group === 'main' ? member.rank || null : null;
 }
 
 function countLabels(labels: string[]) {
@@ -662,7 +664,7 @@ async function buildWeeklyValidation(input: AttendanceWorkbookInput, roster: Ros
 
 export async function buildAttendanceWorkbookFromData(input: AttendanceWorkbookInput) {
   if (!isAttendanceExportTemplateAllowedForGroup(input.group, input.template)) {
-    throw new Error(NSS_ATTENDANCE_EXPORT_RESTRICTION_MESSAGE);
+    throw new Error(getAttendanceExportTemplateRestrictionMessage(input.group));
   }
 
   const roster = sortedRoster(input.roster, input.group);
