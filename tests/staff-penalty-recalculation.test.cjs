@@ -296,7 +296,7 @@ test('staff penalty recalculation creates no-show sign-in penalties for absent s
 
   assert.deepEqual(plan.latenessCreates, [{
     arrivalTime: null,
-    computedAmount: '50.00',
+    computedAmount: '10.00',
     date: '2026-07-08',
     didNotSignOut: false,
     reason: "DIDN'T SIGN IN BEFORE 4:30PM",

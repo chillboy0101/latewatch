@@ -6,6 +6,7 @@ require('tsx/cjs');
 
 const {
   computePenalty,
+  DAILY_PENALTY_CAP,
   NO_SHOW_SIGN_IN_AMOUNT,
   NO_SHOW_SIGN_IN_REASON,
 } = require('../src/lib/penalty-calculator.ts');
@@ -72,7 +73,9 @@ test('regular staff penalties increase at one minute past each clock hour', () =
   }
 });
 
-test('late-arrival penalty is capped at the 4:30 PM no-show fee (GHC 50)', () => {
+test('late-arrival penalty is capped at the GHC 50 daily ceiling', () => {
+  assert.equal(DAILY_PENALTY_CAP, 50);
+
   const cases = [
     ['16:01', 50],
     ['16:30', 50],
@@ -160,7 +163,8 @@ test('attendance monitoring only staff are never charged penalties', () => {
   );
 });
 
-test('no-show sign-in penalty is a flat GHC 50 and overrides no-sign-out', () => {
+test('no-show sign-in penalty is a flat GHC 10 and overrides no-sign-out', () => {
+  assert.equal(NO_SHOW_SIGN_IN_AMOUNT, 10);
   assert.deepEqual(
     computePenalty({ arrivalTime: null, didNotSignOut: false, isHoliday: false, noSignIn: true }),
     { amount: NO_SHOW_SIGN_IN_AMOUNT, reason: NO_SHOW_SIGN_IN_REASON },

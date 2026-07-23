@@ -512,7 +512,7 @@ test('sync creates one no-show sign-in penalty for staff with no attendance row'
 
   assert.equal(fixture.latenessEntry.length, 1);
   assert.equal(fixture.latenessEntry[0].arrivalTime, null);
-  assert.equal(fixture.latenessEntry[0].computedAmount, '50.00');
+  assert.equal(fixture.latenessEntry[0].computedAmount, '10.00');
   assert.equal(fixture.latenessEntry[0].didNotSignOut, false);
   assert.equal(fixture.latenessEntry[0].reason, "DIDN'T SIGN IN BEFORE 4:30PM");
 });
