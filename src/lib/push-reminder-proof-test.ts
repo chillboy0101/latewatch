@@ -31,7 +31,6 @@ export async function sendReminderProofTestBatch(testId = `proof-${Date.now()}`)
       or(eq(pushSubscription.signInEnabled, true), eq(pushSubscription.signOutEnabled, true)),
       eq(staff.active, true),
       eq(staff.archived, false),
-      eq(staff.isAttendanceOnly, false),
     ));
 
   summary.totalSubscriptions = subscriptionRows.length;

@@ -164,7 +164,6 @@ export async function getReminderDeliveryMonitor(date: string) {
     .where(and(
       eq(staff.active, true),
       eq(staff.archived, false),
-      eq(staff.isAttendanceOnly, false),
     ))
     .orderBy(asc(staff.displayOrder), asc(staff.fullName));
 

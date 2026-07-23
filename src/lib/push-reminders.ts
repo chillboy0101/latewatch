@@ -126,7 +126,7 @@ export function ensureVapidConfig() {
 }
 
 export function shouldSendPushReminder(input: ReminderEligibilityInput) {
-  if (input.staff.active !== true || input.staff.archived === true || input.staff.isAttendanceOnly === true) return false;
+  if (input.staff.active !== true || input.staff.archived === true) return false;
   if (input.subscription.disabledAt) return false;
 
   if (input.reminderType === 'holiday') {
@@ -288,6 +288,92 @@ async function recordReminderCronHeartbeat(summary: PushReminderSummary, source:
   });
 }
 
+const ADMIN_REMINDER_ALERT_LABEL: Record<PushReminderType, string> = {
+  holiday: 'holiday',
+  sign_in: 'sign-in',
+  sign_out: 'sign-out',
+};
+
+// Push a one-per-day alert to admin devices when reminder deliveries actually fail,
+// so a broken reminder pipeline surfaces within hours instead of going unnoticed.
+// Note: if push itself is fully down (e.g. VAPID unconfigured), this cannot fire —
+// that total-outage case is covered by cron-job.org's own failure emails.
+async function alertAdminsOfReminderFailures(summary: PushReminderSummary) {
+  if (summary.failed <= 0) return;
+  if (!ensureVapidConfig()) return;
+
+  const adminEmails = new Set(
+    (process.env.ADMIN_EMAILS || '')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  if (adminEmails.size === 0) return;
+
+  const adminSubscriptions = (await db.select({
+    auth: pushSubscription.auth,
+    email: staff.email,
+    endpoint: pushSubscription.endpoint,
+    id: pushSubscription.id,
+    p256dh: pushSubscription.p256dh,
+    staffId: pushSubscription.staffId,
+  })
+    .from(pushSubscription)
+    .innerJoin(staff, eq(pushSubscription.staffId, staff.id))
+    .where(and(
+      isNull(pushSubscription.disabledAt),
+      eq(staff.active, true),
+      eq(staff.archived, false),
+    )))
+    .filter((row) => row.email && adminEmails.has(row.email.trim().toLowerCase()));
+
+  if (adminSubscriptions.length === 0) return;
+
+  const label = ADMIN_REMINDER_ALERT_LABEL[summary.reminderType];
+  const alertReminderType = `admin_alert_${summary.reminderType}`;
+  const payload = JSON.stringify({
+    body: `${summary.failed} ${label} reminder${summary.failed === 1 ? '' : 's'} failed to deliver today. Open the Reminders page to review.`,
+    data: { reminderType: 'admin_alert', url: '/attendance/reminders' },
+    icon: '/latewatch-logo.png',
+    requireInteraction: true,
+    tag: `latewatch-admin-alert-${summary.reminderType}-${summary.date}`,
+    title: 'LateWatch reminder issue',
+  });
+
+  for (const subscription of adminSubscriptions) {
+    // Reserve one alert per admin device per day per reminder type (dedup via the unique index).
+    const [reserved] = await db.insert(pushReminderDelivery)
+      .values({
+        date: summary.date,
+        reminderType: alertReminderType,
+        staffId: subscription.staffId,
+        status: 'pending',
+        subscriptionId: subscription.id,
+      })
+      .onConflictDoNothing({
+        target: [pushReminderDelivery.subscriptionId, pushReminderDelivery.date, pushReminderDelivery.reminderType],
+      })
+      .returning();
+
+    if (!reserved) continue;
+
+    try {
+      await webpush.sendNotification({
+        endpoint: subscription.endpoint,
+        keys: { auth: subscription.auth, p256dh: subscription.p256dh },
+      }, payload, { TTL: 6 * 60 * 60 });
+
+      await db.update(pushReminderDelivery)
+        .set({ sentAt: new Date(), status: 'sent' })
+        .where(eq(pushReminderDelivery.id, reserved.id));
+    } catch (error) {
+      await db.update(pushReminderDelivery)
+        .set({ error: error instanceof Error ? error.message.slice(0, 500) : 'admin alert failed', status: 'failed' })
+        .where(eq(pushReminderDelivery.id, reserved.id));
+    }
+  }
+}
+
 async function finishReminderBatch(summary: PushReminderSummary, source: 'vercel' | 'external') {
   publishRealtime('attendance', 'invalidate', {
     date: summary.date,
@@ -301,6 +387,7 @@ async function finishReminderBatch(summary: PushReminderSummary, source: 'vercel
   });
 
   await recordReminderCronHeartbeat(summary, source);
+  await alertAdminsOfReminderFailures(summary);
 }
 
 export async function sendAttendanceReminderBatch(reminderType: PushReminderType, source: 'vercel' | 'external' = 'vercel') {
@@ -360,7 +447,6 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
       subscriptionEnabledFilter,
       eq(staff.active, true),
       eq(staff.archived, false),
-      eq(staff.isAttendanceOnly, false),
     ));
 
   if (subscriptionRows.length === 0) {
