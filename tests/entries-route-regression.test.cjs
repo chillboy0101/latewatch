@@ -242,6 +242,11 @@ Module._load = function patchedLoad(request, ...args) {
       writeAuditEvent: async () => null,
     };
   }
+  if (request === '@/lib/auth/roles') {
+    return {
+      enforceRole: async () => null,
+    };
+  }
   if (request === '@/lib/realtime') {
     return {
       publishRealtime: () => null,

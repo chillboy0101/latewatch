@@ -7,10 +7,16 @@ import {
 } from '@/lib/attendance-export-shared';
 import { getAuditActor, tryWriteAuditEvent } from '@/lib/audit';
 import { buildAttendanceExportWorkbook } from '@/lib/attendance-template-export';
+import { enforceRole } from '@/lib/auth/roles';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
+  const authError = await enforceRole(['admin']);
+  if (authError) {
+    return NextResponse.json({ error: authError.error }, { status: authError.status });
+  }
+
   try {
     const body = await request.json();
     const exportYear = Number(body?.year);

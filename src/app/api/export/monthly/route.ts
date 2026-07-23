@@ -5,6 +5,7 @@ import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 import { buildWeeklyWorkbook } from '@/app/api/export/weekly/route';
 import { getAuditActor, tryWriteAuditEvent } from '@/lib/audit';
 import { getMonthWorkingWeeks, type WorkingWeekRange } from '@/lib/export-weeks';
+import { enforceRole } from '@/lib/auth/roles';
 
 function sheetNameForWeek(week: WorkingWeekRange) {
   const startLabel = format(parseISO(week.exportStart), 'dd MMM');
@@ -15,6 +16,11 @@ function sheetNameForWeek(week: WorkingWeekRange) {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await enforceRole(['admin']);
+  if (authError) {
+    return NextResponse.json({ error: authError.error }, { status: authError.status });
+  }
+
   try {
     const body = await request.json();
     const { year, month } = body;

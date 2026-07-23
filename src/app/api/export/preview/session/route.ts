@@ -7,10 +7,16 @@ import {
   normalizeExportPreviewRequest,
 } from '@/lib/export-preview-session';
 import { getAuditActor, tryWriteAuditEvent } from '@/lib/audit';
+import { enforceRole } from '@/lib/auth/roles';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
+  const authError = await enforceRole(['admin']);
+  if (authError) {
+    return NextResponse.json({ error: authError.error }, { status: authError.status });
+  }
+
   try {
     const body = await request.json();
     const input = normalizeExportPreviewRequest(body);
@@ -40,6 +46,11 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const authError = await enforceRole(['admin']);
+  if (authError) {
+    return NextResponse.json({ error: authError.error }, { status: authError.status });
+  }
+
   try {
     const body = await request.json().catch(() => ({}));
     const deletedCount = await deleteExportPreviewSession((body as { sessionId?: unknown }).sessionId);

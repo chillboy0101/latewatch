@@ -10,6 +10,7 @@ import { normalizeStaffEmail } from '@/lib/attendance';
 import { syncStaffEmailIdentity, unlinkStaffEmailIdentity } from '@/lib/clerk-organization';
 import { recordStaffLeaveTransition } from '@/lib/staff-leave-periods';
 import { recalculateStaffStoredPenalties } from '@/lib/staff-penalty-recalculation-server';
+import { enforceRole } from '@/lib/auth/roles';
 
 type StaffUpdateBody = {
   active?: boolean;
@@ -47,6 +48,11 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const authError = await enforceRole(['admin']);
+  if (authError) {
+    return NextResponse.json({ error: authError.error }, { status: authError.status });
+  }
+
   try {
     const { id } = await params;
     const [result] = await db.select().from(staff).where(eq(staff.id, id));
@@ -66,6 +72,11 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const authError = await enforceRole(['admin']);
+  if (authError) {
+    return NextResponse.json({ error: authError.error }, { status: authError.status });
+  }
+
   try {
     const actor = await currentUser();
     const { id } = await params;
@@ -249,6 +260,11 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const authError = await enforceRole(['admin']);
+  if (authError) {
+    return NextResponse.json({ error: authError.error }, { status: authError.status });
+  }
+
   try {
     const { id } = await params;
     const permanent = request.nextUrl.searchParams.get('permanent') === 'true';

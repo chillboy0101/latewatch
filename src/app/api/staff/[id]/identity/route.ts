@@ -7,6 +7,7 @@ import { writeAuditEvent } from '@/lib/audit';
 import { syncStaffEmailIdentity } from '@/lib/clerk-organization';
 import { publishRealtime } from '@/lib/realtime';
 import { normalizeStaffEmail } from '@/lib/staff-normalize';
+import { enforceRole } from '@/lib/auth/roles';
 
 function statusMessage(status: string) {
   switch (status) {
@@ -33,6 +34,11 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const authError = await enforceRole(['admin']);
+  if (authError) {
+    return NextResponse.json({ error: authError.error }, { status: authError.status });
+  }
+
   try {
     const actor = await currentUser();
     const { id } = await params;

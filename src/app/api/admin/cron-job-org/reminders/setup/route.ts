@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireRole } from '@/lib/auth/roles';
+import { enforceRole } from '@/lib/auth/roles';
 import {
   appUrlFromSetupRequest,
   scheduleCronJobOrgProofTest,
@@ -10,19 +10,8 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-async function requireAdmin() {
-  try {
-    await requireRole(['admin']);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unauthorized';
-    return { error: message, status: message === 'Forbidden' ? 403 : 401 };
-  }
-
-  return null;
-}
-
 export async function GET() {
-  const adminError = await requireAdmin();
+  const adminError = await enforceRole(['admin']);
   if (adminError) {
     return NextResponse.json({ error: adminError.error }, { status: adminError.status });
   }
@@ -36,7 +25,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const adminError = await requireAdmin();
+  const adminError = await enforceRole(['admin']);
   if (adminError) {
     return NextResponse.json({ error: adminError.error }, { status: adminError.status });
   }

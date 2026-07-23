@@ -6,6 +6,7 @@ import { latenessEntry } from '@/db/schema';
 import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 import { getMonthWorkingWeeks } from '@/lib/export-weeks';
 import { summarizeLatenessExportEntries } from '@/lib/lateness-export-summary';
+import { enforceRole } from '@/lib/auth/roles';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +29,11 @@ function normalizeDateKey(value: string | Date) {
 }
 
 export async function GET(request: NextRequest) {
+  const authError = await enforceRole(['admin']);
+  if (authError) {
+    return NextResponse.json({ error: authError.error }, { status: authError.status });
+  }
+
   try {
     const url = new URL(request.url);
     const year = parseYearParam(url.searchParams.get('year'));

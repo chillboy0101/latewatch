@@ -7,6 +7,7 @@ import { getAccraClock } from '@/lib/attendance';
 import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 import { getAuditActor, tryWriteAuditEvent } from '@/lib/audit';
 import { buildOffenceBookWorkbookFromData, type OffenceBookItemInput } from '@/lib/offence-book-export';
+import { enforceRole } from '@/lib/auth/roles';
 
 export const dynamic = 'force-dynamic';
 
@@ -124,6 +125,11 @@ export async function buildOffenceBookExportWorkbook(input: {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await enforceRole(['admin']);
+  if (authError) {
+    return NextResponse.json({ error: authError.error }, { status: authError.status });
+  }
+
   try {
     const body = await request.json();
     const parsed = parseExportInput(body);

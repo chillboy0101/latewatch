@@ -1,5 +1,11 @@
 import { clerkClient, clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
+import {
+  adminEmailsFromEnv,
+  adminUserIdsFromEnv,
+  normalizeRole,
+  roleFromMetadata,
+} from '@/lib/auth/role-config';
 
 const isProtectedRoute = createRouteMatcher([
   '/dashboard(.*)',
@@ -78,42 +84,17 @@ const isAdminRoute = createRouteMatcher([
 const clerkConfigured =
   !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && !!process.env.CLERK_SECRET_KEY;
 
-function getAdminUserIds() {
-  return new Set(
-    (process.env.ADMIN_USER_IDS || '')
-      .split(',')
-      .map((id) => id.trim())
-      .filter(Boolean),
-  );
-}
-
-function getAdminEmails() {
-  return new Set(
-    (process.env.ADMIN_EMAILS || '')
-      .split(',')
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean),
-  );
-}
-
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
 }
 
-function roleFromMetadata(value: unknown) {
-  const metadata = asRecord(value);
-  const role = metadata?.role;
-
-  return typeof role === 'string' ? role.toLowerCase() : null;
-}
-
 function roleFromSessionClaims(sessionClaims: Record<string, unknown> | null | undefined) {
   if (!sessionClaims) return null;
 
-  const directRole = sessionClaims.role;
-  if (typeof directRole === 'string') return directRole.toLowerCase();
+  const directRole = normalizeRole(sessionClaims.role);
+  if (directRole) return directRole;
 
   return roleFromMetadata(sessionClaims.metadata)
     || roleFromMetadata(sessionClaims.publicMetadata)
@@ -179,7 +160,7 @@ async function getClerkUserAccess(userId: string) {
 async function isAdminSession(userId: string | null | undefined, sessionClaims: Record<string, unknown> | null | undefined) {
   if (!userId) return false;
 
-  if (getAdminUserIds().has(userId)) {
+  if (adminUserIdsFromEnv().has(userId)) {
     return true;
   }
 
@@ -190,7 +171,7 @@ async function isAdminSession(userId: string | null | undefined, sessionClaims: 
   const userAccess = await getClerkUserAccess(userId);
 
   return userAccess.role === 'admin'
-    || Boolean(userAccess.email && getAdminEmails().has(userAccess.email));
+    || Boolean(userAccess.email && adminEmailsFromEnv().has(userAccess.email));
 }
 
 function forbiddenResponse(req: Request) {

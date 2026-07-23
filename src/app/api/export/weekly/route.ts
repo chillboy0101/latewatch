@@ -9,6 +9,7 @@ import path from 'path';
 import { getAuditActor, tryWriteAuditEvent } from '@/lib/audit';
 import { getMonthWorkingWeeks } from '@/lib/export-weeks';
 import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
+import { enforceRole } from '@/lib/auth/roles';
 
 // ── Staff order: fetched from DB ordered by displayOrder then fullName ──
 
@@ -426,6 +427,11 @@ export async function buildWeeklyWorkbook(
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await enforceRole(['admin']);
+  if (authError) {
+    return NextResponse.json({ error: authError.error }, { status: authError.status });
+  }
+
   try {
     const body = await request.json();
     const { weekStart, weekEnd, weekNumber } = body;

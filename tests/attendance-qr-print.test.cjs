@@ -396,7 +396,7 @@ test('device health dashboard exposes trusted devices, reminder devices, session
   const page = fs.readFileSync(deviceHealthPagePath, 'utf8');
   const sidebar = fs.readFileSync(sidebarPath, 'utf8');
 
-  assert.match(api, /requireRole\(\['admin'\]\)/);
+  assert.match(api, /enforceRole\(\['admin'\]\)/);
   assert.match(api, /getDeviceSessionHealth/);
   assert.match(api, /Cache-Control': 'no-store'/);
   assert.match(helper, /staffDevice/);
@@ -439,7 +439,7 @@ test('security alerts dashboard surfaces suspicious attendance audit alerts', ()
   const page = fs.readFileSync(securityAlertsPagePath, 'utf8');
   const sidebar = fs.readFileSync(sidebarPath, 'utf8');
 
-  assert.match(api, /requireRole\(\['admin'\]\)/);
+  assert.match(api, /enforceRole\(\['admin'\]\)/);
   assert.match(api, /getSecurityAlerts/);
   assert.match(api, /Cache-Control': 'no-store'/);
   assert.match(helper, /eq\(auditEvent\.action, 'ALERT'\)/);

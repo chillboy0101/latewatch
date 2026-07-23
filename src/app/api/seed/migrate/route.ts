@@ -3,22 +3,12 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { sql } from 'drizzle-orm';
 import { tryWriteAuditEvent } from '@/lib/audit';
-import { requireRole } from '@/lib/auth/roles';
+import { enforceRole } from '@/lib/auth/roles';
 
 export const dynamic = 'force-dynamic';
 
-async function requireAdmin() {
-  try {
-    await requireRole(['admin']);
-    return null;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unauthorized';
-    return { error: message, status: message === 'Forbidden' ? 403 : 401 };
-  }
-}
-
 export async function POST() {
-  const adminError = await requireAdmin();
+  const adminError = await enforceRole(['admin']);
   if (adminError) {
     return NextResponse.json({ error: adminError.error }, { status: adminError.status });
   }

@@ -92,14 +92,14 @@ test('admin cron-job.org setup API uses Vercel cron secret without exposing it',
   const helperSource = fs.readFileSync(cronJobOrgSetupLibPath, 'utf8');
   const settingsSource = fs.readFileSync(cronJobOrgSetupSettingsPath, 'utf8');
 
-  assert.match(apiSource, /requireRole\(\['admin'\]\)/);
+  assert.match(apiSource, /enforceRole\(\['admin'\]\)/);
   assert.match(apiSource, /export async function GET/);
   assert.match(apiSource, /export async function POST/);
   assert.match(apiSource, /process\.env\.CRON_SECRET/);
   assert.match(apiSource, /setupCronJobOrgReminderJobs/);
   assert.match(apiSource, /schedulerRequestFromSetupRequest/);
   assert.match(settingsSource, /\/settings\/reminder-scheduler/);
-  assert.match(settingsSource, /requireRole\(\['admin'\]\)/);
+  assert.match(settingsSource, /enforceRole\(\['admin'\]\)/);
   assert.match(settingsSource, /setupResultHtml/);
   assert.match(settingsSource, /setupCronJobOrgReminderJobs/);
   assert.match(settingsSource, /scheduleCronJobOrgProofTest/);
@@ -331,7 +331,7 @@ test('admin reminder delivery monitor is protected and explains delivery outcome
   const proxy = fs.readFileSync(proxyPath, 'utf8');
   const sidebar = fs.readFileSync(path.join(root, 'src/components/layout/sidebar.tsx'), 'utf8');
 
-  assert.match(api, /requireRole\(\['admin'\]\)/);
+  assert.match(api, /enforceRole\(\['admin'\]\)/);
   assert.match(api, /getReminderDeliveryMonitor\(date\)/);
   assert.match(api, /isIsoDateKey\(date\)/);
   assert.match(api, /Cache-Control': 'no-store'/);

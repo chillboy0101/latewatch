@@ -2,10 +2,16 @@ import { currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import { getAuditActor, tryWriteAuditEvent } from '@/lib/audit';
 import { buildContributionExportWorkbook } from '@/lib/contribution-export';
+import { enforceRole } from '@/lib/auth/roles';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  const authError = await enforceRole(['admin']);
+  if (authError) {
+    return NextResponse.json({ error: authError.error }, { status: authError.status });
+  }
+
   try {
     const user = await currentUser();
     if (!user) {

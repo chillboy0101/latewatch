@@ -20,6 +20,7 @@ import {
   NO_SHOW_SIGN_IN_REASON,
   NO_SHOW_SIGN_IN_WAIVED_REASON,
 } from '@/lib/penalty-calculator';
+import { enforceRole } from '@/lib/auth/roles';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,6 +121,11 @@ function latenessEntryChanged(input: {
 }
 
 export async function GET(request: NextRequest) {
+  const authError = await enforceRole(['admin']);
+  if (authError) {
+    return NextResponse.json({ error: authError.error }, { status: authError.status });
+  }
+
   try {
     const url = new URL(request.url);
     const date = url.searchParams.get('date');
@@ -186,8 +192,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await enforceRole(['admin']);
+  if (authError) {
+    return NextResponse.json({ error: authError.error }, { status: authError.status });
+  }
+
   try {
-    // Get current user for audit logging (optional — we still allow the save even if it fails)
     const body = await request.json();
     const { date, entries } = body;
 
