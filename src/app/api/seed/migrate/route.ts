@@ -3,10 +3,26 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { sql } from 'drizzle-orm';
 import { tryWriteAuditEvent } from '@/lib/audit';
+import { requireRole } from '@/lib/auth/roles';
 
 export const dynamic = 'force-dynamic';
 
+async function requireAdmin() {
+  try {
+    await requireRole(['admin']);
+    return null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unauthorized';
+    return { error: message, status: message === 'Forbidden' ? 403 : 401 };
+  }
+}
+
 export async function POST() {
+  const adminError = await requireAdmin();
+  if (adminError) {
+    return NextResponse.json({ error: adminError.error }, { status: adminError.status });
+  }
+
   try {
     await db.execute(sql`ALTER TABLE staff ADD COLUMN IF NOT EXISTS display_order INTEGER`);
     await db.execute(sql`ALTER TABLE staff ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT false`);

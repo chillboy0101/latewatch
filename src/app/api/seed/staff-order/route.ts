@@ -4,8 +4,19 @@ import { db } from '@/db';
 import { staff } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { tryWriteAuditEvent } from '@/lib/audit';
+import { requireRole } from '@/lib/auth/roles';
 
 export const dynamic = 'force-dynamic';
+
+async function requireAdmin() {
+  try {
+    await requireRole(['admin']);
+    return null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unauthorized';
+    return { error: message, status: message === 'Forbidden' ? 403 : 401 };
+  }
+}
 
 const STAFF_ORDER = [
   'CHARLES DODGATSE',
@@ -26,6 +37,11 @@ const STAFF_ORDER = [
 ];
 
 export async function POST() {
+  const adminError = await requireAdmin();
+  if (adminError) {
+    return NextResponse.json({ error: adminError.error }, { status: adminError.status });
+  }
+
   try {
     const results: string[] = [];
     for (let i = 0; i < STAFF_ORDER.length; i++) {

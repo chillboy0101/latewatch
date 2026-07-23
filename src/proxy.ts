@@ -202,6 +202,15 @@ function forbiddenResponse(req: Request) {
   return NextResponse.redirect(new URL('/check-in?admin=required', req.url));
 }
 
+function authNotConfiguredResponse(req: Request) {
+  const url = new URL(req.url);
+  if (url.pathname.startsWith('/api/')) {
+    return NextResponse.json({ error: 'Authentication is not configured' }, { status: 503 });
+  }
+
+  return NextResponse.redirect(new URL('/access-required', req.url));
+}
+
 const handler = clerkConfigured
   ? clerkMiddleware(async (auth, req) => {
       if (isCronReminderRoute(req)) {
@@ -221,7 +230,15 @@ const handler = clerkConfigured
       }
       return NextResponse.next();
     })
-  : () => NextResponse.next();
+  : (req: Request) => {
+      // Fail closed in production: a missing Clerk configuration must not silently
+      // turn every matched route into a public endpoint. In development we still
+      // pass through so the app is usable without Clerk keys.
+      if (process.env.NODE_ENV === 'production') {
+        return authNotConfiguredResponse(req);
+      }
+      return NextResponse.next();
+    };
 
 export default handler;
 
