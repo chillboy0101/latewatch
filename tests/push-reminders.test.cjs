@@ -613,3 +613,59 @@ test('reminder cron window math and source detection actually execute correctly'
   assert.equal(reminderCronSource({ headers: headerMap({ 'x-latewatch-cron': 'external' }) }), 'external');
   assert.equal(reminderCronSource({ headers: headerMap({ 'x-latewatch-cron': 'EXTERNAL' }) }), 'external');
 });
+
+test('validateReminderCronRequest fails closed on a missing or wrong CRON_SECRET', () => {
+  require('tsx/cjs');
+  const originalLoad = Module._load;
+  Module._load = function patchedLoad(request, parent, isMain) {
+    if (request === 'server-only') return {};
+    return originalLoad.call(this, request, parent, isMain);
+  };
+  const { validateReminderCronRequest, REMINDER_CRON_SCHEDULES } = require(reminderCronGuardPath);
+  Module._load = originalLoad;
+
+  const headerMap = (entries) => ({ get: (key) => entries[key.toLowerCase()] ?? null });
+  const schedule = REMINDER_CRON_SCHEDULES.signOut;
+  const originalSecret = process.env.CRON_SECRET;
+
+  try {
+    // Regression guard for the July 2026 outage: CRON_SECRET was unset in production,
+    // so every cron call was rejected with 401 and reminders silently stopped for weeks.
+    delete process.env.CRON_SECRET;
+    const missingSecret = validateReminderCronRequest(
+      { headers: headerMap({ authorization: 'Bearer anything', 'x-latewatch-cron': 'external' }) },
+      schedule,
+    );
+    assert.equal(missingSecret.ok, false);
+    assert.equal(missingSecret.response.status, 401);
+
+    process.env.CRON_SECRET = 'unit-test-cron-secret';
+
+    // No Authorization header.
+    const noAuth = validateReminderCronRequest(
+      { headers: headerMap({ 'x-latewatch-cron': 'external' }) },
+      schedule,
+    );
+    assert.equal(noAuth.ok, false);
+    assert.equal(noAuth.response.status, 401);
+
+    // Wrong secret.
+    const wrongSecret = validateReminderCronRequest(
+      { headers: headerMap({ authorization: 'Bearer nope', 'x-latewatch-cron': 'external' }) },
+      schedule,
+    );
+    assert.equal(wrongSecret.ok, false);
+    assert.equal(wrongSecret.response.status, 401);
+
+    // Correct secret but no recognized cron caller (no Vercel user-agent, no external header) -> 403.
+    const badCaller = validateReminderCronRequest(
+      { headers: headerMap({ authorization: 'Bearer unit-test-cron-secret' }) },
+      schedule,
+    );
+    assert.equal(badCaller.ok, false);
+    assert.equal(badCaller.response.status, 403);
+  } finally {
+    if (originalSecret === undefined) delete process.env.CRON_SECRET;
+    else process.env.CRON_SECRET = originalSecret;
+  }
+});
