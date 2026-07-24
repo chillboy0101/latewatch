@@ -144,6 +144,25 @@ function rowMatchesQuery(row: ReminderMonitorRow, query: string) {
   ].join(' ').toLowerCase().includes(query);
 }
 
+function SummaryStat({ value, label, tone }: { value: number; label: string; tone: 'success' | 'warning' | 'danger' | 'muted' }) {
+  return (
+    <div className="flex items-baseline gap-1.5">
+      <span
+        className={cn(
+          'text-sm font-semibold tabular-nums',
+          tone === 'success' && 'text-success',
+          tone === 'warning' && 'text-warning',
+          tone === 'danger' && 'text-danger',
+          tone === 'muted' && 'text-foreground',
+        )}
+      >
+        {value}
+      </span>
+      <span className="text-xs text-muted-foreground">{label}</span>
+    </div>
+  );
+}
+
 function TabButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
   return (
     <button
@@ -308,39 +327,41 @@ export default function ReminderDeliveryMonitorPage() {
             </div>
 
             <Card className="overflow-hidden">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
-                <p className="text-sm text-muted-foreground">
-                  <span className="font-medium text-success">{section.summary.sent} sent</span>
-                  {' ('}
-                  <span className={cn('font-medium', section.summary.delivered < section.summary.sent ? 'text-warning' : 'text-success')}>{section.summary.delivered} delivered</span>
-                  {') · '}
-                  <span className={cn('font-medium', attentionCount > 0 ? 'text-danger' : 'text-muted-foreground')}>{attentionCount} need attention</span>
-                </p>
+              <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-border px-5 py-4">
+                <div className="flex items-center gap-5">
+                  <SummaryStat value={section.summary.sent} label="Sent" tone="success" />
+                  <SummaryStat value={section.summary.delivered} label="Delivered" tone={section.summary.delivered < section.summary.sent ? 'warning' : 'success'} />
+                  <SummaryStat value={attentionCount} label="Need attention" tone={attentionCount > 0 ? 'danger' : 'muted'} />
+                </div>
                 {section.rows.length > 0 && (
                   <button
                     type="button"
                     onClick={() => setShowAll((value) => !value)}
                     className="text-xs font-medium text-primary hover:underline"
                   >
-                    {showAll ? 'Show needing attention only' : `Show all ${section.rows.length} staff`}
+                    {showAll ? 'Needing attention only' : `Show all ${section.rows.length}`}
                   </button>
                 )}
               </div>
 
               {section.alerts.length > 0 && (
-                <div className="divide-y divide-border border-b border-border">
+                <ul className="border-b border-border px-5 py-3">
                   {section.alerts.map((alert) => (
-                    <div
+                    <li
                       key={alert.message}
-                      className={cn(
-                        'px-5 py-2.5 text-sm',
-                        alert.tone === 'danger' ? 'bg-danger/10 text-danger' : 'bg-warning/10 text-warning',
-                      )}
+                      className="flex items-start gap-2.5 py-1 text-sm text-muted-foreground"
                     >
-                      {alert.message}
-                    </div>
+                      <span
+                        aria-hidden
+                        className={cn(
+                          'mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full',
+                          alert.tone === 'danger' ? 'bg-danger' : 'bg-warning',
+                        )}
+                      />
+                      <span>{alert.message}</span>
+                    </li>
                   ))}
-                </div>
+                </ul>
               )}
 
               {visibleRows.length === 0 ? (
