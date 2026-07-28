@@ -38,7 +38,7 @@ export default function Home() {
       <Button
         variant="outline"
         size="sm"
-        className="fixed right-4 top-[calc(env(safe-area-inset-top)+1rem)] z-20 h-10 gap-2 rounded-full bg-card/95 px-4 text-foreground shadow-sm backdrop-blur transition-colors hover:bg-background hover:text-foreground focus-visible:ring-primary/30 sm:right-6"
+        className="fixed right-4 top-4 z-20 h-10 gap-2 rounded-full bg-card/95 px-4 text-foreground shadow-sm backdrop-blur transition-colors hover:bg-background hover:text-foreground focus-visible:ring-primary/30 sm:right-6 sm:top-6"
         onClick={(event) => {
           toggleTheme();
           event.currentTarget.blur();
