@@ -1123,8 +1123,8 @@ export default function CheckInPage() {
   const transferRequestPending = status?.transferRequest?.status === 'pending';
 
   return (
-    <main className="h-dvh overflow-hidden bg-background px-3 py-3 text-foreground sm:px-6 sm:py-4">
-      <div className="mx-auto flex h-full w-full max-w-xl flex-col">
+    <main className="fixed inset-0 flex flex-col overflow-hidden overscroll-none bg-background text-foreground">
+      <div className="mx-auto flex h-full w-full max-w-xl flex-col px-3 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] sm:px-6 sm:pb-4">
         <header className="flex h-12 shrink-0 items-center justify-between sm:h-14">
           <LateWatchLogo title="LateWatch" />
           <div className="flex items-center gap-2">
@@ -1262,16 +1262,21 @@ export default function CheckInPage() {
           signOutEnabled={signOutReminderEnabled}
         />
 
-        <div className="flex min-h-0 flex-1 items-center py-3 sm:py-4">
-          <Card className="w-full overflow-hidden">
+        <div className="flex min-h-0 flex-1 py-3 sm:py-4">
+          <Card className="flex h-full w-full flex-col overflow-hidden">
             {loading || !isLoaded ? (
-              <LoadingBuffer variant="section" label="Loading check-in" description="Verifying your account and location." />
+              <div className="flex h-full items-center justify-center p-4">
+                <LoadingBuffer variant="section" label="Loading check-in" description="Verifying your account and location." />
+              </div>
             ) : accessNotSetUp ? (
-              <AccessNotSetUp
-                email={user?.primaryEmailAddress?.emailAddress || null}
-              />
+              <div className="flex h-full items-center justify-center">
+                <AccessNotSetUp
+                  email={user?.primaryEmailAddress?.emailAddress || null}
+                />
+              </div>
             ) : (
-              <div className="space-y-3 p-3 sm:space-y-4 sm:p-5">
+              <div className="flex h-full flex-col">
+                <div className="flex flex-1 flex-col justify-center gap-3 overflow-y-auto p-3 sm:gap-4 sm:p-5">
                 <div className={cn('rounded-lg border p-3 text-center sm:p-4', statusTone(status))}>
                   <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-background/70 sm:h-12 sm:w-12">
                     {status?.attendance ? (
@@ -1344,34 +1349,37 @@ export default function CheckInPage() {
                     {message.text}
                   </div>
                 )}
+                </div>
 
-                <Button className="h-10 w-full gap-2 text-sm sm:h-11 sm:text-base" onClick={() => void submitAttendance()} disabled={(!canCheckIn && !canSubmitSignOut) || checkingIn || locationBlocksAction}>
-                  {checkingIn ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : status?.attendance && !status.attendance.signOutTime ? (
-                    <LogOut className="h-5 w-5" />
-                  ) : (
-                    <ShieldCheck className="h-5 w-5" />
-                  )}
-                  {attendanceButtonLabel(status, checkingIn, liveLocation)}
-                </Button>
-
-                {status?.device?.registered && !status.device.trusted && (
-                  <Button
-                    className="h-10 w-full gap-2 text-sm sm:h-11 sm:text-base"
-                    disabled={requestingTransfer || transferRequestPending}
-                    onClick={requestDeviceTransfer}
-                    type="button"
-                    variant="outline"
-                  >
-                    {requestingTransfer ? <Loader2 className="h-5 w-5 animate-spin" /> : <ShieldCheck className="h-5 w-5" />}
-                    {requestingTransfer
-                      ? 'Checking location...'
-                      : transferRequestPending
-                        ? 'Transfer Request Pending'
-                        : 'Request Device Transfer'}
+                <div className="shrink-0 space-y-2 border-t border-border/60 p-3 sm:p-4">
+                  <Button className="h-11 w-full gap-2 text-sm sm:h-12 sm:text-base" onClick={() => void submitAttendance()} disabled={(!canCheckIn && !canSubmitSignOut) || checkingIn || locationBlocksAction}>
+                    {checkingIn ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : status?.attendance && !status.attendance.signOutTime ? (
+                      <LogOut className="h-5 w-5" />
+                    ) : (
+                      <ShieldCheck className="h-5 w-5" />
+                    )}
+                    {attendanceButtonLabel(status, checkingIn, liveLocation)}
                   </Button>
-                )}
+
+                  {status?.device?.registered && !status.device.trusted && (
+                    <Button
+                      className="h-11 w-full gap-2 text-sm sm:h-12 sm:text-base"
+                      disabled={requestingTransfer || transferRequestPending}
+                      onClick={requestDeviceTransfer}
+                      type="button"
+                      variant="outline"
+                    >
+                      {requestingTransfer ? <Loader2 className="h-5 w-5 animate-spin" /> : <ShieldCheck className="h-5 w-5" />}
+                      {requestingTransfer
+                        ? 'Checking location...'
+                        : transferRequestPending
+                          ? 'Transfer Request Pending'
+                          : 'Request Device Transfer'}
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
           </Card>
@@ -1398,16 +1406,9 @@ function PenaltyHistoryDialog({
 }) {
   const currentWeek = history?.currentWeek || null;
   const olderWeeks = (history?.weeks || []).filter((week) => week.startDate !== currentWeek?.startDate);
-  const [activeSnap, setActiveSnap] = useState<number | string | null>(0.92);
 
   return (
-    <Drawer
-      open={open}
-      onOpenChange={(next) => { if (next) setActiveSnap(0.92); onOpenChange(next); }}
-      snapPoints={[0.55, 0.92]}
-      activeSnapPoint={activeSnap}
-      setActiveSnapPoint={setActiveSnap}
-    >
+    <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent className="h-[92dvh]">
         <DrawerHeader>
           <DrawerTitle>Penalty history</DrawerTitle>
