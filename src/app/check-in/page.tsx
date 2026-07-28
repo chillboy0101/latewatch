@@ -4,7 +4,7 @@ import { UserButton, useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, Loader2, LogOut, MapPin, Moon, ReceiptText, ShieldCheck, Sun, X, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, ChevronDown, Loader2, LogOut, MapPin, Moon, ReceiptText, ShieldCheck, Sun, X, XCircle } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -1218,9 +1218,12 @@ export default function CheckInPage() {
 
                 <NotificationNudge
                   eligible={Boolean(deviceToken) && notificationPermission !== 'unsupported' && !signInReminderEnabled && !signOutReminderEnabled && !reminderControlsLocked}
+                  notificationPermission={notificationPermission}
                   saving={savingPushReminder}
-                  onEnable={() => {
-                    void updatePushReminderSettings({ signInEnabled: true, signOutEnabled: true });
+                  signInEnabled={signInReminderEnabled}
+                  signOutEnabled={signOutReminderEnabled}
+                  onUpdate={(next) => {
+                    void updatePushReminderSettings(next);
                   }}
                 />
 
@@ -1594,30 +1597,56 @@ function ReceiptNotificationToast({
   );
 }
 
-// One-time, today-only nudge asking staff to turn on reminders. After this date
-// the date gate stops it from ever rendering again.
+const REMINDER_NUDGE_OPTOUT_KEY = 'latewatch-reminder-nudge-optout';
+
+// Floating toast shown to staff with a trusted device who have NOT enabled
+// reminders. Primary action turns both on; "Choose which" expands per-reminder
+// toggles inline. "X" hides for this visit (re-nudges next open); "Don't remind
+// me" opts out permanently on this device.
 function NotificationNudge({
   eligible,
-  onEnable,
+  notificationPermission,
+  onUpdate,
   saving,
+  signInEnabled,
+  signOutEnabled,
 }: {
   eligible: boolean;
-  onEnable: () => void;
+  notificationPermission: BrowserNotificationPermission;
+  onUpdate: (next: { signInEnabled: boolean; signOutEnabled: boolean }) => void;
   saving: boolean;
+  signInEnabled: boolean;
+  signOutEnabled: boolean;
 }) {
-  // Floating toast shown to staff who have NOT enabled reminders, so they see it
-  // on app open and can turn notifications on. Dismissal is per-visit only (no
-  // persistence) — anyone who keeps forgetting is nudged again next time.
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return localStorage.getItem(REMINDER_NUDGE_OPTOUT_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [expanded, setExpanded] = useState(false);
+
+  const optOut = useCallback(() => {
+    try {
+      localStorage.setItem(REMINDER_NUDGE_OPTOUT_KEY, '1');
+    } catch {
+      // Ignore storage failures; the visit-level dismiss below still applies.
+    }
+    setDismissed(true);
+  }, []);
 
   if (dismissed || !eligible) return null;
+
+  const togglesDisabled = saving || notificationPermission === 'unsupported';
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+1rem)] z-[95] flex justify-center px-4 sm:inset-x-auto sm:bottom-6 sm:right-6 sm:justify-end">
       <div className="pointer-events-auto relative w-full max-w-sm overflow-hidden rounded-xl border border-primary/30 bg-gradient-to-br from-primary/12 via-card to-card p-4 shadow-lg">
         <button
           type="button"
-          aria-label="Dismiss reminder"
+          aria-label="Hide for now"
           onClick={() => setDismissed(true)}
           className="absolute right-2.5 top-2.5 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
         >
@@ -1627,23 +1656,56 @@ function NotificationNudge({
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-primary/15 text-primary">
             <BellRing className="h-5 w-5" />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h3 className="text-sm font-semibold text-foreground">Turn on attendance reminders</h3>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Get a heads-up before the 8:15 AM sign-in and 4:30 PM sign-out — even when this app is closed. It takes one tap.
+              Get a heads-up before the 8:15 AM sign-in and 4:30 PM sign-out — even when this app is closed.
             </p>
-            <Button
-              className="mt-3 h-9 gap-2"
-              size="sm"
-              onClick={() => {
-                onEnable();
-                setDismissed(true);
-              }}
-              disabled={saving}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button
+                className="h-9 gap-2"
+                size="sm"
+                onClick={() => onUpdate({ signInEnabled: true, signOutEnabled: true })}
+                disabled={saving}
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <BellRing className="h-4 w-4" />}
+                Turn on all
+              </Button>
+              <button
+                type="button"
+                aria-expanded={expanded}
+                onClick={() => setExpanded((value) => !value)}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
+              >
+                Choose which
+                <ChevronDown className={cn('h-4 w-4 transition-transform', expanded && 'rotate-180')} />
+              </button>
+            </div>
+            {expanded && (
+              <div className="mt-2 grid grid-cols-1 gap-2">
+                <ReminderNotificationToggle
+                  disabled={togglesDisabled}
+                  enabled={signInEnabled}
+                  label="Sign-in reminder"
+                  loading={saving}
+                  onToggle={() => onUpdate({ signInEnabled: !signInEnabled, signOutEnabled })}
+                />
+                <ReminderNotificationToggle
+                  disabled={togglesDisabled}
+                  enabled={signOutEnabled}
+                  label="Sign-out reminder"
+                  loading={saving}
+                  onToggle={() => onUpdate({ signInEnabled, signOutEnabled: !signOutEnabled })}
+                />
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={optOut}
+              className="mt-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:underline"
             >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <BellRing className="h-4 w-4" />}
-              Turn on notifications
-            </Button>
+              Don&apos;t remind me
+            </button>
           </div>
         </div>
       </div>
