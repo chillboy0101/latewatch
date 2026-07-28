@@ -3,7 +3,7 @@
 import { UserButton, useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, ChevronDown, Loader2, LogOut, MapPin, Moon, ReceiptText, ShieldCheck, Sun, X, XCircle } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
@@ -1631,6 +1631,10 @@ function NotificationNudge({
     }
   });
   const [expanded, setExpanded] = useState(false);
+  const [dragX, setDragX] = useState(0);
+  const [swiping, setSwiping] = useState(false);
+  const swipeStartRef = useRef(0);
+  const swipingRef = useRef(false);
 
   const optOut = useCallback(() => {
     try {
@@ -1641,13 +1645,53 @@ function NotificationNudge({
     setDismissed(true);
   }, []);
 
+  // Swipe-to-dismiss (touch + pointer). Drags starting on an interactive
+  // control are ignored so taps still work; a fling past the threshold flings
+  // the card off-screen and hides it for the visit (same as the X).
+  const SWIPE_DISMISS_PX = 90;
+  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest('button, a, input, [role="button"]')) return;
+    swipeStartRef.current = event.clientX;
+    swipingRef.current = true;
+    setSwiping(true);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }, []);
+  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!swipingRef.current) return;
+    setDragX(event.clientX - swipeStartRef.current);
+  }, []);
+  const handlePointerEnd = useCallback(() => {
+    if (!swipingRef.current) return;
+    swipingRef.current = false;
+    setSwiping(false);
+    setDragX((current) => {
+      if (Math.abs(current) > SWIPE_DISMISS_PX) {
+        window.setTimeout(() => setDismissed(true), 180);
+        return current > 0 ? 600 : -600;
+      }
+      return 0;
+    });
+  }, []);
+
   if (dismissed || !eligible) return null;
 
   const togglesDisabled = saving || notificationPermission === 'unsupported';
+  const cardStyle: React.CSSProperties = {
+    touchAction: 'pan-y',
+    transform: swiping || dragX !== 0 ? `translateX(${dragX}px)` : undefined,
+    opacity: dragX !== 0 ? Math.max(1 - Math.abs(dragX) / 240, 0.2) : undefined,
+    transition: swiping ? 'none' : 'transform 220ms ease, opacity 220ms ease',
+  };
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+1rem)] z-[95] flex justify-center px-4 sm:inset-x-auto sm:bottom-6 sm:right-6 sm:justify-end">
-      <div className="pointer-events-auto relative w-full max-w-sm overflow-hidden rounded-xl border border-primary/30 bg-gradient-to-br from-primary/12 via-card to-card p-4 shadow-lg animate-in fade-in-0 slide-in-from-bottom-2 duration-300 ease-out">
+      <div
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
+        style={cardStyle}
+        className="pointer-events-auto relative w-full max-w-sm cursor-grab touch-pan-y select-none overflow-hidden rounded-xl border border-primary/30 bg-card bg-gradient-to-br from-primary/10 via-transparent to-transparent p-4 shadow-xl ring-1 ring-border/60 active:cursor-grabbing animate-in fade-in-0 slide-in-from-bottom-2 duration-300 ease-out">
         <button
           type="button"
           aria-label="Hide for now"
