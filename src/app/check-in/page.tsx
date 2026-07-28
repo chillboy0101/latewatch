@@ -1124,7 +1124,7 @@ export default function CheckInPage() {
 
   return (
     <main className="fixed inset-0 flex flex-col overflow-hidden overscroll-none bg-background text-foreground">
-      <div className="mx-auto flex h-full w-full max-w-xl flex-col px-3 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] sm:px-6 sm:pb-4">
+      <div className="mx-auto flex h-full w-full max-w-xl flex-col px-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] sm:px-6">
         <header className="flex h-12 shrink-0 items-center justify-between sm:h-14">
           <LateWatchLogo title="LateWatch" />
           <div className="flex items-center gap-2">
@@ -1262,7 +1262,7 @@ export default function CheckInPage() {
           signOutEnabled={signOutReminderEnabled}
         />
 
-        <div className="flex min-h-0 flex-1 py-3 sm:py-4">
+        <div className="flex min-h-0 flex-1 pt-3 sm:pt-4">
           <Card className="flex h-full w-full flex-col overflow-hidden">
             {loading || !isLoaded ? (
               <div className="flex h-full items-center justify-center p-4">
@@ -1351,7 +1351,7 @@ export default function CheckInPage() {
                 )}
                 </div>
 
-                <div className="shrink-0 space-y-2.5 border-t border-border/60 p-3 pt-4 sm:p-4 sm:pt-5">
+                <div className="shrink-0 space-y-2.5 border-t border-border/60 px-3 pt-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:px-4 sm:pt-5">
                   <Button className="h-14 w-full gap-2.5 rounded-2xl text-base font-semibold shadow-sm sm:h-16 sm:text-lg" onClick={() => void submitAttendance()} disabled={(!canCheckIn && !canSubmitSignOut) || checkingIn || locationBlocksAction}>
                     {checkingIn ? (
                       <Loader2 className="h-5 w-5 animate-spin sm:h-6 sm:w-6" />
