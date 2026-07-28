@@ -111,29 +111,6 @@ body {
   font-family: var(--font-inter), Arial, Helvetica, sans-serif;
 }
 
-/* Print only the in-drawer receipt (hide the app + drawer chrome). Scoped with
-   :has() so it never touches the standalone receipt route page's own print CSS. */
-@media print {
-  body:has(.drawer-receipt-print) * {
-    visibility: hidden !important;
-  }
-
-  .drawer-receipt-print,
-  .drawer-receipt-print * {
-    visibility: visible !important;
-  }
-
-  .drawer-receipt-print {
-    position: fixed !important;
-    inset: 0 !important;
-    margin: 0 !important;
-    padding: 16px !important;
-    max-width: none !important;
-    overflow: visible !important;
-    background: #ffffff !important;
-  }
-}
-
 input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="time"]::-webkit-calendar-picker-indicator {
   cursor: pointer;

@@ -1249,7 +1249,6 @@ export default function CheckInPage() {
               <ReceiptsDialog
                 notifications={receiptHistory}
                 onMarkRead={dismissReceiptNotification}
-                onOpenFull={(paymentId) => window.open(`/check-in/receipts/${paymentId}`, '_blank')}
                 onOpenChange={setReceiptsDialogOpen}
                 open={receiptsDialogOpen}
               />
@@ -1445,7 +1444,7 @@ function PenaltyHistoryDialog({
             </div>
           </div>
         ) : currentWeek ? (
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-6">
+          <div data-vaul-no-drag className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-6">
             <div>
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -1746,18 +1745,44 @@ function ReceiptNotificationToast({
 function ReceiptsDialog({
   notifications,
   onMarkRead,
-  onOpenFull,
   onOpenChange,
   open,
 }: {
   notifications: LatenessPaymentReceiptNotification[];
   onMarkRead: (id: string) => void | Promise<void>;
-  onOpenFull: (paymentId: string) => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [pdfBuilding, setPdfBuilding] = useState(false);
   const detail = useReceiptDetail(selectedId ?? '');
+
+  // Pre-build the receipt PDF once the detail loads, so the Print button can share
+  // it synchronously inside the click gesture (iOS requires that for navigator.share).
+  useEffect(() => {
+    let cancelled = false;
+    setPdfFile(null);
+    if (!detail.receipt) return;
+
+    setPdfBuilding(true);
+    (async () => {
+      try {
+        const { buildReceiptPdfBlob, getReceiptPdfFileName } = await import('@/lib/receipt-pdf');
+        const blob = await buildReceiptPdfBlob(detail.receipt!);
+        if (cancelled) return;
+        setPdfFile(new File([blob], getReceiptPdfFileName(detail.receipt!), { type: 'application/pdf' }));
+      } catch (error) {
+        if (!cancelled) console.warn('Receipt PDF could not be prepared:', error);
+      } finally {
+        if (!cancelled) setPdfBuilding(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detail.receipt]);
 
   const handleOpenChange = (next: boolean) => {
     if (!next) setSelectedId(null);
@@ -1770,13 +1795,22 @@ function ReceiptsDialog({
   };
 
   const printReceipt = () => {
-    if (!selectedId) return;
-    // iOS installed PWAs can't invoke window.print(); open the receipt in Safari.
-    if ((navigator as unknown as { standalone?: boolean }).standalone === true) {
-      onOpenFull(selectedId);
+    if (!pdfFile) return;
+    const shareData = { files: [pdfFile], title: pdfFile.name };
+    if (typeof navigator !== 'undefined' && navigator.canShare?.(shareData)) {
+      // iOS / Android share sheet → Print or Save to Files, without leaving the app.
+      void navigator.share(shareData).catch(() => {});
       return;
     }
-    window.print();
+    // Desktop fallback: download the PDF (opens in the browser's PDF viewer to print).
+    const url = URL.createObjectURL(pdfFile);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = pdfFile.name;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   return (
@@ -1798,14 +1832,14 @@ function ReceiptsDialog({
               </div>
               <DrawerDescription className="sr-only">Receipt details.</DrawerDescription>
             </DrawerHeader>
-            <div className="drawer-receipt-print flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-6">
+            <div data-vaul-no-drag className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
               <ReceiptDetailView receipt={detail.receipt} loading={detail.loading} error={detail.error} />
             </div>
             {detail.receipt && (
               <div className="shrink-0 border-t border-border p-3">
-                <Button type="button" className="w-full gap-2" onClick={printReceipt}>
-                  <Printer className="h-4 w-4" />
-                  Print receipt
+                <Button type="button" className="w-full gap-2" onClick={printReceipt} disabled={!pdfFile}>
+                  {pdfBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                  Print / save receipt
                 </Button>
               </div>
             )}
@@ -1825,7 +1859,7 @@ function ReceiptsDialog({
                 <p className="mt-1 text-sm text-muted-foreground">Receipts for recorded payments will show here.</p>
               </div>
             ) : (
-              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 pb-6">
+              <div data-vaul-no-drag className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 pb-6">
                 {notifications.map((notification) => (
                   <button
                     key={notification.id}
@@ -1979,18 +2013,20 @@ function NotificationNudge({
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <BellRing className="h-4 w-4" />}
                 Turn on all
               </Button>
-              <button
+              <Button
                 type="button"
-                onClick={onCustomize}
-                className="inline-flex items-center rounded-md px-2 py-1.5 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
+                variant="outline"
+                size="sm"
+                className="h-9 border-primary/50 text-primary hover:bg-primary/10 hover:text-primary"
+                onClick={() => { onCustomize(); setDismissed(true); }}
               >
                 Choose reminders
-              </button>
+              </Button>
             </div>
             <button
               type="button"
               onClick={optOut}
-              className="mt-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:underline"
+              className="mt-3 inline-flex h-9 items-center rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
             >
               Don&apos;t remind me
             </button>
