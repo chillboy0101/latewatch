@@ -1276,46 +1276,48 @@ export default function CheckInPage() {
               </div>
             ) : (
               <div className="flex h-full flex-col">
-                <div className="flex flex-1 flex-col justify-center gap-3 overflow-y-auto p-3 sm:gap-4 sm:p-5">
-                <div className={cn('rounded-lg border p-3 text-center sm:p-4', statusTone(status))}>
-                  <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-background/70 sm:h-12 sm:w-12">
-                    {status?.attendance ? (
-                      <CheckCircle2 className="h-5 w-5 sm:h-6 sm:w-6" />
-                    ) : canCheckIn ? (
-                      <ShieldCheck className="h-5 w-5 sm:h-6 sm:w-6" />
-                    ) : (
-                      <AlertTriangle className="h-5 w-5 sm:h-6 sm:w-6" />
-                    )}
-                  </div>
-                  <h2 className="text-lg font-semibold sm:text-xl">{statusCopy(status)}</h2>
-                  <div className="mt-3 flex flex-col items-center gap-2">
-                    {status?.staff?.fullName && (
-                      <div className="inline-flex h-9 max-w-full items-center rounded-full border border-border/70 bg-background/60 px-3.5 text-sm font-medium text-foreground">
-                        <span className="truncate">{status.staff.fullName}</span>
-                      </div>
-                    )}
-                    <LocationStatusChip status={status} liveLocation={liveLocation} />
+                <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3 sm:gap-4 sm:p-5">
+                <div className="flex flex-1 flex-col items-center justify-center">
+                  <div className={cn('w-full rounded-2xl border p-5 text-center sm:p-6', statusTone(status))}>
+                    <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-background/70 sm:h-16 sm:w-16">
+                      {status?.attendance ? (
+                        <CheckCircle2 className="h-7 w-7 sm:h-8 sm:w-8" />
+                      ) : canCheckIn ? (
+                        <ShieldCheck className="h-7 w-7 sm:h-8 sm:w-8" />
+                      ) : (
+                        <AlertTriangle className="h-7 w-7 sm:h-8 sm:w-8" />
+                      )}
+                    </div>
+                    <h2 className="text-xl font-semibold text-balance sm:text-2xl">{statusCopy(status)}</h2>
+                    <div className="mt-4 flex flex-col items-center gap-2">
+                      {status?.staff?.fullName && (
+                        <div className="inline-flex h-9 max-w-full items-center rounded-full border border-border/70 bg-background/60 px-3.5 text-sm font-medium text-foreground">
+                          <span className="truncate">{status.staff.fullName}</span>
+                        </div>
+                      )}
+                      <LocationStatusChip status={status} liveLocation={liveLocation} />
+                    </div>
                   </div>
                 </div>
 
                 {status?.attendance && (
-                  <div className="rounded-md border border-border bg-card p-3">
-                    <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-1 flex-col rounded-2xl border border-border bg-card px-4 sm:px-5">
+                    <div className="flex flex-1 items-center justify-between gap-3">
                       <span className="text-sm text-muted-foreground">Checked in at</span>
-                      <span className="font-mono text-lg font-semibold">{status.attendance.checkInTime.slice(0, 5)}</span>
+                      <span className="font-mono text-xl font-semibold tabular-nums">{status.attendance.checkInTime.slice(0, 5)}</span>
                     </div>
-                    <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
+                    <div className="flex flex-1 items-center justify-between gap-3 border-t border-border">
                       <span className="text-sm text-muted-foreground">Checked out at</span>
-                      <span className="font-mono text-lg font-semibold">{status.attendance.signOutTime ? status.attendance.signOutTime.slice(0, 5) : '-'}</span>
+                      <span className="font-mono text-xl font-semibold tabular-nums">{status.attendance.signOutTime ? status.attendance.signOutTime.slice(0, 5) : '-'}</span>
                     </div>
                     {Number(status.attendance.computedAmount || 0) > 0 && (
-                      <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
+                      <div className="flex flex-1 items-center justify-between gap-3 border-t border-border">
                         <span className="text-sm text-muted-foreground">Penalty</span>
-                        <span className="font-mono font-semibold text-warning">GHC {Number(status.attendance.computedAmount).toFixed(2)}</span>
+                        <span className="font-mono text-lg font-semibold text-warning tabular-nums">GHC {Number(status.attendance.computedAmount).toFixed(2)}</span>
                       </div>
                     )}
                     {Number(status.attendance.computedAmount || 0) === 0 && status.attendance.reason && (
-                      <div className="mt-3 border-t border-border pt-3 text-sm text-muted-foreground">
+                      <div className="flex flex-1 items-center border-t border-border py-3 text-sm text-muted-foreground">
                         {status.attendance.reason}
                       </div>
                     )}
