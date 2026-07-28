@@ -3,7 +3,6 @@ import { ClerkThemeProvider } from "@/components/auth/clerk-theme-provider";
 import { AppShell } from "@/components/layout/app-shell";
 import { NotificationProvider } from "@/contexts/notification-context";
 import { PushReminderToast } from "@/components/notifications/push-reminder-toast";
-import { ThemeColorSync } from "@/components/layout/theme-color-sync";
 import {
   SITE_DESCRIPTION,
   SITE_KEYWORDS,
@@ -44,13 +43,6 @@ export const metadata: Metadata = {
     apple: [{ url: "/apple-icon", sizes: "180x180", type: "image/png" }],
   },
   manifest: "/manifest.webmanifest",
-  appleWebApp: {
-    // Transparent status bar on the installed iOS PWA so it shows the app's
-    // themed background (dark in dark mode) instead of a fixed white bar.
-    capable: true,
-    statusBarStyle: "black-translucent",
-    title: SITE_NAME,
-  },
   openGraph: {
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
@@ -79,33 +71,18 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   colorScheme: "light dark",
-  // Extend the page under the notch/status bar so the transparent iOS PWA status
-  // bar shows the app background, and env(safe-area-inset-*) becomes non-zero.
-  viewportFit: "cover",
-  // Single (non-media) theme-color so it can be driven by the app's manual
-  // theme toggle. Media-based metas would win over our dynamic one whenever the
-  // OS preference matched, leaving the status bar out of sync with the app.
-  themeColor: "#0a0a0a",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#020617" },
+  ],
 };
 
 const themeScript = `
   (function() {
     var theme = localStorage.getItem('theme');
-    var isDark = theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    if (isDark) {
+    if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
       document.documentElement.classList.add('dark');
     }
-    var color = isDark ? '#0a0a0a' : '#ffffff';
-    // Drop any media-based theme-color metas so they can't override ours when
-    // the OS preference matches.
-    document.querySelectorAll('meta[name="theme-color"][media]').forEach(function(m){ m.remove(); });
-    var meta = document.querySelector('meta[name="theme-color"]:not([media])');
-    if (!meta) {
-      meta = document.createElement('meta');
-      meta.setAttribute('name', 'theme-color');
-      document.head.appendChild(meta);
-    }
-    meta.setAttribute('content', color);
   })();
 `;
 
@@ -126,7 +103,6 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col font-sans">
         <ClerkThemeProvider>
           <NotificationProvider>
-            <ThemeColorSync />
             <AppShell>{children}</AppShell>
             <PushReminderToast />
           </NotificationProvider>
