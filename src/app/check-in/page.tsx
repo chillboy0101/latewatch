@@ -567,6 +567,7 @@ export default function CheckInPage() {
     state: 'idle',
   });
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+  const clearMessage = useCallback(() => setMessage(null), []);
   const [forcedSessionNotice, setForcedSessionNotice] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1232,6 +1233,8 @@ export default function CheckInPage() {
           onOpen={openReceiptNotification}
         />
 
+        <StatusMessageToast message={message} onDismiss={clearMessage} />
+
         <ReceiptsDialog
           notifications={receiptNotifications}
           onDismiss={dismissReceiptNotification}
@@ -1335,18 +1338,6 @@ export default function CheckInPage() {
                   <div className="flex items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
                     <AlertTriangle className="h-4 w-4" />
                     {forcedSessionNotice}
-                  </div>
-                )}
-
-                {message && (
-                  <div className={cn(
-                    'flex items-center gap-2 rounded-md border px-3 py-2 text-sm',
-                    message.type === 'success'
-                      ? 'border-success/30 bg-success/10 text-success'
-                      : 'border-danger/30 bg-danger/10 text-danger',
-                  )}>
-                    {message.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-                    {message.text}
                   </div>
                 )}
                 </div>
@@ -1595,6 +1586,54 @@ function AccessNotSetUp({ email }: { email: string | null }) {
       <Button asChild variant="outline" className="w-full sm:w-auto">
         <Link href="/">Back to portal</Link>
       </Button>
+    </div>
+  );
+}
+
+function StatusMessageToast({
+  message,
+  onDismiss,
+}: {
+  message: { type: 'error' | 'success'; text: string } | null;
+  onDismiss: () => void;
+}) {
+  const { swipeHandlers, swipeStyle } = useSwipeToDismiss(onDismiss);
+
+  // Auto-dismiss ~4s after a new message. `onDismiss` is stable (useCallback in
+  // the parent), so the timer resets only when the message changes.
+  useEffect(() => {
+    if (!message) return;
+    const timeout = window.setTimeout(onDismiss, 4000);
+    return () => window.clearTimeout(timeout);
+  }, [message, onDismiss]);
+
+  if (!message) return null;
+  const success = message.type === 'success';
+
+  return (
+    <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+0.75rem)] z-[100] flex justify-center px-4 sm:inset-x-auto sm:right-4 sm:justify-end">
+      <div
+        {...swipeHandlers}
+        style={swipeStyle}
+        className={cn(
+          'pointer-events-auto relative flex w-full max-w-sm select-none items-start gap-3 overflow-hidden rounded-xl border bg-card/90 p-3.5 pr-10 shadow-lg ring-1 backdrop-blur-md animate-in fade-in-0 slide-in-from-top-2 duration-300 ease-out',
+          success ? 'border-success/30 ring-success/15' : 'border-danger/30 ring-danger/15',
+        )}
+        role="status"
+      >
+        <span className={cn('mt-0.5 shrink-0', success ? 'text-success' : 'text-danger')}>
+          {success ? <CheckCircle2 className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
+        </span>
+        <p className="min-w-0 flex-1 text-sm font-medium leading-5 text-foreground">{message.text}</p>
+        <button
+          type="button"
+          aria-label="Dismiss"
+          onClick={onDismiss}
+          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   );
 }
