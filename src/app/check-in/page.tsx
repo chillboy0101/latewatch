@@ -4,8 +4,7 @@ import { UserButton, useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, History, Loader2, LogOut, MapPin, Moon, MoreVertical, ReceiptText, ShieldCheck, Sun, XCircle } from 'lucide-react';
-import { LateWatchLogo } from '@/components/brand/latewatch-logo';
+import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, ChevronRight, History, Loader2, LogOut, MapPin, Moon, MoreHorizontal, Printer, ReceiptText, ShieldCheck, Sun, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerNested, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
@@ -14,6 +13,7 @@ import { formatDisplayDate, formatDisplayDateTime } from '@/lib/date-format';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
 import { RECEIPT_NOTIFICATION_AUTO_DISMISS_MS, type LatenessPaymentReceiptNotification } from '@/lib/lateness-payment-receipt-notifications';
 import { useSwipeToDismiss } from '@/lib/use-swipe-to-dismiss';
+import { ReceiptDetailView, useReceiptDetail } from '@/components/receipts/receipt-detail-view';
 import { pushSubscriptionErrorMessage, vapidPublicKeyToUint8Array } from '@/lib/push-client';
 import {
   getEnabledReminderToggleConfirmation,
@@ -1150,26 +1150,25 @@ export default function CheckInPage() {
     <main className="flex h-dvh flex-col overflow-hidden overscroll-none bg-background text-foreground">
       <div className="mx-auto flex h-full w-full max-w-xl flex-col px-3 py-3 sm:px-6 sm:py-4">
         <header className="flex h-12 shrink-0 items-center justify-between sm:h-14">
-          <LateWatchLogo title="LateWatch" />
+          <Button
+            asChild
+            type="button"
+            variant="glass"
+            size="sm"
+            className="h-9 gap-2 rounded-full px-3.5"
+            title="Back to portal chooser"
+          >
+            <Link href="/">
+              <ArrowLeft className="h-4 w-4" />
+              <span>Portals</span>
+            </Link>
+          </Button>
           <div className="flex items-center gap-2">
             <Button
-              asChild
               type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 gap-2 px-2.5 sm:px-3"
-              title="Back to portal chooser"
-            >
-              <Link href="/">
-                <ArrowLeft className="h-4 w-4" />
-                <span className="hidden sm:inline">Portals</span>
-              </Link>
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
+              variant="glass"
               size="icon"
-              className="h-9 w-9"
+              className="h-9 w-9 rounded-full"
               onClick={toggleTheme}
               aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
               title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -1180,13 +1179,13 @@ export default function CheckInPage() {
               <DrawerTrigger asChild>
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="glass"
                   size="icon"
-                  className="relative h-9 w-9"
+                  className="relative h-9 w-9 rounded-full"
                   aria-label="More"
                   title="More"
                 >
-                  <MoreVertical className="h-5 w-5" />
+                  <MoreHorizontal className="h-5 w-5" />
                   {receiptNotifications.length > 0 && (
                     <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary ring-2 ring-background" />
                   )}
@@ -1246,7 +1245,8 @@ export default function CheckInPage() {
 
               <ReceiptsDialog
                 notifications={receiptHistory}
-                onOpen={openReceiptNotification}
+                onMarkRead={dismissReceiptNotification}
+                onOpenFull={(paymentId) => router.push(`/check-in/receipts/${paymentId}`)}
                 onOpenChange={setReceiptsDialogOpen}
                 open={receiptsDialogOpen}
               />
@@ -1273,7 +1273,9 @@ export default function CheckInPage() {
                 signOutEnabled={signOutReminderEnabled}
               />
             </Drawer>
-            <UserButton />
+            <UserButton
+              appearance={{ elements: { userButtonAvatarBox: 'h-9 w-9 ring-1 ring-border/40' } }}
+            />
           </div>
         </header>
 
@@ -1739,71 +1741,111 @@ function ReceiptNotificationToast({
 
 function ReceiptsDialog({
   notifications,
-  onOpen,
+  onMarkRead,
+  onOpenFull,
   onOpenChange,
   open,
 }: {
   notifications: LatenessPaymentReceiptNotification[];
-  onOpen: (notification: LatenessPaymentReceiptNotification) => void;
+  onMarkRead: (id: string) => void | Promise<void>;
+  onOpenFull: (paymentId: string) => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
 }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const detail = useReceiptDetail(selectedId ?? '');
+
+  const handleOpenChange = (next: boolean) => {
+    if (!next) setSelectedId(null);
+    onOpenChange(next);
+  };
+
+  const selectReceipt = (notification: LatenessPaymentReceiptNotification) => {
+    setSelectedId(notification.paymentId);
+    if (!notification.read) void onMarkRead(notification.id);
+  };
+
   return (
-    <DrawerNested open={open} onOpenChange={onOpenChange}>
+    <DrawerNested open={open} onOpenChange={handleOpenChange}>
       <DrawerContent className="h-[85dvh]">
-        <DrawerHeader>
-          <DrawerTitle>Payment receipts</DrawerTitle>
-          <DrawerDescription>Receipts for payments recorded on your account.</DrawerDescription>
-        </DrawerHeader>
-        {notifications.length === 0 ? (
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 pb-6 text-center">
-            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <ReceiptText className="h-6 w-6" />
-            </span>
-            <p className="mt-3 text-base font-semibold text-foreground">No payment receipts yet</p>
-            <p className="mt-1 text-sm text-muted-foreground">Receipts for recorded payments will show here.</p>
-          </div>
-        ) : (
-          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 pb-6">
-            {notifications.map((notification) => (
-              <div
-                key={notification.id}
-                className="flex items-start gap-3 rounded-lg border border-border bg-card p-3"
-              >
-                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <ReceiptText className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold text-foreground">
-                      GHC {Number(notification.amount || 0).toFixed(2)}
-                    </p>
-                    {!notification.read && (
-                      <span className="flex h-5 items-center rounded-full bg-primary px-2 text-[10px] font-semibold uppercase tracking-wide text-primary-foreground">
-                        New
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {formatDisplayDateTime(notification.recordedAt)}
-                  </p>
-                  <span className="mt-1 block truncate font-mono text-[11px] font-semibold text-muted-foreground">
-                    {notification.receiptNumber}
-                  </span>
-                </div>
-                <div className="flex shrink-0 items-center">
-                  <Button
-                    className="h-8 px-2.5 text-xs"
-                    onClick={() => { onOpenChange(false); onOpen(notification); }}
-                    size="sm"
-                    type="button"
-                  >
-                    View
-                  </Button>
-                </div>
+        {selectedId ? (
+          <>
+            <DrawerHeader>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  aria-label="Back to receipts"
+                  onClick={() => setSelectedId(null)}
+                  className="-ml-1 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                </button>
+                <DrawerTitle>Receipt</DrawerTitle>
               </div>
-            ))}
-          </div>
+              <DrawerDescription className="sr-only">Receipt details.</DrawerDescription>
+            </DrawerHeader>
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-6">
+              <ReceiptDetailView receipt={detail.receipt} loading={detail.loading} error={detail.error} />
+            </div>
+            {detail.receipt && (
+              <div className="shrink-0 border-t border-border p-3">
+                <Button type="button" className="w-full gap-2" onClick={() => onOpenFull(selectedId)}>
+                  <Printer className="h-4 w-4" />
+                  Print / full receipt
+                </Button>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <DrawerHeader>
+              <DrawerTitle>Payment receipts</DrawerTitle>
+              <DrawerDescription>Receipts for payments recorded on your account.</DrawerDescription>
+            </DrawerHeader>
+            {notifications.length === 0 ? (
+              <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 pb-6 text-center">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <ReceiptText className="h-6 w-6" />
+                </span>
+                <p className="mt-3 text-base font-semibold text-foreground">No payment receipts yet</p>
+                <p className="mt-1 text-sm text-muted-foreground">Receipts for recorded payments will show here.</p>
+              </div>
+            ) : (
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 pb-6">
+                {notifications.map((notification) => (
+                  <button
+                    key={notification.id}
+                    type="button"
+                    onClick={() => selectReceipt(notification)}
+                    className="flex w-full items-start gap-3 rounded-lg border border-border bg-card p-3 text-left transition-colors hover:border-primary/40 hover:bg-foreground/5 active:bg-foreground/10"
+                  >
+                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <ReceiptText className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-foreground">
+                          GHC {Number(notification.amount || 0).toFixed(2)}
+                        </p>
+                        {!notification.read && (
+                          <span className="flex h-5 items-center rounded-full bg-primary px-2 text-[10px] font-semibold uppercase tracking-wide text-primary-foreground">
+                            New
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {formatDisplayDateTime(notification.recordedAt)}
+                      </p>
+                      <span className="mt-1 block truncate font-mono text-[11px] font-semibold text-muted-foreground">
+                        {notification.receiptNumber}
+                      </span>
+                    </div>
+                    <ChevronRight className="mt-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </DrawerContent>
     </DrawerNested>
