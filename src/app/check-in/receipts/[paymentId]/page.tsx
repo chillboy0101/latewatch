@@ -45,9 +45,9 @@ export default function PaymentReceiptPage() {
       `}</style>
 
       <div className="no-print mx-auto mb-4 flex max-w-3xl items-center justify-between gap-3">
-        <Button asChild variant="outline" size="sm" className="gap-2">
+        <Button asChild variant="outline" className="h-11 gap-2 rounded-full px-5 text-base">
           <Link href="/check-in?receipts=1">
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-5 w-5" />
             Back
           </Link>
         </Button>

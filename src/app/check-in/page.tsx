@@ -558,6 +558,7 @@ export default function CheckInPage() {
   const [pushReminderStatus, setPushReminderStatus] = useState<PushReminderStatus | null>(null);
   const [pushReminderLoading, setPushReminderLoading] = useState(false);
   const [savingPushReminder, setSavingPushReminder] = useState(false);
+  const [savingReminderKey, setSavingReminderKey] = useState<'signIn' | 'signOut' | 'all' | null>(null);
   // Suppresses the reminder nudge toast for the rest of this session after the
   // user manually turns all reminders off — resets on next app open (page load).
   const [reminderNudgeSuppressed, setReminderNudgeSuppressed] = useState(false);
@@ -981,8 +982,9 @@ export default function CheckInPage() {
   const updatePushReminderSettings = useCallback(async (next: {
     signInEnabled: boolean;
     signOutEnabled: boolean;
-  }) => {
+  }, source: 'signIn' | 'signOut' | 'all' = 'all') => {
     setSavingPushReminder(true);
+    setSavingReminderKey(source);
     setMessage(null);
 
     try {
@@ -1069,6 +1071,7 @@ export default function CheckInPage() {
       await fetchPushReminderStatus({ silent: true });
     } finally {
       setSavingPushReminder(false);
+      setSavingReminderKey(null);
     }
   }, [deviceToken, fetchPushReminderStatus, getPushReminderPublicKey, pushReminderStatus]);
 
@@ -1246,27 +1249,28 @@ export default function CheckInPage() {
               <ReceiptsDialog
                 notifications={receiptHistory}
                 onMarkRead={dismissReceiptNotification}
-                onOpenFull={(paymentId) => router.push(`/check-in/receipts/${paymentId}`)}
+                onOpenFull={(paymentId) => window.open(`/check-in/receipts/${paymentId}`, '_blank')}
                 onOpenChange={setReceiptsDialogOpen}
                 open={receiptsDialogOpen}
               />
 
               <RemindersDialog
                 disabled={!status?.staff || reminderControlsLocked || pushReminderLoading || savingPushReminder}
-                loading={pushReminderLoading || savingPushReminder}
+                signInLoading={pushReminderLoading || savingReminderKey === 'all' || savingReminderKey === 'signIn'}
+                signOutLoading={pushReminderLoading || savingReminderKey === 'all' || savingReminderKey === 'signOut'}
                 notificationPermission={notificationPermission}
                 onOpenChange={setRemindersDialogOpen}
                 onToggleCheckIn={() => {
                   void updatePushReminderSettings({
                     signInEnabled: !signInReminderEnabled,
                     signOutEnabled: signOutReminderEnabled,
-                  });
+                  }, 'signIn');
                 }}
                 onToggleSignOut={() => {
                   void updatePushReminderSettings({
                     signInEnabled: signInReminderEnabled,
                     signOutEnabled: !signOutReminderEnabled,
-                  });
+                  }, 'signOut');
                 }}
                 open={remindersDialogOpen}
                 signInEnabled={signInReminderEnabled}
@@ -1352,7 +1356,7 @@ export default function CheckInPage() {
                   saving={savingPushReminder}
                   onCustomize={() => { setMenuOpen(true); setRemindersDialogOpen(true); }}
                   onUpdate={(next) => {
-                    void updatePushReminderSettings(next);
+                    void updatePushReminderSettings(next, 'all');
                   }}
                 />
 
@@ -1765,6 +1769,16 @@ function ReceiptsDialog({
     if (!notification.read) void onMarkRead(notification.id);
   };
 
+  const printReceipt = () => {
+    if (!selectedId) return;
+    // iOS installed PWAs can't invoke window.print(); open the receipt in Safari.
+    if ((navigator as unknown as { standalone?: boolean }).standalone === true) {
+      onOpenFull(selectedId);
+      return;
+    }
+    window.print();
+  };
+
   return (
     <DrawerNested open={open} onOpenChange={handleOpenChange}>
       <DrawerContent className="h-[85dvh]">
@@ -1776,7 +1790,7 @@ function ReceiptsDialog({
                   type="button"
                   aria-label="Back to receipts"
                   onClick={() => setSelectedId(null)}
-                  className="-ml-1 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+                  className="-ml-1 flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
                 >
                   <ArrowLeft className="h-5 w-5" />
                 </button>
@@ -1784,14 +1798,14 @@ function ReceiptsDialog({
               </div>
               <DrawerDescription className="sr-only">Receipt details.</DrawerDescription>
             </DrawerHeader>
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-6">
+            <div className="drawer-receipt-print flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-6">
               <ReceiptDetailView receipt={detail.receipt} loading={detail.loading} error={detail.error} />
             </div>
             {detail.receipt && (
               <div className="shrink-0 border-t border-border p-3">
-                <Button type="button" className="w-full gap-2" onClick={() => onOpenFull(selectedId)}>
+                <Button type="button" className="w-full gap-2" onClick={printReceipt}>
                   <Printer className="h-4 w-4" />
-                  Print / full receipt
+                  Print receipt
                 </Button>
               </div>
             )}
@@ -1854,7 +1868,8 @@ function ReceiptsDialog({
 
 function RemindersDialog({
   disabled,
-  loading,
+  signInLoading,
+  signOutLoading,
   notificationPermission,
   onOpenChange,
   onToggleCheckIn,
@@ -1864,7 +1879,8 @@ function RemindersDialog({
   signOutEnabled,
 }: {
   disabled: boolean;
-  loading: boolean;
+  signInLoading: boolean;
+  signOutLoading: boolean;
   notificationPermission: BrowserNotificationPermission;
   onOpenChange: (open: boolean) => void;
   onToggleCheckIn: () => void;
@@ -1885,7 +1901,8 @@ function RemindersDialog({
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
           <ReminderNotificationPanel
             disabled={disabled}
-            loading={loading}
+            signInLoading={signInLoading}
+            signOutLoading={signOutLoading}
             notificationPermission={notificationPermission}
             signInEnabled={signInEnabled}
             signOutEnabled={signOutEnabled}
@@ -1986,7 +2003,8 @@ function NotificationNudge({
 
 function ReminderNotificationPanel({
   disabled,
-  loading,
+  signInLoading,
+  signOutLoading,
   notificationPermission,
   onToggleCheckIn,
   onToggleSignOut,
@@ -1994,7 +2012,8 @@ function ReminderNotificationPanel({
   signOutEnabled,
 }: {
   disabled: boolean;
-  loading: boolean;
+  signInLoading: boolean;
+  signOutLoading: boolean;
   notificationPermission: BrowserNotificationPermission;
   onToggleCheckIn: () => void;
   onToggleSignOut: () => void;
@@ -2008,14 +2027,14 @@ function ReminderNotificationPanel({
           disabled={disabled || notificationPermission === 'unsupported'}
           enabled={signInEnabled}
           label="Enable sign-in reminder"
-          loading={loading}
+          loading={signInLoading}
           onToggle={onToggleCheckIn}
         />
         <ReminderNotificationToggle
           disabled={disabled || notificationPermission === 'unsupported'}
           enabled={signOutEnabled}
           label="Enable sign-out reminder"
-          loading={loading}
+          loading={signOutLoading}
           onToggle={onToggleSignOut}
         />
       </div>

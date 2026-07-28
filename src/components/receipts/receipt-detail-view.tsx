@@ -160,8 +160,8 @@ export function ReceiptDetailView({
 
       <section className="p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Allocated penalty days</h2>
-        <div className="mt-3 overflow-hidden rounded-md border border-border">
-          <table className="w-full text-sm">
+        <div className="mt-3 overflow-x-auto rounded-md border border-border">
+          <table className="w-full min-w-[28rem] text-sm">
             <thead className="bg-muted/30 text-left text-xs uppercase text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 font-medium">Day / Date</th>
