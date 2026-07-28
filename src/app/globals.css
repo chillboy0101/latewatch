@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: light;
   --background: #ffffff;
   --foreground: #171717;
   --font-inter: "Aptos", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
@@ -44,6 +45,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: #0a0a0a;
   --foreground: #fafafa;
   --card: #171717;
