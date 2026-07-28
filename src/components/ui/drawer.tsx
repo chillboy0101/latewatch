@@ -7,9 +7,19 @@ import { cn } from '@/lib/utils';
 
 function Drawer({
   shouldScaleBackground = false,
+  noBodyStyles = true,
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Root>) {
-  return <DrawerPrimitive.Root shouldScaleBackground={shouldScaleBackground} {...props} />;
+  // noBodyStyles: the check-in page is already `fixed inset-0`, so vaul's body
+  // scroll-lock (position:fixed on <body>) is unnecessary and is what flashes
+  // the Android nav bar when a sheet opens.
+  return (
+    <DrawerPrimitive.Root
+      shouldScaleBackground={shouldScaleBackground}
+      noBodyStyles={noBodyStyles}
+      {...props}
+    />
+  );
 }
 Drawer.displayName = 'Drawer';
 

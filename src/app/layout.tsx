@@ -3,6 +3,7 @@ import { ClerkThemeProvider } from "@/components/auth/clerk-theme-provider";
 import { AppShell } from "@/components/layout/app-shell";
 import { NotificationProvider } from "@/contexts/notification-context";
 import { PushReminderToast } from "@/components/notifications/push-reminder-toast";
+import { ThemeColorSync } from "@/components/layout/theme-color-sync";
 import {
   SITE_DESCRIPTION,
   SITE_KEYWORDS,
@@ -73,16 +74,25 @@ export const viewport: Viewport = {
   colorScheme: "light dark",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#020617" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
   ],
 };
 
 const themeScript = `
   (function() {
     var theme = localStorage.getItem('theme');
-    if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    var isDark = theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if (isDark) {
       document.documentElement.classList.add('dark');
     }
+    var color = isDark ? '#0a0a0a' : '#ffffff';
+    var meta = document.querySelector('meta[name="theme-color"]:not([media])');
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.setAttribute('name', 'theme-color');
+      document.head.appendChild(meta);
+    }
+    meta.setAttribute('content', color);
   })();
 `;
 
@@ -103,6 +113,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col font-sans">
         <ClerkThemeProvider>
           <NotificationProvider>
+            <ThemeColorSync />
             <AppShell>{children}</AppShell>
             <PushReminderToast />
           </NotificationProvider>
