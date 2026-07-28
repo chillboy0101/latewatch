@@ -552,6 +552,9 @@ export default function CheckInPage() {
   const [pushReminderStatus, setPushReminderStatus] = useState<PushReminderStatus | null>(null);
   const [pushReminderLoading, setPushReminderLoading] = useState(false);
   const [savingPushReminder, setSavingPushReminder] = useState(false);
+  // Suppresses the reminder nudge toast for the rest of this session after the
+  // user manually turns all reminders off — resets on next app open (page load).
+  const [reminderNudgeSuppressed, setReminderNudgeSuppressed] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<BrowserNotificationPermission>('default');
   const [liveLocation, setLiveLocation] = useState<LiveLocation>({
     blocking: false,
@@ -969,6 +972,7 @@ export default function CheckInPage() {
         const body = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(body.error || 'Could not disable reminders');
         setPushReminderStatus(body);
+        setReminderNudgeSuppressed(true);
         setMessage({ type: 'success', text: 'Reminder notifications disabled.' });
         return;
       }
@@ -1217,7 +1221,7 @@ export default function CheckInPage() {
                 )}
 
                 <NotificationNudge
-                  eligible={Boolean(deviceToken) && pushReminderStatus !== null && notificationPermission !== 'unsupported' && !signInReminderEnabled && !signOutReminderEnabled && !reminderControlsLocked}
+                  eligible={Boolean(deviceToken) && pushReminderStatus !== null && !reminderNudgeSuppressed && notificationPermission !== 'unsupported' && !signInReminderEnabled && !signOutReminderEnabled && !reminderControlsLocked}
                   notificationPermission={notificationPermission}
                   saving={savingPushReminder}
                   signInEnabled={signInReminderEnabled}
