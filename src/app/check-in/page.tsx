@@ -3,8 +3,8 @@
 import { UserButton, useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, ChevronDown, History, Loader2, LogOut, MapPin, Moon, MoreVertical, ReceiptText, ShieldCheck, Sun, X, XCircle } from 'lucide-react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, History, Loader2, LogOut, MapPin, Moon, MoreVertical, ReceiptText, ShieldCheck, Sun, X, XCircle } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -13,6 +13,7 @@ import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { formatDisplayDate, formatDisplayDateTime } from '@/lib/date-format';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
 import { RECEIPT_NOTIFICATION_AUTO_DISMISS_MS, type LatenessPaymentReceiptNotification } from '@/lib/lateness-payment-receipt-notifications';
+import { useSwipeToDismiss } from '@/lib/use-swipe-to-dismiss';
 import { pushSubscriptionErrorMessage, vapidPublicKeyToUint8Array } from '@/lib/push-client';
 import {
   getEnabledReminderToggleConfirmation,
@@ -1122,7 +1123,7 @@ export default function CheckInPage() {
   const transferRequestPending = status?.transferRequest?.status === 'pending';
 
   return (
-    <main data-vaul-drawer-wrapper="" className="h-dvh overflow-hidden bg-background px-3 py-3 text-foreground sm:px-6 sm:py-4">
+    <main className="h-dvh overflow-hidden bg-background px-3 py-3 text-foreground sm:px-6 sm:py-4">
       <div className="mx-auto flex h-full w-full max-w-xl flex-col">
         <header className="flex h-12 shrink-0 items-center justify-between sm:h-14">
           <LateWatchLogo title="LateWatch" />
@@ -1318,10 +1319,8 @@ export default function CheckInPage() {
 
                 <NotificationNudge
                   eligible={Boolean(deviceToken) && pushReminderStatus !== null && !reminderNudgeSuppressed && notificationPermission !== 'unsupported' && !signInReminderEnabled && !signOutReminderEnabled && !reminderControlsLocked}
-                  notificationPermission={notificationPermission}
                   saving={savingPushReminder}
-                  signInEnabled={signInReminderEnabled}
-                  signOutEnabled={signOutReminderEnabled}
+                  onCustomize={() => setRemindersDialogOpen(true)}
                   onUpdate={(next) => {
                     void updatePushReminderSettings(next);
                   }}
@@ -1399,9 +1398,16 @@ function PenaltyHistoryDialog({
 }) {
   const currentWeek = history?.currentWeek || null;
   const olderWeeks = (history?.weeks || []).filter((week) => week.startDate !== currentWeek?.startDate);
+  const [activeSnap, setActiveSnap] = useState<number | string | null>(0.92);
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} snapPoints={[0.55, 0.92]}>
+    <Drawer
+      open={open}
+      onOpenChange={(next) => { if (next) setActiveSnap(0.92); onOpenChange(next); }}
+      snapPoints={[0.55, 0.92]}
+      activeSnapPoint={activeSnap}
+      setActiveSnapPoint={setActiveSnap}
+    >
       <DrawerContent className="h-[92dvh]">
         <DrawerHeader>
           <DrawerTitle>Penalty history</DrawerTitle>
@@ -1604,7 +1610,7 @@ function ReceiptNotificationStack({
   if (notifications.length === 0) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-3 top-3 z-50 flex flex-col items-end gap-2 sm:inset-x-auto sm:right-5 sm:top-5 sm:w-96">
+    <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+0.75rem)] z-50 flex flex-col items-center gap-2 px-4 sm:inset-x-auto sm:right-4 sm:items-end sm:w-96">
       {notifications.map((notification) => (
         <ReceiptNotificationToast
           key={notification.id}
@@ -1626,6 +1632,8 @@ function ReceiptNotificationToast({
   onHide: (id: string) => void;
   onOpen: (notification: LatenessPaymentReceiptNotification) => void;
 }) {
+  const { swipeHandlers, swipeStyle } = useSwipeToDismiss(() => onHide(notification.id));
+
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       onHide(notification.id);
@@ -1636,7 +1644,9 @@ function ReceiptNotificationToast({
 
   return (
     <div
-      className="pointer-events-auto w-full overflow-hidden rounded-lg border border-primary/25 bg-card shadow-xl ring-1 ring-primary/10"
+      {...swipeHandlers}
+      style={swipeStyle}
+      className="pointer-events-auto w-full max-w-sm select-none overflow-hidden rounded-xl border border-border bg-card/90 shadow-lg ring-1 ring-border/60 backdrop-blur-md"
       role="status"
     >
       <div className="flex gap-3 p-3">
@@ -1799,24 +1809,20 @@ function RemindersDialog({
 
 const REMINDER_NUDGE_OPTOUT_KEY = 'latewatch-reminder-nudge-optout';
 
-// Floating toast shown to staff with a trusted device who have NOT enabled
-// reminders. Primary action turns both on; "Choose which" expands per-reminder
-// toggles inline. "X" hides for this visit (re-nudges next open); "Don't remind
-// me" opts out permanently on this device.
+// Top banner shown to staff with a trusted device who have NOT enabled
+// reminders. "Turn on all" enables both; "Choose reminders" opens the Reminders
+// drawer to pick. Swipe or "X" hides for this visit; "Don't remind me" opts out
+// permanently on this device.
 function NotificationNudge({
   eligible,
-  notificationPermission,
+  onCustomize,
   onUpdate,
   saving,
-  signInEnabled,
-  signOutEnabled,
 }: {
   eligible: boolean;
-  notificationPermission: BrowserNotificationPermission;
+  onCustomize: () => void;
   onUpdate: (next: { signInEnabled: boolean; signOutEnabled: boolean }) => void;
   saving: boolean;
-  signInEnabled: boolean;
-  signOutEnabled: boolean;
 }) {
   const [dismissed, setDismissed] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -1826,11 +1832,8 @@ function NotificationNudge({
       return false;
     }
   });
-  const [expanded, setExpanded] = useState(false);
-  const [dragX, setDragX] = useState(0);
-  const [swiping, setSwiping] = useState(false);
-  const swipeStartRef = useRef(0);
-  const swipingRef = useRef(false);
+
+  const { swipeHandlers, swipeStyle } = useSwipeToDismiss(() => setDismissed(true));
 
   const optOut = useCallback(() => {
     try {
@@ -1841,53 +1844,14 @@ function NotificationNudge({
     setDismissed(true);
   }, []);
 
-  // Swipe-to-dismiss (touch + pointer). Drags starting on an interactive
-  // control are ignored so taps still work; a fling past the threshold flings
-  // the card off-screen and hides it for the visit (same as the X).
-  const SWIPE_DISMISS_PX = 90;
-  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if ((event.target as HTMLElement).closest('button, a, input, [role="button"]')) return;
-    swipeStartRef.current = event.clientX;
-    swipingRef.current = true;
-    setSwiping(true);
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  }, []);
-  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (!swipingRef.current) return;
-    setDragX(event.clientX - swipeStartRef.current);
-  }, []);
-  const handlePointerEnd = useCallback(() => {
-    if (!swipingRef.current) return;
-    swipingRef.current = false;
-    setSwiping(false);
-    setDragX((current) => {
-      if (Math.abs(current) > SWIPE_DISMISS_PX) {
-        window.setTimeout(() => setDismissed(true), 180);
-        return current > 0 ? 600 : -600;
-      }
-      return 0;
-    });
-  }, []);
-
   if (dismissed || !eligible) return null;
 
-  const togglesDisabled = saving || notificationPermission === 'unsupported';
-  const cardStyle: React.CSSProperties = {
-    touchAction: 'pan-y',
-    transform: swiping || dragX !== 0 ? `translateX(${dragX}px)` : undefined,
-    opacity: dragX !== 0 ? Math.max(1 - Math.abs(dragX) / 240, 0.2) : undefined,
-    transition: swiping ? 'none' : 'transform 220ms ease, opacity 220ms ease',
-  };
-
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+1rem)] z-[95] flex justify-center px-4 sm:inset-x-auto sm:bottom-6 sm:right-6 sm:justify-end">
+    <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+0.75rem)] z-[95] flex justify-center px-4 sm:inset-x-auto sm:right-4 sm:justify-end">
       <div
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerEnd}
-        onPointerCancel={handlePointerEnd}
-        style={cardStyle}
-        className="pointer-events-auto relative w-full max-w-sm cursor-grab touch-pan-y select-none overflow-hidden rounded-xl border border-primary/30 bg-card bg-gradient-to-br from-primary/10 via-transparent to-transparent p-4 shadow-xl ring-1 ring-border/60 active:cursor-grabbing animate-in fade-in-0 slide-in-from-bottom-2 duration-300 ease-out">
+        {...swipeHandlers}
+        style={swipeStyle}
+        className="pointer-events-auto relative w-full max-w-sm cursor-grab touch-pan-y select-none overflow-hidden rounded-xl border border-border bg-card/90 bg-gradient-to-br from-primary/10 via-transparent to-transparent p-4 shadow-lg ring-1 ring-border/60 backdrop-blur-md active:cursor-grabbing animate-in fade-in-0 slide-in-from-top-2 duration-300 ease-out">
         <button
           type="button"
           aria-label="Hide for now"
@@ -1917,32 +1881,12 @@ function NotificationNudge({
               </Button>
               <button
                 type="button"
-                aria-expanded={expanded}
-                onClick={() => setExpanded((value) => !value)}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
+                onClick={onCustomize}
+                className="inline-flex items-center rounded-md px-2 py-1.5 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
               >
-                Choose which
-                <ChevronDown className={cn('h-4 w-4 transition-transform', expanded && 'rotate-180')} />
+                Choose reminders
               </button>
             </div>
-            {expanded && (
-              <div className="mt-2 grid grid-cols-1 gap-2">
-                <ReminderNotificationToggle
-                  disabled={togglesDisabled}
-                  enabled={signInEnabled}
-                  label="Sign-in reminder"
-                  loading={saving}
-                  onToggle={() => onUpdate({ signInEnabled: !signInEnabled, signOutEnabled })}
-                />
-                <ReminderNotificationToggle
-                  disabled={togglesDisabled}
-                  enabled={signOutEnabled}
-                  label="Sign-out reminder"
-                  loading={saving}
-                  onToggle={() => onUpdate({ signInEnabled, signOutEnabled: !signOutEnabled })}
-                />
-              </div>
-            )}
             <button
               type="button"
               onClick={optOut}

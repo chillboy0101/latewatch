@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { BellRing, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useSwipeToDismiss } from '@/lib/use-swipe-to-dismiss';
 
 interface ReminderToast {
   body: string;
@@ -94,42 +95,57 @@ export function PushReminderToast() {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+1rem)] z-[100] flex flex-col items-center gap-2 px-4 sm:inset-x-auto sm:bottom-6 sm:right-6 sm:items-end">
+    <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+0.75rem)] z-[100] flex flex-col items-center gap-2 px-4 sm:inset-x-auto sm:right-4 sm:items-end">
       {toasts.map((toast) => (
-        <div
-          key={toast.id}
-          className={cn(
-            'pointer-events-auto w-full max-w-sm overflow-hidden rounded-xl border border-primary/30',
-            'bg-gradient-to-br from-primary/12 via-card to-card shadow-lg',
-          )}
-          role="status"
-        >
-          <div className="flex items-start gap-3 p-3.5">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-primary/15 text-primary">
-              <BellRing className="h-5 w-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-foreground">{toast.title}</p>
-              <p className="mt-0.5 text-sm leading-5 text-muted-foreground">{toast.body}</p>
-              <Link
-                href={toast.url}
-                onClick={() => dismiss(toast.id)}
-                className="mt-2 inline-flex text-xs font-semibold text-primary hover:underline"
-              >
-                Open
-              </Link>
-            </div>
-            <button
-              type="button"
-              aria-label="Dismiss reminder"
-              onClick={() => dismiss(toast.id)}
-              className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
+        <PushToastCard key={toast.id} toast={toast} onDismiss={dismiss} />
       ))}
+    </div>
+  );
+}
+
+function PushToastCard({
+  toast,
+  onDismiss,
+}: {
+  toast: ReminderToast;
+  onDismiss: (id: number) => void;
+}) {
+  const { swipeHandlers, swipeStyle } = useSwipeToDismiss(() => onDismiss(toast.id));
+
+  return (
+    <div
+      {...swipeHandlers}
+      style={swipeStyle}
+      className={cn(
+        'pointer-events-auto w-full max-w-sm select-none overflow-hidden rounded-xl border border-border',
+        'bg-card/90 shadow-lg ring-1 ring-border/60 backdrop-blur-md',
+      )}
+      role="status"
+    >
+      <div className="flex items-start gap-3 p-3.5">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-primary/15 text-primary">
+          <BellRing className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-foreground">{toast.title}</p>
+          <p className="mt-0.5 text-sm leading-5 text-muted-foreground">{toast.body}</p>
+          <Link
+            href={toast.url}
+            onClick={() => onDismiss(toast.id)}
+            className="mt-2 inline-flex text-xs font-semibold text-primary hover:underline"
+          >
+            Open
+          </Link>
+        </div>
+        <button
+          type="button"
+          aria-label="Dismiss reminder"
+          onClick={() => onDismiss(toast.id)}
+          className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   );
 }
