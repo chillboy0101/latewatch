@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { Drawer as DrawerPrimitive } from 'vaul';
+import { X } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
@@ -41,8 +42,11 @@ DrawerOverlay.displayName = DrawerPrimitive.Overlay.displayName;
 
 const DrawerContent = React.forwardRef<
   React.ElementRef<typeof DrawerPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Content> & { hideHandle?: boolean }
->(({ className, children, hideHandle = false, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Content> & {
+    hideHandle?: boolean;
+    hideClose?: boolean;
+  }
+>(({ className, children, hideHandle = false, hideClose = false, ...props }, ref) => (
   <DrawerPortal>
     <DrawerOverlay />
     <DrawerPrimitive.Content
@@ -56,7 +60,15 @@ const DrawerContent = React.forwardRef<
       {...props}
     >
       {!hideHandle && (
-        <div className="mx-auto mt-3 h-1.5 w-12 shrink-0 rounded-full bg-border" />
+        <div className="mx-auto mt-3 h-2 w-24 shrink-0 rounded-full bg-muted-foreground/50 transition-colors hover:bg-muted-foreground/70 active:bg-muted-foreground/80" />
+      )}
+      {!hideClose && (
+        <DrawerClose
+          aria-label="Close"
+          className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-foreground/5 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        >
+          <X className="h-5 w-5" />
+        </DrawerClose>
       )}
       {children}
     </DrawerPrimitive.Content>

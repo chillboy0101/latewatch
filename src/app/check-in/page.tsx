@@ -554,6 +554,22 @@ export default function CheckInPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [receiptsDialogOpen, setReceiptsDialogOpen] = useState(false);
   const [remindersDialogOpen, setRemindersDialogOpen] = useState(false);
+  // When a sub-page is launched from the ⋮ menu, closing it returns to the menu
+  // (not the check-in screen). Banner/notification launches don't set this.
+  const [returnToMenu, setReturnToMenu] = useState(false);
+  const closeSubPage = useCallback(
+    (setOpen: (value: boolean) => void) => (open: boolean) => {
+      setOpen(open);
+      if (!open && returnToMenu) {
+        setReturnToMenu(false);
+        // Wait for the sub-drawer's close animation to finish before reopening
+        // the menu, otherwise the two stacked vaul drawers race and neither
+        // stays interactive.
+        window.setTimeout(() => setMenuOpen(true), 320);
+      }
+    },
+    [returnToMenu],
+  );
   const [pushReminderStatus, setPushReminderStatus] = useState<PushReminderStatus | null>(null);
   const [pushReminderLoading, setPushReminderLoading] = useState(false);
   const [savingPushReminder, setSavingPushReminder] = useState(false);
@@ -1179,7 +1195,7 @@ export default function CheckInPage() {
                 <div className="space-y-0.5">
                   <button
                     type="button"
-                    onClick={() => { setMenuOpen(false); setReceiptsDialogOpen(true); }}
+                    onClick={() => { setMenuOpen(false); setReturnToMenu(true); setReceiptsDialogOpen(true); }}
                     className="flex h-14 w-full items-center gap-3.5 rounded-xl px-3 text-left transition-colors hover:bg-foreground/5 active:bg-foreground/10"
                   >
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -1194,7 +1210,7 @@ export default function CheckInPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setMenuOpen(false); openPenaltyHistory(); }}
+                    onClick={() => { setMenuOpen(false); setReturnToMenu(true); openPenaltyHistory(); }}
                     className="flex h-14 w-full items-center gap-3.5 rounded-xl px-3 text-left transition-colors hover:bg-foreground/5 active:bg-foreground/10"
                   >
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -1204,7 +1220,7 @@ export default function CheckInPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setMenuOpen(false); setRemindersDialogOpen(true); }}
+                    onClick={() => { setMenuOpen(false); setReturnToMenu(true); setRemindersDialogOpen(true); }}
                     className="flex h-14 w-full items-center gap-3.5 rounded-xl px-3 text-left transition-colors hover:bg-foreground/5 active:bg-foreground/10"
                   >
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -1224,7 +1240,7 @@ export default function CheckInPage() {
           loading={penaltyHistoryLoading}
           error={penaltyHistoryError}
           onRefresh={fetchPenaltyHistory}
-          onOpenChange={setPenaltyHistoryOpen}
+          onOpenChange={closeSubPage(setPenaltyHistoryOpen)}
           open={penaltyHistoryOpen}
         />
         <ReceiptNotificationStack
@@ -1239,7 +1255,7 @@ export default function CheckInPage() {
           notifications={receiptNotifications}
           onDismiss={dismissReceiptNotification}
           onOpen={openReceiptNotification}
-          onOpenChange={setReceiptsDialogOpen}
+          onOpenChange={closeSubPage(setReceiptsDialogOpen)}
           open={receiptsDialogOpen}
         />
 
@@ -1247,7 +1263,7 @@ export default function CheckInPage() {
           disabled={!status?.staff || reminderControlsLocked || pushReminderLoading || savingPushReminder}
           loading={pushReminderLoading || savingPushReminder}
           notificationPermission={notificationPermission}
-          onOpenChange={setRemindersDialogOpen}
+          onOpenChange={closeSubPage(setRemindersDialogOpen)}
           onToggleCheckIn={() => {
             void updatePushReminderSettings({
               signInEnabled: !signInReminderEnabled,
