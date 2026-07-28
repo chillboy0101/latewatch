@@ -8,7 +8,7 @@ import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, History, Loader2, Log
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
+import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerNested, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { formatDisplayDate, formatDisplayDateTime } from '@/lib/date-format';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
@@ -554,22 +554,6 @@ export default function CheckInPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [receiptsDialogOpen, setReceiptsDialogOpen] = useState(false);
   const [remindersDialogOpen, setRemindersDialogOpen] = useState(false);
-  // When a sub-page is launched from the ⋮ menu, closing it returns to the menu
-  // (not the check-in screen). Banner/notification launches don't set this.
-  const [returnToMenu, setReturnToMenu] = useState(false);
-  const closeSubPage = useCallback(
-    (setOpen: (value: boolean) => void) => (open: boolean) => {
-      setOpen(open);
-      if (!open && returnToMenu) {
-        setReturnToMenu(false);
-        // Wait for the sub-drawer's close animation to finish before reopening
-        // the menu, otherwise the two stacked vaul drawers race and neither
-        // stays interactive.
-        window.setTimeout(() => setMenuOpen(true), 320);
-      }
-    },
-    [returnToMenu],
-  );
   const [pushReminderStatus, setPushReminderStatus] = useState<PushReminderStatus | null>(null);
   const [pushReminderLoading, setPushReminderLoading] = useState(false);
   const [savingPushReminder, setSavingPushReminder] = useState(false);
@@ -1195,7 +1179,7 @@ export default function CheckInPage() {
                 <div className="space-y-0.5">
                   <button
                     type="button"
-                    onClick={() => { setMenuOpen(false); setReturnToMenu(true); setReceiptsDialogOpen(true); }}
+                    onClick={() => setReceiptsDialogOpen(true)}
                     className="flex h-14 w-full items-center gap-3.5 rounded-xl px-3 text-left transition-colors hover:bg-foreground/5 active:bg-foreground/10"
                   >
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -1210,7 +1194,7 @@ export default function CheckInPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setMenuOpen(false); setReturnToMenu(true); openPenaltyHistory(); }}
+                    onClick={openPenaltyHistory}
                     className="flex h-14 w-full items-center gap-3.5 rounded-xl px-3 text-left transition-colors hover:bg-foreground/5 active:bg-foreground/10"
                   >
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -1220,7 +1204,7 @@ export default function CheckInPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setMenuOpen(false); setReturnToMenu(true); setRemindersDialogOpen(true); }}
+                    onClick={() => setRemindersDialogOpen(true)}
                     className="flex h-14 w-full items-center gap-3.5 rounded-xl px-3 text-left transition-colors hover:bg-foreground/5 active:bg-foreground/10"
                   >
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -1230,19 +1214,50 @@ export default function CheckInPage() {
                   </button>
                 </div>
               </DrawerContent>
+
+              <PenaltyHistoryDialog
+                history={penaltyHistory}
+                loading={penaltyHistoryLoading}
+                error={penaltyHistoryError}
+                onRefresh={fetchPenaltyHistory}
+                onOpenChange={setPenaltyHistoryOpen}
+                open={penaltyHistoryOpen}
+              />
+
+              <ReceiptsDialog
+                notifications={receiptNotifications}
+                onDismiss={dismissReceiptNotification}
+                onOpen={openReceiptNotification}
+                onOpenChange={setReceiptsDialogOpen}
+                open={receiptsDialogOpen}
+              />
+
+              <RemindersDialog
+                disabled={!status?.staff || reminderControlsLocked || pushReminderLoading || savingPushReminder}
+                loading={pushReminderLoading || savingPushReminder}
+                notificationPermission={notificationPermission}
+                onOpenChange={setRemindersDialogOpen}
+                onToggleCheckIn={() => {
+                  void updatePushReminderSettings({
+                    signInEnabled: !signInReminderEnabled,
+                    signOutEnabled: signOutReminderEnabled,
+                  });
+                }}
+                onToggleSignOut={() => {
+                  void updatePushReminderSettings({
+                    signInEnabled: signInReminderEnabled,
+                    signOutEnabled: !signOutReminderEnabled,
+                  });
+                }}
+                open={remindersDialogOpen}
+                signInEnabled={signInReminderEnabled}
+                signOutEnabled={signOutReminderEnabled}
+              />
             </Drawer>
             <UserButton />
           </div>
         </header>
 
-        <PenaltyHistoryDialog
-          history={penaltyHistory}
-          loading={penaltyHistoryLoading}
-          error={penaltyHistoryError}
-          onRefresh={fetchPenaltyHistory}
-          onOpenChange={closeSubPage(setPenaltyHistoryOpen)}
-          open={penaltyHistoryOpen}
-        />
         <ReceiptNotificationStack
           notifications={receiptNotifications.filter((notification) => !hiddenToastIds.has(notification.id))}
           onHide={hideReceiptToast}
@@ -1250,36 +1265,6 @@ export default function CheckInPage() {
         />
 
         <StatusMessageToast message={message} onDismiss={clearMessage} />
-
-        <ReceiptsDialog
-          notifications={receiptNotifications}
-          onDismiss={dismissReceiptNotification}
-          onOpen={openReceiptNotification}
-          onOpenChange={closeSubPage(setReceiptsDialogOpen)}
-          open={receiptsDialogOpen}
-        />
-
-        <RemindersDialog
-          disabled={!status?.staff || reminderControlsLocked || pushReminderLoading || savingPushReminder}
-          loading={pushReminderLoading || savingPushReminder}
-          notificationPermission={notificationPermission}
-          onOpenChange={closeSubPage(setRemindersDialogOpen)}
-          onToggleCheckIn={() => {
-            void updatePushReminderSettings({
-              signInEnabled: !signInReminderEnabled,
-              signOutEnabled: signOutReminderEnabled,
-            });
-          }}
-          onToggleSignOut={() => {
-            void updatePushReminderSettings({
-              signInEnabled: signInReminderEnabled,
-              signOutEnabled: !signOutReminderEnabled,
-            });
-          }}
-          open={remindersDialogOpen}
-          signInEnabled={signInReminderEnabled}
-          signOutEnabled={signOutReminderEnabled}
-        />
 
         <div className="flex min-h-0 flex-1 py-3 sm:py-4">
           <Card className="flex h-full w-full flex-col overflow-hidden">
@@ -1344,7 +1329,7 @@ export default function CheckInPage() {
                 <NotificationNudge
                   eligible={Boolean(deviceToken) && pushReminderStatus !== null && !reminderNudgeSuppressed && notificationPermission !== 'unsupported' && !signInReminderEnabled && !signOutReminderEnabled && !reminderControlsLocked}
                   saving={savingPushReminder}
-                  onCustomize={() => setRemindersDialogOpen(true)}
+                  onCustomize={() => { setMenuOpen(true); setRemindersDialogOpen(true); }}
                   onUpdate={(next) => {
                     void updatePushReminderSettings(next);
                   }}
@@ -1415,7 +1400,7 @@ function PenaltyHistoryDialog({
   const olderWeeks = (history?.weeks || []).filter((week) => week.startDate !== currentWeek?.startDate);
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    <DrawerNested open={open} onOpenChange={onOpenChange}>
       <DrawerContent className="h-[92dvh]">
         <DrawerHeader>
           <DrawerTitle>Penalty history</DrawerTitle>
@@ -1479,7 +1464,7 @@ function PenaltyHistoryDialog({
         )}
         </div>
       </DrawerContent>
-    </Drawer>
+    </DrawerNested>
   );
 }
 
@@ -1759,7 +1744,7 @@ function ReceiptsDialog({
   open: boolean;
 }) {
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    <DrawerNested open={open} onOpenChange={onOpenChange}>
       <DrawerContent className="max-h-[85dvh]">
         <DrawerHeader>
           <DrawerTitle>Payment receipts</DrawerTitle>
@@ -1813,7 +1798,7 @@ function ReceiptsDialog({
           </div>
         )}
       </DrawerContent>
-    </Drawer>
+    </DrawerNested>
   );
 }
 
@@ -1839,7 +1824,7 @@ function RemindersDialog({
   signOutEnabled: boolean;
 }) {
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    <DrawerNested open={open} onOpenChange={onOpenChange}>
       <DrawerContent className="max-h-[85dvh]">
         <DrawerHeader>
           <DrawerTitle>Reminders</DrawerTitle>
@@ -1859,7 +1844,7 @@ function RemindersDialog({
           />
         </div>
       </DrawerContent>
-    </Drawer>
+    </DrawerNested>
   );
 }
 

@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 import { Drawer as DrawerPrimitive } from 'vaul';
-import { X } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
@@ -24,6 +23,17 @@ function Drawer({
 }
 Drawer.displayName = 'Drawer';
 
+// Stacked child sheet: opens on top of a parent Drawer and scales it back;
+// swiping the child down returns to the parent. Must be rendered inside a
+// parent Drawer.Root subtree (vaul requirement).
+function DrawerNested({
+  noBodyStyles = true,
+  ...props
+}: React.ComponentProps<typeof DrawerPrimitive.NestedRoot>) {
+  return <DrawerPrimitive.NestedRoot noBodyStyles={noBodyStyles} {...props} />;
+}
+DrawerNested.displayName = 'DrawerNested';
+
 const DrawerTrigger = DrawerPrimitive.Trigger;
 const DrawerPortal = DrawerPrimitive.Portal;
 const DrawerClose = DrawerPrimitive.Close;
@@ -42,11 +52,8 @@ DrawerOverlay.displayName = DrawerPrimitive.Overlay.displayName;
 
 const DrawerContent = React.forwardRef<
   React.ElementRef<typeof DrawerPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Content> & {
-    hideHandle?: boolean;
-    hideClose?: boolean;
-  }
->(({ className, children, hideHandle = false, hideClose = false, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Content> & { hideHandle?: boolean }
+>(({ className, children, hideHandle = false, ...props }, ref) => (
   <DrawerPortal>
     <DrawerOverlay />
     <DrawerPrimitive.Content
@@ -61,14 +68,6 @@ const DrawerContent = React.forwardRef<
     >
       {!hideHandle && (
         <div className="mx-auto mt-3 h-2 w-24 shrink-0 rounded-full bg-muted-foreground/50 transition-colors hover:bg-muted-foreground/70 active:bg-muted-foreground/80" />
-      )}
-      {!hideClose && (
-        <DrawerClose
-          aria-label="Close"
-          className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-foreground/5 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-        >
-          <X className="h-5 w-5" />
-        </DrawerClose>
       )}
       {children}
     </DrawerPrimitive.Content>
@@ -109,6 +108,7 @@ export {
   Drawer,
   DrawerClose,
   DrawerContent,
+  DrawerNested,
   DrawerDescription,
   DrawerHeader,
   DrawerOverlay,
