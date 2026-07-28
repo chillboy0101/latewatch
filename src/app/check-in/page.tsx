@@ -1158,11 +1158,11 @@ export default function CheckInPage() {
             type="button"
             variant="glass"
             size="sm"
-            className="h-9 gap-2 rounded-full px-3.5"
+            className="h-10 gap-2 rounded-full px-4"
             title="Back to portal chooser"
           >
             <Link href="/">
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft className="h-5 w-5" />
               <span>Portals</span>
             </Link>
           </Button>
@@ -1171,7 +1171,7 @@ export default function CheckInPage() {
               type="button"
               variant="glass"
               size="icon"
-              className="h-9 w-9 rounded-full"
+              className="h-10 w-10 rounded-full"
               onClick={toggleTheme}
               aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
               title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -1184,7 +1184,7 @@ export default function CheckInPage() {
                   type="button"
                   variant="glass"
                   size="icon"
-                  className="relative h-9 w-9 rounded-full"
+                  className="relative h-10 w-10 rounded-full"
                   aria-label="More"
                   title="More"
                 >
@@ -1278,7 +1278,7 @@ export default function CheckInPage() {
               />
             </Drawer>
             <UserButton
-              appearance={{ elements: { userButtonAvatarBox: 'h-9 w-9 ring-1 ring-border/40' } }}
+              appearance={{ elements: { userButtonAvatarBox: 'h-10 w-10 ring-1 ring-border/40' } }}
             />
           </div>
         </header>

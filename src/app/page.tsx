@@ -36,9 +36,9 @@ export default function Home() {
   return (
     <main className="relative flex min-h-dvh items-center justify-center bg-background px-4 py-8 text-foreground">
       <Button
-        variant="outline"
+        variant="glass"
         size="sm"
-        className="fixed right-4 top-4 z-20 h-10 gap-2 rounded-full bg-card/95 px-4 text-foreground shadow-sm backdrop-blur transition-colors hover:bg-background hover:text-foreground focus-visible:ring-primary/30 sm:right-6 sm:top-6"
+        className="fixed right-4 top-4 z-20 h-10 gap-2 rounded-full px-4 shadow-sm sm:right-6 sm:top-6"
         onClick={(event) => {
           toggleTheme();
           event.currentTarget.blur();
@@ -46,7 +46,7 @@ export default function Home() {
         title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
         aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
       >
-        {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
         <span>{isDark ? 'Light' : 'Dark'}</span>
       </Button>
 
