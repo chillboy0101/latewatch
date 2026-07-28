@@ -4,7 +4,7 @@ import { UserButton, useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, ChevronRight, History, Loader2, LogOut, MapPin, Moon, MoreVertical, ReceiptText, ShieldCheck, Sun, X, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, History, Loader2, LogOut, MapPin, Moon, MoreVertical, ReceiptText, ShieldCheck, Sun, X, XCircle } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -805,6 +805,15 @@ export default function CheckInPage() {
     };
   }, [fetchReceiptNotifications, isLoaded, user]);
 
+  // Register the service worker on load so its static-asset cache is active for
+  // every visitor (not only those who enable reminders), speeding up repeat and
+  // PWA-open loads.
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+  }, []);
+
   useEffect(() => {
     if (!deviceToken || !isLoaded || !user) return;
 
@@ -1170,7 +1179,7 @@ export default function CheckInPage() {
                 </Button>
               </DrawerTrigger>
               <DrawerContent className="px-2 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
-                <DrawerTitle className="px-3 pb-2 pt-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <DrawerTitle className="sr-only">
                   Notifications &amp; settings
                 </DrawerTitle>
                 <DrawerDescription className="sr-only">
@@ -1190,9 +1199,7 @@ export default function CheckInPage() {
                       <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-2 text-xs font-semibold text-primary-foreground">
                         {receiptNotifications.length}
                       </span>
-                    )}
-                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  </button>
+                    )}                  </button>
                   <button
                     type="button"
                     onClick={openPenaltyHistory}
@@ -1201,9 +1208,7 @@ export default function CheckInPage() {
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                       <History className="h-5 w-5" />
                     </span>
-                    <span className="flex-1 text-[15px] font-semibold text-foreground">Penalty history</span>
-                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  </button>
+                    <span className="flex-1 text-[15px] font-semibold text-foreground">Penalty history</span>                  </button>
                   <button
                     type="button"
                     onClick={() => setRemindersDialogOpen(true)}
@@ -1212,9 +1217,7 @@ export default function CheckInPage() {
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                       <BellRing className="h-5 w-5" />
                     </span>
-                    <span className="flex-1 text-[15px] font-semibold text-foreground">Reminders</span>
-                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  </button>
+                    <span className="flex-1 text-[15px] font-semibold text-foreground">Reminders</span>                  </button>
                 </div>
               </DrawerContent>
 
@@ -1404,7 +1407,7 @@ function PenaltyHistoryDialog({
 
   return (
     <DrawerNested open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="h-[85dvh]">
+      <DrawerContent className="max-h-[85dvh]">
         <DrawerHeader>
           <DrawerTitle>Penalty history</DrawerTitle>
           <DrawerDescription>
@@ -1748,7 +1751,7 @@ function ReceiptsDialog({
 }) {
   return (
     <DrawerNested open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="h-[85dvh]">
+      <DrawerContent className="max-h-[85dvh]">
         <DrawerHeader>
           <DrawerTitle>Payment receipts</DrawerTitle>
           <DrawerDescription>Receipts for payments recorded on your account.</DrawerDescription>
@@ -1828,7 +1831,7 @@ function RemindersDialog({
 }) {
   return (
     <DrawerNested open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="h-[85dvh]">
+      <DrawerContent className="max-h-[85dvh]">
         <DrawerHeader>
           <DrawerTitle>Reminders</DrawerTitle>
           <DrawerDescription>

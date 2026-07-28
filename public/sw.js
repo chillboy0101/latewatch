@@ -1,5 +1,55 @@
+const STATIC_CACHE = 'latewatch-static-v1';
+const STATIC_ASSET_RE = /\.(?:js|css|woff2?|png|jpe?g|svg|ico|webp)$/;
+
 self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (event) => event.waitUntil(clients.claim()));
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((key) => key !== STATIC_CACHE).map((key) => caches.delete(key)));
+    await clients.claim();
+  })());
+});
+
+// Runtime cache for static assets only. Navigations, RSC fetches (?_rsc=), and
+// /api/* always go to the network so nothing dynamic is ever served stale.
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+
+  const isHashedStatic = url.pathname.startsWith('/_next/static/');
+  const isStaticAsset = STATIC_ASSET_RE.test(url.pathname);
+  if (!isHashedStatic && !isStaticAsset) return;
+
+  event.respondWith((async () => {
+    const cache = await caches.open(STATIC_CACHE);
+    const cached = await cache.match(request);
+
+    if (cached) {
+      // Hashed assets are immutable (URL changes when content changes), so serve
+      // from cache with no revalidation. Other static files use SWR.
+      if (!isHashedStatic) {
+        event.waitUntil(
+          fetch(request)
+            .then((response) => { if (response.ok) cache.put(request, response.clone()); })
+            .catch(() => {}),
+        );
+      }
+      return cached;
+    }
+
+    try {
+      const response = await fetch(request);
+      if (response.ok) cache.put(request, response.clone());
+      return response;
+    } catch {
+      return cached || Response.error();
+    }
+  })());
+});
 
 function reportPushDeliveryReceipt(deliveryId) {
   if (!deliveryId) return Promise.resolve();
