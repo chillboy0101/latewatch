@@ -1123,8 +1123,8 @@ export default function CheckInPage() {
   const transferRequestPending = status?.transferRequest?.status === 'pending';
 
   return (
-    <main className="flex min-h-dvh flex-col bg-background text-foreground">
-      <div className="mx-auto flex min-h-dvh w-full max-w-xl flex-col px-3 py-3 sm:px-6 sm:py-4">
+    <main className="flex h-dvh flex-col overflow-hidden overscroll-none bg-background text-foreground">
+      <div className="mx-auto flex h-full w-full max-w-xl flex-col px-3 py-3 sm:px-6 sm:py-4">
         <header className="flex h-12 shrink-0 items-center justify-between sm:h-14">
           <LateWatchLogo title="LateWatch" />
           <div className="flex items-center gap-2">
