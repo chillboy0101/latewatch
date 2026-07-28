@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { BellRing, X } from 'lucide-react';
+import { BellRing } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSwipeToDismiss } from '@/lib/use-swipe-to-dismiss';
 
@@ -137,14 +137,6 @@ function PushToastCard({
             Open
           </Link>
         </div>
-        <button
-          type="button"
-          aria-label="Dismiss reminder"
-          onClick={() => onDismiss(toast.id)}
-          className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
-        >
-          <X className="h-4 w-4" />
-        </button>
       </div>
     </div>
   );

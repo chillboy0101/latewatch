@@ -4,7 +4,7 @@ import { UserButton, useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, History, Loader2, LogOut, MapPin, Moon, MoreVertical, ReceiptText, ShieldCheck, Sun, X, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, History, Loader2, LogOut, MapPin, Moon, MoreVertical, ReceiptText, ShieldCheck, Sun, XCircle } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -1624,7 +1624,7 @@ function StatusMessageToast({
         {...swipeHandlers}
         style={swipeStyle}
         className={cn(
-          'pointer-events-auto relative flex w-full max-w-sm select-none items-start gap-3 overflow-hidden rounded-xl border bg-card/90 p-3.5 pr-10 shadow-lg ring-1 backdrop-blur-md animate-in fade-in-0 slide-in-from-top-2 duration-300 ease-out',
+          'pointer-events-auto relative flex w-full max-w-sm select-none items-start gap-3 overflow-hidden rounded-xl border bg-card/90 p-3.5 shadow-lg ring-1 backdrop-blur-md animate-in fade-in-0 slide-in-from-top-2 duration-300 ease-out',
           success ? 'border-success/30 ring-success/15' : 'border-danger/30 ring-danger/15',
         )}
         role="status"
@@ -1633,14 +1633,6 @@ function StatusMessageToast({
           {success ? <CheckCircle2 className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
         </span>
         <p className="min-w-0 flex-1 text-sm font-medium leading-5 text-foreground">{message.text}</p>
-        <button
-          type="button"
-          aria-label="Dismiss"
-          onClick={onDismiss}
-          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
-        >
-          <X className="h-4 w-4" />
-        </button>
       </div>
     </div>
   );
@@ -1702,21 +1694,11 @@ function ReceiptNotificationToast({
           <ReceiptText className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-foreground">Payment receipt ready</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                GHC {Number(notification.amount || 0).toFixed(2)} recorded for {formatDisplayDateTime(notification.recordedAt)}.
-              </p>
-            </div>
-            <button
-              aria-label="Hide receipt notification"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              onClick={() => onHide(notification.id)}
-              type="button"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">Payment receipt ready</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              GHC {Number(notification.amount || 0).toFixed(2)} recorded for {formatDisplayDateTime(notification.recordedAt)}.
+            </p>
           </div>
           <div className="mt-3 flex items-center justify-between gap-3">
             <span className="truncate font-mono text-[11px] font-semibold text-muted-foreground">
@@ -1856,7 +1838,7 @@ const REMINDER_NUDGE_OPTOUT_KEY = 'latewatch-reminder-nudge-optout';
 
 // Top banner shown to staff with a trusted device who have NOT enabled
 // reminders. "Turn on all" enables both; "Choose reminders" opens the Reminders
-// drawer to pick. Swipe or "X" hides for this visit; "Don't remind me" opts out
+// drawer to pick. Swipe (sideways or up) hides for this visit; "Don't remind me" opts out
 // permanently on this device.
 function NotificationNudge({
   eligible,
@@ -1896,16 +1878,8 @@ function NotificationNudge({
       <div
         {...swipeHandlers}
         style={swipeStyle}
-        className="pointer-events-auto relative w-full max-w-sm cursor-grab touch-pan-y select-none overflow-hidden rounded-xl border border-border bg-card/90 bg-gradient-to-br from-primary/10 via-transparent to-transparent p-4 shadow-lg ring-1 ring-border/60 backdrop-blur-md active:cursor-grabbing animate-in fade-in-0 slide-in-from-top-2 duration-300 ease-out">
-        <button
-          type="button"
-          aria-label="Hide for now"
-          onClick={() => setDismissed(true)}
-          className="absolute right-2.5 top-2.5 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
-        >
-          <X className="h-4 w-4" />
-        </button>
-        <div className="flex items-start gap-3 pr-6">
+        className="pointer-events-auto relative w-full max-w-sm cursor-grab select-none overflow-hidden rounded-xl border border-border bg-card/90 bg-gradient-to-br from-primary/10 via-transparent to-transparent p-4 shadow-lg ring-1 ring-border/60 backdrop-blur-md active:cursor-grabbing animate-in fade-in-0 slide-in-from-top-2 duration-300 ease-out">
+        <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-primary/15 text-primary">
             <BellRing className="h-5 w-5" />
           </div>
