@@ -8,8 +8,7 @@ import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, ChevronDown, History,
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import * as SheetPrimitive from '@radix-ui/react-dialog';
+import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { formatDisplayDate, formatDisplayDateTime } from '@/lib/date-format';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
@@ -1123,7 +1122,7 @@ export default function CheckInPage() {
   const transferRequestPending = status?.transferRequest?.status === 'pending';
 
   return (
-    <main className="h-dvh overflow-hidden bg-background px-3 py-3 text-foreground sm:px-6 sm:py-4">
+    <main data-vaul-drawer-wrapper="" className="h-dvh overflow-hidden bg-background px-3 py-3 text-foreground sm:px-6 sm:py-4">
       <div className="mx-auto flex h-full w-full max-w-xl flex-col">
         <header className="flex h-12 shrink-0 items-center justify-between sm:h-14">
           <LateWatchLogo title="LateWatch" />
@@ -1152,8 +1151,8 @@ export default function CheckInPage() {
             >
               {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>
-            <SheetPrimitive.Root open={menuOpen} onOpenChange={setMenuOpen}>
-              <SheetPrimitive.Trigger asChild>
+            <Drawer open={menuOpen} onOpenChange={setMenuOpen}>
+              <DrawerTrigger asChild>
                 <Button
                   type="button"
                   variant="ghost"
@@ -1167,57 +1166,53 @@ export default function CheckInPage() {
                     <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary ring-2 ring-background" />
                   )}
                 </Button>
-              </SheetPrimitive.Trigger>
-              <SheetPrimitive.Portal>
-                <SheetPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-                <SheetPrimitive.Content className="fixed inset-x-0 bottom-0 z-50 rounded-t-2xl border-t border-border bg-card p-2 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] shadow-xl outline-none duration-300 data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom sm:inset-x-auto sm:right-4 sm:bottom-4 sm:mx-auto sm:w-80 sm:rounded-2xl sm:border">
-                  <div className="mx-auto mb-2 mt-1 h-1 w-10 rounded-full bg-border" />
-                  <SheetPrimitive.Title className="px-3 pb-2 pt-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Notifications &amp; settings
-                  </SheetPrimitive.Title>
-                  <SheetPrimitive.Description className="sr-only">
-                    Open payment receipts, penalty history, or reminder settings.
-                  </SheetPrimitive.Description>
-                  <div className="space-y-0.5">
-                    <button
-                      type="button"
-                      onClick={() => { setMenuOpen(false); setReceiptsDialogOpen(true); }}
-                      className="flex h-14 w-full items-center gap-3.5 rounded-xl px-3 text-left transition-colors hover:bg-foreground/5 active:bg-foreground/10"
-                    >
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                        <ReceiptText className="h-5 w-5" />
+              </DrawerTrigger>
+              <DrawerContent className="px-2 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+                <DrawerTitle className="px-3 pb-2 pt-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Notifications &amp; settings
+                </DrawerTitle>
+                <DrawerDescription className="sr-only">
+                  Open payment receipts, penalty history, or reminder settings.
+                </DrawerDescription>
+                <div className="space-y-0.5">
+                  <button
+                    type="button"
+                    onClick={() => { setMenuOpen(false); setReceiptsDialogOpen(true); }}
+                    className="flex h-14 w-full items-center gap-3.5 rounded-xl px-3 text-left transition-colors hover:bg-foreground/5 active:bg-foreground/10"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <ReceiptText className="h-5 w-5" />
+                    </span>
+                    <span className="flex-1 text-[15px] font-semibold text-foreground">Payment receipts</span>
+                    {receiptNotifications.length > 0 && (
+                      <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-2 text-xs font-semibold text-primary-foreground">
+                        {receiptNotifications.length}
                       </span>
-                      <span className="flex-1 text-[15px] font-semibold text-foreground">Payment receipts</span>
-                      {receiptNotifications.length > 0 && (
-                        <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-2 text-xs font-semibold text-primary-foreground">
-                          {receiptNotifications.length}
-                        </span>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setMenuOpen(false); openPenaltyHistory(); }}
-                      className="flex h-14 w-full items-center gap-3.5 rounded-xl px-3 text-left transition-colors hover:bg-foreground/5 active:bg-foreground/10"
-                    >
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                        <History className="h-5 w-5" />
-                      </span>
-                      <span className="flex-1 text-[15px] font-semibold text-foreground">Penalty history</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setMenuOpen(false); setRemindersDialogOpen(true); }}
-                      className="flex h-14 w-full items-center gap-3.5 rounded-xl px-3 text-left transition-colors hover:bg-foreground/5 active:bg-foreground/10"
-                    >
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                        <BellRing className="h-5 w-5" />
-                      </span>
-                      <span className="flex-1 text-[15px] font-semibold text-foreground">Reminders</span>
-                    </button>
-                  </div>
-                </SheetPrimitive.Content>
-              </SheetPrimitive.Portal>
-            </SheetPrimitive.Root>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMenuOpen(false); openPenaltyHistory(); }}
+                    className="flex h-14 w-full items-center gap-3.5 rounded-xl px-3 text-left transition-colors hover:bg-foreground/5 active:bg-foreground/10"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <History className="h-5 w-5" />
+                    </span>
+                    <span className="flex-1 text-[15px] font-semibold text-foreground">Penalty history</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMenuOpen(false); setRemindersDialogOpen(true); }}
+                    className="flex h-14 w-full items-center gap-3.5 rounded-xl px-3 text-left transition-colors hover:bg-foreground/5 active:bg-foreground/10"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <BellRing className="h-5 w-5" />
+                    </span>
+                    <span className="flex-1 text-[15px] font-semibold text-foreground">Reminders</span>
+                  </button>
+                </div>
+              </DrawerContent>
+            </Drawer>
             <UserButton />
           </div>
         </header>
@@ -1406,15 +1401,16 @@ function PenaltyHistoryDialog({
   const olderWeeks = (history?.weeks || []).filter((week) => week.startDate !== currentWeek?.startDate);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[88dvh] max-w-md overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Penalty History</DialogTitle>
-          <DialogDescription>
+    <Drawer open={open} onOpenChange={onOpenChange} snapPoints={[0.55, 0.92]}>
+      <DrawerContent className="h-[92dvh]">
+        <DrawerHeader>
+          <DrawerTitle>Penalty history</DrawerTitle>
+          <DrawerDescription>
             Review late days, paid amounts, and outstanding balance.
-          </DialogDescription>
-        </DialogHeader>
+          </DrawerDescription>
+        </DrawerHeader>
 
+        <div className="flex-1 overflow-y-auto px-4 pb-6">
         {loading ? (
           <LoadingBuffer variant="section" label="Loading penalty history" description="Checking your weekly balance." />
         ) : error ? (
@@ -1467,8 +1463,9 @@ function PenaltyHistoryDialog({
             No penalty history found.
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+        </div>
+      </DrawerContent>
+    </Drawer>
   );
 }
 
@@ -1696,18 +1693,18 @@ function ReceiptsDialog({
   open: boolean;
 }) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Payment receipts</DialogTitle>
-          <DialogDescription>Receipts for payments recorded on your account.</DialogDescription>
-        </DialogHeader>
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerContent className="max-h-[85dvh]">
+        <DrawerHeader>
+          <DrawerTitle>Payment receipts</DrawerTitle>
+          <DrawerDescription>Receipts for payments recorded on your account.</DrawerDescription>
+        </DrawerHeader>
         {notifications.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
+          <div className="mx-4 mb-6 rounded-md border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
             No new payment receipts.
           </div>
         ) : (
-          <div className="max-h-[60vh] space-y-2 overflow-y-auto">
+          <div className="space-y-2 overflow-y-auto px-4 pb-6">
             {notifications.map((notification) => (
               <div
                 key={notification.id}
@@ -1749,8 +1746,8 @@ function ReceiptsDialog({
             ))}
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </DrawerContent>
+    </Drawer>
   );
 }
 
@@ -1776,25 +1773,27 @@ function RemindersDialog({
   signOutEnabled: boolean;
 }) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Reminders</DialogTitle>
-          <DialogDescription>
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerContent className="max-h-[85dvh]">
+        <DrawerHeader>
+          <DrawerTitle>Reminders</DrawerTitle>
+          <DrawerDescription>
             Get a heads-up to sign in before 8:30 AM, and to sign out at 4:30 PM — even if the app is closed.
-          </DialogDescription>
-        </DialogHeader>
-        <ReminderNotificationPanel
-          disabled={disabled}
-          loading={loading}
-          notificationPermission={notificationPermission}
-          signInEnabled={signInEnabled}
-          signOutEnabled={signOutEnabled}
-          onToggleCheckIn={onToggleCheckIn}
-          onToggleSignOut={onToggleSignOut}
-        />
-      </DialogContent>
-    </Dialog>
+          </DrawerDescription>
+        </DrawerHeader>
+        <div className="overflow-y-auto px-4 pb-6">
+          <ReminderNotificationPanel
+            disabled={disabled}
+            loading={loading}
+            notificationPermission={notificationPermission}
+            signInEnabled={signInEnabled}
+            signOutEnabled={signOutEnabled}
+            onToggleCheckIn={onToggleCheckIn}
+            onToggleSignOut={onToggleSignOut}
+          />
+        </div>
+      </DrawerContent>
+    </Drawer>
   );
 }
 
