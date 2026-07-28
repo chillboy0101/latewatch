@@ -1185,7 +1185,7 @@ export default function CheckInPage() {
                 <DrawerDescription className="sr-only">
                   Open payment receipts, penalty history, or reminder settings.
                 </DrawerDescription>
-                <div className="space-y-2">
+                <div className="space-y-2 pt-4">
                   <button
                     type="button"
                     onClick={() => setReceiptsDialogOpen(true)}
@@ -1407,7 +1407,7 @@ function PenaltyHistoryDialog({
 
   return (
     <DrawerNested open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="max-h-[85dvh]">
+      <DrawerContent className="h-[85dvh]">
         <DrawerHeader>
           <DrawerTitle>Penalty history</DrawerTitle>
           <DrawerDescription>
