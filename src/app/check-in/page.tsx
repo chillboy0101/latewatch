@@ -9,7 +9,7 @@ import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import * as SheetPrimitive from '@radix-ui/react-dialog';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { formatDisplayDate, formatDisplayDateTime } from '@/lib/date-format';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
@@ -1152,8 +1152,8 @@ export default function CheckInPage() {
             >
               {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>
-            <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-              <PopoverTrigger asChild>
+            <SheetPrimitive.Root open={menuOpen} onOpenChange={setMenuOpen}>
+              <SheetPrimitive.Trigger asChild>
                 <Button
                   type="button"
                   variant="ghost"
@@ -1167,41 +1167,57 @@ export default function CheckInPage() {
                     <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary ring-2 ring-background" />
                   )}
                 </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-60 p-1.5">
-                <button
-                  type="button"
-                  onClick={() => { setMenuOpen(false); setReceiptsDialogOpen(true); }}
-                  className="flex h-11 w-full items-center justify-between gap-3 rounded-md px-3 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5"
-                >
-                  <span className="flex items-center gap-3">
-                    <ReceiptText className="h-4 w-4 text-muted-foreground" />
-                    Payment receipts
-                  </span>
-                  {receiptNotifications.length > 0 && (
-                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">
-                      {receiptNotifications.length}
-                    </span>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setMenuOpen(false); openPenaltyHistory(); }}
-                  className="flex h-11 w-full items-center gap-3 rounded-md px-3 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5"
-                >
-                  <History className="h-4 w-4 text-muted-foreground" />
-                  Penalty history
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setMenuOpen(false); setRemindersDialogOpen(true); }}
-                  className="flex h-11 w-full items-center gap-3 rounded-md px-3 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5"
-                >
-                  <BellRing className="h-4 w-4 text-muted-foreground" />
-                  Reminders
-                </button>
-              </PopoverContent>
-            </Popover>
+              </SheetPrimitive.Trigger>
+              <SheetPrimitive.Portal>
+                <SheetPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+                <SheetPrimitive.Content className="fixed inset-x-0 bottom-0 z-50 rounded-t-2xl border-t border-border bg-card p-2 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] shadow-xl outline-none duration-300 data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom sm:inset-x-auto sm:right-4 sm:bottom-4 sm:mx-auto sm:w-80 sm:rounded-2xl sm:border">
+                  <div className="mx-auto mb-2 mt-1 h-1 w-10 rounded-full bg-border" />
+                  <SheetPrimitive.Title className="px-3 pb-2 pt-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Notifications &amp; settings
+                  </SheetPrimitive.Title>
+                  <SheetPrimitive.Description className="sr-only">
+                    Open payment receipts, penalty history, or reminder settings.
+                  </SheetPrimitive.Description>
+                  <div className="space-y-0.5">
+                    <button
+                      type="button"
+                      onClick={() => { setMenuOpen(false); setReceiptsDialogOpen(true); }}
+                      className="flex h-14 w-full items-center gap-3.5 rounded-xl px-3 text-left transition-colors hover:bg-foreground/5 active:bg-foreground/10"
+                    >
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                        <ReceiptText className="h-5 w-5" />
+                      </span>
+                      <span className="flex-1 text-[15px] font-semibold text-foreground">Payment receipts</span>
+                      {receiptNotifications.length > 0 && (
+                        <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-2 text-xs font-semibold text-primary-foreground">
+                          {receiptNotifications.length}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setMenuOpen(false); openPenaltyHistory(); }}
+                      className="flex h-14 w-full items-center gap-3.5 rounded-xl px-3 text-left transition-colors hover:bg-foreground/5 active:bg-foreground/10"
+                    >
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                        <History className="h-5 w-5" />
+                      </span>
+                      <span className="flex-1 text-[15px] font-semibold text-foreground">Penalty history</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setMenuOpen(false); setRemindersDialogOpen(true); }}
+                      className="flex h-14 w-full items-center gap-3.5 rounded-xl px-3 text-left transition-colors hover:bg-foreground/5 active:bg-foreground/10"
+                    >
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                        <BellRing className="h-5 w-5" />
+                      </span>
+                      <span className="flex-1 text-[15px] font-semibold text-foreground">Reminders</span>
+                    </button>
+                  </div>
+                </SheetPrimitive.Content>
+              </SheetPrimitive.Portal>
+            </SheetPrimitive.Root>
             <UserButton />
           </div>
         </header>
