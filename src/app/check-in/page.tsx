@@ -1217,7 +1217,7 @@ export default function CheckInPage() {
                 )}
 
                 <NotificationNudge
-                  eligible={Boolean(deviceToken) && notificationPermission !== 'unsupported' && !signInReminderEnabled && !signOutReminderEnabled && !reminderControlsLocked}
+                  eligible={Boolean(deviceToken) && pushReminderStatus !== null && notificationPermission !== 'unsupported' && !signInReminderEnabled && !signOutReminderEnabled && !reminderControlsLocked}
                   notificationPermission={notificationPermission}
                   saving={savingPushReminder}
                   signInEnabled={signInReminderEnabled}
@@ -1643,7 +1643,7 @@ function NotificationNudge({
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+1rem)] z-[95] flex justify-center px-4 sm:inset-x-auto sm:bottom-6 sm:right-6 sm:justify-end">
-      <div className="pointer-events-auto relative w-full max-w-sm overflow-hidden rounded-xl border border-primary/30 bg-gradient-to-br from-primary/12 via-card to-card p-4 shadow-lg">
+      <div className="pointer-events-auto relative w-full max-w-sm overflow-hidden rounded-xl border border-primary/30 bg-gradient-to-br from-primary/12 via-card to-card p-4 shadow-lg animate-in fade-in-0 slide-in-from-bottom-2 duration-300 ease-out">
         <button
           type="button"
           aria-label="Hide for now"
