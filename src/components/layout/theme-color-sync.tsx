@@ -17,6 +17,9 @@ export function ThemeColorSync() {
   useEffect(() => {
     const apply = () => {
       const color = getIsDarkTheme() ? DARK_BACKGROUND : LIGHT_BACKGROUND;
+      // Remove media-based theme-color metas — they'd win over ours whenever the
+      // OS preference matched, desyncing the status bar from the app theme.
+      document.querySelectorAll('meta[name="theme-color"][media]').forEach((m) => m.remove());
       let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]:not([media])');
       if (!meta) {
         meta = document.createElement('meta');

@@ -72,10 +72,10 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   colorScheme: "light dark",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
-  ],
+  // Single (non-media) theme-color so it can be driven by the app's manual
+  // theme toggle. Media-based metas would win over our dynamic one whenever the
+  // OS preference matched, leaving the status bar out of sync with the app.
+  themeColor: "#0a0a0a",
 };
 
 const themeScript = `
@@ -86,6 +86,9 @@ const themeScript = `
       document.documentElement.classList.add('dark');
     }
     var color = isDark ? '#0a0a0a' : '#ffffff';
+    // Drop any media-based theme-color metas so they can't override ours when
+    // the OS preference matches.
+    document.querySelectorAll('meta[name="theme-color"][media]').forEach(function(m){ m.remove(); });
     var meta = document.querySelector('meta[name="theme-color"]:not([media])');
     if (!meta) {
       meta = document.createElement('meta');
