@@ -1353,21 +1353,21 @@ export default function CheckInPage() {
                 )}
                 </div>
 
-                <div className="shrink-0 space-y-2 border-t border-border/60 p-3 sm:p-4">
-                  <Button className="h-11 w-full gap-2 text-sm sm:h-12 sm:text-base" onClick={() => void submitAttendance()} disabled={(!canCheckIn && !canSubmitSignOut) || checkingIn || locationBlocksAction}>
+                <div className="shrink-0 space-y-2.5 border-t border-border/60 p-3 pt-4 sm:p-4 sm:pt-5">
+                  <Button className="h-14 w-full gap-2.5 rounded-2xl text-base font-semibold shadow-sm sm:h-16 sm:text-lg" onClick={() => void submitAttendance()} disabled={(!canCheckIn && !canSubmitSignOut) || checkingIn || locationBlocksAction}>
                     {checkingIn ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <Loader2 className="h-5 w-5 animate-spin sm:h-6 sm:w-6" />
                     ) : status?.attendance && !status.attendance.signOutTime ? (
-                      <LogOut className="h-5 w-5" />
+                      <LogOut className="h-5 w-5 sm:h-6 sm:w-6" />
                     ) : (
-                      <ShieldCheck className="h-5 w-5" />
+                      <ShieldCheck className="h-5 w-5 sm:h-6 sm:w-6" />
                     )}
                     {attendanceButtonLabel(status, checkingIn, liveLocation)}
                   </Button>
 
                   {status?.device?.registered && !status.device.trusted && (
                     <Button
-                      className="h-11 w-full gap-2 text-sm sm:h-12 sm:text-base"
+                      className="h-12 w-full gap-2 rounded-2xl text-sm font-medium sm:h-14 sm:text-base"
                       disabled={requestingTransfer || transferRequestPending}
                       onClick={requestDeviceTransfer}
                       type="button"
