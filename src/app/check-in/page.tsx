@@ -1277,26 +1277,24 @@ export default function CheckInPage() {
             ) : (
               <div className="flex h-full flex-col">
                 <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3 sm:gap-4 sm:p-5">
-                <div className="flex flex-1 flex-col items-center justify-center">
-                  <div className={cn('w-full rounded-2xl border p-5 text-center sm:p-6', statusTone(status))}>
-                    <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-background/70 sm:h-16 sm:w-16">
-                      {status?.attendance ? (
-                        <CheckCircle2 className="h-7 w-7 sm:h-8 sm:w-8" />
-                      ) : canCheckIn ? (
-                        <ShieldCheck className="h-7 w-7 sm:h-8 sm:w-8" />
-                      ) : (
-                        <AlertTriangle className="h-7 w-7 sm:h-8 sm:w-8" />
-                      )}
-                    </div>
-                    <h2 className="text-xl font-semibold text-balance sm:text-2xl">{statusCopy(status)}</h2>
-                    <div className="mt-4 flex flex-col items-center gap-2">
-                      {status?.staff?.fullName && (
-                        <div className="inline-flex h-9 max-w-full items-center rounded-full border border-border/70 bg-background/60 px-3.5 text-sm font-medium text-foreground">
-                          <span className="truncate">{status.staff.fullName}</span>
-                        </div>
-                      )}
-                      <LocationStatusChip status={status} liveLocation={liveLocation} />
-                    </div>
+                <div className={cn('flex flex-1 flex-col items-center justify-center rounded-2xl border p-5 text-center sm:p-6', statusTone(status))}>
+                  <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-background/70 sm:h-16 sm:w-16">
+                    {status?.attendance ? (
+                      <CheckCircle2 className="h-7 w-7 sm:h-8 sm:w-8" />
+                    ) : canCheckIn ? (
+                      <ShieldCheck className="h-7 w-7 sm:h-8 sm:w-8" />
+                    ) : (
+                      <AlertTriangle className="h-7 w-7 sm:h-8 sm:w-8" />
+                    )}
+                  </div>
+                  <h2 className="text-xl font-semibold text-balance sm:text-2xl">{statusCopy(status)}</h2>
+                  <div className="mt-4 flex flex-col items-center gap-2">
+                    {status?.staff?.fullName && (
+                      <div className="inline-flex h-9 max-w-full items-center rounded-full border border-border/70 bg-background/60 px-3.5 text-sm font-medium text-foreground">
+                        <span className="truncate">{status.staff.fullName}</span>
+                      </div>
+                    )}
+                    <LocationStatusChip status={status} liveLocation={liveLocation} />
                   </div>
                 </div>
 
@@ -1367,13 +1365,13 @@ export default function CheckInPage() {
 
                   {status?.device?.registered && !status.device.trusted && (
                     <Button
-                      className="h-12 w-full gap-2 rounded-2xl text-sm font-medium sm:h-14 sm:text-base"
+                      className="h-14 w-full gap-2.5 rounded-2xl text-base font-medium sm:h-16 sm:text-lg"
                       disabled={requestingTransfer || transferRequestPending}
                       onClick={requestDeviceTransfer}
                       type="button"
                       variant="outline"
                     >
-                      {requestingTransfer ? <Loader2 className="h-5 w-5 animate-spin" /> : <ShieldCheck className="h-5 w-5" />}
+                      {requestingTransfer ? <Loader2 className="h-5 w-5 animate-spin sm:h-6 sm:w-6" /> : <ShieldCheck className="h-5 w-5 sm:h-6 sm:w-6" />}
                       {requestingTransfer
                         ? 'Checking location...'
                         : transferRequestPending
