@@ -1707,7 +1707,7 @@ function NotificationNudge({
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-semibold text-foreground">Turn on attendance reminders</h3>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Get a heads-up before the 8:15 AM sign-in and 4:30 PM sign-out — even when this app is closed.
+              Get a heads-up to sign in before 8:30 AM, and to sign out at 4:30 PM — even if the app is closed.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Button
