@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { ClerkThemeProvider } from "@/components/auth/clerk-theme-provider";
 import { AppShell } from "@/components/layout/app-shell";
 import { NotificationProvider } from "@/contexts/notification-context";
+import { PushReminderToast } from "@/components/notifications/push-reminder-toast";
 import {
   SITE_DESCRIPTION,
   SITE_KEYWORDS,
@@ -103,6 +104,7 @@ export default function RootLayout({
         <ClerkThemeProvider>
           <NotificationProvider>
             <AppShell>{children}</AppShell>
+            <PushReminderToast />
           </NotificationProvider>
         </ClerkThemeProvider>
       </body>

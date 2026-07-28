@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { DateField } from '@/components/ui/date-field';
@@ -67,20 +67,6 @@ type SearchableValue = string | number | null | undefined;
 
 function normalizeTimeValue(value: string | null | undefined) {
   return value ? value.slice(0, 5) : '';
-}
-
-function getEntriesDeepLinkParams() {
-  if (typeof window === 'undefined') return { date: null, fromPayments: false, query: null };
-
-  const params = new URLSearchParams(window.location.search);
-  const date = params.get('date');
-  const query = params.get('q');
-
-  return {
-    date,
-    fromPayments: Boolean(date || query),
-    query,
-  };
 }
 
 function normalizeSearchValue(value: SearchableValue) {
@@ -149,12 +135,14 @@ function formatChangedEntriesMessage(names: string[], count: number) {
   return `${count} entr${count === 1 ? 'y' : 'ies'} updated successfully`;
 }
 
-export default function EntriesPage() {
+function EntriesPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const dateParam = searchParams.get('date');
+  const queryParam = searchParams.get('q');
   const [staff, setStaff] = useState<StaffMember[]>([]);
-  const [deepLink] = useState(() => getEntriesDeepLinkParams());
   const [selectedDate, setSelectedDate] = useState(() => {
-    const parsed = deepLink.date ? parseISO(deepLink.date) : null;
+    const parsed = dateParam ? parseISO(dateParam) : null;
     return parsed && isValid(parsed) ? parsed : parseISO(getAccraDateKey());
   });
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -164,7 +152,8 @@ export default function EntriesPage() {
   const [isHoliday, setIsHoliday] = useState(false);
   const [holidayName, setHolidayName] = useState('');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [searchQuery, setSearchQuery] = useState(() => deepLink.query || '');
+  const [searchQuery, setSearchQuery] = useState(() => queryParam || '');
+  const [showBackToPayments, setShowBackToPayments] = useState(() => Boolean(dateParam || queryParam));
 
   const fetchStaffAndEntries = useCallback(async () => {
     try {
@@ -229,6 +218,32 @@ export default function EntriesPage() {
   useEffect(() => {
     fetchStaffAndEntries();
   }, [fetchStaffAndEntries]);
+
+  const appliedDeepLinkKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!dateParam && !queryParam) return;
+
+    const paramsKey = `${dateParam ?? ''}|${queryParam ?? ''}`;
+    if (appliedDeepLinkKeyRef.current === paramsKey) return;
+    appliedDeepLinkKeyRef.current = paramsKey;
+
+    if (dateParam) {
+      const parsed = parseISO(dateParam);
+      if (isValid(parsed)) {
+        setSelectedDate((prev) =>
+          format(prev, 'yyyy-MM-dd') === format(parsed, 'yyyy-MM-dd') ? prev : parsed
+        );
+      }
+    }
+
+    if (queryParam !== null) {
+      setSearchQuery((prev) => (prev === queryParam ? prev : queryParam));
+    }
+
+    setShowBackToPayments(true);
+    router.replace('/entries', { scroll: false });
+  }, [dateParam, queryParam, router]);
 
   useEffect(() => {
     const handleVisibility = () => {
@@ -591,7 +606,7 @@ export default function EntriesPage() {
   return (
     <DashboardLayout title="Entries">
       <div className="space-y-6">
-        {deepLink.fromPayments && (
+        {showBackToPayments && (
           <Button
             variant="outline"
             size="sm"
@@ -882,6 +897,22 @@ export default function EntriesPage() {
 
       </div>
     </DashboardLayout>
+  );
+}
+
+export default function EntriesPage() {
+  return (
+    <Suspense fallback={
+      <DashboardLayout title="Entries">
+        <LoadingBuffer
+          variant="page"
+          label="Loading entries"
+          description="Checking staff, holidays, and saved records."
+        />
+      </DashboardLayout>
+    }>
+      <EntriesPageContent />
+    </Suspense>
   );
 }
 

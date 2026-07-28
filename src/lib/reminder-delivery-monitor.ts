@@ -277,6 +277,12 @@ export async function getReminderDeliveryMonitor(date: string) {
       ));
       const deliveries = deliveriesByStaffAndType.get(`${member.id}:${reminderType}`) || [];
       const counts = deliveryCounts(deliveries);
+      const activeSubscriptionIds = new Set(subscriptions.map((subscription) => subscription.id));
+      // A failure is only the *current* state if the subscription that failed is
+      // still active. A failed delivery from a subscription that has since been
+      // disabled/removed (e.g. device reset, expired endpoint) should fall
+      // through to the real device/registration state instead of showing "failed".
+      const hasCurrentFailure = deliveries.some((delivery) => delivery.status === 'failed' && activeSubscriptionIds.has(delivery.subscriptionId));
       const signedInByReminder = isAtOrBeforeReminderSchedule(attendance?.checkInTime, 'sign_in');
       const signedInBySignOutReminder = isAtOrBeforeReminderSchedule(attendance?.checkInTime, 'sign_out');
       const signedOutByReminder = isAtOrBeforeReminderSchedule(attendance?.signOutTime, 'sign_out');
@@ -289,11 +295,11 @@ export async function getReminderDeliveryMonitor(date: string) {
         eligible = true;
         status = 'sent';
         reason = sentReason({ attendance: attendance, delivered: counts.delivered, reminderType: reminderType, sent: counts.sent });
-      } else if (counts.failed > 0 || counts.disabled > 0) {
+      } else if (hasCurrentFailure) {
         eligible = true;
         status = 'failed';
-        reason = counts.latestError || (counts.disabled > 0 ? 'Expired push endpoint disabled' : 'Push send failed');
-      } else if (counts.pending > 0) {
+        reason = counts.latestError || 'Push send failed';
+      } else if (counts.pending > 0 && subscriptions.length > 0) {
         eligible = true;
         status = 'pending';
         reason = 'Delivery reserved; waiting for send result';

@@ -38,10 +38,8 @@ const SIDEBAR_LABEL_MOTION_CLASS = 'duration-200 ease-out motion-reduce:transiti
 let rememberedAutoExpanded = false;
 
 const attendanceChildren = [
-  { name: 'Overview', href: '/attendance' },
-  { name: 'Reminders', href: '/attendance/reminders' },
+  { name: 'Overview', href: '/attendance/overview' },
   { name: 'Devices', href: '/attendance/devices' },
-  { name: 'Security Alerts', href: '/attendance/security-alerts' },
 ];
 
 const navigation: NavigationItem[] = [

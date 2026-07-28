@@ -4,13 +4,14 @@ import { UserButton, useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, LogOut, MapPin, Moon, ReceiptText, ShieldCheck, Sun, X, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, Loader2, LogOut, MapPin, Moon, ReceiptText, ShieldCheck, Sun, X, XCircle } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { formatDisplayDate, formatDisplayDateTime } from '@/lib/date-format';
+import { getAccraDateKey } from '@/lib/date-key';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
 import { RECEIPT_NOTIFICATION_AUTO_DISMISS_MS, type LatenessPaymentReceiptNotification } from '@/lib/lateness-payment-receipt-notifications';
 import { pushSubscriptionErrorMessage, vapidPublicKeyToUint8Array } from '@/lib/push-client';
@@ -1216,6 +1217,14 @@ export default function CheckInPage() {
                   </div>
                 )}
 
+                <NotificationNudge
+                  eligible={Boolean(deviceToken) && notificationPermission !== 'unsupported' && !signInReminderEnabled && !signOutReminderEnabled && !reminderControlsLocked}
+                  saving={savingPushReminder}
+                  onEnable={() => {
+                    void updatePushReminderSettings({ signInEnabled: true, signOutEnabled: true });
+                  }}
+                />
+
                 <ReminderNotificationPanel
                   disabled={!status?.staff || reminderControlsLocked || pushReminderLoading || savingPushReminder}
                   loading={pushReminderLoading || savingPushReminder}
@@ -1580,6 +1589,78 @@ function ReceiptNotificationToast({
               View receipt
             </Button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// One-time, today-only nudge asking staff to turn on reminders. After this date
+// the date gate stops it from ever rendering again.
+const NOTIFICATION_NUDGE_DATE = '2026-07-27';
+const NOTIFICATION_NUDGE_STORAGE_KEY = `latewatch-notif-nudge-${NOTIFICATION_NUDGE_DATE}`;
+
+function NotificationNudge({
+  eligible,
+  onEnable,
+  saving,
+}: {
+  eligible: boolean;
+  onEnable: () => void;
+  saving: boolean;
+}) {
+  const [dismissed, setDismissed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return localStorage.getItem(NOTIFICATION_NUDGE_STORAGE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  const remember = useCallback(() => {
+    try {
+      localStorage.setItem(NOTIFICATION_NUDGE_STORAGE_KEY, '1');
+    } catch {
+      // Ignore storage failures; the date gate still limits this to today.
+    }
+    setDismissed(true);
+  }, []);
+
+  if (dismissed || !eligible) return null;
+  if (getAccraDateKey() !== NOTIFICATION_NUDGE_DATE) return null;
+
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-primary/30 bg-gradient-to-br from-primary/12 via-primary/5 to-transparent p-4 shadow-sm">
+      <button
+        type="button"
+        aria-label="Dismiss reminder"
+        onClick={remember}
+        className="absolute right-2.5 top-2.5 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+      >
+        <X className="h-4 w-4" />
+      </button>
+      <div className="flex items-start gap-3 pr-6">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-primary/15 text-primary">
+          <BellRing className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-foreground">Turn on attendance reminders</h3>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            Get a heads-up before the 8:15 AM sign-in and 4:30 PM sign-out — even when this app is closed. It takes one tap.
+          </p>
+          <Button
+            className="mt-3 h-9 gap-2"
+            size="sm"
+            onClick={() => {
+              onEnable();
+              remember();
+            }}
+            disabled={saving}
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <BellRing className="h-4 w-4" />}
+            Turn on notifications
+          </Button>
         </div>
       </div>
     </div>

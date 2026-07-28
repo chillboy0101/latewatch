@@ -204,11 +204,22 @@ export function reminderCopy(
 }
 
 export function isExpiredPushEndpoint(error: unknown) {
-  const statusCode = typeof error === 'object' && error !== null && 'statusCode' in error
-    ? Number((error as { statusCode?: unknown }).statusCode)
-    : null;
+  if (typeof error !== 'object' || error === null) return false;
 
-  return statusCode === 404 || statusCode === 410;
+  const statusCode = 'statusCode' in error ? Number((error as { statusCode?: unknown }).statusCode) : null;
+
+  // Gone / not found: the subscription no longer exists on the push service.
+  if (statusCode === 404 || statusCode === 410) return true;
+
+  // A subscription created under a rotated VAPID keypair is permanently
+  // rejected until the client re-subscribes (Apple returns 400 with
+  // {"reason":"VapidPkHashMismatch"}). Treat it as expired so it gets disabled
+  // instead of failing on every cron run forever.
+  const body = 'body' in error ? String((error as { body?: unknown }).body ?? '') : '';
+  const message = error instanceof Error ? error.message : '';
+  if (/VapidPkHashMismatch/i.test(body) || /VapidPkHashMismatch/i.test(message)) return true;
+
+  return false;
 }
 
 function isStalePendingDelivery(delivery: PushReminderDeliveryRow) {
@@ -332,8 +343,8 @@ async function alertAdminsOfReminderFailures(summary: PushReminderSummary) {
   const label = ADMIN_REMINDER_ALERT_LABEL[summary.reminderType];
   const alertReminderType = `admin_alert_${summary.reminderType}`;
   const payload = JSON.stringify({
-    body: `${summary.failed} ${label} reminder${summary.failed === 1 ? '' : 's'} failed to deliver today. Open the Reminders page to review.`,
-    data: { reminderType: 'admin_alert', url: '/attendance/reminders' },
+    body: `${summary.failed} ${label} reminder${summary.failed === 1 ? '' : 's'} failed to deliver today. Open the Devices page to review.`,
+    data: { reminderType: 'admin_alert', url: '/attendance/devices' },
     icon: '/latewatch-logo.png',
     requireInteraction: true,
     tag: `latewatch-admin-alert-${summary.reminderType}-${summary.date}`,

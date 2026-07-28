@@ -76,7 +76,7 @@ export default function SecuritySettingsPage() {
               </Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href="/attendance/security-alerts">Review Security Alerts</Link>
+              <Link href="/audit-trail">Review Audit Trail</Link>
             </Button>
           </div>
         </Card>
