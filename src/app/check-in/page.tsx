@@ -1751,7 +1751,7 @@ function ReceiptsDialog({
 }) {
   return (
     <DrawerNested open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="max-h-[85dvh]">
+      <DrawerContent className="h-[85dvh]">
         <DrawerHeader>
           <DrawerTitle>Payment receipts</DrawerTitle>
           <DrawerDescription>Receipts for payments recorded on your account.</DrawerDescription>
