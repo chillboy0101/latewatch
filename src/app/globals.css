@@ -96,6 +96,13 @@
   width: 0;
 }
 
+html {
+  /* Themed root so the top safe-area/status-bar region shows the app background
+     (follows .dark) on fixed, non-scrolling pages like check-in — matching the
+     scrolling portal. No viewport-fit, so no bottom gap. */
+  background: var(--background);
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
