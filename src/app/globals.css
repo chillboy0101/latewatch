@@ -105,6 +105,22 @@ html {
   background: var(--background);
 }
 
+/* Apple-style "liquid glass": translucent, blurred, saturated surface. The
+   -webkit- prefix is required for the blur to show on iOS Safari / installed
+   PWAs. Falls back to a mostly-opaque surface where backdrop-filter is absent. */
+.liquid-glass {
+  background-color: color-mix(in srgb, var(--card) 62%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 18%, transparent);
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .liquid-glass {
+    background-color: color-mix(in srgb, var(--card) 92%, transparent);
+  }
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

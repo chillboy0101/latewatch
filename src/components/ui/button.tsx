@@ -14,7 +14,7 @@ const buttonVariants = cva(
         outline: 'border border-border bg-background hover:bg-card hover:text-foreground',
         secondary: 'bg-card text-foreground hover:bg-card/80',
         ghost: 'hover:bg-card hover:text-foreground',
-        glass: 'rounded-full border border-border/40 bg-card/55 text-foreground shadow-sm ring-1 ring-inset ring-white/10 backdrop-blur-xl hover:bg-card/75 active:bg-card/85 supports-[backdrop-filter]:bg-card/45',
+        glass: 'liquid-glass rounded-full border border-border/40 text-foreground shadow-sm ring-1 ring-inset ring-white/10 hover:brightness-105 active:brightness-95',
         link: 'text-primary underline-offset-4 hover:underline',
       },
       size: {
