@@ -17,16 +17,17 @@ export function ThemeColorSync() {
   useEffect(() => {
     const apply = () => {
       const color = getIsDarkTheme() ? DARK_BACKGROUND : LIGHT_BACKGROUND;
-      // Remove media-based theme-color metas — they'd win over ours whenever the
-      // OS preference matched, desyncing the status bar from the app theme.
-      document.querySelectorAll('meta[name="theme-color"][media]').forEach((m) => m.remove());
-      let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]:not([media])');
-      if (!meta) {
-        meta = document.createElement('meta');
-        meta.setAttribute('name', 'theme-color');
-        document.head.appendChild(meta);
-      }
+      // Replace the theme-color meta node entirely (not just its content):
+      // iOS Safari re-reads theme-color on a fresh node, updating the status bar
+      // live without a page reload. Also drop media-based metas, which would win
+      // over ours whenever the OS preference matched.
+      document
+        .querySelectorAll('meta[name="theme-color"]')
+        .forEach((m) => m.remove());
+      const meta = document.createElement('meta');
+      meta.setAttribute('name', 'theme-color');
       meta.setAttribute('content', color);
+      document.head.appendChild(meta);
     };
 
     apply();

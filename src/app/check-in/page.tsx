@@ -1277,20 +1277,20 @@ export default function CheckInPage() {
             ) : (
               <div className="flex h-full flex-col">
                 <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3 sm:gap-4 sm:p-5">
-                <div className={cn('flex flex-1 flex-col items-center justify-center rounded-2xl border p-5 text-center sm:p-6', statusTone(status))}>
-                  <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-background/70 sm:h-16 sm:w-16">
+                <div className={cn('flex flex-1 flex-col items-center justify-center gap-5 rounded-2xl border p-6 text-center sm:gap-7 sm:p-8', statusTone(status))}>
+                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-background/70 sm:h-24 sm:w-24">
                     {status?.attendance ? (
-                      <CheckCircle2 className="h-7 w-7 sm:h-8 sm:w-8" />
+                      <CheckCircle2 className="h-10 w-10 sm:h-12 sm:w-12" />
                     ) : canCheckIn ? (
-                      <ShieldCheck className="h-7 w-7 sm:h-8 sm:w-8" />
+                      <ShieldCheck className="h-10 w-10 sm:h-12 sm:w-12" />
                     ) : (
-                      <AlertTriangle className="h-7 w-7 sm:h-8 sm:w-8" />
+                      <AlertTriangle className="h-10 w-10 sm:h-12 sm:w-12" />
                     )}
                   </div>
-                  <h2 className="text-xl font-semibold text-balance sm:text-2xl">{statusCopy(status)}</h2>
-                  <div className="mt-4 flex flex-col items-center gap-2">
+                  <h2 className="text-2xl font-bold text-balance leading-tight sm:text-3xl">{statusCopy(status)}</h2>
+                  <div className="flex flex-col items-center gap-2.5">
                     {status?.staff?.fullName && (
-                      <div className="inline-flex h-9 max-w-full items-center rounded-full border border-border/70 bg-background/60 px-3.5 text-sm font-medium text-foreground">
+                      <div className="inline-flex h-10 max-w-full items-center rounded-full border border-border/70 bg-background/60 px-4 text-sm font-semibold text-foreground">
                         <span className="truncate">{status.staff.fullName}</span>
                       </div>
                     )}
