@@ -552,7 +552,6 @@ export default function CheckInPage() {
   const [receiptNotifications, setReceiptNotifications] = useState<LatenessPaymentReceiptNotification[]>([]);
   const [hiddenToastIds, setHiddenToastIds] = useState<Set<string>>(() => new Set());
   const [menuOpen, setMenuOpen] = useState(false);
-  const [receiptsDialogOpen, setReceiptsDialogOpen] = useState(false);
   const [remindersDialogOpen, setRemindersDialogOpen] = useState(false);
   const [pushReminderStatus, setPushReminderStatus] = useState<PushReminderStatus | null>(null);
   const [pushReminderLoading, setPushReminderLoading] = useState(false);
@@ -760,6 +759,24 @@ export default function CheckInPage() {
     void dismissReceiptNotification(notification.id);
     router.push(notification.href);
   }, [dismissReceiptNotification, router]);
+
+  // Mark all receipt notifications read (server-side dismiss) and clear them —
+  // used when the user opens the merged Penalty & receipts view. Receipts still
+  // appear inside the Penalty History dialog (separate fetch).
+  const markAllReceiptsRead = useCallback(async () => {
+    const ids = receiptNotifications.map((notification) => notification.id);
+    if (ids.length === 0) return;
+    setReceiptNotifications([]);
+    try {
+      await fetch('/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'dismiss', ids }),
+      });
+    } catch (error) {
+      console.warn('Receipt notifications could not be marked read:', error);
+    }
+  }, [receiptNotifications]);
 
   // Hide a receipt's transient toast without dismissing it — it stays in the
   // ⋮ menu until the user views or dismisses it there.
@@ -1146,17 +1163,6 @@ export default function CheckInPage() {
               variant="ghost"
               size="icon"
               className="h-9 w-9"
-              onClick={openPenaltyHistory}
-              aria-label="Penalty History"
-              title="Penalty History"
-            >
-              <ReceiptText className="h-5 w-5" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9"
               onClick={toggleTheme}
               aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
               title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -1179,15 +1185,15 @@ export default function CheckInPage() {
                   )}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-56 p-1">
+              <PopoverContent align="end" className="w-60 p-1.5">
                 <button
                   type="button"
-                  onClick={() => { setMenuOpen(false); setReceiptsDialogOpen(true); }}
-                  className="flex w-full items-center justify-between gap-3 rounded-md px-2.5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5"
+                  onClick={() => { setMenuOpen(false); openPenaltyHistory(); void markAllReceiptsRead(); }}
+                  className="flex h-11 w-full items-center justify-between gap-3 rounded-md px-3 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5"
                 >
-                  <span className="flex items-center gap-2.5">
+                  <span className="flex items-center gap-3">
                     <ReceiptText className="h-4 w-4 text-muted-foreground" />
-                    Payment receipts
+                    Penalty &amp; receipts
                   </span>
                   {receiptNotifications.length > 0 && (
                     <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">
@@ -1198,7 +1204,7 @@ export default function CheckInPage() {
                 <button
                   type="button"
                   onClick={() => { setMenuOpen(false); setRemindersDialogOpen(true); }}
-                  className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5"
+                  className="flex h-11 w-full items-center gap-3 rounded-md px-3 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5"
                 >
                   <BellRing className="h-4 w-4 text-muted-foreground" />
                   Reminders
@@ -1221,14 +1227,6 @@ export default function CheckInPage() {
           notifications={receiptNotifications.filter((notification) => !hiddenToastIds.has(notification.id))}
           onHide={hideReceiptToast}
           onOpen={openReceiptNotification}
-        />
-
-        <ReceiptsDialog
-          notifications={receiptNotifications}
-          onDismiss={dismissReceiptNotification}
-          onOpen={openReceiptNotification}
-          onOpenChange={setReceiptsDialogOpen}
-          open={receiptsDialogOpen}
         />
 
         <RemindersDialog
@@ -1666,78 +1664,6 @@ function ReceiptNotificationToast({
         </div>
       </div>
     </div>
-  );
-}
-
-function ReceiptsDialog({
-  notifications,
-  onDismiss,
-  onOpen,
-  onOpenChange,
-  open,
-}: {
-  notifications: LatenessPaymentReceiptNotification[];
-  onDismiss: (id: string) => void | Promise<void>;
-  onOpen: (notification: LatenessPaymentReceiptNotification) => void;
-  onOpenChange: (open: boolean) => void;
-  open: boolean;
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Payment receipts</DialogTitle>
-          <DialogDescription>Receipts recorded for your lateness payments.</DialogDescription>
-        </DialogHeader>
-        {notifications.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
-            No payment receipts.
-          </div>
-        ) : (
-          <div className="max-h-[60vh] space-y-2 overflow-y-auto">
-            {notifications.map((notification) => (
-              <div
-                key={notification.id}
-                className="flex items-start gap-3 rounded-lg border border-border bg-card p-3"
-              >
-                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <ReceiptText className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-foreground">
-                    GHC {Number(notification.amount || 0).toFixed(2)}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {formatDisplayDateTime(notification.recordedAt)}
-                  </p>
-                  <span className="mt-1 block truncate font-mono text-[11px] font-semibold text-muted-foreground">
-                    {notification.receiptNumber}
-                  </span>
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  <button
-                    aria-label="Dismiss receipt"
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    onClick={() => { void onDismiss(notification.id); }}
-                    type="button"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                  <Button
-                    className="h-8 px-2.5 text-xs"
-                    onClick={() => { onOpenChange(false); onOpen(notification); }}
-                    size="sm"
-                    type="button"
-                  >
-                    View
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
   );
 }
 
