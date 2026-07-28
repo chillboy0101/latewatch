@@ -4,11 +4,12 @@ import { UserButton, useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, ChevronDown, Loader2, LogOut, MapPin, Moon, ReceiptText, ShieldCheck, Sun, X, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, ChevronDown, Loader2, LogOut, MapPin, Moon, MoreVertical, ReceiptText, ShieldCheck, Sun, X, XCircle } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { formatDisplayDate, formatDisplayDateTime } from '@/lib/date-format';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
@@ -549,6 +550,10 @@ export default function CheckInPage() {
   const [penaltyHistoryLoading, setPenaltyHistoryLoading] = useState(false);
   const [penaltyHistoryOpen, setPenaltyHistoryOpen] = useState(false);
   const [receiptNotifications, setReceiptNotifications] = useState<LatenessPaymentReceiptNotification[]>([]);
+  const [hiddenToastIds, setHiddenToastIds] = useState<Set<string>>(() => new Set());
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [receiptsDialogOpen, setReceiptsDialogOpen] = useState(false);
+  const [remindersDialogOpen, setRemindersDialogOpen] = useState(false);
   const [pushReminderStatus, setPushReminderStatus] = useState<PushReminderStatus | null>(null);
   const [pushReminderLoading, setPushReminderLoading] = useState(false);
   const [savingPushReminder, setSavingPushReminder] = useState(false);
@@ -755,6 +760,17 @@ export default function CheckInPage() {
     void dismissReceiptNotification(notification.id);
     router.push(notification.href);
   }, [dismissReceiptNotification, router]);
+
+  // Hide a receipt's transient toast without dismissing it — it stays in the
+  // ⋮ menu until the user views or dismisses it there.
+  const hideReceiptToast = useCallback((id: string) => {
+    setHiddenToastIds((current) => {
+      if (current.has(id)) return current;
+      const next = new Set(current);
+      next.add(id);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     void fetchReceiptNotifications();
@@ -1147,6 +1163,48 @@ export default function CheckInPage() {
             >
               {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>
+            <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="relative h-9 w-9"
+                  aria-label="More"
+                  title="More"
+                >
+                  <MoreVertical className="h-5 w-5" />
+                  {receiptNotifications.length > 0 && (
+                    <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary ring-2 ring-background" />
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-56 p-1">
+                <button
+                  type="button"
+                  onClick={() => { setMenuOpen(false); setReceiptsDialogOpen(true); }}
+                  className="flex w-full items-center justify-between gap-3 rounded-md px-2.5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5"
+                >
+                  <span className="flex items-center gap-2.5">
+                    <ReceiptText className="h-4 w-4 text-muted-foreground" />
+                    Payment receipts
+                  </span>
+                  {receiptNotifications.length > 0 && (
+                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">
+                      {receiptNotifications.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setMenuOpen(false); setRemindersDialogOpen(true); }}
+                  className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5"
+                >
+                  <BellRing className="h-4 w-4 text-muted-foreground" />
+                  Reminders
+                </button>
+              </PopoverContent>
+            </Popover>
             <UserButton />
           </div>
         </header>
@@ -1160,9 +1218,39 @@ export default function CheckInPage() {
           open={penaltyHistoryOpen}
         />
         <ReceiptNotificationStack
+          notifications={receiptNotifications.filter((notification) => !hiddenToastIds.has(notification.id))}
+          onHide={hideReceiptToast}
+          onOpen={openReceiptNotification}
+        />
+
+        <ReceiptsDialog
           notifications={receiptNotifications}
           onDismiss={dismissReceiptNotification}
           onOpen={openReceiptNotification}
+          onOpenChange={setReceiptsDialogOpen}
+          open={receiptsDialogOpen}
+        />
+
+        <RemindersDialog
+          disabled={!status?.staff || reminderControlsLocked || pushReminderLoading || savingPushReminder}
+          loading={pushReminderLoading || savingPushReminder}
+          notificationPermission={notificationPermission}
+          onOpenChange={setRemindersDialogOpen}
+          onToggleCheckIn={() => {
+            void updatePushReminderSettings({
+              signInEnabled: !signInReminderEnabled,
+              signOutEnabled: signOutReminderEnabled,
+            });
+          }}
+          onToggleSignOut={() => {
+            void updatePushReminderSettings({
+              signInEnabled: signInReminderEnabled,
+              signOutEnabled: !signOutReminderEnabled,
+            });
+          }}
+          open={remindersDialogOpen}
+          signInEnabled={signInReminderEnabled}
+          signOutEnabled={signOutReminderEnabled}
         />
 
         <div className="flex min-h-0 flex-1 items-center py-3 sm:py-4">
@@ -1228,26 +1316,6 @@ export default function CheckInPage() {
                   signOutEnabled={signOutReminderEnabled}
                   onUpdate={(next) => {
                     void updatePushReminderSettings(next);
-                  }}
-                />
-
-                <ReminderNotificationPanel
-                  disabled={!status?.staff || reminderControlsLocked || pushReminderLoading || savingPushReminder}
-                  loading={pushReminderLoading || savingPushReminder}
-                  notificationPermission={notificationPermission}
-                  signInEnabled={signInReminderEnabled}
-                  signOutEnabled={signOutReminderEnabled}
-                  onToggleCheckIn={() => {
-                    void updatePushReminderSettings({
-                      signInEnabled: !signInReminderEnabled,
-                      signOutEnabled: signOutReminderEnabled,
-                    });
-                  }}
-                  onToggleSignOut={() => {
-                    void updatePushReminderSettings({
-                      signInEnabled: signInReminderEnabled,
-                      signOutEnabled: !signOutReminderEnabled,
-                    });
                   }}
                 />
 
@@ -1516,11 +1584,11 @@ function AccessNotSetUp({ email }: { email: string | null }) {
 
 function ReceiptNotificationStack({
   notifications,
-  onDismiss,
+  onHide,
   onOpen,
 }: {
   notifications: LatenessPaymentReceiptNotification[];
-  onDismiss: (id: string) => void | Promise<void>;
+  onHide: (id: string) => void;
   onOpen: (notification: LatenessPaymentReceiptNotification) => void;
 }) {
   if (notifications.length === 0) return null;
@@ -1531,7 +1599,7 @@ function ReceiptNotificationStack({
         <ReceiptNotificationToast
           key={notification.id}
           notification={notification}
-          onDismiss={onDismiss}
+          onHide={onHide}
           onOpen={onOpen}
         />
       ))}
@@ -1541,20 +1609,20 @@ function ReceiptNotificationStack({
 
 function ReceiptNotificationToast({
   notification,
-  onDismiss,
+  onHide,
   onOpen,
 }: {
   notification: LatenessPaymentReceiptNotification;
-  onDismiss: (id: string) => void | Promise<void>;
+  onHide: (id: string) => void;
   onOpen: (notification: LatenessPaymentReceiptNotification) => void;
 }) {
   useEffect(() => {
     const timeout = window.setTimeout(() => {
-      void onDismiss(notification.id);
+      onHide(notification.id);
     }, RECEIPT_NOTIFICATION_AUTO_DISMISS_MS);
 
     return () => window.clearTimeout(timeout);
-  }, [notification.id, onDismiss]);
+  }, [notification.id, onHide]);
 
   return (
     <div
@@ -1574,9 +1642,9 @@ function ReceiptNotificationToast({
               </p>
             </div>
             <button
-              aria-label="Dismiss receipt notification"
+              aria-label="Hide receipt notification"
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              onClick={() => { void onDismiss(notification.id); }}
+              onClick={() => onHide(notification.id)}
               type="button"
             >
               <X className="h-3.5 w-3.5" />
@@ -1598,6 +1666,122 @@ function ReceiptNotificationToast({
         </div>
       </div>
     </div>
+  );
+}
+
+function ReceiptsDialog({
+  notifications,
+  onDismiss,
+  onOpen,
+  onOpenChange,
+  open,
+}: {
+  notifications: LatenessPaymentReceiptNotification[];
+  onDismiss: (id: string) => void | Promise<void>;
+  onOpen: (notification: LatenessPaymentReceiptNotification) => void;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Payment receipts</DialogTitle>
+          <DialogDescription>Receipts recorded for your lateness payments.</DialogDescription>
+        </DialogHeader>
+        {notifications.length === 0 ? (
+          <div className="rounded-md border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
+            No payment receipts.
+          </div>
+        ) : (
+          <div className="max-h-[60vh] space-y-2 overflow-y-auto">
+            {notifications.map((notification) => (
+              <div
+                key={notification.id}
+                className="flex items-start gap-3 rounded-lg border border-border bg-card p-3"
+              >
+                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <ReceiptText className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-foreground">
+                    GHC {Number(notification.amount || 0).toFixed(2)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {formatDisplayDateTime(notification.recordedAt)}
+                  </p>
+                  <span className="mt-1 block truncate font-mono text-[11px] font-semibold text-muted-foreground">
+                    {notification.receiptNumber}
+                  </span>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  <button
+                    aria-label="Dismiss receipt"
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    onClick={() => { void onDismiss(notification.id); }}
+                    type="button"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                  <Button
+                    className="h-8 px-2.5 text-xs"
+                    onClick={() => { onOpenChange(false); onOpen(notification); }}
+                    size="sm"
+                    type="button"
+                  >
+                    View
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RemindersDialog({
+  disabled,
+  loading,
+  notificationPermission,
+  onOpenChange,
+  onToggleCheckIn,
+  onToggleSignOut,
+  open,
+  signInEnabled,
+  signOutEnabled,
+}: {
+  disabled: boolean;
+  loading: boolean;
+  notificationPermission: BrowserNotificationPermission;
+  onOpenChange: (open: boolean) => void;
+  onToggleCheckIn: () => void;
+  onToggleSignOut: () => void;
+  open: boolean;
+  signInEnabled: boolean;
+  signOutEnabled: boolean;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Reminders</DialogTitle>
+          <DialogDescription>
+            Get a heads-up to sign in before 8:30 AM, and to sign out at 4:30 PM — even if the app is closed.
+          </DialogDescription>
+        </DialogHeader>
+        <ReminderNotificationPanel
+          disabled={disabled}
+          loading={loading}
+          notificationPermission={notificationPermission}
+          signInEnabled={signInEnabled}
+          signOutEnabled={signOutEnabled}
+          onToggleCheckIn={onToggleCheckIn}
+          onToggleSignOut={onToggleSignOut}
+        />
+      </DialogContent>
+    </Dialog>
   );
 }
 
