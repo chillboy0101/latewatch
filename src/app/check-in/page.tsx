@@ -1428,15 +1428,18 @@ function PenaltyHistoryDialog({
           </DrawerDescription>
         </DrawerHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
         {loading ? (
-          <LoadingBuffer variant="section" label="Loading penalty history" description="Checking your weekly balance." />
+          <div className="flex min-h-0 flex-1 items-center justify-center px-4 pb-6">
+            <LoadingBuffer variant="section" label="Loading penalty history" description="Checking your weekly balance." />
+          </div>
         ) : error ? (
-          <div className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-            {error}
+          <div className="flex min-h-0 flex-1 items-center justify-center px-6 pb-6">
+            <div className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+              {error}
+            </div>
           </div>
         ) : currentWeek ? (
-          <div className="space-y-4">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-6">
             <div>
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -1477,11 +1480,14 @@ function PenaltyHistoryDialog({
             )}
           </div>
         ) : (
-          <div className="rounded-md border border-border px-3 py-6 text-center text-sm text-muted-foreground">
-            No penalty history found.
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 pb-6 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <History className="h-6 w-6" />
+            </span>
+            <p className="mt-3 text-base font-semibold text-foreground">No penalty history yet</p>
+            <p className="mt-1 text-sm text-muted-foreground">Late-day penalties and payments will show here.</p>
           </div>
         )}
-        </div>
       </DrawerContent>
     </DrawerNested>
   );
@@ -1750,8 +1756,12 @@ function ReceiptsDialog({
           <DrawerDescription>Receipts for payments recorded on your account.</DrawerDescription>
         </DrawerHeader>
         {notifications.length === 0 ? (
-          <div className="mx-4 mb-6 rounded-md border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
-            No payment receipts yet.
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 pb-6 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <ReceiptText className="h-6 w-6" />
+            </span>
+            <p className="mt-3 text-base font-semibold text-foreground">No payment receipts yet</p>
+            <p className="mt-1 text-sm text-muted-foreground">Receipts for recorded payments will show here.</p>
           </div>
         ) : (
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 pb-6">
