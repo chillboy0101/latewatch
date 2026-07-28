@@ -44,6 +44,13 @@ export const metadata: Metadata = {
     apple: [{ url: "/apple-icon", sizes: "180x180", type: "image/png" }],
   },
   manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    // Transparent status bar on the installed iOS PWA so it shows the app's
+    // themed background (dark in dark mode) instead of a fixed white bar.
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: SITE_NAME,
+  },
   openGraph: {
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
@@ -72,6 +79,9 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   colorScheme: "light dark",
+  // Extend the page under the notch/status bar so the transparent iOS PWA status
+  // bar shows the app background, and env(safe-area-inset-*) becomes non-zero.
+  viewportFit: "cover",
   // Single (non-media) theme-color so it can be driven by the app's manual
   // theme toggle. Media-based metas would win over our dynamic one whenever the
   // OS preference matched, leaving the status bar out of sync with the app.
