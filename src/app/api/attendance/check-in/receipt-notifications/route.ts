@@ -12,7 +12,7 @@ import {
 export const dynamic = 'force-dynamic';
 
 const DISMISSED_PREFIX = 'dismissed:';
-const RECEIPT_NOTIFICATION_LIMIT = 10;
+const RECEIPT_NOTIFICATION_LIMIT = 50;
 
 function getUserFullName(user: NonNullable<Awaited<ReturnType<typeof currentUser>>>) {
   return user.fullName
@@ -91,13 +91,18 @@ export async function GET() {
       }
     }
 
-    const unseen = notifications.filter((notification) => (
-      !hiddenIds.has(getLatenessPaymentReceiptNotificationId(notification.paymentId))
-    ));
+    // Full history: every receipt, with a real read flag. The drawer shows all
+    // of these; the badge/toasts use only the unseen subset.
+    const receipts = notifications.map((notification) => ({
+      ...notification,
+      read: hiddenIds.has(getLatenessPaymentReceiptNotificationId(notification.paymentId)),
+    }));
+    const unseen = receipts.filter((notification) => !notification.read);
 
     return NextResponse.json({
       generatedAt: new Date().toISOString(),
       notifications: unseen,
+      receipts,
       unreadCount: unseen.length,
     }, {
       headers: { 'Cache-Control': 'no-store' },

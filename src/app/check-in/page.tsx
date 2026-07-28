@@ -550,6 +550,7 @@ export default function CheckInPage() {
   const [penaltyHistoryLoading, setPenaltyHistoryLoading] = useState(false);
   const [penaltyHistoryOpen, setPenaltyHistoryOpen] = useState(false);
   const [receiptNotifications, setReceiptNotifications] = useState<LatenessPaymentReceiptNotification[]>([]);
+  const [receiptHistory, setReceiptHistory] = useState<LatenessPaymentReceiptNotification[]>([]);
   const [hiddenToastIds, setHiddenToastIds] = useState<Set<string>>(() => new Set());
   const [menuOpen, setMenuOpen] = useState(false);
   const [receiptsDialogOpen, setReceiptsDialogOpen] = useState(false);
@@ -738,6 +739,7 @@ export default function CheckInPage() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || `Receipt notifications failed (${response.status})`);
       setReceiptNotifications(Array.isArray(body.notifications) ? body.notifications : []);
+      setReceiptHistory(Array.isArray(body.receipts) ? body.receipts : []);
     } catch (error) {
       console.warn('Receipt notifications could not load:', error);
     }
@@ -1231,8 +1233,7 @@ export default function CheckInPage() {
               />
 
               <ReceiptsDialog
-                notifications={receiptNotifications}
-                onDismiss={dismissReceiptNotification}
+                notifications={receiptHistory}
                 onOpen={openReceiptNotification}
                 onOpenChange={setReceiptsDialogOpen}
                 open={receiptsDialogOpen}
@@ -1738,13 +1739,11 @@ function ReceiptNotificationToast({
 
 function ReceiptsDialog({
   notifications,
-  onDismiss,
   onOpen,
   onOpenChange,
   open,
 }: {
   notifications: LatenessPaymentReceiptNotification[];
-  onDismiss: (id: string) => void | Promise<void>;
   onOpen: (notification: LatenessPaymentReceiptNotification) => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
@@ -1758,7 +1757,7 @@ function ReceiptsDialog({
         </DrawerHeader>
         {notifications.length === 0 ? (
           <div className="mx-4 mb-6 rounded-md border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
-            No new payment receipts.
+            No payment receipts yet.
           </div>
         ) : (
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 pb-6">
@@ -1771,9 +1770,16 @@ function ReceiptsDialog({
                   <ReceiptText className="h-4 w-4" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-foreground">
-                    GHC {Number(notification.amount || 0).toFixed(2)}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-foreground">
+                      GHC {Number(notification.amount || 0).toFixed(2)}
+                    </p>
+                    {!notification.read && (
+                      <span className="flex h-5 items-center rounded-full bg-primary px-2 text-[10px] font-semibold uppercase tracking-wide text-primary-foreground">
+                        New
+                      </span>
+                    )}
+                  </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {formatDisplayDateTime(notification.recordedAt)}
                   </p>
@@ -1781,15 +1787,7 @@ function ReceiptsDialog({
                     {notification.receiptNumber}
                   </span>
                 </div>
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  <button
-                    aria-label="Dismiss receipt"
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    onClick={() => { void onDismiss(notification.id); }}
-                    type="button"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
+                <div className="flex shrink-0 items-center">
                   <Button
                     className="h-8 px-2.5 text-xs"
                     onClick={() => { onOpenChange(false); onOpen(notification); }}
