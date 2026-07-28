@@ -67,7 +67,7 @@ const DrawerContent = React.forwardRef<
       {...props}
     >
       {!hideHandle && (
-        <div className="mx-auto mt-3 h-2 w-24 shrink-0 rounded-full bg-muted-foreground/50 transition-colors hover:bg-muted-foreground/70 active:bg-muted-foreground/80" />
+        <div className="mx-auto mt-3 h-2 w-32 shrink-0 rounded-full bg-gradient-to-b from-muted-foreground/70 to-muted-foreground/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_1px_2px_rgba(0,0,0,0.18)] transition-colors hover:from-muted-foreground/85 hover:to-muted-foreground/60 active:from-muted-foreground/90" />
       )}
       {children}
     </DrawerPrimitive.Content>

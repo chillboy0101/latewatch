@@ -6,6 +6,31 @@ function ghc(value: string | number | null | undefined) {
   return `GHC ${Number(value || 0).toFixed(2)}`;
 }
 
+let logoDataUrlPromise: Promise<string | null> | null = null;
+
+// Load the LateWatch logo once and cache it as a data URL for embedding.
+function getLogoDataUrl(): Promise<string | null> {
+  if (logoDataUrlPromise) return logoDataUrlPromise;
+
+  logoDataUrlPromise = (async () => {
+    try {
+      const response = await fetch('/latewatch-logo.png', { cache: 'force-cache' });
+      if (!response.ok) return null;
+      const blob = await response.blob();
+      return await new Promise<string | null>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      return null;
+    }
+  })();
+
+  return logoDataUrlPromise;
+}
+
 export function getReceiptPdfFileName(detail: ReceiptDetailData) {
   const title = getLatenessPaymentReceiptDocumentTitle(detail.receipt.receiptNumber, detail.receipt.recordedAt);
   return `${title.replace(/[^\w.-]+/g, '-')}.pdf`;
@@ -22,16 +47,41 @@ export async function buildReceiptPdfBlob(detail: ReceiptDetailData): Promise<Bl
 
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
   const marginX = 40;
   let y = 54;
 
+  const logo = await getLogoDataUrl();
+
+  // Centered faint logo watermark for authenticity (drawn first, behind content).
+  if (logo) {
+    try {
+      const size = 340;
+      doc.saveGraphicsState();
+      doc.setGState(doc.GState({ opacity: 0.06 }));
+      doc.addImage(logo, 'PNG', (pageWidth - size) / 2, (pageHeight - size) / 2, size, size);
+      doc.restoreGraphicsState();
+    } catch {
+      // Ignore watermark failures; the receipt still renders.
+    }
+  }
+
+  const titleX = logo ? marginX + 34 : marginX;
+  if (logo) {
+    try {
+      doc.addImage(logo, 'PNG', marginX, y - 20, 26, 26);
+    } catch {
+      // Ignore header logo failures.
+    }
+  }
+
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
-  doc.text('LateWatch', marginX, y);
+  doc.text('LateWatch', titleX, y);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
   doc.setTextColor(110);
-  doc.text('Attendance payment receipt', marginX, y + 16);
+  doc.text('Attendance payment receipt', titleX, y + 16);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
