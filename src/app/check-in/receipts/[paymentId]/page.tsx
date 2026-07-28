@@ -108,6 +108,13 @@ export default function PaymentReceiptPage() {
 
   function handlePrint() {
     document.title = receiptDocumentTitle;
+    // iOS installed PWAs (standalone) silently ignore window.print(); open the
+    // receipt in Safari where print / Save-PDF works. Everything else prints inline.
+    const iosStandalone = (navigator as unknown as { standalone?: boolean }).standalone === true;
+    if (iosStandalone) {
+      window.open(window.location.href, '_blank');
+      return;
+    }
     window.print();
   }
 
@@ -124,7 +131,7 @@ export default function PaymentReceiptPage() {
 
       <div className="no-print mx-auto mb-4 flex max-w-3xl items-center justify-between gap-3">
         <Button asChild variant="outline" size="sm" className="gap-2">
-          <Link href="/check-in">
+          <Link href="/check-in?receipts=1">
             <ArrowLeft className="h-4 w-4" />
             Back
           </Link>

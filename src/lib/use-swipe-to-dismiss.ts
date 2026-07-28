@@ -15,7 +15,13 @@ export function useSwipeToDismiss(onDismiss: () => void, options?: { threshold?:
   const [drag, setDrag] = useState({ x: 0, y: 0 });
   const [swiping, setSwiping] = useState(false);
   const startRef = useRef({ x: 0, y: 0 });
+  const dragRef = useRef({ x: 0, y: 0 });
   const draggingRef = useRef(false);
+
+  const applyDrag = useCallback((next: { x: number; y: number }) => {
+    dragRef.current = next;
+    setDrag(next);
+  }, []);
 
   const onPointerDown = useCallback((event: PointerEvent<HTMLElement>) => {
     if ((event.target as HTMLElement).closest('button, a, input, [role="button"]')) return;
@@ -31,26 +37,30 @@ export function useSwipeToDismiss(onDismiss: () => void, options?: { threshold?:
     let y = event.clientY - startRef.current.y;
     // Only upward drags dismiss; resist downward so it springs back.
     if (y > 0) y *= 0.35;
-    setDrag({ x, y });
-  }, []);
+    applyDrag({ x, y });
+  }, [applyDrag]);
 
   const onPointerEnd = useCallback(() => {
     if (!draggingRef.current) return;
     draggingRef.current = false;
     setSwiping(false);
-    setDrag((current) => {
-      const horizontal = Math.abs(current.x) >= Math.abs(current.y);
-      if (horizontal && Math.abs(current.x) > threshold) {
-        window.setTimeout(onDismiss, 180);
-        return { x: current.x > 0 ? 600 : -600, y: current.y };
-      }
-      if (!horizontal && current.y < -threshold) {
-        window.setTimeout(onDismiss, 180);
-        return { x: current.x, y: -600 };
-      }
-      return { x: 0, y: 0 };
-    });
-  }, [onDismiss, threshold]);
+
+    const current = dragRef.current;
+    const horizontal = Math.abs(current.x) >= Math.abs(current.y);
+    const flingX = horizontal && Math.abs(current.x) > threshold;
+    const flingUp = !horizontal && current.y < -threshold;
+
+    if (flingX || flingUp) {
+      applyDrag(flingX ? { x: current.x > 0 ? 600 : -600, y: current.y } : { x: current.x, y: -600 });
+      window.setTimeout(onDismiss, 180);
+      // Reset a reused instance (e.g. the single status toast) so the next
+      // message isn't rendered still flung off-screen.
+      window.setTimeout(() => applyDrag({ x: 0, y: 0 }), 240);
+      return;
+    }
+
+    applyDrag({ x: 0, y: 0 });
+  }, [applyDrag, onDismiss, threshold]);
 
   const active = swiping || drag.x !== 0 || drag.y !== 0;
   const distance = Math.max(Math.abs(drag.x), Math.max(0, -drag.y));

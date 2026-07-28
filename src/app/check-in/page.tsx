@@ -816,6 +816,18 @@ export default function CheckInPage() {
     }
   }, []);
 
+  // Returning from a receipt page (Back → /check-in?receipts=1) reopens the ⋮
+  // menu and the receipts drawer, then strips the param so it doesn't re-fire.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('receipts') === '1') {
+      setMenuOpen(true);
+      setReceiptsDialogOpen(true);
+      window.history.replaceState({}, '', '/check-in');
+    }
+  }, []);
+
   useEffect(() => {
     if (!deviceToken || !isLoaded || !user) return;
 
