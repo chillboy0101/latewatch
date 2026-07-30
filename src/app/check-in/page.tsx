@@ -1194,7 +1194,10 @@ export default function CheckInPage() {
                   )}
                 </Button>
               </DrawerTrigger>
-              <DrawerContent className="px-2 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+              <DrawerContent
+                className="px-2 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]"
+                overlayClassName="bg-black/50"
+              >
                 <DrawerTitle className="sr-only">
                   Notifications &amp; settings
                 </DrawerTitle>

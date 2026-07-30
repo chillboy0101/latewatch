@@ -52,10 +52,16 @@ DrawerOverlay.displayName = DrawerPrimitive.Overlay.displayName;
 
 const DrawerContent = React.forwardRef<
   React.ElementRef<typeof DrawerPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Content> & { hideHandle?: boolean }
->(({ className, children, hideHandle = false, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Content> & {
+    hideHandle?: boolean;
+    // Opt-in dim scrim. Left off by default so nested check-in sheets (and every
+    // other Drawer in the app) stay transparent — only the root that owns the dim
+    // passes a background here, avoiding stacked/double-dim.
+    overlayClassName?: string;
+  }
+>(({ className, children, hideHandle = false, overlayClassName, ...props }, ref) => (
   <DrawerPortal>
-    <DrawerOverlay />
+    <DrawerOverlay className={overlayClassName} />
     <DrawerPrimitive.Content
       ref={ref}
       className={cn(
