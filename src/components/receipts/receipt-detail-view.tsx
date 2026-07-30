@@ -41,7 +41,7 @@ function ReceiptField({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className="mt-1 text-sm font-medium text-foreground">{value}</div>
+      <div className="mt-1 break-words text-sm font-medium text-foreground">{value}</div>
     </div>
   );
 }
@@ -133,18 +133,18 @@ export function ReceiptDetailView({
   if (!receipt) return null;
 
   return (
-    <Card className="receipt-sheet mx-auto max-w-3xl overflow-hidden bg-card">
-      <section className="border-b border-border p-6">
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+    <Card className="receipt-sheet mx-auto w-full max-w-3xl overflow-hidden bg-card">
+      <section className="border-b border-border p-4 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-5">
           <LateWatchLogo subtitle="Attendance payment receipt" />
           <div className="text-left sm:text-right">
             <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Official Receipt</div>
-            <div className="mt-1 font-mono text-lg font-bold">{receipt.receipt.receiptNumber}</div>
+            <div className="mt-1 break-all font-mono text-base font-bold sm:text-lg">{receipt.receipt.receiptNumber}</div>
           </div>
         </div>
       </section>
 
-      <section className="grid gap-4 border-b border-border p-6 sm:grid-cols-2">
+      <section className="grid gap-4 border-b border-border p-4 sm:grid-cols-2 sm:p-6">
         <ReceiptField label="Receipt No" value={receipt.receipt.receiptNumber} />
         <ReceiptField label="Amount paid" value={ghc(receipt.receipt.amount)} />
         <ReceiptField label="Staff" value={receipt.staff.fullName} />
@@ -158,7 +158,7 @@ export function ReceiptDetailView({
         <ReceiptField label="Note" value={receipt.receipt.note || '-'} />
       </section>
 
-      <section className="p-6">
+      <section className="p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Allocated penalty days</h2>
         <div className="mt-3 overflow-x-auto rounded-md border border-border">
           <table className="w-full min-w-[28rem] text-sm">
