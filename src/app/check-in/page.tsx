@@ -1326,29 +1326,33 @@ export default function CheckInPage() {
                   </div>
                 </div>
 
-                {status?.attendance && (
-                  <div className="flex flex-1 flex-col rounded-2xl border border-border bg-card px-4 sm:px-5">
-                    <div className="flex flex-1 items-center justify-between gap-3">
-                      <span className="text-sm text-muted-foreground">Checked in at</span>
-                      <span className="font-mono text-xl font-semibold tabular-nums">{status.attendance.checkInTime.slice(0, 5)}</span>
-                    </div>
-                    <div className="flex flex-1 items-center justify-between gap-3 border-t border-border">
-                      <span className="text-sm text-muted-foreground">Checked out at</span>
-                      <span className="font-mono text-xl font-semibold tabular-nums">{status.attendance.signOutTime ? status.attendance.signOutTime.slice(0, 5) : '-'}</span>
-                    </div>
-                    {Number(status.attendance.computedAmount || 0) > 0 && (
-                      <div className="flex flex-1 items-center justify-between gap-3 border-t border-border">
-                        <span className="text-sm text-muted-foreground">Penalty</span>
-                        <span className="font-mono text-lg font-semibold text-warning tabular-nums">GHC {Number(status.attendance.computedAmount).toFixed(2)}</span>
-                      </div>
-                    )}
-                    {Number(status.attendance.computedAmount || 0) === 0 && status.attendance.reason && (
-                      <div className="flex flex-1 items-center border-t border-border py-3 text-sm text-muted-foreground">
-                        {status.attendance.reason}
-                      </div>
-                    )}
+                <div className="flex flex-1 flex-col rounded-2xl border border-border bg-card px-4 sm:px-5">
+                  <div className="flex flex-1 items-center justify-between gap-3">
+                    <span className="text-sm text-muted-foreground">Checked in at</span>
+                    <span className="font-mono text-xl font-semibold tabular-nums">{status?.attendance ? status.attendance.checkInTime.slice(0, 5) : '-'}</span>
                   </div>
-                )}
+                  <div className="flex flex-1 items-center justify-between gap-3 border-t border-border">
+                    <span className="text-sm text-muted-foreground">Checked out at</span>
+                    <span className="font-mono text-xl font-semibold tabular-nums">{status?.attendance?.signOutTime ? status.attendance.signOutTime.slice(0, 5) : '-'}</span>
+                  </div>
+                  {status?.attendance && Number(status.attendance.computedAmount || 0) > 0 && (
+                    <div className="flex flex-1 items-center justify-between gap-3 border-t border-border">
+                      <span className="text-sm text-muted-foreground">Penalty</span>
+                      <span className="font-mono text-lg font-semibold text-warning tabular-nums">GHC {Number(status.attendance.computedAmount).toFixed(2)}</span>
+                    </div>
+                  )}
+                  {status?.attendance && Number(status.attendance.computedAmount || 0) === 0 && status.attendance.reason && (
+                    <div className="flex flex-1 items-center border-t border-border py-3 text-sm text-muted-foreground">
+                      {status.attendance.reason}
+                    </div>
+                  )}
+                  {!status?.attendance && (
+                    <div className="flex flex-1 items-center justify-between gap-3 border-t border-border">
+                      <span className="text-sm text-muted-foreground">Penalty</span>
+                      <span className="font-mono text-xl font-semibold tabular-nums">-</span>
+                    </div>
+                  )}
+                </div>
 
                 <NotificationNudge
                   eligible={Boolean(deviceToken) && pushReminderStatus !== null && !reminderNudgeSuppressed && notificationPermission !== 'unsupported' && !signInReminderEnabled && !signOutReminderEnabled && !reminderControlsLocked}
