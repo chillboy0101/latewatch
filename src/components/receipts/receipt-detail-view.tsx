@@ -133,7 +133,7 @@ export function ReceiptDetailView({
   if (!receipt) return null;
 
   return (
-    <Card className="receipt-sheet mx-auto w-full max-w-3xl overflow-hidden bg-card">
+    <Card className="receipt-sheet mx-auto w-full max-w-3xl shrink-0 overflow-hidden bg-card">
       <section className="border-b border-border p-4 sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-5">
           <LateWatchLogo subtitle="Attendance payment receipt" />
