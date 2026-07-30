@@ -1832,7 +1832,7 @@ function ReceiptsDialog({
               </div>
               <DrawerDescription className="sr-only">Receipt details.</DrawerDescription>
             </DrawerHeader>
-            <div data-vaul-no-drag className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
+            <div data-vaul-no-drag className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-6">
               <ReceiptDetailView receipt={detail.receipt} loading={detail.loading} error={detail.error} />
             </div>
             {detail.receipt && (
