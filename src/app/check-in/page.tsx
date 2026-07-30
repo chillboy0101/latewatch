@@ -1819,30 +1819,36 @@ function ReceiptsDialog({
         {selectedId ? (
           <>
             <DrawerHeader>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  aria-label="Back to receipts"
-                  onClick={() => setSelectedId(null)}
-                  className="-ml-1 flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
-                >
-                  <ArrowLeft className="h-5 w-5" />
-                </button>
-                <DrawerTitle>Receipt</DrawerTitle>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <button
+                    type="button"
+                    aria-label="Back to receipts"
+                    onClick={() => setSelectedId(null)}
+                    className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                  </button>
+                  <DrawerTitle>Receipt</DrawerTitle>
+                </div>
+                {detail.receipt && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="shrink-0 gap-2"
+                    onClick={printReceipt}
+                    disabled={!pdfFile}
+                  >
+                    {pdfBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                    Print
+                  </Button>
+                )}
               </div>
               <DrawerDescription className="sr-only">Receipt details.</DrawerDescription>
             </DrawerHeader>
             <div data-vaul-no-drag className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-6">
               <ReceiptDetailView receipt={detail.receipt} loading={detail.loading} error={detail.error} />
             </div>
-            {detail.receipt && (
-              <div className="shrink-0 border-t border-border p-3">
-                <Button type="button" className="w-full gap-2" onClick={printReceipt} disabled={!pdfFile}>
-                  {pdfBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-                  Print / save receipt
-                </Button>
-              </div>
-            )}
           </>
         ) : (
           <>
