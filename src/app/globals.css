@@ -138,6 +138,14 @@ html {
   }
 }
 
+/* The drawer floats as a detached rounded deck (inset on all sides). vaul adds a
+   `background: inherit` filler below the sheet (::after, top:100%) to hide gaps while
+   dragging — with a floating sheet that translucent strip bleeds into the bottom gap,
+   so suppress it. !important because vaul's selector has higher specificity. */
+.drawer-glass::after {
+  content: none !important;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
