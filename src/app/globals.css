@@ -138,6 +138,24 @@ html {
   }
 }
 
+/* vaul slides the sheet for 0.5s and re-renders the backdrop blur on every frame of it,
+   which is what makes the close feel heavy on iOS. Shorten the exit and drop the blur to
+   something cheap while the sheet is on its way out — it is moving fast enough that the
+   softer glass does not read. pointer-events:none covers the gap between the end of the
+   animation and vaul's fixed 500ms unmount timer, so the next tap lands immediately.
+   No !important needed: vaul's rule is [data-vaul-drawer], one specificity step lower. */
+.drawer-glass[data-state='closed'] {
+  animation-duration: 0.3s;
+  pointer-events: none;
+  background-color: color-mix(in srgb, var(--card) 88%, transparent);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  backdrop-filter: blur(12px) saturate(140%);
+}
+
+.drawer-glass[data-state='open'] {
+  animation-duration: 0.42s;
+}
+
 /* The drawer floats as a detached rounded deck (inset on all sides). vaul adds a
    `background: inherit` filler below the sheet (::after, top:100%) to hide gaps while
    dragging — with a floating sheet that translucent strip bleeds into the bottom gap,

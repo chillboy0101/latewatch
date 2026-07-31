@@ -44,7 +44,7 @@ const DrawerOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DrawerPrimitive.Overlay
     ref={ref}
-    className={cn('fixed inset-0 z-50', className)}
+    className={cn('fixed inset-0 z-50 data-[state=closed]:pointer-events-none', className)}
     {...props}
   />
 ));
@@ -67,7 +67,7 @@ const DrawerContent = React.forwardRef<
       {...props}
     >
       {!hideHandle && (
-        <div className="mx-auto mt-3 h-2 w-32 shrink-0 rounded-full bg-gradient-to-b from-muted-foreground/70 to-muted-foreground/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_1px_2px_rgba(0,0,0,0.18)] transition-colors hover:from-muted-foreground/85 hover:to-muted-foreground/60 active:from-muted-foreground/90" />
+        <div className="mx-auto mt-3 h-2 w-32 shrink-0 rounded-full bg-gradient-to-b from-foreground/80 to-foreground/55 shadow-[0_1px_2px_rgba(0,0,0,0.18)] transition-colors hover:from-foreground/90 hover:to-foreground/70 active:from-foreground/95" />
       )}
       {children}
     </DrawerPrimitive.Content>
