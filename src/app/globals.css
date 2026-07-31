@@ -121,12 +121,12 @@ html {
   }
 }
 
-/* Stronger glass for the drawer sheets: more see-through + heavier blur/saturation
-   and a brighter specular top edge. */
+/* Frosted glass for the drawer sheets: heavier blur than the rest of the app and a
+   brighter specular top edge, tinted enough that the sheet's own content reads first. */
 .drawer-glass {
-  background-color: color-mix(in srgb, var(--card) 48%, transparent);
-  -webkit-backdrop-filter: blur(34px) saturate(200%);
-  backdrop-filter: blur(34px) saturate(200%);
+  background-color: color-mix(in srgb, var(--card) 72%, transparent);
+  -webkit-backdrop-filter: blur(44px) saturate(170%);
+  backdrop-filter: blur(44px) saturate(170%);
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, #ffffff 28%, transparent),
     inset 0 0 0 1px color-mix(in srgb, #ffffff 8%, transparent);
