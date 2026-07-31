@@ -59,7 +59,7 @@ const DrawerContent = React.forwardRef<
     <DrawerPrimitive.Content
       ref={ref}
       className={cn(
-        'drawer-glass fixed inset-x-2 bottom-2 z-50 mt-24 mx-auto flex h-auto flex-col rounded-[28px] border border-border/50 shadow-2xl outline-none',
+        'drawer-glass fixed inset-x-[9px] bottom-[9px] z-50 mt-24 mx-auto flex h-auto flex-col overflow-hidden rounded-[38px] border border-border/50 shadow-2xl outline-none',
         'pb-[env(safe-area-inset-bottom)]',
         'sm:max-w-md',
         className,
