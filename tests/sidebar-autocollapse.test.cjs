@@ -93,17 +93,15 @@ test('sidebar uses a fixed icon rail so icons do not shift while expanding', () 
 test('sidebar groups attendance routes under an accessible disclosure', () => {
   const source = fs.readFileSync(sidebarPath, 'utf8');
 
+  // 502b6f5 cut the attendance section to two pages: /attendance/overview and
+  // /attendance/devices. The reminders and security-alerts pages were removed.
   assert.match(source, /const attendanceChildren = \[/);
-  assert.match(source, /\{ name: 'Overview', href: '\/attendance' \}/);
-  assert.match(source, /\{ name: 'Reminders', href: '\/attendance\/reminders' \}/);
+  assert.match(source, /\{ name: 'Overview', href: '\/attendance\/overview' \}/);
   assert.match(source, /\{ name: 'Devices', href: '\/attendance\/devices' \}/);
-  assert.match(source, /\{ name: 'Security Alerts', href: '\/attendance\/security-alerts' \}/);
   assert.match(source, /\{ name: 'Attendance', icon: ClipboardCheck, children: attendanceChildren \}/);
-  assert.doesNotMatch(source, /\{ name: 'Overview', href: '\/attendance', icon:/);
-  assert.doesNotMatch(source, /\{ name: 'Reminders', href: '\/attendance\/reminders', icon:/);
+  assert.doesNotMatch(source, /\{ name: 'Overview', href: '\/attendance\/overview', icon:/);
   assert.doesNotMatch(source, /\{ name: 'Devices', href: '\/attendance\/devices', icon:/);
-  assert.doesNotMatch(source, /\{ name: 'Security Alerts', href: '\/attendance\/security-alerts', icon:/);
-  assert.doesNotMatch(source, /\{ name: 'Security', href: '\/attendance\/security-alerts', icon:/);
+  assert.doesNotMatch(source, /security-alerts/);
   assert.match(source, /aria-controls=\{ATTENDANCE_NAV_ID\}/);
   assert.match(source, /aria-expanded=\{showChildren\}/);
   assert.match(source, /id=\{ATTENDANCE_NAV_ID\}/);

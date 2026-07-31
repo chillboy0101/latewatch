@@ -15,6 +15,7 @@ const dashboardApiPath = path.join(root, 'src/app/api/dashboard/route.ts');
 const paymentsPagePath = path.join(root, 'src/app/payments/page.tsx');
 const checkInPagePath = path.join(root, 'src/app/check-in/page.tsx');
 const receiptPagePath = path.join(root, 'src/app/check-in/receipts/[paymentId]/page.tsx');
+const receiptDetailViewPath = path.join(root, 'src/components/receipts/receipt-detail-view.tsx');
 const receiptNotificationLibPath = path.join(root, 'src/lib/lateness-payment-receipt-notifications.ts');
 const receiptLibPath = path.join(root, 'src/lib/lateness-payment-receipts.ts');
 const sidebarPath = path.join(root, 'src/components/layout/sidebar.tsx');
@@ -176,11 +177,13 @@ test('payments list uses binary paid or unpaid status with toolbar money totals'
   assert.match(page, /paymentTotals\.unpaidAmount/);
 });
 
-test('check-in page exposes an icon-only penalty history modal', () => {
+test('check-in page exposes a penalty history sheet from the overflow menu', () => {
   const source = fs.readFileSync(checkInPagePath, 'utf8');
 
-  assert.match(source, /Penalty History/);
-  assert.match(source, /aria-label="Penalty History"/);
+  // The icon-only button was replaced by a row in the ⋮ menu drawer, so the trigger is
+  // the labelled row plus the handler that opens the sheet.
+  assert.match(source, /Penalty history/);
+  assert.match(source, /onClick=\{openPenaltyHistory\}/);
   assert.match(source, /\/api\/attendance\/check-in\/penalty-history/);
   assert.match(source, /Current week totals/);
   assert.match(source, /Current week penalty/);
@@ -217,18 +220,21 @@ test('check-in page exposes auto-disappearing receipt notifications', () => {
 test('receipt page is print-friendly and uses LateWatch branding', () => {
   assert.equal(fs.existsSync(receiptPagePath), true);
   const source = fs.readFileSync(receiptPagePath, 'utf8');
+  // The receipt body moved into a shared component so the check-in drawer and this page
+  // render the same thing; the page keeps the print controls and the document title.
+  const detailView = fs.readFileSync(receiptDetailViewPath, 'utf8');
 
-  assert.match(source, /LateWatchLogo/);
-  assert.match(source, /Official Receipt/);
-  assert.match(source, /Day \/ Date/);
-  assert.match(source, /formatLongDisplayDate\(allocation\.date\)/);
+  assert.match(detailView, /LateWatchLogo/);
+  assert.match(detailView, /Official Receipt/);
+  assert.match(detailView, /Day \/ Date/);
+  assert.match(detailView, /formatLongDisplayDate\(allocation\.date\)/);
+  assert.match(detailView, /getLatenessPaymentReceiptDocumentTitle/);
   assert.match(source, /Print \/ Save PDF/);
   assert.match(source, /window\.print\(\)/);
-  assert.match(source, /getLatenessPaymentReceiptDocumentTitle/);
-  assert.match(source, /document\.title = receiptDocumentTitle/);
-  assert.match(source, /\/api\/attendance\/check-in\/receipts\/\$\{paymentId\}/);
+  assert.match(source, /document\.title = documentTitle/);
+  assert.match(detailView, /\/api\/attendance\/check-in\/receipts\/\$\{paymentId\}/);
   assert.match(source, /@media print/);
-  assert.match(source, /Receipt No/);
+  assert.match(detailView, /Receipt No/);
 });
 
 test('receipt helper derives stable receipts from existing payment data', () => {

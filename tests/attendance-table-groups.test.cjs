@@ -4,7 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const attendancePagePath = path.join(__dirname, '../src/app/attendance/page.tsx');
+// Split in 502b6f5: /attendance redirects, the staff table lives under /attendance/overview.
+const attendancePagePath = path.join(__dirname, '../src/app/attendance/overview/page.tsx');
 const attendanceRoutePath = path.join(__dirname, '../src/app/api/attendance/route.ts');
 
 test('attendance table separates main staff, NSS personnel, and monitoring-only staff', () => {

@@ -27,7 +27,9 @@ const pushClientLibPath = path.join(root, 'src/lib/push-client.ts');
 const pushReminderProofTestLibPath = path.join(root, 'src/lib/push-reminder-proof-test.ts');
 const reminderDeliveryMonitorLibPath = path.join(root, 'src/lib/reminder-delivery-monitor.ts');
 const reminderDeliveryMonitorApiPath = path.join(root, 'src/app/api/attendance/reminder-monitor/route.ts');
-const reminderDeliveryMonitorPagePath = path.join(root, 'src/app/attendance/reminders/page.tsx');
+// 502b6f5 removed the standalone /attendance/reminders page; the delivery monitor UI now
+// lives on the devices dashboard, which is what consumes /api/attendance/reminder-monitor.
+const reminderDeliveryMonitorPagePath = path.join(root, 'src/app/attendance/devices/page.tsx');
 const pushReminderToggleConfirmationLibPath = path.join(root, 'src/lib/push-reminder-toggle-confirmation.ts');
 const pushReminderLibPath = path.join(root, 'src/lib/push-reminders.ts');
 const reminderCronGuardPath = path.join(root, 'src/lib/reminder-cron-guard.ts');
@@ -388,27 +390,20 @@ test('admin reminder delivery monitor is protected and explains delivery outcome
   assert.doesNotMatch(helper, /No enabled sign-in reminder device/);
   assert.doesNotMatch(helper, /No enabled sign-out reminder device/);
 
-  assert.match(page, /title="Reminders"/);
+  // 502b6f5 removed the standalone /attendance/reminders page. The monitor is now a column
+  // on the devices dashboard, so only the data feed and the per-staff statuses are asserted
+  // here — the old page's internals (needsAttention, activeTab, showAll) are gone with it.
+  assert.match(page, /<th className="px-4 py-3 font-medium">Reminders<\/th>/);
   assert.match(page, /\/api\/attendance\/reminder-monitor\?date=/);
   assert.match(page, /Search/);
   assert.match(page, /No trusted device/);
   assert.match(page, /Not registered/);
-  assert.match(page, /Reminder off/);
-  assert.match(page, /function needsAttention/);
-  assert.match(page, /need attention/);
-  assert.match(page, /All staff reminded/);
-  assert.match(page, /Show all \$\{section\.rows\.length\} staff/);
-  assert.doesNotMatch(page, /formatReminderDeviceText/);
-  assert.doesNotMatch(page, /SelectField/);
-  assert.doesNotMatch(page, /Last updated/);
-  assert.doesNotMatch(page, /Scheduled Ghana time/);
+  // Status labels were shortened for the column: 'reminder_off' renders as "Off".
+  assert.match(page, /'reminder_off'/);
   assert.match(page, /subscribeRealtimeChannel/);
-  assert.match(page, /activeTab/);
-  assert.match(page, /showAll/);
+  // Reminders are sent by cron only; no admin-triggered resend from this dashboard.
   assert.doesNotMatch(page, /send test reminder|resend reminder|manual resend/i);
-  assert.match(page, /section\.alerts\.map/);
-  assert.match(sidebar, /Reminders/);
-  assert.match(sidebar, /href: '\/attendance\/reminders'/);
+  assert.doesNotMatch(sidebar, /href: '\/attendance\/reminders'/);
   assert.match(sidebar, /activeNavigation/);
 });
 

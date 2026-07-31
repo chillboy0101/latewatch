@@ -4,7 +4,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const attendancePagePath = path.join(__dirname, '../src/app/attendance/page.tsx');
+// The attendance admin page was split in 502b6f5: /attendance is now a redirect and the
+// table, permissions and pardon UI live under /attendance/overview.
+const attendancePagePath = path.join(__dirname, '../src/app/attendance/overview/page.tsx');
 const attendanceApiPath = path.join(__dirname, '../src/app/api/attendance/route.ts');
 const attendanceCheckInApiPath = path.join(__dirname, '../src/app/api/attendance/check-in/route.ts');
 const attendanceDeviceRoutePath = path.join(__dirname, '../src/app/api/attendance/devices/[staffId]/route.ts');
@@ -410,14 +412,18 @@ test('device health dashboard exposes trusted devices, reminder devices, session
   assert.match(page, /\/api\/attendance\/device-health/);
   assert.match(page, /Search/);
   assert.match(page, /Health/);
+  // 502b6f5 turned the "Refresh Session" action into a status pill plus guidance text:
+  // the staff member refreshes by opening Check-In on the device, so there is no admin
+  // button to press.
   assert.match(page, /Session needs refresh/);
-  assert.match(page, /Refresh Session/);
   assert.match(page, /issueHelpText/);
   assert.match(page, /subscribeRealtimeChannel/);
   assert.match(page, /Last updated/);
   assert.match(page, /Trusted Device/);
-  assert.match(page, /Reminder Devices/);
-  assert.match(page, /revoked sessions/);
+  assert.match(page, /Reminders/);
+  // Reset now reports the count inline ("N login sessions revoked"), so assert on the API
+  // field the page reads rather than the old fixed phrase.
+  assert.match(page, /revokedSessions/);
   assert.match(page, /\/api\/attendance\/devices\/\$\{resetTarget\.staff\.id\}/);
   assert.match(page, /Reset Device/);
   assert.match(page, /notification devices will be disabled/);
@@ -429,33 +435,16 @@ test('device health dashboard exposes trusted devices, reminder devices, session
   assert.match(sidebar, /href: '\/attendance\/devices'/);
 });
 
-test('security alerts dashboard surfaces suspicious attendance audit alerts', () => {
-  assert.equal(fs.existsSync(securityAlertsApiPath), true);
-  assert.equal(fs.existsSync(securityAlertsLibPath), true);
-  assert.equal(fs.existsSync(securityAlertsPagePath), true);
-
-  const api = fs.readFileSync(securityAlertsApiPath, 'utf8');
-  const helper = fs.readFileSync(securityAlertsLibPath, 'utf8');
-  const page = fs.readFileSync(securityAlertsPagePath, 'utf8');
+// The security-alerts dashboard (page, API route and lib) was removed in 502b6f5, so the
+// test that guarded it is gone with it. Its audit ALERT rows are still written by the
+// check-in route and remain visible in the audit trail.
+test('the removed security-alerts dashboard has not crept back in', () => {
   const sidebar = fs.readFileSync(sidebarPath, 'utf8');
 
-  assert.match(api, /enforceRole\(\['admin'\]\)/);
-  assert.match(api, /getSecurityAlerts/);
-  assert.match(api, /Cache-Control': 'no-store'/);
-  assert.match(helper, /eq\(auditEvent\.action, 'ALERT'\)/);
-  assert.match(helper, /SHARED_ATTENDANCE_DEVICE/);
-  assert.match(helper, /REGISTERED_DEVICE_REQUIRED/);
-  assert.match(helper, /TRANSFER_SESSION_REQUIRED/);
-  assert.match(helper, /critical/);
-  assert.match(page, /\/api\/attendance\/security-alerts/);
-  assert.match(page, /Search/);
-  assert.match(page, /Severity/);
-  assert.match(page, /Type/);
-  assert.match(page, /shared_device/);
-  assert.match(page, /untrusted_device/);
-  assert.doesNotMatch(page, /method: 'DELETE'/);
-  assert.doesNotMatch(page, /Clear Alerts|Delete Alert|Resolve Alert/);
-  assert.match(sidebar, /href: '\/attendance\/security-alerts'/);
+  assert.equal(fs.existsSync(securityAlertsApiPath), false);
+  assert.equal(fs.existsSync(securityAlertsLibPath), false);
+  assert.equal(fs.existsSync(securityAlertsPagePath), false);
+  assert.doesNotMatch(sidebar, /security-alerts/);
 });
 
 test('security settings page documents MFA and passkey handoff through Clerk', () => {
@@ -467,7 +456,6 @@ test('security settings page documents MFA and passkey handoff through Clerk', (
   assert.match(page, /Clerk multi-factor authentication/);
   assert.match(page, /Enable passkeys where available/);
   assert.match(page, /Open Clerk Dashboard/);
-  assert.match(page, /\/attendance\/security-alerts/);
   assert.match(settingsPage, /\/settings\/security/);
 });
 
