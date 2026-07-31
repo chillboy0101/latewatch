@@ -231,6 +231,15 @@ Make sure to add all environment variables in Vercel dashboard:
 - `VAPID_SUBJECT`
 - `CRON_SECRET`
 
+Optional — request throttling (`src/lib/rate-limit.ts`):
+- `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` (the older Vercel KV names,
+  `KV_REST_API_URL` / `KV_REST_API_TOKEN`, are accepted too)
+
+Added by the Upstash Redis integration in the Vercel Marketplace. Without them the throttle
+falls back to the `rate_limit` table in Postgres, and if that fails too it fails open — the
+throttle is defence in depth on endpoints already behind Clerk, so it never blocks a staff
+member when its storage is unavailable.
+
 ## 📝 Available Scripts
 
 ```bash
