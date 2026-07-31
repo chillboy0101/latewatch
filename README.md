@@ -161,8 +161,7 @@ The app runs at `http://localhost:3000`.
 
 ### Environment
 
-Create `.env.local` in the project root. There is no example file committed — the variables
-below are the complete required set.
+Copy `.env.example` to `.env.local` and fill it in. The required set:
 
 ```bash
 # Authentication (Clerk)
@@ -193,6 +192,11 @@ VAPID_SUBJECT=mailto:
 # Scheduled reminders — shared secret for the cron endpoints
 CRON_SECRET=
 
+# Signing secrets — long, random, and independent of the values above.
+# Rotating DEVICE_BINDING_SECRET unbinds every trusted device.
+DEVICE_BINDING_SECRET=
+ATTENDANCE_QR_SECRET=
+
 # Application
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
@@ -208,7 +212,20 @@ ADMIN_EMAILS=
 # The Vercel KV names KV_REST_API_URL / KV_REST_API_TOKEN are also accepted.
 UPSTASH_REDIS_REST_URL=
 UPSTASH_REDIS_REST_TOKEN=
+
+# Google Calendar holiday sync, and the map on the location settings page
+GOOGLE_CALENDAR_API_KEY=
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=
+
+# Clerk organisation sync
+CLERK_ORGANIZATION_ID=
+CLERK_ORGANIZATION_MEMBER_ROLE=
+
+# Only needed to run `npm run cronjob-org:reminders`
+CRONJOB_ORG_API_KEY=
 ```
+
+See `.env.example` for the same list with notes.
 
 ### Database migrations
 
