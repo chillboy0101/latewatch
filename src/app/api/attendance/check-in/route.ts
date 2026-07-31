@@ -25,6 +25,7 @@ import { computePenalty } from '@/lib/penalty-calculator';
 import { syncStaffEmailIdentity } from '@/lib/clerk-organization';
 import { getDeviceTokenFromRequest, hashDeviceToken } from '@/lib/device-binding';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
+import { allowRequest } from '@/lib/rate-limit';
 import { publishRealtime } from '@/lib/realtime';
 import {
   canSignOutNow,
@@ -36,6 +37,9 @@ import {
 } from '@/lib/work-hours';
 
 export const dynamic = 'force-dynamic';
+
+const DEVICE_TRANSFER_LIMIT = 5;
+const DEVICE_TRANSFER_WINDOW_SECONDS = 3600;
 
 type StaffDeviceRow = typeof staffDevice.$inferSelect;
 type SharedAttendanceDeviceOwner = NonNullable<Awaited<ReturnType<typeof findSharedAttendanceDeviceOwner>>>;
@@ -923,6 +927,24 @@ export async function POST(request: NextRequest) {
           staffMember.id,
           locationValidation,
           officeLocationExtra,
+        );
+      }
+
+      // Repeat requests only refresh the pending row, but each one still writes an audit
+      // event and publishes to two realtime channels, so cap the rate.
+      const transferGate = await allowRequest(
+        `device-transfer:${staffMember.id}`,
+        DEVICE_TRANSFER_LIMIT,
+        DEVICE_TRANSFER_WINDOW_SECONDS,
+      );
+      if (!transferGate.allowed) {
+        return block(
+          'DEVICE_TRANSFER_RATE_LIMITED',
+          'Too many transfer requests. Your pending request is already with an admin.',
+          429,
+          staffMember.id,
+          locationValidation,
+          { ...officeLocationExtra, retryAfterSeconds: transferGate.retryAfterSeconds },
         );
       }
 

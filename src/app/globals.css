@@ -162,6 +162,13 @@ html {
   animation-duration: 0.42s;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .drawer-glass[data-state='open'],
+  .drawer-glass[data-state='closed'] {
+    animation-duration: 0.01ms;
+  }
+}
+
 /* The drawer floats as a detached rounded deck (inset on all sides). vaul adds a
    `background: inherit` filler below the sheet (::after, top:100%) to hide gaps while
    dragging — with a floating sheet that translucent strip bleeds into the bottom gap,

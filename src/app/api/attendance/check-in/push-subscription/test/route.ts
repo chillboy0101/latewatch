@@ -6,8 +6,12 @@ import { db } from '@/db';
 import { pushSubscription } from '@/db/schema';
 import { getOrAutoLinkStaffByEmail } from '@/lib/attendance';
 import { ensureVapidConfig, hasVapidConfig, isExpiredPushEndpoint } from '@/lib/push-reminders';
+import { allowRequest } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
+
+const PUSH_TEST_LIMIT = 3;
+const PUSH_TEST_WINDOW_SECONDS = 3600;
 
 function getUserFullName(user: NonNullable<Awaited<ReturnType<typeof currentUser>>>) {
   return user.fullName
@@ -63,6 +67,22 @@ export async function POST() {
   try {
     const resolved = await resolveStaffForPushTest();
     if (resolved.error) return resolved.error;
+
+    // Each call sends a real push, so cap how often one signed-in user can fire them.
+    const gate = await allowRequest(`push-test:${resolved.user.id}`, PUSH_TEST_LIMIT, PUSH_TEST_WINDOW_SECONDS);
+    if (!gate.allowed) {
+      return NextResponse.json({
+        ...summary,
+        error: 'Too many test notifications. Try again in a few minutes.',
+        retryAfterSeconds: gate.retryAfterSeconds,
+      }, {
+        headers: {
+          'Cache-Control': 'no-store',
+          'Retry-After': String(gate.retryAfterSeconds),
+        },
+        status: 429,
+      });
+    }
 
     if (!ensureVapidConfig()) {
       return NextResponse.json(summary, {

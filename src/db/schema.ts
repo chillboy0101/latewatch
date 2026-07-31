@@ -506,6 +506,15 @@ export const pushReminderDelivery = pgTable('push_reminder_delivery', {
   unique().on(table.subscriptionId, table.date, table.reminderType),
 ]);
 
+// Fixed-window request counters. One row per caller+action; the window resets in place
+// rather than accumulating history, so the table stays as small as the number of active
+// keys. See src/lib/rate-limit.ts.
+export const rateLimit = pgTable('rate_limit', {
+  key: text('key').primaryKey(),
+  count: integer('count').notNull().default(0),
+  windowStart: timestamp('window_start').notNull().defaultNow(),
+});
+
 export const reminderCronRun = pgTable('reminder_cron_run', {
   id: uuid('id').primaryKey().defaultRandom(),
   reminderType: text('reminder_type').notNull(),
