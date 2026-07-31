@@ -1,301 +1,290 @@
-# LateWatch - GRA Lateness Tracking System
+# LateWatch
 
-Enterprise-grade lateness tracking system for Ghana Revenue Authority (GRA).
+Attendance and lateness management system for the Ghana Revenue Authority.
 
-## 🚀 Features
+Staff record their arrival and departure from a mobile web app that verifies where and how
+they are connecting from. The system computes the day's penalty against the office's lateness
+policy, tracks payments against what is owed, and produces the Excel returns the office files
+each week and month. Administrators work from a separate console covering staff records,
+attendance corrections, approved absences, device management, and reporting.
 
-- **Staff Management**: Add, edit, and manage staff members
-- **Daily Entry Grid**: Fast data entry for tracking lateness
-- **Automated Penalty Calculation**: 
-  - GHC 10 base penalty for arriving after 8:30 AM
-  - GHC 5 per full hour late
-  - GHC 2 for not signing out
-- **Weekly/Monthly Excel Exports**: Generate formatted reports
-- **Holiday Calendar Management**: Mark holidays and track work days
-- **Role-Based Access Control**: Admin, HR, and Viewer roles
-- **Audit Trail**: Complete logging of all system changes
-- **Dark Mode Support**: Automatic theme switching
+Internal software, operated by the office it serves. Not intended for redistribution or reuse.
 
-## 🛠️ Tech Stack
+---
+
+## Capabilities
+
+### Attendance portal — staff
+
+Installed as a home-screen web app.
+
+- **Sign in and sign out** for the working day, verified against the office's registered
+  location and network before a record is accepted
+- **One trusted device per staff member.** Moving to a new phone requires an administrator to
+  approve a transfer request, which keeps one person's attendance tied to one device
+- **Reminders** delivered as push notifications ahead of the sign-in and sign-out deadlines,
+  including on days the office is closed
+- **Penalty history** by week, with the amount outstanding and what has been paid
+- **Payment receipts**, viewable in-app and printable as PDF
+
+### Administration console — admin and HR
+
+- **Staff records**, including NSS personnel and attendance-only staff, who follow different
+  penalty rules
+- **Daily entry grid** for reviewing and correcting attendance, with penalties recomputed on
+  change
+- **Permissions and pardons** — approved late arrivals, early departures, and full-day
+  absences, applied individually or as a general pardon across the office
+- **Device health** — trusted devices, pending transfer requests, reminder delivery status,
+  and device resets
+- **Holiday calendar**, maintained manually or synchronised from Google Calendar
+- **Payments** recorded against outstanding penalties, with receipts issued to staff
+- **Contributions** and the **monthly offence book**
+- **Excel exports** — weekly, monthly, attendance, contributions, lateness summary, and
+  offence book, generated from stored templates
+- **Audit trail** recording every change with its before and after state
+
+---
+
+## Penalty model
+
+Current rules, as implemented in `src/lib/penalty-calculator.ts`.
+
+| Condition | Charge |
+|---|---|
+| Arrival after 08:30 | GHC 10 |
+| Each additional full hour late | GHC 5 |
+| No sign-out recorded | GHC 2 |
+| No sign-in recorded by 16:30 | GHC 10 |
+| **Maximum for any single day** | **GHC 50** |
+
+The no-sign-in charge applies from 8 July 2026 onward and can be waived by an administrator.
+Holidays and approved permissions suppress penalties for the day. NSS personnel and
+attendance-only staff are scored under their own rules.
+
+The policy has been revised more than once; the calculator is the authority, and this table is
+kept in step with it.
+
+---
+
+## Architecture
 
 | Layer | Technology |
-|-------|------------|
-| **Framework** | Next.js 16 (App Router) |
-| **UI Library** | shadcn/ui v3 + Tailwind CSS v4 |
-| **Database** | Neon Postgres + Drizzle ORM |
-| **Auth** | Clerk (Vercel Marketplace) |
-| **Storage** | Cloudflare R2 |
-| **Validation** | Zod |
-| **Excel** | ExcelJS |
-| **Charts** | Recharts |
-| **Deployment** | Vercel |
+|---|---|
+| Framework | Next.js 16.2 (App Router) |
+| Runtime | React 19.2 |
+| Language | TypeScript 5 |
+| UI | shadcn/ui on Tailwind CSS v4, vaul for sheets |
+| Database | Neon Postgres via Drizzle ORM 0.45 |
+| Authentication | Clerk 7 |
+| Validation | Zod 4 |
+| File storage | Cloudflare R2 |
+| Realtime | Ably 2 |
+| Push notifications | web-push (VAPID) |
+| Request throttling | Upstash Redis, falling back to Postgres |
+| Spreadsheets | ExcelJS 4 |
+| PDF | jsPDF |
+| Charts | Recharts 3 |
+| Calendar sync | Google Calendar API |
+| Hosting | Vercel |
 
-## 📋 Prerequisites
+### Request path
 
-- Node.js 20+ 
-- npm or yarn
-- Neon PostgreSQL database
-- Clerk account (for authentication)
-- Cloudflare R2 account (for file storage)
+Every request passes through `src/proxy.ts`, which enforces authentication, before reaching a
+route handler or Server Action. Handlers re-check authorisation themselves rather than relying
+on the proxy alone.
 
-## 🚀 Getting Started
+### Mutation pattern
 
-### 1. Clone the Repository
+Server Actions and write endpoints follow the same sequence, and new ones are expected to:
 
-```bash
-git clone <repository-url>
-cd latewatch
+1. `requireRole([...])` or `enforceRole([...])` — authorisation
+2. Zod schema validation of the input
+3. Drizzle query, parameterised
+4. `writeAuditEvent()` — who changed what, before and after
+5. `updateTag()` — cache invalidation
+6. `publishRealtime()` — push the change to connected clients
+
+### Data model
+
+25 tables. The central ones are `staff`, `attendance_record` (one row per staff member per
+day, uniquely constrained), `lateness_entry` (the computed penalty), `attendance_permission`,
+`staff_device` with `device_transfer_request`, `lateness_payment` with its allocations,
+`work_calendar`, and `audit_event`.
+
+---
+
+## Repository layout
+
+```
+src/
+├── app/
+│   ├── api/                 REST endpoints (attendance, exports, calendar, admin, …)
+│   ├── check-in/            Staff attendance portal (PWA)
+│   ├── attendance/          Admin: overview and devices
+│   ├── dashboard/  staff/  entries/  exports/  calendar/
+│   ├── payments/  contributions/  emergency-contacts/  audit-trail/
+│   ├── location/  wifi/  settings/  install/  account/
+│   └── (auth)/              Sign-in and sign-up
+├── actions/                 Server Actions: staff, entries, calendar, exports, audit
+├── components/              ui, layout, auth, brand, exports, receipts, notifications
+├── lib/                     Business logic (~64 modules)
+├── db/                      Drizzle schema and client
+├── contexts/                React context providers
+├── attendance-templates/    Excel templates
+├── payment-templates/
+└── proxy.ts                 Authentication gate
+drizzle/                     Migrations — hand-written SQL, applied in order
+scripts/                     Operational and repair scripts
+tests/                       Test suite
 ```
 
-### 2. Install Dependencies
+---
+
+## Local development
+
+### Prerequisites
+
+- Node.js 20 or newer
+- A Neon Postgres database
+- Clerk, Cloudflare R2, and Ably accounts
+- A VAPID key pair for push notifications
+
+### Setup
 
 ```bash
 npm install
+npm run dev
 ```
 
-### 3. Set Up Environment Variables
+The app runs at `http://localhost:3000`.
 
-Copy `.env.local.example` to `.env.local` and fill in your credentials:
+### Environment
+
+Create `.env.local` in the project root. There is no example file committed — the variables
+below are the complete required set.
 
 ```bash
-# Clerk Authentication (Vercel Marketplace)
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
-CLERK_SECRET_KEY=sk_test_...
+# Authentication (Clerk)
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
 NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
 NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
 NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/dashboard
 NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/dashboard
 
-# Neon PostgreSQL Database
-DATABASE_URL=postgresql://...
+# Database (Neon)
+DATABASE_URL=
 
-# Cloudflare R2 Storage
-CF_R2_ACCOUNT_ID=...
-CF_R2_ACCESS_KEY_ID=...
-CF_R2_SECRET_ACCESS_KEY=...
-CF_R2_BUCKET=...
+# File storage (Cloudflare R2)
+CF_R2_ACCOUNT_ID=
+CF_R2_ACCESS_KEY_ID=
+CF_R2_SECRET_ACCESS_KEY=
+CF_R2_BUCKET=
 
-# App
+# Realtime (Ably)
+ABLY_API_KEY=
+
+# Push notifications (VAPID)
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=mailto:
+
+# Scheduled reminders — shared secret for the cron endpoints
+CRON_SECRET=
+
+# Application
 NEXT_PUBLIC_APP_URL=http://localhost:3000
-
-# Web Push Attendance Reminders
-NEXT_PUBLIC_VAPID_PUBLIC_KEY=...
-VAPID_PRIVATE_KEY=...
-VAPID_SUBJECT=mailto:admin@example.com
-CRON_SECRET=generate-a-long-random-secret
 ```
 
-`CRON_SECRET` is required for Vercel Cron to call protected reminder endpoints.
-
-### 4. Set Up Database
+Optional:
 
 ```bash
-# Generate database tables
-npm run db:push
+# Grants admin regardless of Clerk metadata — treat as privileged configuration
+ADMIN_USER_IDS=
+ADMIN_EMAILS=
 
-# Open Drizzle Studio (optional, for visual DB management)
-npm run db:studio
+# Request throttling. Without these the throttle uses Postgres instead.
+# The Vercel KV names KV_REST_API_URL / KV_REST_API_TOKEN are also accepted.
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
 ```
 
-### 5. Run Development Server
+### Database migrations
+
+Migrations are hand-written SQL files in `drizzle/`, applied in numerical order. There are no
+`db:push` or `db:generate` scripts — schema changes mean adding a migration file and editing
+`src/db/schema.ts` to match.
+
+---
+
+## Scripts
 
 ```bash
-npm run dev
+npm run dev              # Development server
+npm run build            # Production build
+npm start                # Serve a production build
+npm run lint             # ESLint
+npm run test             # Test suite
+npm run load:test        # API load test
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-## 📁 Project Structure
-
-```
-latewatch/
-├── src/
-│   ├── app/                    # Next.js App Router pages
-│   │   ├── (auth)/             # Authentication routes
-│   │   │   ├── sign-in/        # Sign-in page
-│   │   │   └── sign-up/        # Sign-up page
-│   │   ├── dashboard/          # Dashboard page
-│   │   ├── staff/              # Staff management
-│   │   ├── entries/            # Daily entry grid
-│   │   ├── exports/            # Export center
-│   │   ├── calendar/           # Holiday calendar
-│   │   └── settings/           # User settings
-│   ├── components/             # React components
-│   │   ├── ui/                 # Reusable UI components
-│   │   ├── layout/             # Layout components
-│   │   ├── forms/              # Form components
-│   │   ├── tables/             # Table components
-│   │   └── charts/             # Chart components
-│   ├── lib/                    # Utility libraries
-│   │   ├── auth/               # Authentication helpers
-│   │   ├── db/                 # Database configuration
-│   │   ├── r2/                 # Cloudflare R2 client
-│   │   ├── validation/         # Zod schemas
-│   │   └── utils.ts            # Utility functions
-│   ├── actions/                # Server Actions
-│   │   ├── staff.ts            # Staff management actions
-│   │   ├── entries.ts          # Entry management actions
-│   │   ├── calendar.ts         # Calendar actions
-│   │   ├── exports.ts          # Export actions
-│   │   └── audit.ts            # Audit log actions
-│   └── db/                     # Database schema
-│       ├── schema.ts           # Drizzle schema
-│       └── index.ts            # Database client
-├── public/                     # Static assets
-├── .env.local                  # Environment variables (not in git)
-├── drizzle.config.ts           # Drizzle configuration
-├── middleware.ts               # Clerk middleware
-└── package.json
-```
-
-## 🔐 Authentication & Authorization
-
-### Setting Up Clerk
-
-1. Install Clerk from Vercel Marketplace
-2. Create an application in Clerk dashboard
-3. Enable Email/Password and Google OAuth providers
-4. Add your domain to allowed domains
-5. Copy API keys to `.env.local`
-
-### Setting User Roles
-
-After a user signs up, set their role in Clerk Dashboard:
-
-1. Go to Users → Select user
-2. Click "Metadata" tab
-3. Add to `privateMetadata`:
-   ```json
-   {
-     "role": "admin"
-   }
-   ```
-
-### Role Permissions
-
-| Role | Permissions |
-|------|-------------|
-| `admin` | Full access: staff management, entry CRUD, exports, template upload, role assignment |
-| `hr` | Entry CRUD, exports, view staff |
-| `viewer` | View only |
-
-## 💰 Penalty Calculation
-
-The system automatically calculates penalties based on arrival time:
-
-| Arrival Time | Did Not Sign Out | Amount | Reason |
-|--------------|------------------|--------|--------|
-| (blank) | No | GHC 0 | — |
-| (blank) | Yes | GHC 2 | DID NOT SIGN OUT |
-| 08:20 | No | GHC 0 | — |
-| 08:20 | Yes | GHC 2 | DID NOT SIGN OUT |
-| 08:31 | No | GHC 10 | DIDN'T COME BEFORE 8:30AM |
-| 08:31 | Yes | GHC 12 | DIDN'T COME BEFORE 8:30AM AND DID NOT SIGN OUT |
-| 09:00 | No | GHC 10 | DIDN'T COME BEFORE 8:30AM |
-| 09:01 | No | GHC 15 | DIDN'T COME BEFORE 8:30AM |
-| 10:00 | No | GHC 15 | DIDN'T COME BEFORE 8:30AM |
-| 10:01 | No | GHC 20 | DIDN'T COME BEFORE 8:30AM |
-
-## 📊 Database Schema
-
-The system uses the following tables:
-
-- `staff` - Staff member information
-- `lateness_entry` - Daily lateness records
-- `work_calendar` - Holiday and work day tracking
-- `audit_event` - Audit trail for all changes
-- `template_version` - Excel template storage
-
-## 🚢 Deployment
-
-### Deploy to Vercel
+Operational scripts. **Those marked ⚠ modify live records — read before running:**
 
 ```bash
-vercel deploy --prod
+npm run clerk:role                          # Assign a user's role in Clerk
+npm run clerk:staff-metadata                # Sync staff metadata into Clerk
+npm run clerk:sessions:cleanup              # Revoke stale staff sessions (dry run by default)
+npm run cronjob-org:reminders               # Register the reminder cron jobs
+npm run penalties:recalculate               # ⚠ Recompute penalties for regular staff
+npm run no-signout:repair-waivers           # ⚠ Repair no-sign-out waivers
+npm run attendance:repair-retroactive-no-show   # ⚠ Backfill no-show sign-in penalties
+npm run no-show:correct-amount              # ⚠ Correct no-show penalty amounts
 ```
 
-Or connect your Git repository to Vercel for automatic deployments.
+---
 
-### Environment Variables
-
-Make sure to add all environment variables in Vercel dashboard:
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
-- `CLERK_SECRET_KEY`
-- `DATABASE_URL`
-- `CF_R2_ACCOUNT_ID`
-- `CF_R2_ACCESS_KEY_ID`
-- `CF_R2_SECRET_ACCESS_KEY`
-- `CF_R2_BUCKET`
-- `NEXT_PUBLIC_VAPID_PUBLIC_KEY`
-- `VAPID_PRIVATE_KEY`
-- `VAPID_SUBJECT`
-- `CRON_SECRET`
-
-Optional — request throttling (`src/lib/rate-limit.ts`):
-- `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` (the older Vercel KV names,
-  `KV_REST_API_URL` / `KV_REST_API_TOKEN`, are accepted too)
-
-Added by the Upstash Redis integration in the Vercel Marketplace. Without them the throttle
-falls back to the `rate_limit` table in Postgres, and if that fails too it fails open — the
-throttle is defence in depth on endpoints already behind Clerk, so it never blocks a staff
-member when its storage is unavailable.
-
-## 📝 Available Scripts
+## Testing
 
 ```bash
-# Development
-npm run dev
-
-# Production build
-npm run build
-
-# Start production server
-npm start
-
-# Lint code
-npm run lint
-
-# Database commands
-npm run db:generate   # Generate Drizzle migrations
-npm run db:push       # Push schema to database
-npm run db:studio     # Open Drizzle Studio
+npm run test
 ```
 
-## 🎨 Design System
+The suite asserts against source files rather than running the UI — it checks that pages,
+routes, and libraries contain the behaviour they are supposed to. That makes it fast and
+dependency-free, but it also means **moving or renaming a page breaks its tests**, and those
+assertions must be updated alongside the change rather than deleted.
 
-### Colors
+---
 
-**Light Mode:**
-- Background: `#FFFFFF`
-- Card: `#F9FAFB`
-- Border: `#E5E7EB`
-- Primary: `#2563EB` (blue-600)
-- Success: `#10B981` (emerald-500)
-- Warning: `#F59E0B` (amber-500)
-- Danger: `#EF4444` (red-500)
+## Operations
 
-**Dark Mode:**
-- Background: `#0A0A0A`
-- Card: `#171717`
-- Border: `#262626`
-- Primary: `#3B82F6` (blue-500)
+- **Deployment** — pushing to `main` deploys to Vercel. Pull requests get preview deployments.
+- **Scheduled reminders** — driven by an external cron service calling endpoints guarded by
+  `CRON_SECRET`. Delivery is recorded per staff member per day, and a unique constraint makes
+  a duplicate run a no-op rather than a second notification.
+- **Throttling** — write endpoints that trigger outbound work are rate limited per user.
+  Redis is used when configured, Postgres otherwise, and the check fails open so that
+  unavailable storage cannot block a staff member from signing in.
+- **Timezone** — all attendance logic runs on Africa/Accra time; dates are stored as
+  `YYYY-MM-DD`.
 
-### Typography
-- Headings/Body: Inter
-- Monospace (time/amounts): JetBrains Mono
+---
 
-## 🔒 Security
+## Security
 
-- All routes protected by Clerk authentication
-- Role-based access control on all server actions
-- Zod validation on all inputs
-- SQL injection prevention via Drizzle ORM
-- Audit trail for all data changes
+- Authentication is required on every route, enforced at the proxy and re-checked in handlers
+- Role checks (`admin`, `hr`, `viewer`) guard every mutation
+- All input is validated with Zod schemas
+- Database access goes through parameterised Drizzle queries
+- Attendance is bound to a single verified device per staff member, with an approval workflow
+  for transfers
+- Every data change is written to an immutable audit trail
 
-## 📄 License
+Report a suspected vulnerability to the system owner directly rather than opening an issue.
 
-Private - For internal use only
+---
 
-## 👥 Support
+## Ownership
 
-For issues or questions, contact the development team.
+Internal system of the Ghana Revenue Authority. All rights reserved.
