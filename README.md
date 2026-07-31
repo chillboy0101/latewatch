@@ -102,8 +102,11 @@ Server Actions and write endpoints follow the same sequence, and new ones are ex
 2. Zod schema validation of the input
 3. Drizzle query, parameterised
 4. `writeAuditEvent()` — who changed what, before and after
-5. `updateTag()` — cache invalidation
-6. `publishRealtime()` — push the change to connected clients
+5. `publishRealtime()` — push the change to connected clients
+
+There is no server-side data cache to invalidate: attendance reads are deliberately
+uncached, and clients stay current from the realtime publish in step 5 rather than from a
+TTL. Static assets are cached by the service worker, which never serves `/api/*`.
 
 ### Data model
 

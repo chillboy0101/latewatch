@@ -4,7 +4,6 @@
 import { requireRole } from '@/lib/auth/roles';
 import { db } from '@/db';
 import { staff as staffTable } from '@/db/schema';
-import { updateTag } from 'next/cache';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { recordStaffLeaveTransition } from '@/lib/staff-leave-periods';
@@ -54,7 +53,6 @@ export async function createStaff(data: StaffWriteData & { fullName: string }) {
     reason: 'staff',
   });
   
-  updateTag('staff');
   publishRealtime('dashboard', 'invalidate', { reason: 'staff' });
   
   return newStaff[0];
@@ -117,7 +115,6 @@ export async function updateStaff(id: string, data: StaffWriteData) {
     before,
   });
   
-  updateTag('staff');
   publishRealtime('dashboard', 'invalidate', { reason: 'staff' });
   
   return updated[0];

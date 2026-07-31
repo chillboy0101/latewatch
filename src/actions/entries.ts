@@ -4,7 +4,6 @@
 import { requireRole } from '@/lib/auth/roles';
 import { db } from '@/db';
 import { latenessEntry, staff as staffTable } from '@/db/schema';
-import { updateTag } from 'next/cache';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { z } from 'zod';
@@ -118,13 +117,12 @@ export async function saveEntry(formData: FormData) {
     });
   }
 
-  updateTag(`entries-${parsed.date}`);
   publishRealtime('dashboard', 'invalidate', { reason: 'entries' });
 
   return entry;
 }
 
-export async function deleteEntry(id: string, date: string) {
+export async function deleteEntry(id: string) {
   const user = await requireRole(['admin', 'hr']);
   
   const existing = await db.query.latenessEntry.findFirst({
@@ -147,7 +145,6 @@ export async function deleteEntry(id: string, date: string) {
     reason: 'entries',
   });
   
-  updateTag(`entries-${date}`);
   publishRealtime('dashboard', 'invalidate', { reason: 'entries' });
 }
 
@@ -246,7 +243,6 @@ export async function bulkSaveEntries(entries: Array<{
     results.push(result);
   }
   
-  updateTag(`entries-${entries[0]?.date}`);
   publishRealtime('dashboard', 'invalidate', { reason: 'entries' });
   
   return results;

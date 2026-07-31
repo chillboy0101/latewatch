@@ -4,7 +4,6 @@
 import { requireRole } from '@/lib/auth/roles';
 import { db } from '@/db';
 import { workCalendar } from '@/db/schema';
-import { updateTag } from 'next/cache';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { eq } from 'drizzle-orm';
@@ -74,8 +73,6 @@ export async function markHoliday(date: string, note?: string) {
     });
   }
 
-  const monthNum = parseInt(date.split('-')[1]);
-  updateTag(`calendar-${monthNum}`);
   publishRealtime('dashboard', 'invalidate', { reason: 'calendar' });
 
   return calendar;
@@ -112,8 +109,6 @@ export async function unmarkHoliday(date: string) {
     reason: 'calendar',
   });
 
-  const monthNum = parseInt(date.split('-')[1]);
-  updateTag(`calendar-${monthNum}`);
   publishRealtime('dashboard', 'invalidate', { reason: 'calendar' });
 
   return calendar;
