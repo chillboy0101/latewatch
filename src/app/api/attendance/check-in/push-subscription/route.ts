@@ -4,7 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { pushSubscription, staffDevice } from '@/db/schema';
 import { getOrAutoLinkStaffByEmail } from '@/lib/attendance';
-import { getDeviceTokenFromRequest, hashDeviceToken } from '@/lib/device-binding';
+import { getDeviceTokenFromRequest } from '@/lib/device-binding';
+import { resolveDeviceHash } from '@/lib/device-rekey';
 import { getVapidPublicKey, hasVapidConfig } from '@/lib/push-reminders';
 import { publishRealtime } from '@/lib/realtime';
 
@@ -67,7 +68,7 @@ async function requireTrustedAttendanceDevice(
     return NextResponse.json({ error: UNTRUSTED_REMINDER_DEVICE_ERROR }, { status: 403 });
   }
 
-  const deviceHash = hashDeviceToken(deviceToken);
+  const deviceHash = await resolveDeviceHash(deviceToken);
   const [device] = await db.select()
     .from(staffDevice)
     .where(eq(staffDevice.staffId, staffId))

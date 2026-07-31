@@ -218,7 +218,9 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.match(pushApi, /pushSubscription/);
   assert.match(pushApi, /staffDevice/);
   assert.match(pushApi, /getDeviceTokenFromRequest/);
-  assert.match(pushApi, /hashDeviceToken/);
+  // Hashing goes through resolveDeviceHash so a device bound under the previous signing
+  // secret is migrated rather than treated as untrusted.
+  assert.match(pushApi, /resolveDeviceHash/);
   assert.match(pushApi, /UNTRUSTED_REMINDER_DEVICE_ERROR = 'Transfer this device before changing reminder notifications\.'/);
   assert.match(pushApi, /requireTrustedAttendanceDevice/);
   assert.match(pushApi, /eq\(staffDevice\.staffId, staffId\)/);

@@ -4,6 +4,9 @@ import { createHmac } from 'crypto';
 
 const CODE_PATTERN = /^[A-F0-9]{6}$/;
 
+// ATTENDANCE_QR_SECRET is the one to set; the rest of the chain is what deployments used
+// before it existed. Codes are derived on demand and nothing is stored, so rotating this
+// only invalidates a code already on screen — no migration needed, unlike device binding.
 function getAttendanceCodeSecret() {
   return process.env.ATTENDANCE_QR_SECRET
     || process.env.CLERK_SECRET_KEY

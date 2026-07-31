@@ -23,7 +23,8 @@ import { getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/atten
 import { getAuditActor, writeAuditEvent } from '@/lib/audit';
 import { computePenalty } from '@/lib/penalty-calculator';
 import { syncStaffEmailIdentity } from '@/lib/clerk-organization';
-import { getDeviceTokenFromRequest, hashDeviceToken } from '@/lib/device-binding';
+import { getDeviceTokenFromRequest } from '@/lib/device-binding';
+import { resolveDeviceHash } from '@/lib/device-rekey';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
 import { allowRequest } from '@/lib/rate-limit';
 import { publishRealtime } from '@/lib/realtime';
@@ -553,7 +554,7 @@ export async function GET(request: NextRequest) {
     const currentIp = currentIpInfo.ip;
     const userAgent = request.headers.get('user-agent');
     const deviceToken = getDeviceTokenFromRequest(request);
-    const deviceHash = deviceToken ? hashDeviceToken(deviceToken) : null;
+    const deviceHash = deviceToken ? await resolveDeviceHash(deviceToken) : null;
     const [member, office, holiday] = await Promise.all([
       actorEmail === 'unknown'
         ? Promise.resolve(null)
@@ -717,7 +718,7 @@ export async function POST(request: NextRequest) {
     ? 'request_device_transfer'
     : 'check_in';
   const deviceToken = getDeviceTokenFromRequest(request, body);
-  const deviceHash = deviceToken ? hashDeviceToken(deviceToken) : null;
+  const deviceHash = deviceToken ? await resolveDeviceHash(deviceToken) : null;
   const deviceLabel = getDeviceLabel(body?.deviceLabel, userAgent);
 
   async function block(
