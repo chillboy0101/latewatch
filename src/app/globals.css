@@ -124,6 +124,12 @@ html {
 /* Frosted glass for the drawer sheets: heavier blur than the rest of the app and a
    brighter specular top edge, tinted enough that the sheet's own content reads first. */
 .drawer-glass {
+  /* vaul's enter/exit keyframes travel var(--initial-transform, 100%) — one sheet height,
+     which is right for a sheet glued to bottom:0. This deck floats 9px up, so a plain 100%
+     parks its top edge inside the gap and leaves a strip on screen until vaul's fixed 500ms
+     unmount timer fires. Clear the gap plus slack so the sheet is gone the moment the
+     animation ends. */
+  --initial-transform: calc(100% + 24px);
   background-color: color-mix(in srgb, var(--card) 72%, transparent);
   -webkit-backdrop-filter: blur(44px) saturate(170%);
   backdrop-filter: blur(44px) saturate(170%);
