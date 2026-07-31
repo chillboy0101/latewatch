@@ -7,7 +7,6 @@ const test = require('node:test');
 const staffPagePath = path.join(__dirname, '../src/app/staff/page.tsx');
 const staffRoutePath = path.join(__dirname, '../src/app/api/staff/route.ts');
 const staffUpdateRoutePath = path.join(__dirname, '../src/app/api/staff/[id]/route.ts');
-const staffActionsPath = path.join(__dirname, '../src/actions/staff.ts');
 const schemaPath = path.join(__dirname, '../src/db/schema.ts');
 const migrationPath = path.join(__dirname, '../drizzle/0022_staff_leave_periods.sql');
 const metadataRepairMigrationPath = path.join(__dirname, '../drizzle/0026_restore_staff_profile_metadata.sql');
@@ -114,7 +113,6 @@ test('staff API omits removed manual message fields', () => {
 test('staff leave periods are stored for deactivate and activate transitions', () => {
   const schemaSource = fs.readFileSync(schemaPath, 'utf8');
   const updateSource = fs.readFileSync(staffUpdateRoutePath, 'utf8');
-  const actionsSource = fs.readFileSync(staffActionsPath, 'utf8');
   const migrationSource = fs.readFileSync(migrationPath, 'utf8');
   const seedMigrationSource = fs.readFileSync(seedMigrationPath, 'utf8');
 
@@ -128,6 +126,7 @@ test('staff leave periods are stored for deactivate and activate transitions', (
   assert.match(updateSource, /action: auditAction/);
   assert.match(updateSource, /before,/);
   assert.match(updateSource, /after: updated\[0\]/);
-  assert.match(actionsSource, /recordStaffLeaveTransition/);
-  assert.match(actionsSource, /actorEmail: user\.email/);
+  // Previously duplicated against src/actions/staff.ts, a module nothing imported. That
+  // module is gone; the transition is recorded with the acting admin's email here.
+  assert.match(updateSource, /actorEmail: actor\?\.emailAddresses\[0\]\?\.emailAddress/);
 });

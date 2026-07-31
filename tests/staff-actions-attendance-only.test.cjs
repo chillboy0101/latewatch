@@ -4,12 +4,17 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const staffActionsPath = path.join(__dirname, '../src/actions/staff.ts');
+// This rule used to be asserted against src/actions/staff.ts, a Server Action module that
+// nothing imported. That module was deleted; the live implementation is the staff API route,
+// so the rule is now asserted where it actually runs.
+const staffApiPath = path.join(__dirname, '../src/app/api/staff/route.ts');
 
-test('legacy staff actions preserve the attendance monitoring only flag', () => {
-  const source = fs.readFileSync(staffActionsPath, 'utf8');
+test('the staff API preserves the attendance monitoring only flag', () => {
+  const source = fs.readFileSync(staffApiPath, 'utf8');
 
-  assert.match(source, /isAttendanceOnly\?: boolean/);
-  assert.match(source, /isAttendanceOnly: data\.isAttendanceOnly === true/);
-  assert.match(source, /isNssPersonnel: data\.isAttendanceOnly === true \? false : data\.isNssPersonnel === true/);
+  assert.match(source, /const isAttendanceOnly = body\?\.isAttendanceOnly === true/);
+  // Attendance-only staff are never also NSS personnel: the flag forces isNssPersonnel false.
+  assert.match(source, /const isNssPersonnel = !isAttendanceOnly && body\?\.isNssPersonnel === true/);
+  assert.match(source, /isAttendanceOnly,/);
+  assert.match(source, /isNssPersonnel,/);
 });
