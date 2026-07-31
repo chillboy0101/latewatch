@@ -1291,7 +1291,7 @@ export default function CheckInPage() {
         <StatusMessageToast message={message} onDismiss={clearMessage} />
 
         <div className="flex min-h-0 flex-1 py-3 sm:py-4">
-          <Card className="flex h-full w-full flex-col overflow-hidden">
+          <Card className="flex h-full w-full flex-col overflow-hidden rounded-2xl">
             {loading || !isLoaded ? (
               <div className="flex h-full items-center justify-center p-4">
                 <LoadingBuffer variant="section" label="Loading check-in" description="Verifying your account and location." />
