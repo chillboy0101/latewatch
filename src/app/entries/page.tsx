@@ -815,15 +815,6 @@ function EntriesPageContent() {
                       entry.reason === NO_SHOW_SIGN_IN_WAIVED_REASON ||
                       entry.noShowSignInWaived
                     );
-                  const signOutStatusLabel = entry.isOnLeave
-                    ? 'On Leave'
-                    : entry.isExcusedAbsence
-                      ? 'Excused'
-                      : entry.noSignOutWaived
-                        ? 'Waived'
-                        : entry.didNotSignOut
-                          ? 'No sign-out'
-                          : null;
                   return (
                     <tr
                       key={entry.staffId}
@@ -910,11 +901,6 @@ function EntriesPageContent() {
                             </Button>
                           )}
                         </div>
-                        {!entry.signOutTime && signOutStatusLabel && (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {signOutStatusLabel}
-                          </p>
-                        )}
                       </td>
                       <td className="px-3 py-3 text-sm font-mono">
                         {entry.isOnLeave ? (

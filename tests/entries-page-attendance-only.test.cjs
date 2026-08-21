@@ -151,16 +151,14 @@ test('entries page separates real sign-out time from waiver state', () => {
   assert.doesNotMatch(source, /No Sign Out<\/th>/);
 });
 
-test('entries page renders excused absence permissions without missing sign-out controls', () => {
+test('entries page renders permission status without secondary sign-out text', () => {
   const source = fs.readFileSync(entriesPagePath, 'utf8');
 
   assert.match(source, /isExcusedAbsence/);
   assert.match(source, />Excused</);
   assert.match(source, /!entry\.isExcusedAbsence/);
-  assert.match(source, /entry\.isExcusedAbsence\s*\?\s*'Excused'/);
-  assert.match(source, /const signOutStatusLabel =/);
-  assert.match(source, /entry\.didNotSignOut\s*\? 'No sign-out'\s*:\s*null/);
-  assert.doesNotMatch(source, /entry\.didNotSignOut \? 'No sign-out' : 'Missing'/);
+  assert.match(source, /entry\.isExcusedAbsence \? \(\s*<span[^>]*>Excused<\/span>/);
+  assert.doesNotMatch(source, /signOutStatusLabel/);
 });
 
 test('entries locks leave-covered rows and identifies the first day back', () => {
