@@ -459,6 +459,8 @@ function EntriesPageContent() {
         if (entry.staffId !== staffId) return entry;
         if (entry.isOnLeave) return entry;
         if (entry.isExcusedAbsence) return entry;
+        const member = staff.find((candidate) => candidate.id === staffId);
+        if (member?.isAttendanceOnly === true) return entry;
 
         const nextWaived = !entry.noSignOutWaived;
         const updated = {
@@ -467,7 +469,6 @@ function EntriesPageContent() {
           noSignOutWaived: nextWaived,
           signOutTime: '',
         };
-        const member = staff.find((s) => s.id === staffId);
         return applyPenaltyDisplay(updated, member);
       }),
     );
@@ -815,6 +816,11 @@ function EntriesPageContent() {
                       entry.reason === NO_SHOW_SIGN_IN_WAIVED_REASON ||
                       entry.noShowSignInWaived
                     );
+                  const showNoSignOutWaiverButton =
+                    !entry.signOutTime &&
+                    !entry.isExcusedAbsence &&
+                    !entry.isOnLeave &&
+                    !isMonitoringStaff;
                   return (
                     <tr
                       key={entry.staffId}
@@ -884,7 +890,7 @@ function EntriesPageContent() {
                               <CheckCircle className="h-3 w-3" />
                               Signed out
                             </span>
-                          ) : !entry.isExcusedAbsence && !entry.isOnLeave && (
+                          ) : showNoSignOutWaiverButton ? (
                             <Button
                               className="shrink-0"
                               type="button"
@@ -899,7 +905,7 @@ function EntriesPageContent() {
                                 <>Mark as waived</>
                               )}
                             </Button>
-                          )}
+                          ) : null}
                         </div>
                       </td>
                       <td className="px-3 py-3 text-sm font-mono">

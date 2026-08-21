@@ -13,6 +13,9 @@ test('entries page live penalty calculation preserves monitoring-only staff rule
 
   assert.match(source, /isAttendanceOnly\?: boolean \| null/);
   assert.match(source, /isAttendanceOnly: member\?\.isAttendanceOnly === true/);
+  assert.match(source, /const showNoSignOutWaiverButton =[\s\S]*?!isMonitoringStaff;/);
+  assert.match(source, /showNoSignOutWaiverButton \? \(/);
+  assert.match(source, /if \(member\?\.isAttendanceOnly === true\) return entry;/);
 });
 
 test('entries page exposes an icon-only refresh button beside save entries', () => {
