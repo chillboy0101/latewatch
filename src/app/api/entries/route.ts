@@ -14,8 +14,11 @@ import {
   expandLeavePeriodsToPermissions,
   getLeavePeriodsForDate,
   getLeavePeriodsForRange,
+  getLeavePeriodsReturningInRange,
+  getLeavePeriodsReturningOnDate,
   leavePeriodToPermission,
 } from '@/lib/staff-leave-periods';
+import { getLeaveResumeDate } from '@/lib/attendance-permissions';
 import {
   manualAttendanceCorrectionChanged,
   resolveManualAttendanceCorrection,
@@ -90,6 +93,20 @@ async function getActivePermissionsForDate(date: string) {
   ].map((permission) => [permission.staffId, permission]));
 }
 
+function returningLeaveRowsForEntries(periods: Awaited<ReturnType<typeof getLeavePeriodsReturningOnDate>>) {
+  return periods.flatMap((period) => {
+    const resumeDate = getLeaveResumeDate(period.endDate);
+    return resumeDate ? [{
+      endDate: period.endDate as string,
+      id: period.id,
+      leaveType: period.leaveType,
+      resumeDate,
+      staffId: period.staffId,
+      startDate: period.startDate,
+    }] : [];
+  });
+}
+
 function buildManualCheckInAt(date: string, time: string) {
   return new Date(`${date}T${time}:00.000Z`);
 }
@@ -162,8 +179,16 @@ export async function GET(request: NextRequest) {
       .from(latenessEntry)
       .where(eq(latenessEntry.date, date));
       const attendanceRows = await getAttendanceRowsForEntries(date, date);
-      const permissionRows = await getPermissionRowsForEntries(date, date);
-      const responseRows = mergeAttendanceRowsIntoEntryRows({ attendanceRows, entryRows: entries, permissionRows });
+      const [permissionRows, returningLeavePeriods] = await Promise.all([
+        getPermissionRowsForEntries(date, date),
+        getLeavePeriodsReturningOnDate(date),
+      ]);
+      const responseRows = mergeAttendanceRowsIntoEntryRows({
+        attendanceRows,
+        entryRows: entries,
+        permissionRows,
+        returningLeaveRows: returningLeaveRowsForEntries(returningLeavePeriods),
+      });
 
       return NextResponse.json(responseRows, {
         headers: {
@@ -188,8 +213,16 @@ export async function GET(request: NextRequest) {
       .from(latenessEntry)
       .where(and(gte(latenessEntry.date, start), lte(latenessEntry.date, end)));
       const attendanceRows = await getAttendanceRowsForEntries(start, end);
-      const permissionRows = await getPermissionRowsForEntries(start, end);
-      const responseRows = mergeAttendanceRowsIntoEntryRows({ attendanceRows, entryRows: entries, permissionRows });
+      const [permissionRows, returningLeavePeriods] = await Promise.all([
+        getPermissionRowsForEntries(start, end),
+        getLeavePeriodsReturningInRange(start, end),
+      ]);
+      const responseRows = mergeAttendanceRowsIntoEntryRows({
+        attendanceRows,
+        entryRows: entries,
+        permissionRows,
+        returningLeaveRows: returningLeaveRowsForEntries(returningLeavePeriods),
+      });
 
       return NextResponse.json(responseRows, {
         headers: {
@@ -221,6 +254,18 @@ export async function POST(request: NextRequest) {
 
     if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return NextResponse.json({ error: 'Invalid date format' }, { status: 400 });
+    }
+
+    const submittedStaffIds = Array.from(new Set(
+      entries
+        .map((entry) => entry && typeof entry.staffId === 'string' ? entry.staffId : null)
+        .filter((staffId): staffId is string => Boolean(staffId)),
+    ));
+    const submittedLeavePeriods = await getLeavePeriodsForDate(date, submittedStaffIds);
+    if (submittedLeavePeriods.length) {
+      return NextResponse.json({
+        error: `A submitted staff member is on leave for ${date}. End or change the leave before editing Entries.`,
+      }, { status: 409 });
     }
 
     const selectedDate = new Date(`${date}T00:00:00`);
@@ -273,6 +318,17 @@ export async function POST(request: NextRequest) {
     const activePermissionsByStaffId = await getActivePermissionsForDate(date);
     const actor = await getAuditActor();
 
+    const leaveCoveredEntry = entries.find((entry) =>
+      entry &&
+      typeof entry.staffId === 'string' &&
+      activePermissionsByStaffId.get(entry.staffId)?.permissionType === 'leave'
+    );
+    if (leaveCoveredEntry) {
+      return NextResponse.json({
+        error: `${staffMap.get(leaveCoveredEntry.staffId) || 'This staff member'} is on leave for ${date}. End or change the leave before editing Entries.`,
+      }, { status: 409 });
+    }
+
     const results = [];
     let deletedCount = 0;
     let attendanceChangedCount = 0;
@@ -288,6 +344,8 @@ export async function POST(request: NextRequest) {
       if (!entry || typeof entry.staffId !== 'string' || !allowedStaffIds.has(entry.staffId)) {
         continue;
       }
+
+      const activePermission = activePermissionsByStaffId.get(entry.staffId) || null;
 
       const arrivalTime = typeof entry.arrivalTime === 'string' && /^\d{2}:\d{2}$/.test(entry.arrivalTime)
         ? entry.arrivalTime
@@ -463,7 +521,6 @@ export async function POST(request: NextRequest) {
       const didNotSignOut = submittedSignOutTime || requestedNoSignOutWaived
         ? false
         : entry.didNotSignOut === true;
-      const activePermission = activePermissionsByStaffId.get(entry.staffId) || null;
       const penalty = resolveManualPenalty({
         activePermission,
         arrivalTime,

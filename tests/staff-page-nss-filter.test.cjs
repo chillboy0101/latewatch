@@ -161,6 +161,11 @@ test('staff page clearly shows current leave separately from active employment s
   assert.match(pageSource, /aria-label=\{`On Leave: \$\{leaveDetails\}`\}/);
   assert.match(pageSource, /bg-primary\/10 px-2 py-1 text-xs font-medium text-primary/);
   assert.match(pageSource, /Open-ended/);
+  assert.match(routeSource, /getLeavePeriodsReturningOnDate\(today\)/);
+  assert.match(pageSource, /Resumes Today/);
+  assert.match(pageSource, /EndLeaveDialog/);
+  assert.match(pageSource, /End this leave before deactivating/);
+  assert.match(pageSource, /Return date not set/);
 });
 
 test('all staff status badges stay compact and move supporting details to tooltips', () => {

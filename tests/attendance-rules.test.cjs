@@ -27,6 +27,8 @@ const {
   formatLeavePermissionType,
   formatAbsencePermissionReason,
   formatLateArrivalPermissionReason,
+  getLeaveEndDateForReturn,
+  getLeaveResumeDate,
   getAbsencePeriodBounds,
   getInclusivePermissionDateRange,
   isGeneralPardonReason,
@@ -258,6 +260,15 @@ test('leave permissions use the approved types and a 366-day inclusive boundary'
   assert.equal(formatLeavePermissionType('legacy value'), 'Other');
   assert.equal(getInclusivePermissionDateRange('2026-01-01', '2027-01-01').length, 366);
   assert.equal(getInclusivePermissionDateRange('2026-01-01', '2027-01-02').length, 367);
+});
+
+test('leave return dates use calendar-day arithmetic across month and year boundaries', () => {
+  assert.equal(getLeaveResumeDate('2026-08-31'), '2026-09-01');
+  assert.equal(getLeaveResumeDate('2026-12-31'), '2027-01-01');
+  assert.equal(getLeaveResumeDate('2028-02-29'), '2028-03-01');
+  assert.equal(getLeaveResumeDate(null), null);
+  assert.equal(getLeaveEndDateForReturn('2026-09-01'), '2026-08-31');
+  assert.equal(getLeaveEndDateForReturn('2027-01-01'), '2026-12-31');
 });
 
 test('office network audit display includes the saved network IP', () => {

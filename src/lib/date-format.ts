@@ -112,6 +112,24 @@ export function formatShortDisplayDate(value: Date | string | null | undefined, 
   }).format(date);
 }
 
+export function formatMediumDisplayDate(value: Date | string | null | undefined, fallback = '-') {
+  if (!value) return fallback;
+
+  const date = typeof value === 'string' && isIsoDateKey(value)
+    ? isoDateKeyToLocalDate(value)
+    : value instanceof Date
+      ? value
+      : new Date(value);
+
+  if (!date || Number.isNaN(date.getTime())) return fallback;
+
+  return new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(date);
+}
+
 export function formatDisplayDateTime(value: Date | string | null | undefined, fallback = '-') {
   if (!value) return fallback;
 

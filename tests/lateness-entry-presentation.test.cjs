@@ -224,3 +224,56 @@ test('waived no-sign-out attendance rows stay visible without a charge', () => {
   assert.equal(rows[0].reason, 'No sign-out waived');
   assert.equal(rows[0].signOutTime, null);
 });
+
+test('leave metadata locks the selected date while preserving attendance evidence', () => {
+  const rows = mergeAttendanceRowsIntoEntryRows({
+    attendanceRows: [{
+      checkInTime: '08:10:00',
+      computedAmount: '0.00',
+      date: '2026-08-23',
+      id: 'attendance-1',
+      signOutTime: '17:02:00',
+      staffId: 'staff-1',
+      status: 'on_leave',
+    }],
+    entryRows: [],
+    permissionRows: [{
+      date: '2026-08-23',
+      endDate: '2026-08-23',
+      id: 'leave-1',
+      leaveType: 'annual',
+      permissionType: 'leave',
+      resumeDate: '2026-08-24',
+      staffId: 'staff-1',
+      startDate: '2026-08-20',
+      status: 'approved',
+    }],
+  });
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].arrivalTime, '08:10:00');
+  assert.equal(rows[0].signOutTime, '17:02:00');
+  assert.equal(rows[0].isOnLeave, true);
+  assert.equal(rows[0].leaveEndDate, '2026-08-23');
+  assert.equal(rows[0].resumeDate, '2026-08-24');
+});
+
+test('return-day metadata does not mark the row as leave', () => {
+  const rows = mergeAttendanceRowsIntoEntryRows({
+    attendanceRows: [],
+    entryRows: [],
+    returningLeaveRows: [{
+      endDate: '2026-08-23',
+      id: 'leave-1',
+      leaveType: 'other',
+      resumeDate: '2026-08-24',
+      staffId: 'staff-1',
+      startDate: '2026-05-01',
+    }],
+  });
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].isOnLeave, false);
+  assert.equal(rows[0].returningFromLeave, true);
+  assert.equal(rows[0].permissionId, 'leave-1');
+});

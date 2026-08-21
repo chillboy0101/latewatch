@@ -3,6 +3,7 @@
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, Clock, FileText, Loader2, Pencil, Plus, Printer, RotateCcw, Search, ShieldCheck, Smartphone, Trash2, UserRound, XCircle } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
+import { EndLeaveDialog, type EndLeaveTarget } from '@/components/attendance/end-leave-dialog';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -21,7 +22,7 @@ import {
   getPermissionWindowBounds,
 } from '@/lib/attendance-permissions';
 import type { AttendanceStatus } from '@/lib/attendance-status';
-import { formatDisplayDate, formatDisplayDateTime, isIsoDateKey } from '@/lib/date-format';
+import { formatDisplayDate, formatDisplayDateTime, formatMediumDisplayDate, isIsoDateKey } from '@/lib/date-format';
 import { getAccraDateKey } from '@/lib/date-key';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
@@ -46,6 +47,7 @@ interface AttendancePermission {
   staffId: string;
   staffName?: string | null;
   startDate?: string | null;
+  resumeDate?: string | null;
   status: string;
 }
 
@@ -80,6 +82,7 @@ interface AttendanceRow {
     registeredAt: string | null;
   };
   permission: AttendancePermission | null;
+  returningFromLeave: AttendancePermission | null;
   status: AttendanceStatus;
   statuses?: AttendanceStatus[];
 }
@@ -200,13 +203,16 @@ function statusRankForRow(row: AttendanceRow) {
   return Math.min(...rowStatuses(row).map((status) => STATUS_RANK[status] ?? 99));
 }
 
+function leaveTimingSummary(permission: AttendancePermission) {
+  if (!permission.endDate || !permission.resumeDate) return 'Open-ended · Return date not set';
+  const end = permission.endDate === todayKey() ? 'Ends Today' : `Ends ${formatMediumDisplayDate(permission.endDate)}`;
+  return `${end} · Resumes ${formatMediumDisplayDate(permission.resumeDate)}`;
+}
+
 function permissionSummary(permission: AttendancePermission) {
   if (permission.permissionType === 'leave') {
-    const range = permission.startDate
-      ? `${formatDisplayDate(permission.startDate)} - ${permission.endDate ? formatDisplayDate(permission.endDate) : 'Open-ended'}`
-      : formatDisplayDate(permission.date);
     const note = permission.note ? ` / ${permission.note}` : '';
-    return `Leave / ${formatLeavePermissionType(permission.leaveType)} / ${range}${note}`;
+    return `Leave / ${formatLeavePermissionType(permission.leaveType)} / ${leaveTimingSummary(permission)}${note}`;
   }
   if (permission.permissionType === 'absence') {
     return `Excused absence / ${formatAbsencePermissionReason(permission.reason)}`;
@@ -247,6 +253,7 @@ export default function AttendancePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [endLeaveTarget, setEndLeaveTarget] = useState<EndLeaveTarget | null>(null);
 
   const appliedDate = isIsoDateKey(dateInput) ? dateInput : '';
   const attendanceDate = appliedDate || todayKey();
@@ -780,6 +787,26 @@ export default function AttendancePage() {
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2">
+                    {permission.permissionType === 'leave' &&
+                      Boolean(permission.startDate) &&
+                      permission.startDate! <= todayKey() &&
+                      (!permission.endDate || permission.endDate >= todayKey()) && (
+                      <Button
+                        className="h-8 gap-2"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setEndLeaveTarget({
+                          endDate: permission.endDate || null,
+                          id: permission.id,
+                          leaveType: permission.leaveType,
+                          staffName: permission.staffName || staffNameById.get(permission.staffId) || 'Staff member',
+                          startDate: permission.startDate!,
+                        })}
+                        disabled={savingPermission || deletingPermissionId === permission.id}
+                      >
+                        End Leave
+                      </Button>
+                    )}
                     <Button
                       className={cn('h-8 gap-2', editingPermissionId === permission.id && 'border-primary/50 text-primary')}
                       size="sm"
@@ -796,9 +823,10 @@ export default function AttendancePage() {
                       variant="outline"
                       onClick={() => deletePermission(permission.id)}
                       disabled={deletingPermissionId === permission.id}
+                      title={permission.permissionType === 'leave' ? 'Use only to cancel an incorrectly created leave record' : undefined}
                     >
                       {deletingPermissionId === permission.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                      Remove
+                      {permission.permissionType === 'leave' ? 'Cancel Leave' : 'Remove'}
                     </Button>
                   </div>
                 </div>
@@ -811,6 +839,17 @@ export default function AttendancePage() {
             </div>
           )}
         </Card>
+
+        <EndLeaveDialog
+          leave={endLeaveTarget}
+          onOpenChange={(open) => {
+            if (!open) setEndLeaveTarget(null);
+          }}
+          onCompleted={async (message) => {
+            setNotice(message);
+            await fetchAttendance();
+          }}
+        />
 
         <Dialog
           open={permissionDialogOpen}
@@ -1156,7 +1195,14 @@ export default function AttendancePage() {
                       </tr>
                       {section.rows.map((row) => (
                         <tr key={row.staff.id} className="transition-colors hover:bg-card/50">
-                          <td className="px-4 py-3 text-sm font-medium">{row.staff.fullName}</td>
+                          <td className="px-4 py-3 text-sm font-medium">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span>{row.staff.fullName}</span>
+                              {row.returningFromLeave && (
+                                <span className="rounded-full bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success">Resumes Today</span>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-4 py-3 text-sm text-muted-foreground">{row.staff.email || 'Not linked'}</td>
                           <td className="px-4 py-3">
                             <div className="flex flex-wrap items-center gap-2">

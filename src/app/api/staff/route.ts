@@ -10,7 +10,7 @@ import { normalizeStaffEmail } from '@/lib/attendance';
 import { syncStaffEmailIdentity } from '@/lib/clerk-organization';
 import { enforceRole } from '@/lib/auth/roles';
 import { getAccraDateKey } from '@/lib/date-key';
-import { getLeavePeriodsForDate } from '@/lib/staff-leave-periods';
+import { getLeavePeriodsForDate, getLeavePeriodsReturningOnDate, leavePeriodToPermission } from '@/lib/staff-leave-periods';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
       : undefined;
 
     const today = getAccraDateKey();
-    const [staffList, openInactivePeriods, currentLeavePeriods] = await Promise.all([db.select({
+    const [staffList, openInactivePeriods, currentLeavePeriods, returningLeavePeriods] = await Promise.all([db.select({
       id: staff.id,
       fullName: staff.fullName,
       email: staff.email,
@@ -52,14 +52,16 @@ export async function GET(request: NextRequest) {
     .where(whereClause)
     .orderBy(asc(staff.displayOrder), asc(staff.fullName)), db.select()
       .from(staffInactivePeriod)
-      .where(isNull(staffInactivePeriod.reactivatedOn)), getLeavePeriodsForDate(today)]);
+      .where(isNull(staffInactivePeriod.reactivatedOn)), getLeavePeriodsForDate(today), getLeavePeriodsReturningOnDate(today)]);
 
     const inactiveByStaffId = new Map(openInactivePeriods.map((period) => [period.staffId, period]));
-    const leaveByStaffId = new Map(currentLeavePeriods.map((period) => [period.staffId, period]));
+    const leaveByStaffId = new Map(currentLeavePeriods.map((period) => [period.staffId, leavePeriodToPermission(period, today)]));
+    const returningLeaveByStaffId = new Map(returningLeavePeriods.map((period) => [period.staffId, leavePeriodToPermission(period, today)]));
     const response = staffList.map((member) => ({
       ...member,
       inactivePeriod: inactiveByStaffId.get(member.id) || null,
       leavePeriod: leaveByStaffId.get(member.id) || null,
+      returningFromLeave: returningLeaveByStaffId.get(member.id) || null,
     }));
 
     return NextResponse.json(response, {

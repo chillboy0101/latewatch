@@ -3,7 +3,13 @@ import { and, eq, gte, isNull, lte, ne, or } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { attendancePermission, staff, staffLeavePeriod } from '@/db/schema';
-import { getInclusivePermissionDateRange, MAX_LEAVE_PERMISSION_DAYS, normalizeLeavePermissionType } from '@/lib/attendance-permissions';
+import {
+  getInclusivePermissionDateRange,
+  getLeaveEndDateForReturn,
+  getLeaveResumeDate,
+  MAX_LEAVE_PERMISSION_DAYS,
+  normalizeLeavePermissionType,
+} from '@/lib/attendance-permissions';
 import { reconcileAttendanceForPermission } from '@/lib/attendance-permission-reconciliation';
 import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 import { writeAuditEvent } from '@/lib/audit';
@@ -44,6 +50,61 @@ export async function PATCH(
     if (!before) return NextResponse.json({ error: 'Leave permission not found' }, { status: 404 });
 
     const body = await request.json().catch(() => ({}));
+    const returnedOn = optionalText(body?.returnedOn);
+    const actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';
+
+    if (returnedOn) {
+      const endDate = getLeaveEndDateForReturn(returnedOn);
+      if (!endDate || returnedOn <= before.startDate) {
+        return NextResponse.json({ error: 'First day back must be after the leave start date' }, { status: 400 });
+      }
+
+      const scheduledResumeDate = getLeaveResumeDate(before.endDate);
+      if (scheduledResumeDate && returnedOn > scheduledResumeDate) {
+        return NextResponse.json({ error: 'Use Change to extend this leave beyond its scheduled return date' }, { status: 400 });
+      }
+
+      const [updated] = await db.update(staffLeavePeriod)
+        .set({
+          closedAt: new Date(),
+          closedByEmail: actorEmail,
+          endDate,
+          updatedAt: new Date(),
+          updatedByEmail: actorEmail,
+        })
+        .where(eq(staffLeavePeriod.id, id))
+        .returning();
+
+      const [member] = await db.select({ fullName: staff.fullName, email: staff.email })
+        .from(staff).where(eq(staff.id, before.staffId)).limit(1);
+      await writeAuditEvent({
+        entityType: 'attendance_permission', entityId: id, action: 'UPDATE',
+        before: { ...leavePeriodToPermission(before), staffName: member?.fullName || null },
+        after: {
+          ...leavePeriodToPermission(updated),
+          changeType: 'leave_returned',
+          returnedOn,
+          staffName: member?.fullName || null,
+        },
+        actor: { email: actorEmail, id: user.id }, reason: 'attendance-leave-returned',
+      });
+
+      const today = getAccraDateKey();
+      const reconciliationEnd = before.endDate && before.endDate > today ? before.endDate : today;
+      const reconciliation = returnedOn <= reconciliationEnd
+        ? await syncLatenessEntriesFromAttendanceForRange(returnedOn, reconciliationEnd)
+        : { deleted: 0, inserted: 0, skipped: 0, updated: 0 };
+      publishPermissionInvalidations(before.staffId);
+
+      return NextResponse.json({
+        ...leavePeriodToPermission(updated),
+        reconciliation,
+        returnedOn,
+        staffEmail: member?.email || null,
+        staffName: member?.fullName || null,
+      });
+    }
+
     const startDate = optionalText(body?.startDate);
     const endDate = optionalText(body?.endDate);
     const leaveType = normalizeLeavePermissionType(body?.leaveType);
@@ -86,7 +147,6 @@ export async function PATCH(
       }, { status: 409 });
     }
 
-    const actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';
     const [updated] = await db.update(staffLeavePeriod)
       .set({
         closedAt: endDate ? new Date() : null,

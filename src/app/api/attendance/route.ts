@@ -8,7 +8,7 @@ import { isGeneralPardonReason, isPermissionWindowOverdue } from '@/lib/attendan
 import { getAttendanceStatusFlags, primaryAttendanceStatus, type AttendanceStatus } from '@/lib/attendance-status';
 import { resolveOfficeLocationForDate } from '@/lib/office-location-policy';
 import { isOnTimeCheckIn, shouldAlertNoSignOut } from '@/lib/work-hours';
-import { getLeavePeriodsForDate, leavePeriodToPermission } from '@/lib/staff-leave-periods';
+import { getLeavePeriodsForDate, getLeavePeriodsReturningOnDate, leavePeriodToPermission } from '@/lib/staff-leave-periods';
 import { getAllInactivePeriods, inactivePeriodMap, isStaffActiveForDate } from '@/lib/staff-inactive-periods';
 
 export const dynamic = 'force-dynamic';
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
 
     await requiredAttendanceQuery('attendance-lateness-sync', () => syncLatenessEntriesFromAttendanceForDate(date));
 
-    const [allStaffRows, allPermissionStaffRows, attendanceRows, attendancePermissionRows, leavePeriods, inactivePeriods] = await Promise.all([
+    const [allStaffRows, allPermissionStaffRows, attendanceRows, attendancePermissionRows, leavePeriods, returningLeavePeriods, inactivePeriods] = await Promise.all([
       requiredAttendanceQuery('staff', () => db.select({
         id: staff.id,
         fullName: staff.fullName,
@@ -95,6 +95,7 @@ export async function GET(request: NextRequest) {
         .leftJoin(staff, eq(attendancePermission.staffId, staff.id))
         .where(and(eq(attendancePermission.date, date), eq(attendancePermission.status, 'approved')))),
       requiredAttendanceQuery('staff-leave-periods', () => getLeavePeriodsForDate(date)),
+      requiredAttendanceQuery('returning-staff-leave-periods', () => getLeavePeriodsReturningOnDate(date)),
       requiredAttendanceQuery('staff-inactive-periods', () => getAllInactivePeriods()),
     ]);
 
@@ -115,6 +116,11 @@ export async function GET(request: NextRequest) {
         };
       });
     const permissionRows = [...attendancePermissionRows, ...leavePermissionRows];
+    const returningLeaveByStaffId = new Map(
+      returningLeavePeriods
+        .filter((period) => permissionStaffById.has(period.staffId))
+        .map((period) => [period.staffId, leavePeriodToPermission(period, date)]),
+    );
 
     const [attemptRows, deviceRows, network, locationRows, transferRows] = await Promise.all([
       optionalAttendanceQuery('attendance-attempts', [], () => db.select()
@@ -224,6 +230,7 @@ export async function GET(request: NextRequest) {
               registeredAt: null,
             },
         permission,
+        returningFromLeave: returningLeaveByStaffId.get(member.id) || null,
         status: primaryAttendanceStatus(statuses),
         statuses,
       };

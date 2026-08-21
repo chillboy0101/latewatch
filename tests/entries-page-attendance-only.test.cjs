@@ -134,7 +134,8 @@ test('entries API sources saved arrival times from attendance records', () => {
   assert.match(source, /arrivalWindow: attendancePermission\.arrivalWindow/);
   assert.match(source, /expectedEndTime: attendancePermission\.expectedEndTime/);
   assert.match(source, /expectedStartTime: attendancePermission\.expectedStartTime/);
-  assert.match(source, /mergeAttendanceRowsIntoEntryRows\(\{ attendanceRows, entryRows: entries, permissionRows \}\)/);
+  assert.match(source, /mergeAttendanceRowsIntoEntryRows\(\{/);
+  assert.match(source, /returningLeaveRows:/);
 });
 
 test('entries page separates real sign-out time from waiver state', () => {
@@ -156,7 +157,41 @@ test('entries page renders excused absence permissions without missing sign-out 
   assert.match(source, /isExcusedAbsence/);
   assert.match(source, />Excused</);
   assert.match(source, /!entry\.isExcusedAbsence/);
-  assert.match(source, /entry\.isExcusedAbsence \? 'Excused'/);
+  assert.match(source, /entry\.isExcusedAbsence\s*\?\s*'Excused'/);
+  assert.match(source, /const signOutStatusLabel =/);
+  assert.match(source, /entry\.didNotSignOut\s*\? 'No sign-out'\s*:\s*null/);
+  assert.doesNotMatch(source, /entry\.didNotSignOut \? 'No sign-out' : 'Missing'/);
+});
+
+test('entries locks leave-covered rows and identifies the first day back', () => {
+  const source = fs.readFileSync(entriesPagePath, 'utf8');
+  const routeSource = fs.readFileSync(entriesRoutePath, 'utf8');
+
+  assert.match(source, /entry\.isOnLeave && 'bg-muted\/25/);
+  assert.match(source, /disabled=\{entriesDisabled \|\| entry\.isOnLeave\}/);
+  assert.match(source, /Resumes Today/);
+  assert.match(source, /Return date not set/);
+  assert.match(source, /totals\.onLeave/);
+  assert.match(source, /totals\.excused/);
+  assert.match(source, /totals\.notCheckedIn/);
+  assert.match(source, /totals\.generalPardon/);
+  assert.match(source, /totals\.waived/);
+  assert.match(source, /Amount \/<wbr \/> Status/);
+  assert.match(source, /flex flex-wrap items-center gap-2/);
+  assert.match(source, /w-full min-w-\[820px\] table-fixed/);
+  assert.match(source, /<col className="w-\[4%\]" \/>/);
+  assert.match(source, /<col className="w-\[16%\]" \/>/);
+  assert.match(source, /<col className="w-\[23%\]" \/>/);
+  assert.match(source, /<col className="w-\[13%\]" \/>/);
+  assert.match(source, /<col className="w-\[21%\]" \/>/);
+  assert.match(source, /flex min-w-0 flex-wrap items-center gap-2/);
+  assert.match(source, /relative min-w-28 max-w-36 basis-36 flex-1/);
+  assert.match(source, /whitespace-normal break-words px-3 py-3 text-sm text-muted-foreground/);
+  assert.match(source, /inline-flex whitespace-nowrap rounded-full bg-primary\/10/);
+  assert.doesNotMatch(source, /min-w-56 break-words/);
+  assert.doesNotMatch(source, /py-0\.5 text-\[11px\] font-medium text-primary">On Leave/);
+  assert.match(routeSource, /status: 409/);
+  assert.match(routeSource, /End or change the leave before editing Entries/);
 });
 
 test('regular staff recalculation apply notifies live pages to refetch entries', () => {

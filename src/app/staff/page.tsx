@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
+import { EndLeaveDialog, type EndLeaveTarget } from '@/components/attendance/end-leave-dialog';
 import { Button } from '@/components/ui/button';
 import { DateField } from '@/components/ui/date-field';
 import { Input } from '@/components/ui/input';
@@ -24,6 +25,7 @@ import { getStaffIdentitySyncCopy, type StaffIdentitySyncTone } from '@/lib/staf
 import { getAccraDateKey } from '@/lib/date-key';
 import { formatStaffInactiveReason, STAFF_INACTIVE_REASONS } from '@/lib/staff-inactive-policy';
 import { formatLeavePermissionType } from '@/lib/attendance-permissions';
+import { formatMediumDisplayDate } from '@/lib/date-format';
 
 interface StaffMember {
   id: string;
@@ -50,6 +52,15 @@ interface StaffMember {
     id: string;
     leaveType: string;
     note: string | null;
+    startDate: string;
+    resumeDate: string | null;
+  } | null;
+  returningFromLeave?: {
+    endDate: string | null;
+    id: string;
+    leaveType: string;
+    note: string | null;
+    resumeDate: string | null;
     startDate: string;
   } | null;
 }
@@ -78,6 +89,7 @@ export default function StaffPage() {
   const [deactivationReason, setDeactivationReason] = useState('temporarily_not_monitored');
   const [deactivationNote, setDeactivationNote] = useState('');
   const [transitionError, setTransitionError] = useState('');
+  const [endLeaveTarget, setEndLeaveTarget] = useState<EndLeaveTarget | null>(null);
 
   // Add form state
   const [newName, setNewName] = useState('');
@@ -886,22 +898,42 @@ export default function StaffPage() {
                             ) : (
                               <>
                                 {member.active ? (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-8 gap-2"
-                                    onClick={() => {
-                                      setTransitionError('');
-                                      setDeactivationStartDate(getAccraDateKey());
-                                      setDeactivationReason('temporarily_not_monitored');
-                                      setDeactivationNote('');
-                                      setDeactivationTarget(member);
-                                    }}
-                                    disabled={actioningId === member.id}
-                                  >
-                                    <UserX className="h-3.5 w-3.5" />
-                                    Deactivate
-                                  </Button>
+                                  <>
+                                    {member.leavePeriod && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-8 gap-2"
+                                        onClick={() => setEndLeaveTarget({
+                                          endDate: member.leavePeriod?.endDate || null,
+                                          id: member.leavePeriod!.id,
+                                          leaveType: member.leavePeriod?.leaveType,
+                                          staffName: member.fullName,
+                                          startDate: member.leavePeriod!.startDate,
+                                        })}
+                                        disabled={actioningId === member.id}
+                                      >
+                                        End Leave
+                                      </Button>
+                                    )}
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 gap-2"
+                                      onClick={() => {
+                                        setTransitionError('');
+                                        setDeactivationStartDate(getAccraDateKey());
+                                        setDeactivationReason('temporarily_not_monitored');
+                                        setDeactivationNote('');
+                                        setDeactivationTarget(member);
+                                      }}
+                                      disabled={actioningId === member.id || Boolean(member.leavePeriod)}
+                                      title={member.leavePeriod ? 'End this leave before deactivating the staff member' : undefined}
+                                    >
+                                      <UserX className="h-3.5 w-3.5" />
+                                      Deactivate
+                                    </Button>
+                                  </>
                                 ) : (
                                   <Button
                                     variant="default"
@@ -1039,6 +1071,16 @@ export default function StaffPage() {
           </DialogContent>
         </Dialog>
 
+        <EndLeaveDialog
+          leave={endLeaveTarget}
+          onOpenChange={(open) => {
+            if (!open) setEndLeaveTarget(null);
+          }}
+          onCompleted={async () => {
+            await fetchStaff();
+          }}
+        />
+
         <Dialog open={!!reactivationTarget} onOpenChange={(open) => !open && setReactivationTarget(null)}>
           <DialogContent>
             <DialogHeader>
@@ -1168,25 +1210,38 @@ function StaffStatusBadges({ member }: { member: StaffMember }) {
   const leaveDetails = leave
     ? `${formatLeavePermissionType(leave.leaveType)} leave · ${formatStaffDate(leave.startDate)}–${leave.endDate ? formatStaffDate(leave.endDate) : 'Open-ended'}${leave.note ? ` · ${leave.note}` : ''}`
     : '';
+  const leaveTiming = leave
+    ? leave.endDate && leave.resumeDate
+      ? `${leave.endDate === getAccraDateKey() ? 'Ends Today' : `Ends ${formatMediumDisplayDate(leave.endDate)}`} · Resumes ${formatMediumDisplayDate(leave.resumeDate)}`
+      : 'Open-ended · Return date not set'
+    : '';
 
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-      <span
-        aria-label={`${getStaffStatusLabel(member)}: ${employmentDetails}`}
-        className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-1 text-xs font-medium ${getStaffStatusClass(member)}`}
-        title={employmentDetails}
-      >
-        {getStaffStatusLabel(member)}
-      </span>
-      {leave && !member.archived && member.active && (
+    <div className="min-w-0 space-y-1.5">
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
         <span
-          aria-label={`On Leave: ${leaveDetails}`}
-          className="inline-flex items-center whitespace-nowrap rounded-full bg-primary/10 px-2 py-1 text-xs font-medium text-primary"
-          title={leaveDetails}
+          aria-label={`${getStaffStatusLabel(member)}: ${employmentDetails}`}
+          className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-1 text-xs font-medium ${getStaffStatusClass(member)}`}
+          title={employmentDetails}
         >
-          On Leave
+          {getStaffStatusLabel(member)}
         </span>
-      )}
+        {leave && !member.archived && member.active && (
+          <span
+            aria-label={`On Leave: ${leaveDetails}`}
+            className="inline-flex items-center whitespace-nowrap rounded-full bg-primary/10 px-2 py-1 text-xs font-medium text-primary"
+            title={leaveDetails}
+          >
+            On Leave
+          </span>
+        )}
+        {member.returningFromLeave && !member.archived && member.active && (
+          <span className="inline-flex items-center whitespace-nowrap rounded-full bg-success/10 px-2 py-1 text-xs font-medium text-success">
+            Resumes Today
+          </span>
+        )}
+      </div>
+      {leave && <p className="text-xs leading-4 text-muted-foreground">{leaveTiming}</p>}
     </div>
   );
 }

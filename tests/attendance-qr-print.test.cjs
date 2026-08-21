@@ -108,8 +108,23 @@ test('leave permission UI and APIs manage bounded and open-ended ranges', () => 
   assert.match(collectionSource, /MAX_LEAVE_PERMISSION_DAYS/);
   assert.match(collectionSource, /Leave overlaps an existing attendance permission/);
   assert.match(itemSource, /export async function PATCH/);
+  assert.match(itemSource, /returnedOn/);
+  assert.match(itemSource, /getLeaveEndDateForReturn/);
+  assert.match(itemSource, /attendance-leave-returned/);
   assert.match(itemSource, /db\.delete\(staffLeavePeriod\)/);
   assert.match(itemSource, /syncLatenessEntriesFromAttendanceForRange/);
+});
+
+test('attendance presents leave timing and offers an explicit return workflow', () => {
+  const pageSource = fs.readFileSync(attendancePagePath, 'utf8');
+  const itemSource = fs.readFileSync(attendancePermissionByIdApiPath, 'utf8');
+
+  assert.match(pageSource, /EndLeaveDialog/);
+  assert.match(pageSource, /Ends Today/);
+  assert.match(pageSource, /Resumes Today/);
+  assert.match(pageSource, /Open-ended · Return date not set/);
+  assert.match(itemSource, /First day back must be after the leave start date/);
+  assert.match(itemSource, /Use Change to extend this leave/);
 });
 
 test('leave overlap validation has a database-level atomic guard', () => {

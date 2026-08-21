@@ -13,9 +13,17 @@ export type LatenessEntryPresentationRow = {
   isExcusedAbsence?: boolean | null;
   id: string;
   isGeneralPardon?: boolean | null;
+  isOnLeave?: boolean | null;
+  leaveEndDate?: string | null;
+  leaveStartDate?: string | null;
+  leaveType?: string | null;
   noShowSignInWaived?: boolean | null;
   noSignOutWaived?: boolean | null;
+  permissionId?: string | null;
+  permissionType?: string | null;
   reason?: string | null;
+  resumeDate?: string | null;
+  returningFromLeave?: boolean | null;
   signOutTime?: string | null;
   staffId: string;
 };
@@ -45,11 +53,25 @@ export type PermissionEntryPresentationRow = {
   date: string;
   expectedEndTime?: string | null;
   expectedStartTime?: string | null;
+  endDate?: string | null;
   id: string;
+  leaveType?: string | null;
+  note?: string | null;
   permissionType?: string | null;
   reason?: string | null;
+  resumeDate?: string | null;
   staffId: string;
+  startDate?: string | null;
   status?: string | null;
+};
+
+export type ReturningLeaveEntryPresentationRow = {
+  endDate: string;
+  id: string;
+  leaveType?: string | null;
+  resumeDate: string;
+  staffId: string;
+  startDate: string;
 };
 
 function dateKey(value: string | Date) {
@@ -104,24 +126,55 @@ function hasVisibleAttendanceState(row: AttendanceEntryPresentationRow) {
   );
 }
 
+function withLeavePresentationState(
+  row: LatenessEntryPresentationRow,
+  permission: PermissionEntryPresentationRow | undefined,
+  returningLeave: ReturningLeaveEntryPresentationRow | undefined,
+): LatenessEntryPresentationRow {
+  const leavePermission = permission?.permissionType === 'leave' ? permission : undefined;
+  const leave = leavePermission || returningLeave;
+
+  return {
+    ...row,
+    isOnLeave: Boolean(leavePermission),
+    leaveEndDate: leave?.endDate || null,
+    leaveStartDate: leave?.startDate || null,
+    leaveType: leave?.leaveType || null,
+    permissionId: permission?.id || returningLeave?.id || null,
+    permissionType: permission?.permissionType || null,
+    resumeDate: leave?.resumeDate || null,
+    returningFromLeave: Boolean(returningLeave),
+  };
+}
+
 export function mergeAttendanceRowsIntoEntryRows(input: {
   attendanceRows: AttendanceEntryPresentationRow[];
   entryRows: LatenessEntryPresentationRow[];
   permissionRows?: PermissionEntryPresentationRow[];
+  returningLeaveRows?: ReturningLeaveEntryPresentationRow[];
 }) {
+  const permissionByKey = new Map(
+    (input.permissionRows || [])
+      .filter((row) => row.status === 'approved')
+      .map((row) => [`${row.staffId}:${dateKey(row.date)}`, row]),
+  );
+  const returningLeaveByKey = new Map(
+    (input.returningLeaveRows || []).map((row) => [`${row.staffId}:${row.resumeDate}`, row]),
+  );
   const attendanceByKey = new Map(
     input.attendanceRows.map((row) => [`${row.staffId}:${dateKey(row.date)}`, row]),
   );
   const entryRows = input.entryRows.map((entry) => {
-    const attendance = attendanceByKey.get(`${entry.staffId}:${dateKey(entry.date)}`);
+    const key = `${entry.staffId}:${dateKey(entry.date)}`;
+    const attendance = attendanceByKey.get(key);
 
-    return {
+    return withLeavePresentationState({
       ...entry,
       isGeneralPardon: entry.isGeneralPardon ?? isGeneralPardonEntryReason(entry.reason),
       noShowSignInWaived: entry.noShowSignInWaived ?? (attendance?.noShowSignInWaived === true),
       noSignOutWaived: entry.noSignOutWaived ?? (attendance?.noSignOutWaived === true),
       signOutTime: entry.signOutTime ?? attendance?.signOutTime ?? null,
-    };
+    }, permissionByKey.get(key), returningLeaveByKey.get(key));
   });
   const existingEntryKeys = new Set(
     entryRows.map((entry) => `${entry.staffId}:${dateKey(entry.date)}`),
@@ -129,21 +182,25 @@ export function mergeAttendanceRowsIntoEntryRows(input: {
   const attendanceFallbackRows = input.attendanceRows
     .filter((row) => hasVisibleAttendanceState(row))
     .filter((row) => !existingEntryKeys.has(`${row.staffId}:${dateKey(row.date)}`))
-    .map((row): LatenessEntryPresentationRow => ({
-      arrivalTime: row.checkInTime,
-      computedAmount: row.computedAmount,
-      createdAt: row.createdAt || row.updatedAt || null,
-      date: dateKey(row.date),
-      didNotSignOut: false,
-      id: `attendance:${row.id}`,
-      isExcusedAbsence: isExcusedAbsenceEntry(row),
-      isGeneralPardon: isGeneralPardonEntryReason(row.reason),
-      noShowSignInWaived: row.noShowSignInWaived === true,
-      noSignOutWaived: row.noSignOutWaived === true,
-      reason: row.reason || (row.noShowSignInWaived === true ? 'No-show waived' : row.noSignOutWaived === true ? 'No sign-out waived' : null),
-      signOutTime: row.signOutTime || null,
-      staffId: row.staffId,
-    }));
+    .map((row): LatenessEntryPresentationRow => {
+      const rowDate = dateKey(row.date);
+      const key = `${row.staffId}:${rowDate}`;
+      return withLeavePresentationState({
+        arrivalTime: row.checkInTime,
+        computedAmount: row.computedAmount,
+        createdAt: row.createdAt || row.updatedAt || null,
+        date: rowDate,
+        didNotSignOut: false,
+        id: `attendance:${row.id}`,
+        isExcusedAbsence: isExcusedAbsenceEntry(row),
+        isGeneralPardon: isGeneralPardonEntryReason(row.reason),
+        noShowSignInWaived: row.noShowSignInWaived === true,
+        noSignOutWaived: row.noSignOutWaived === true,
+        reason: row.reason || (row.noShowSignInWaived === true ? 'No-show waived' : row.noSignOutWaived === true ? 'No sign-out waived' : null),
+        signOutTime: row.signOutTime || null,
+        staffId: row.staffId,
+      }, permissionByKey.get(key), returningLeaveByKey.get(key));
+    });
   const occupiedKeys = new Set([
     ...existingEntryKeys,
     ...attendanceFallbackRows.map((row) => `${row.staffId}:${dateKey(row.date)}`),
@@ -151,7 +208,7 @@ export function mergeAttendanceRowsIntoEntryRows(input: {
   const permissionFallbackRows = (input.permissionRows || [])
     .filter((row) => row.status === 'approved' && ['absence', 'leave', 'late_arrival'].includes(row.permissionType || ''))
     .filter((row) => !occupiedKeys.has(`${row.staffId}:${dateKey(row.date)}`))
-    .map((row): LatenessEntryPresentationRow => ({
+    .map((row): LatenessEntryPresentationRow => withLeavePresentationState({
       arrivalTime: null,
       computedAmount: '0.00',
       createdAt: null,
@@ -165,7 +222,29 @@ export function mergeAttendanceRowsIntoEntryRows(input: {
       reason: formatPermissionFallbackReason(row),
       signOutTime: null,
       staffId: row.staffId,
-    }));
+    }, row, undefined));
 
-  return [...entryRows, ...attendanceFallbackRows, ...permissionFallbackRows];
+  const occupiedWithPermissions = new Set([
+    ...occupiedKeys,
+    ...permissionFallbackRows.map((row) => `${row.staffId}:${dateKey(row.date)}`),
+  ]);
+  const returningLeaveFallbackRows = (input.returningLeaveRows || [])
+    .filter((row) => !occupiedWithPermissions.has(`${row.staffId}:${row.resumeDate}`))
+    .map((row): LatenessEntryPresentationRow => withLeavePresentationState({
+      arrivalTime: null,
+      computedAmount: '0.00',
+      createdAt: null,
+      date: row.resumeDate,
+      didNotSignOut: false,
+      id: `returning-leave:${row.id}`,
+      isExcusedAbsence: false,
+      isGeneralPardon: false,
+      noShowSignInWaived: false,
+      noSignOutWaived: false,
+      reason: null,
+      signOutTime: null,
+      staffId: row.staffId,
+    }, undefined, row));
+
+  return [...entryRows, ...attendanceFallbackRows, ...permissionFallbackRows, ...returningLeaveFallbackRows];
 }

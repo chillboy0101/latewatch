@@ -13,8 +13,11 @@ import { ArrowLeft, Save, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, C
 import { computePenalty } from '@/lib/penalty-calculator';
 import { NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/penalty-calculator';
 import { getAccraDateKey } from '@/lib/date-key';
-import { formatLongDisplayDate } from '@/lib/date-format';
+import { formatLongDisplayDate, formatMediumDisplayDate } from '@/lib/date-format';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
+import { formatLeavePermissionType } from '@/lib/attendance-permissions';
+import { summarizeEntryDay } from '@/lib/entry-day-summary';
+import { cn } from '@/lib/utils';
 
 interface StaffMember {
   id: string;
@@ -41,6 +44,13 @@ interface Entry {
   noShowSignInWaived: boolean;
   noSignOutWaived: boolean;
   reason: string;
+  isOnLeave: boolean;
+  leaveEndDate: string | null;
+  leaveStartDate: string | null;
+  leaveType: string | null;
+  permissionId: string | null;
+  resumeDate: string | null;
+  returningFromLeave: boolean;
 }
 
 interface CalendarDay {
@@ -60,6 +70,13 @@ interface ExistingEntry {
   noShowSignInWaived?: boolean | null;
   noSignOutWaived?: boolean | null;
   reason: string | null;
+  isOnLeave?: boolean | null;
+  leaveEndDate?: string | null;
+  leaveStartDate?: string | null;
+  leaveType?: string | null;
+  permissionId?: string | null;
+  resumeDate?: string | null;
+  returningFromLeave?: boolean | null;
 }
 
 type EntrySnapshot = Pick<Entry, 'arrivalTime' | 'didNotSignOut' | 'signOutTime' | 'noShowSignInWaived' | 'noSignOutWaived'>;
@@ -135,6 +152,12 @@ function formatChangedEntriesMessage(names: string[], count: number) {
   return `${count} entr${count === 1 ? 'y' : 'ies'} updated successfully`;
 }
 
+function leaveTimingDescription(entry: Pick<Entry, 'leaveEndDate' | 'resumeDate'>) {
+  if (!entry.leaveEndDate || !entry.resumeDate) return 'Open-ended · Return date not set';
+  const endLabel = entry.leaveEndDate === getAccraDateKey() ? 'Ends Today' : `Ends ${formatMediumDisplayDate(entry.leaveEndDate)}`;
+  return `${endLabel} · Resumes ${formatMediumDisplayDate(entry.resumeDate)}`;
+}
+
 function EntriesPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -201,6 +224,13 @@ function EntriesPageContent() {
           noShowSignInWaived: existing?.noShowSignInWaived === true,
           noSignOutWaived: existing?.noSignOutWaived === true,
           reason: existing?.reason || '',
+          isOnLeave: existing?.isOnLeave === true,
+          leaveEndDate: existing?.leaveEndDate || null,
+          leaveStartDate: existing?.leaveStartDate || null,
+          leaveType: existing?.leaveType || null,
+          permissionId: existing?.permissionId || null,
+          resumeDate: existing?.resumeDate || null,
+          returningFromLeave: existing?.returningFromLeave === true,
         };
       });
 
@@ -290,6 +320,17 @@ function EntriesPageContent() {
 
   
   function applyPenaltyDisplay(entry: Entry, member: StaffMember | undefined): Entry {
+    if (entry.isOnLeave) {
+      return {
+        ...entry,
+        amount: 0,
+        didNotSignOut: false,
+        isExcusedAbsence: false,
+        isGeneralPardon: false,
+        noShowSignInWaived: false,
+        noSignOutWaived: false,
+      };
+    }
     const hasSignOutTime = Boolean(normalizeTimeValue(entry.signOutTime));
     const hasSignInTime = Boolean(normalizeTimeValue(entry.arrivalTime));
     const isExcusedAbsence = entry.isExcusedAbsence === true;
@@ -378,6 +419,7 @@ function EntriesPageContent() {
     setEntries((prev) =>
       prev.map((entry) => {
         if (entry.staffId !== staffId) return entry;
+        if (entry.isOnLeave) return entry;
 
         const arrivalTime = normalizeTimeValue(value);
         const updated = {
@@ -396,6 +438,7 @@ function EntriesPageContent() {
     setEntries((prev) =>
       prev.map((entry) => {
         if (entry.staffId !== staffId) return entry;
+        if (entry.isOnLeave) return entry;
 
         const signOutTime = normalizeTimeValue(value);
         const updated = {
@@ -414,6 +457,7 @@ function EntriesPageContent() {
     setEntries((prev) =>
       prev.map((entry) => {
         if (entry.staffId !== staffId) return entry;
+        if (entry.isOnLeave) return entry;
         if (entry.isExcusedAbsence) return entry;
 
         const nextWaived = !entry.noSignOutWaived;
@@ -433,6 +477,7 @@ function EntriesPageContent() {
     setEntries((prev) =>
       prev.map((entry) => {
         if (entry.staffId !== staffId) return entry;
+        if (entry.isOnLeave) return entry;
         if (entry.isExcusedAbsence || normalizeTimeValue(entry.arrivalTime)) return entry;
 
         const nextWaived = !entry.noShowSignInWaived;
@@ -450,7 +495,7 @@ function EntriesPageContent() {
   }
 
   const changedEntries = useMemo(
-    () => entries.filter((entry) => !entryMatchesSnapshot(entry, originalEntrySnapshots[entry.staffId])),
+    () => entries.filter((entry) => !entry.isOnLeave && !entryMatchesSnapshot(entry, originalEntrySnapshots[entry.staffId])),
     [entries, originalEntrySnapshots],
   );
 
@@ -474,6 +519,8 @@ function EntriesPageContent() {
         entry.signOutTime,
         ...getTimeSearchTokens(entry.signOutTime),
         entry.reason,
+        entry.isOnLeave ? 'on leave' : '',
+        entry.returningFromLeave ? 'resumes today returned from leave' : '',
         entry.amount,
         entry.amount > 0 ? `GHC ${entry.amount}` : '',
       ]
@@ -563,15 +610,7 @@ function EntriesPageContent() {
   const isSelectedDateInPastOrToday = selectedDateKey <= todayDateKey;
   const noShowSignInWaiveAvailable = isSelectedDateInPastOrToday;
 
-  const totals = entries.reduce(
-    (acc, entry) => ({
-      late: acc.late + (entry.amount > 0 && !entry.reason.includes('SIGN OUT') ? 1 : 0),
-      onTime: acc.onTime + (entry.amount === 0 && !entry.didNotSignOut ? 1 : 0),
-      didNotSignOut: acc.didNotSignOut + (entry.didNotSignOut ? 1 : 0),
-      totalAmount: acc.totalAmount + entry.amount,
-    }),
-    { late: 0, onTime: 0, didNotSignOut: 0, totalAmount: 0 }
-  );
+  const totals = summarizeEntryDay(entries);
 
   if (loading) {
     return (
@@ -605,7 +644,7 @@ function EntriesPageContent() {
 
   return (
     <DashboardLayout title="Entries">
-      <div className="space-y-6">
+      <div className="min-w-0 space-y-6">
         {showBackToPayments && (
           <Button
             variant="outline"
@@ -731,17 +770,27 @@ function EntriesPageContent() {
         </div>
 
         {/* Entry Grid */}
-        <Card>
-          <div className="overflow-x-auto">
-            <table className="w-full">
+        <Card className="min-w-0">
+          <div className="max-w-full overflow-x-auto">
+            <table className="w-full min-w-[820px] table-fixed">
+              <colgroup>
+                <col className="w-[4%]" />
+                <col className="w-[16%]" />
+                <col className="w-[23%]" />
+                <col className="w-[23%]" />
+                <col className="w-[13%]" />
+                <col className="w-[21%]" />
+              </colgroup>
               <thead className="border-b border-border bg-card">
                 <tr>
-                  <th className="w-12 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">#</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</th>
-                  <th className="w-44 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Sign In</th>
-                  <th className="w-56 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Sign Out</th>
-                  <th className="w-28 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Amount</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Reason</th>
+                  <th className="px-2 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">#</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Name</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Sign In</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Sign Out</th>
+                  <th className="whitespace-normal px-3 py-3 text-left text-xs font-medium uppercase leading-tight tracking-wide text-muted-foreground">
+                    Amount /<wbr /> Status
+                  </th>
+                  <th className="whitespace-normal px-3 py-3 text-left text-xs font-medium uppercase leading-tight tracking-wide text-muted-foreground">Reason</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -756,6 +805,7 @@ function EntriesPageContent() {
                   const isMonitoringStaff = member?.isAttendanceOnly === true;
                   const showNoShowSignInWaiverButton =
                     !entriesDisabled &&
+                    !entry.isOnLeave &&
                     !entry.arrivalTime &&
                     !entry.isExcusedAbsence &&
                     !isMonitoringStaff &&
@@ -765,14 +815,32 @@ function EntriesPageContent() {
                       entry.reason === NO_SHOW_SIGN_IN_WAIVED_REASON ||
                       entry.noShowSignInWaived
                     );
+                  const signOutStatusLabel = entry.isOnLeave
+                    ? 'On Leave'
+                    : entry.isExcusedAbsence
+                      ? 'Excused'
+                      : entry.noSignOutWaived
+                        ? 'Waived'
+                        : entry.didNotSignOut
+                          ? 'No sign-out'
+                          : null;
                   return (
-                    <tr key={entry.staffId} className="hover:bg-card/50 transition-colors">
-                      <td className="px-4 py-3 text-sm text-muted-foreground">
+                    <tr
+                      key={entry.staffId}
+                      className={cn(
+                        'transition-colors hover:bg-card/50',
+                        entry.isOnLeave && 'bg-muted/25 text-muted-foreground hover:bg-muted/30',
+                      )}
+                    >
+                      <td className="px-2 py-3 text-sm text-muted-foreground">
                         {String(index + 1).padStart(2, '0')}
                       </td>
-                      <td className="px-4 py-3 text-sm font-medium">
-                        <div className="flex items-center gap-2">
-                          <span>{member?.fullName}</span>
+                      <td className="px-3 py-3 text-sm font-medium">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="whitespace-normal break-words">{member?.fullName}</span>
+                          {entry.returningFromLeave && (
+                            <span className="rounded-full bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success">Resumes Today</span>
+                          )}
                           {member?.archived && (
                             <span className="rounded-full border border-warning/25 px-2 py-0.5 text-[11px] font-medium text-warning">
                               Former
@@ -780,16 +848,17 @@ function EntriesPageContent() {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
+                      <td className="px-3 py-3">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
                           <TimeSelector
                             value={entry.arrivalTime}
                             onChange={(value) => updateArrivalTime(entry.staffId, value)}
-                            disabled={entriesDisabled}
+                            disabled={entriesDisabled || entry.isOnLeave}
                             label="Sign-in time"
                           />
                           {showNoShowSignInWaiverButton && (
                             <Button
+                              className="shrink-0"
                               type="button"
                               size="sm"
                               variant="outline"
@@ -804,28 +873,29 @@ function EntriesPageContent() {
                             </Button>
                           )}
                         </div>
-                        {!entry.arrivalTime && (entry.reason === NO_SHOW_SIGN_IN_REASON || entry.noShowSignInWaived) && (
+                        {!entry.isOnLeave && !entry.arrivalTime && (entry.reason === NO_SHOW_SIGN_IN_REASON || entry.noShowSignInWaived) && (
                           <p className="mt-1 text-xs text-muted-foreground">
                             {entry.noShowSignInWaived ? 'Waived' : 'No sign-in'}
                           </p>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
+                      <td className="px-3 py-3">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
                           <TimeSelector
                             value={entry.signOutTime}
                             onChange={(value) => updateSignOutTime(entry.staffId, value)}
-                            disabled={entriesDisabled}
+                            disabled={entriesDisabled || entry.isOnLeave}
                             label="Sign-out time"
                             max="23:59"
                           />
                           {entry.signOutTime ? (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">
+                            <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">
                               <CheckCircle className="h-3 w-3" />
                               Signed out
                             </span>
-                          ) : !entry.isExcusedAbsence && (
+                          ) : !entry.isExcusedAbsence && !entry.isOnLeave && (
                             <Button
+                              className="shrink-0"
                               type="button"
                               size="sm"
                               variant="outline"
@@ -840,27 +910,34 @@ function EntriesPageContent() {
                             </Button>
                           )}
                         </div>
-                        {!entry.signOutTime && (
+                        {!entry.signOutTime && signOutStatusLabel && (
                           <p className="mt-1 text-xs text-muted-foreground">
-                            {entry.isExcusedAbsence ? 'Excused' : entry.noSignOutWaived ? 'Waived' : entry.didNotSignOut ? 'No sign-out' : 'Missing'}
+                            {signOutStatusLabel}
                           </p>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm font-mono">
-                        {entry.amount > 0 ? (
+                      <td className="px-3 py-3 text-sm font-mono">
+                        {entry.isOnLeave ? (
+                          <span className="inline-flex whitespace-nowrap rounded-full bg-primary/10 px-2 py-1 text-xs font-medium text-primary">On Leave</span>
+                        ) : entry.amount > 0 ? (
                           <span className="text-danger">GHC {entry.amount}</span>
                         ) : entry.isGeneralPardon ? (
-                          <span className="rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">General pardon</span>
+                          <span className="whitespace-nowrap rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">General pardon</span>
                         ) : entry.isExcusedAbsence ? (
-                          <span className="rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">Excused</span>
+                          <span className="whitespace-nowrap rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">Excused</span>
                         ) : entry.noSignOutWaived || entry.noShowSignInWaived ? (
-                          <span className="rounded-full border border-warning/30 bg-warning/10 px-2 py-1 text-xs font-semibold text-warning">Waived</span>
+                          <span className="whitespace-nowrap rounded-full border border-warning/30 bg-warning/10 px-2 py-1 text-xs font-semibold text-warning">Waived</span>
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {entry.reason || '-'}
+                      <td className="whitespace-normal break-words px-3 py-3 text-sm text-muted-foreground">
+                        {entry.isOnLeave ? (
+                          <span>
+                            On leave: {formatLeavePermissionType(entry.leaveType)}
+                            <span className="mt-0.5 block text-xs">{leaveTimingDescription(entry)}</span>
+                          </span>
+                        ) : entry.reason || '-'}
                       </td>
                     </tr>
                   );
@@ -874,7 +951,11 @@ function EntriesPageContent() {
         <Card>
           <div className="p-4">
             <h3 className="mb-3 font-semibold">Day Summary</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5">
+              <div className="rounded-lg border border-border p-3 text-center">
+                <p className="font-mono text-2xl font-bold">{totals.totalStaff}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Total Staff</p>
+              </div>
               <div className="rounded-lg border border-border p-3 text-center">
                 <p className="text-2xl font-bold font-mono text-danger">{totals.late}</p>
                 <p className="text-xs text-muted-foreground mt-1">Late</p>
@@ -884,7 +965,27 @@ function EntriesPageContent() {
                 <p className="text-xs text-muted-foreground mt-1">On Time</p>
               </div>
               <div className="rounded-lg border border-border p-3 text-center">
-                <p className="text-2xl font-bold font-mono text-warning">{totals.didNotSignOut}</p>
+                <p className="font-mono text-2xl font-bold text-muted-foreground">{totals.notCheckedIn}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Not Checked In</p>
+              </div>
+              <div className="rounded-lg border border-border p-3 text-center">
+                <p className="font-mono text-2xl font-bold text-success">{totals.excused}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Excused</p>
+              </div>
+              <div className="rounded-lg border border-border p-3 text-center">
+                <p className="font-mono text-2xl font-bold text-primary">{totals.onLeave}</p>
+                <p className="mt-1 text-xs text-muted-foreground">On Leave</p>
+              </div>
+              <div className="rounded-lg border border-border p-3 text-center">
+                <p className="font-mono text-2xl font-bold text-success">{totals.generalPardon}</p>
+                <p className="mt-1 text-xs text-muted-foreground">General Pardon</p>
+              </div>
+              <div className="rounded-lg border border-border p-3 text-center">
+                <p className="font-mono text-2xl font-bold text-warning">{totals.waived}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Waived</p>
+              </div>
+              <div className="rounded-lg border border-border p-3 text-center">
+                <p className="text-2xl font-bold font-mono text-warning">{totals.noSignOut}</p>
                 <p className="text-xs text-muted-foreground mt-1">No Sign Out</p>
               </div>
               <div className="rounded-lg border border-border p-3 text-center">
@@ -946,7 +1047,7 @@ function TimeSelector({
   }
 
   return (
-    <div className="relative w-36">
+    <div className="relative min-w-28 max-w-36 basis-36 flex-1">
       <Input
         ref={inputRef}
         aria-label={label}

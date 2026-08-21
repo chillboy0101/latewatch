@@ -1,7 +1,12 @@
 import { and, asc, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
 import { db } from '@/db';
 import { staffLeavePeriod } from '@/db/schema';
-import { formatLeavePermissionType, getInclusivePermissionDateRange } from '@/lib/attendance-permissions';
+import {
+  addDaysToDateKey,
+  formatLeavePermissionType,
+  getInclusivePermissionDateRange,
+  getLeaveResumeDate,
+} from '@/lib/attendance-permissions';
 
 export type StaffLeavePeriodRecord = typeof staffLeavePeriod.$inferSelect;
 
@@ -19,6 +24,7 @@ export type LeavePermissionRecord = {
   note: string | null;
   permissionType: 'leave';
   reason: string;
+  resumeDate: string | null;
   staffId: string;
   startDate: string;
   status: 'approved';
@@ -41,11 +47,44 @@ export function leavePeriodToPermission(period: StaffLeavePeriodRecord, date = p
     note: period.note || null,
     permissionType: 'leave',
     reason: formatLeavePermissionType(leaveType),
+    resumeDate: getLeaveResumeDate(period.endDate),
     staffId: period.staffId,
     startDate: period.startDate,
     status: 'approved',
     updatedAt: period.updatedAt || null,
   };
+}
+
+export async function getLeavePeriodsReturningOnDate(dateKey: string, staffIds?: string[]) {
+  if (!staffLeavePeriod) return [];
+  if (staffIds && staffIds.length === 0) return [];
+  const finalLeaveDate = addDaysToDateKey(dateKey, -1);
+  if (!finalLeaveDate) return [];
+
+  return db.select()
+    .from(staffLeavePeriod)
+    .where(and(
+      eq(staffLeavePeriod.endDate, finalLeaveDate),
+      staffIds ? inArray(staffLeavePeriod.staffId, staffIds) : undefined,
+    ))
+    .orderBy(asc(staffLeavePeriod.startDate));
+}
+
+export async function getLeavePeriodsReturningInRange(startDate: string, endDate: string, staffIds?: string[]) {
+  if (!staffLeavePeriod) return [];
+  if (staffIds && staffIds.length === 0) return [];
+  const firstFinalLeaveDate = addDaysToDateKey(startDate, -1);
+  const lastFinalLeaveDate = addDaysToDateKey(endDate, -1);
+  if (!firstFinalLeaveDate || !lastFinalLeaveDate) return [];
+
+  return db.select()
+    .from(staffLeavePeriod)
+    .where(and(
+      gte(staffLeavePeriod.endDate, firstFinalLeaveDate),
+      lte(staffLeavePeriod.endDate, lastFinalLeaveDate),
+      staffIds ? inArray(staffLeavePeriod.staffId, staffIds) : undefined,
+    ))
+    .orderBy(asc(staffLeavePeriod.startDate));
 }
 
 export async function getLeavePeriodsForDate(dateKey: string, staffIds?: string[]) {

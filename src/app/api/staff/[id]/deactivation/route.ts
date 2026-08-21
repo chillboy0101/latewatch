@@ -1,5 +1,5 @@
 import { currentUser } from '@clerk/nextjs/server';
-import { and, eq, gte, isNull } from 'drizzle-orm';
+import { and, eq, gte, isNull, or } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import {
@@ -92,7 +92,7 @@ export async function POST(
         .from(staffLeavePeriod)
         .where(and(
           eq(staffLeavePeriod.staffId, id),
-          isNull(staffLeavePeriod.endDate),
+          or(isNull(staffLeavePeriod.endDate), gte(staffLeavePeriod.endDate, startDate)),
         ))
         .limit(1),
       db.select({ date: attendancePermission.date, id: attendancePermission.id })

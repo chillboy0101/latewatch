@@ -101,6 +101,21 @@ export function getInclusivePermissionDateRange(startDate: string, endDate = sta
   return dates;
 }
 
+export function addDaysToDateKey(value: string, days: number) {
+  const date = parseDateKey(value);
+  if (!date || !Number.isInteger(days)) return null;
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+export function getLeaveResumeDate(endDate: string | null | undefined) {
+  return endDate ? addDaysToDateKey(endDate, 1) : null;
+}
+
+export function getLeaveEndDateForReturn(returnedOn: string) {
+  return addDaysToDateKey(returnedOn, -1);
+}
+
 export function normalizeLeavePermissionType(value: unknown): LeavePermissionType | null {
   if (typeof value !== 'string') return null;
   const leaveType = value.trim().toLowerCase();
