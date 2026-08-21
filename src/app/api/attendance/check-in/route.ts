@@ -838,10 +838,12 @@ export async function POST(request: NextRequest) {
     let resolvedDevice = registeredDevice || null;
 
     const permission = await getApprovedAttendancePermission(staffMember.id, clock.dateKey);
-    if (action === 'check_in' && permission?.permissionType === 'absence') {
+    if (action === 'check_in' && ['absence', 'leave'].includes(permission?.permissionType || '')) {
       return block(
-        'PERMISSION_ABSENCE',
-        'You have an approved absence for today. No check-in is required.',
+        permission?.permissionType === 'leave' ? 'PERMISSION_LEAVE' : 'PERMISSION_ABSENCE',
+        permission?.permissionType === 'leave'
+          ? 'You are recorded as on leave today. No check-in is required.'
+          : 'You have an approved absence for today. No check-in is required.',
         400,
         staffMember.id,
       );

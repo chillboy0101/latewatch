@@ -50,7 +50,7 @@ const baseStaff = [
     staffNo: 'GRA000003',
   },
   {
-    active: false,
+    active: true,
     archived: false,
     displayOrder: 4,
     fullName: 'MAIN ON LEAVE',
@@ -110,6 +110,9 @@ async function workbookFor(overrides) {
     attendanceRecords: [],
     group: 'main',
     holidays: april2026WeekdayHolidaysExcept('2026-04-01'),
+    leavePeriods: [
+      { endDate: '2026-04-01', staffId: 'main-leave', startDate: '2026-04-01' },
+    ],
     month: 3,
     permissions: [],
     roster: baseStaff,
@@ -510,6 +513,34 @@ test('attendance exports use historical leave periods without adding sheet rows'
   assert.equal(week1.getCell('F10').value, CROSS);
   assert.equal(week1.getCell('K10').value, 'Leave');
   assert.equal(week1.getCell('C11').value, null);
+});
+
+test('open-ended leave keeps all existing workbook leave marks', async () => {
+  const workbook = await workbookFor({
+    holidays: april2026WeekdayHolidaysExcept('2026-04-01', '2026-04-02'),
+    leavePeriods: [{ endDate: null, staffId: 'main-leave', startDate: '2026-04-01' }],
+  });
+  const sheet = workbook.worksheets[0];
+  assert.equal(sheet.getCell('D6').value, 1);
+  assert.equal(sheet.getCell('D7').value, 1);
+  assert.match(String(sheet.getCell('G6').value), /Leave - 1/);
+  assert.match(String(sheet.getCell('G7').value), /Leave - 1/);
+});
+
+test('inactive periods preserve earlier export dates and leave inactive dates blank', async () => {
+  const roster = baseStaff.map((member) => (
+    member.id === 'main-late' ? { ...member, active: false } : member
+  ));
+  const workbook = await workbookFor({
+    holidays: april2026WeekdayHolidaysExcept('2026-04-01', '2026-04-02'),
+    inactivePeriods: [{ reactivatedOn: null, staffId: 'main-late', startDate: '2026-04-02' }],
+    roster,
+    template: 'monthly-matrix',
+  });
+  const sheet = workbook.worksheets[0];
+  assert.equal(sheet.getCell('B10').value, 'MAIN LATE');
+  assert.equal(sheet.getCell('G10').value, 'AP');
+  assert.equal(sheet.getCell('H10').value, null);
 });
 
 test('weekly validation uses reason remark labels and keeps NSS staff number cells blank', async () => {

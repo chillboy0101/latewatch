@@ -353,3 +353,46 @@ test('staff penalty recalculation does not create no-show sign-in penalties befo
     status: 'present',
   }]);
 });
+
+test('staff penalty recalculation clears every stored penalty while the staff member is on leave', () => {
+  const plan = planStaffPenaltyRecalculation({
+    attendanceRecords: [{
+      checkInTime: '10:31:00',
+      computedAmount: '22.00',
+      date: '2026-08-20',
+      id: 'attendance-leave',
+      reason: "DIDN'T COME BEFORE 8:30AM AND DID NOT SIGN OUT",
+      signOutTime: null,
+      status: 'late',
+    }],
+    currentDateKey: '2026-08-21',
+    currentTimeKey: '10:00',
+    isNssPersonnel: false,
+    latenessEntries: [{
+      arrivalTime: '10:31',
+      computedAmount: '22.00',
+      date: '2026-08-20',
+      didNotSignOut: true,
+      id: 'entry-leave',
+      reason: "DIDN'T COME BEFORE 8:30AM AND DID NOT SIGN OUT",
+      staffId: 'staff-1',
+    }],
+    permissions: [{
+      date: '2026-08-20',
+      permissionType: 'leave',
+      reason: 'Annual',
+      status: 'approved',
+    }],
+    staffId: 'staff-1',
+  });
+
+  assert.deepEqual(plan.attendanceUpdates, [{
+    computedAmount: '0.00',
+    id: 'attendance-leave',
+    reason: null,
+    status: 'present',
+  }]);
+  assert.deepEqual(plan.latenessCreates, []);
+  assert.deepEqual(plan.latenessUpdates, []);
+  assert.deepEqual(plan.latenessDeletes, [{ id: 'entry-leave' }]);
+});

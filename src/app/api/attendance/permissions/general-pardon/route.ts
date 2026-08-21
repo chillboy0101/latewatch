@@ -7,6 +7,8 @@ import { getPermissionWindowBounds } from '@/lib/attendance-permissions';
 import { reconcileAttendanceForPermission } from '@/lib/attendance-permission-reconciliation';
 import { writeAuditEvent } from '@/lib/audit';
 import { publishRealtime } from '@/lib/realtime';
+import { getLeavePeriodsForDate } from '@/lib/staff-leave-periods';
+import { getAllInactivePeriods, inactivePeriodMap, isStaffActiveForDate } from '@/lib/staff-inactive-periods';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,12 +41,20 @@ export async function POST(request: NextRequest) {
       email: staff.email,
       fullName: staff.fullName,
       id: staff.id,
+      active: staff.active,
+      archived: staff.archived,
       isAttendanceOnly: staff.isAttendanceOnly,
       isNssPersonnel: staff.isNssPersonnel,
     })
       .from(staff)
-      .where(and(eq(staff.active, true), eq(staff.archived, false)))
+      .where(eq(staff.archived, false))
       .orderBy(asc(staff.displayOrder), asc(staff.fullName));
+    const inactiveByStaffId = inactivePeriodMap(await getAllInactivePeriods(members.map((member) => member.id)));
+    const eligibleMembers = members.filter((member) => isStaffActiveForDate(member, date, inactiveByStaffId));
+    const leaveByStaffId = new Map(
+      (await getLeavePeriodsForDate(date, eligibleMembers.map((member) => member.id)))
+        .map((period) => [period.staffId, period]),
+    );
 
     const now = new Date();
     const permissions = [];
@@ -75,7 +85,20 @@ export async function POST(request: NextRequest) {
           permissionType: 'late_arrival',
         };
 
-    for (const member of members) {
+    for (const member of eligibleMembers) {
+      const leavePeriod = leaveByStaffId.get(member.id);
+      if (leavePeriod) {
+        skippedPermissions.push({
+          date,
+          permissionId: leavePeriod.id,
+          permissionType: 'leave',
+          reason: leavePeriod.note || leavePeriod.leaveType || 'leave',
+          staffId: member.id,
+          staffName: member.fullName,
+        });
+        continue;
+      }
+
       const [existing] = await db.select()
         .from(attendancePermission)
         .where(and(eq(attendancePermission.staffId, member.id), eq(attendancePermission.date, date)))

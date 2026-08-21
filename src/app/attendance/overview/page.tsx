@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, ChevronDown, Clock, FileText, Loader2, Pen
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { DateField } from '@/components/ui/date-field';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -12,9 +13,11 @@ import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import {
   ABSENCE_PERMISSION_REASONS,
   ATTENDANCE_PERMISSION_WINDOWS,
+  LEAVE_PERMISSION_TYPES,
   LATE_ARRIVAL_PERMISSION_REASONS,
   formatAbsencePermissionReason,
   formatLateArrivalPermissionReason,
+  formatLeavePermissionType,
   getPermissionWindowBounds,
 } from '@/lib/attendance-permissions';
 import type { AttendanceStatus } from '@/lib/attendance-status';
@@ -34,11 +37,15 @@ interface AttendancePermission {
   expectedEndTime: string | null;
   expectedStartTime: string | null;
   id: string;
+  endDate?: string | null;
+  leaveType?: string | null;
+  note?: string | null;
   permissionType: string;
   reason: string;
   staffEmail?: string | null;
   staffId: string;
   staffName?: string | null;
+  startDate?: string | null;
   status: string;
 }
 
@@ -115,6 +122,7 @@ interface AttendanceResponse {
   };
   rows: AttendanceRow[];
   permissions: AttendancePermission[];
+  permissionStaff: Array<{ active: boolean | null; fullName: string; id: string }>;
   transferRequests: DeviceTransferRequest[];
   totals: {
     excused: number;
@@ -122,6 +130,7 @@ interface AttendanceResponse {
     late: number;
     noSignOut: number;
     notCheckedIn: number;
+    onLeave: number;
     onTime: number;
     permissionOverdue: number;
     present: number;
@@ -143,6 +152,7 @@ function statusLabel(status: AttendanceStatus) {
   if (status === 'present') return 'On Time';
   if (status === 'late') return 'Late';
   if (status === 'excused') return 'Excused';
+  if (status === 'on_leave') return 'On Leave';
   if (status === 'expected_late') return 'Expected later';
   if (status === 'permission_overdue') return 'Permission overdue';
   if (status === 'no_sign_out') return 'No sign-out';
@@ -153,6 +163,7 @@ function statusClass(status: AttendanceStatus) {
   if (status === 'present') return 'border-success/25 bg-success/10 text-success';
   if (status === 'late') return 'border-warning/25 bg-warning/10 text-warning';
   if (status === 'excused') return 'border-primary/25 bg-primary/10 text-primary';
+  if (status === 'on_leave') return 'border-success/25 bg-success/10 text-success';
   if (status === 'expected_late') return 'border-primary/25 bg-primary/10 text-primary';
   if (status === 'permission_overdue') return 'border-danger/25 bg-danger/10 text-danger';
   if (status === 'no_sign_out') return 'border-warning/25 bg-warning/10 text-warning';
@@ -163,6 +174,7 @@ function StatusIcon({ status }: { status: AttendanceStatus }) {
   if (status === 'present') return <CheckCircle2 className="h-3.5 w-3.5" />;
   if (status === 'late') return <Clock className="h-3.5 w-3.5" />;
   if (status === 'excused') return <ShieldCheck className="h-3.5 w-3.5" />;
+  if (status === 'on_leave') return <ShieldCheck className="h-3.5 w-3.5" />;
   if (status === 'expected_late') return <Clock className="h-3.5 w-3.5" />;
   if (status === 'permission_overdue') return <AlertTriangle className="h-3.5 w-3.5" />;
   if (status === 'no_sign_out') return <AlertTriangle className="h-3.5 w-3.5" />;
@@ -180,7 +192,8 @@ const STATUS_RANK: Record<AttendanceStatus, number> = {
   not_checked_in: 3,
   expected_late: 4,
   excused: 5,
-  present: 6,
+  on_leave: 6,
+  present: 7,
 };
 
 function statusRankForRow(row: AttendanceRow) {
@@ -188,6 +201,13 @@ function statusRankForRow(row: AttendanceRow) {
 }
 
 function permissionSummary(permission: AttendancePermission) {
+  if (permission.permissionType === 'leave') {
+    const range = permission.startDate
+      ? `${formatDisplayDate(permission.startDate)} - ${permission.endDate ? formatDisplayDate(permission.endDate) : 'Open-ended'}`
+      : formatDisplayDate(permission.date);
+    const note = permission.note ? ` / ${permission.note}` : '';
+    return `Leave / ${formatLeavePermissionType(permission.leaveType)} / ${range}${note}`;
+  }
   if (permission.permissionType === 'absence') {
     return `Excused absence / ${formatAbsencePermissionReason(permission.reason)}`;
   }
@@ -212,6 +232,9 @@ export default function AttendancePage() {
   const [permissionAbsenceStartDate, setPermissionAbsenceStartDate] = useState(todayKey());
   const [permissionAbsenceEndDate, setPermissionAbsenceEndDate] = useState(todayKey());
   const [permissionReason, setPermissionReason] = useState('');
+  const [permissionLeaveType, setPermissionLeaveType] = useState('annual');
+  const [permissionLeaveNote, setPermissionLeaveNote] = useState('');
+  const [permissionLeaveOpenEnded, setPermissionLeaveOpenEnded] = useState(false);
   const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
   const [savingPermission, setSavingPermission] = useState(false);
   const [editingPermissionId, setEditingPermissionId] = useState<string | null>(null);
@@ -237,6 +260,9 @@ export default function AttendancePage() {
     setPermissionType('late_arrival');
     setPermissionWindow('any_time_today');
     setPermissionExpectedTime('10:30');
+    setPermissionLeaveType('annual');
+    setPermissionLeaveNote('');
+    setPermissionLeaveOpenEnded(false);
     setPermissionAbsenceStartDate(attendanceDate);
     setPermissionAbsenceEndDate(attendanceDate);
   }, [attendanceDate]);
@@ -316,6 +342,9 @@ export default function AttendancePage() {
     setPermissionType('late_arrival');
     setPermissionWindow('any_time_today');
     setPermissionExpectedTime('10:30');
+    setPermissionLeaveType('annual');
+    setPermissionLeaveNote('');
+    setPermissionLeaveOpenEnded(false);
     setPermissionAbsenceStartDate(attendanceDate);
     setPermissionAbsenceEndDate(attendanceDate);
   }
@@ -335,35 +364,42 @@ export default function AttendancePage() {
 
   function startPermissionEdit(permission: AttendancePermission) {
     const isAbsence = permission.permissionType === 'absence';
+    const isLeave = permission.permissionType === 'leave';
 
     setEditingPermissionId(permission.id);
     setPermissionStaffId(permission.staffId);
-    setPermissionType(isAbsence ? 'absence' : 'late_arrival');
+    setPermissionType(isLeave ? 'leave' : isAbsence ? 'absence' : 'late_arrival');
     setPermissionReason(permission.reason || '');
     setPermissionWindow(isAbsence ? 'any_time_today' : permission.arrivalWindow || 'any_time_today');
     setPermissionExpectedTime(permission.expectedEndTime || '10:30');
-    setPermissionAbsenceStartDate(permission.date);
-    setPermissionAbsenceEndDate(permission.date);
+    setPermissionAbsenceStartDate(permission.startDate || permission.date);
+    setPermissionAbsenceEndDate(permission.endDate || permission.date);
+    setPermissionLeaveOpenEnded(isLeave && !permission.endDate);
+    setPermissionLeaveType(permission.leaveType || 'other');
+    setPermissionLeaveNote(permission.note || '');
     setError(null);
     setNotice(null);
     setPermissionDialogOpen(true);
   }
 
   async function savePermission() {
-    if (!permissionStaffId || !permissionReason.trim()) {
+    const isOpenEndedLeave = permissionType === 'leave' && permissionLeaveOpenEnded;
+    if (!permissionStaffId || (permissionType !== 'leave' && !permissionReason.trim())) {
       setNotice(null);
-      setError(permissionType === 'absence'
-        ? 'Select a staff member and choose the excused absence reason.'
-        : 'Select a staff member and choose the late arrival reason.');
+      setError(permissionType === 'leave'
+        ? 'Select a staff member and leave type.'
+        : permissionType === 'absence'
+          ? 'Select a staff member and choose the excused absence reason.'
+          : 'Select a staff member and choose the late arrival reason.');
       return;
     }
-    if (permissionType === 'absence') {
-      if (!isIsoDateKey(permissionAbsenceStartDate) || !isIsoDateKey(permissionAbsenceEndDate)) {
-        setError('Select a valid absence start and end date.');
+    if (permissionType === 'absence' || permissionType === 'leave') {
+      if (!isIsoDateKey(permissionAbsenceStartDate) || (!isOpenEndedLeave && !isIsoDateKey(permissionAbsenceEndDate))) {
+        setError(`Select a valid ${permissionType === 'leave' ? 'leave' : 'absence'} start and end date.`);
         return;
       }
-      if (permissionAbsenceEndDate < permissionAbsenceStartDate) {
-        setError('Absence end date must be on or after the start date.');
+      if (!isOpenEndedLeave && permissionAbsenceEndDate < permissionAbsenceStartDate) {
+        setError(`${permissionType === 'leave' ? 'Leave' : 'Absence'} end date must be on or after the start date.`);
         return;
       }
     }
@@ -374,7 +410,16 @@ export default function AttendancePage() {
 
     try {
       const wasEditing = isEditingPermission;
-      const payload = permissionType === 'absence'
+      const payload = permissionType === 'leave'
+        ? {
+            endDate: isOpenEndedLeave ? null : permissionAbsenceEndDate,
+            leaveType: permissionLeaveType,
+            note: permissionLeaveNote,
+            permissionType,
+            staffId: permissionStaffId,
+            startDate: permissionAbsenceStartDate,
+          }
+        : permissionType === 'absence'
         ? {
             absenceEndDate: permissionAbsenceEndDate,
             date: permissionAbsenceStartDate,
@@ -390,10 +435,13 @@ export default function AttendancePage() {
             reason: permissionReason,
             staffId: permissionStaffId,
           };
-      const response = await fetch('/api/attendance/permissions', {
+      const response = await fetch(
+        isEditingPermission && permissionType === 'leave'
+          ? `/api/attendance/permissions/${editingPermissionId}`
+          : '/api/attendance/permissions', {
         body: JSON.stringify(payload),
         headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
+        method: isEditingPermission && permissionType === 'leave' ? 'PATCH' : 'POST',
       });
 
       const body = await response.json().catch(() => ({}));
@@ -622,7 +670,7 @@ export default function AttendancePage() {
   return (
     <DashboardLayout title="Attendance">
       <div className="space-y-5">
-        <div className="grid auto-cols-[minmax(7.75rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-9 xl:overflow-visible xl:pb-0">
+        <div className="grid auto-cols-[minmax(7.75rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-10 xl:overflow-visible xl:pb-0">
           <SummaryCard
             active={activeFilter === 'all'}
             label="Total Staff"
@@ -661,6 +709,13 @@ export default function AttendancePage() {
             label="Excused"
             onClick={() => setActiveFilter('excused')}
             value={data?.totals.excused ?? 0}
+          />
+          <SummaryCard
+            active={activeFilter === 'on_leave'}
+            label="On Leave"
+            onClick={() => setActiveFilter('on_leave')}
+            tone="success"
+            value={data?.totals.onLeave ?? 0}
           />
           <SummaryCard
             active={activeFilter === 'permission_overdue'}
@@ -780,8 +835,8 @@ export default function AttendancePage() {
                 disabled={isEditingPermission}
               >
                 <option value="">Select staff</option>
-                {(data?.rows || []).map((row) => (
-                  <option key={row.staff.id} value={row.staff.id}>{row.staff.fullName}</option>
+                {(data?.permissionStaff || []).map((member) => (
+                  <option key={member.id} value={member.id}>{member.fullName}{member.active === false ? ' (Legacy inactive)' : ''}</option>
                 ))}
               </SelectField>
               <SelectField
@@ -792,7 +847,7 @@ export default function AttendancePage() {
                 onChange={(value) => {
                   setPermissionType(value);
                   setPermissionReason('');
-                  if (value === 'absence') {
+                  if (value === 'absence' || value === 'leave') {
                     setPermissionWindow('any_time_today');
                     setPermissionAbsenceStartDate(attendanceDate);
                     setPermissionAbsenceEndDate(attendanceDate);
@@ -801,6 +856,7 @@ export default function AttendancePage() {
               >
                 <option value="late_arrival">Late arrival</option>
                 <option value="absence">Excused absence</option>
+                <option value="leave">Leave</option>
               </SelectField>
               {permissionType === 'late_arrival' ? (
                 <>
@@ -838,7 +894,7 @@ export default function AttendancePage() {
                     ))}
                   </SelectField>
                 </>
-              ) : (
+              ) : permissionType === 'absence' ? (
                 <>
                   <DateField
                     disabled={isEditingPermission}
@@ -864,6 +920,52 @@ export default function AttendancePage() {
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </SelectField>
+                </>
+              ) : (
+                <>
+                  <DateField
+                    label="Leave Start"
+                    value={permissionAbsenceStartDate}
+                    onChange={setPermissionAbsenceStartDate}
+                  />
+                  <DateField
+                    label="Leave End"
+                    value={permissionAbsenceEndDate}
+                    onChange={setPermissionAbsenceEndDate}
+                    disabled={permissionLeaveOpenEnded}
+                  />
+                  <label className="sm:col-span-2 flex items-start gap-3 rounded-md border border-border p-3 text-sm">
+                    <Checkbox
+                      checked={permissionLeaveOpenEnded}
+                      onCheckedChange={(checked) => setPermissionLeaveOpenEnded(checked === true)}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="font-medium">Open-ended leave</span>
+                      <span className="mt-1 block text-muted-foreground">No return date has been set yet.</span>
+                    </span>
+                  </label>
+                  <SelectField
+                    className="sm:col-span-2"
+                    icon={<ShieldCheck className="h-3.5 w-3.5" />}
+                    label="Leave Type"
+                    value={permissionLeaveType}
+                    onChange={setPermissionLeaveType}
+                  >
+                    {LEAVE_PERMISSION_TYPES.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </SelectField>
+                  <div className="sm:col-span-2">
+                    <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Note (optional)</label>
+                    <Input
+                      className="h-11"
+                      maxLength={300}
+                      placeholder="Add context for this leave"
+                      value={permissionLeaveNote}
+                      onChange={(event) => setPermissionLeaveNote(event.target.value)}
+                    />
+                  </div>
                 </>
               )}
             </div>

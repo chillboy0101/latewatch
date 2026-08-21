@@ -11,6 +11,8 @@ const schemaPath = path.join(__dirname, '../src/db/schema.ts');
 const migrationPath = path.join(__dirname, '../drizzle/0022_staff_leave_periods.sql');
 const metadataRepairMigrationPath = path.join(__dirname, '../drizzle/0026_restore_staff_profile_metadata.sql');
 const seedMigrationPath = path.join(__dirname, '../src/app/api/seed/migrate/route.ts');
+const deactivateRoutePath = path.join(__dirname, '../src/app/api/staff/[id]/deactivation/route.ts');
+const reactivateRoutePath = path.join(__dirname, '../src/app/api/staff/[id]/deactivation/[periodId]/route.ts');
 
 test('staff page exposes a top-level NSS personnel filter', () => {
   const source = fs.readFileSync(staffPagePath, 'utf8');
@@ -110,7 +112,7 @@ test('staff API omits removed manual message fields', () => {
   assert.doesNotMatch(updateSource, new RegExp(`valid ${displayFeature} number`));
 });
 
-test('staff leave periods are stored for deactivate and activate transitions', () => {
+test('staff leave periods are managed as attendance permissions, not staff activation transitions', () => {
   const schemaSource = fs.readFileSync(schemaPath, 'utf8');
   const updateSource = fs.readFileSync(staffUpdateRoutePath, 'utf8');
   const migrationSource = fs.readFileSync(migrationPath, 'utf8');
@@ -122,11 +124,51 @@ test('staff leave periods are stored for deactivate and activate transitions', (
   assert.match(migrationSource, /CREATE TABLE IF NOT EXISTS staff_leave_period/);
   assert.match(seedMigrationSource, /CREATE TABLE IF NOT EXISTS staff_leave_period/);
 
-  assert.match(updateSource, /recordStaffLeaveTransition/);
+  assert.doesNotMatch(updateSource, /recordStaffLeaveTransition/);
   assert.match(updateSource, /action: auditAction/);
   assert.match(updateSource, /before,/);
   assert.match(updateSource, /after: updated\[0\]/);
-  // Previously duplicated against src/actions/staff.ts, a module nothing imported. That
-  // module is gone; the transition is recorded with the acting admin's email here.
-  assert.match(updateSource, /actorEmail: actor\?\.emailAddresses\[0\]\?\.emailAddress/);
+  assert.match(schemaSource, /leaveType: text\('leave_type'\)/);
+  assert.match(schemaSource, /note: text\('note'\)/);
+});
+
+test('staff deactivation is a reasoned date-aware transition separate from leave and archive', () => {
+  const pageSource = fs.readFileSync(staffPagePath, 'utf8');
+  const deactivateSource = fs.readFileSync(deactivateRoutePath, 'utf8');
+  const reactivateSource = fs.readFileSync(reactivateRoutePath, 'utf8');
+  const updateSource = fs.readFileSync(staffUpdateRoutePath, 'utf8');
+
+  assert.match(pageSource, /Deactivate Staff Member/);
+  assert.match(pageSource, /STAFF_INACTIVE_REASONS/);
+  assert.match(pageSource, /Effective Date/);
+  assert.match(deactivateSource, /staffInactivePeriod/);
+  assert.match(deactivateSource, /revokeStaffLoginSessions/);
+  assert.match(deactivateSource, /disableActivePushSubscriptionsForStaff/);
+  assert.match(deactivateSource, /paid penalty/);
+  assert.match(reactivateSource, /reactivatedOn/);
+  assert.match(updateSource, /Use the Deactivate or Reactivate action/);
+});
+
+test('staff page clearly shows current leave separately from active employment status', () => {
+  const pageSource = fs.readFileSync(staffPagePath, 'utf8');
+  const routeSource = fs.readFileSync(staffRoutePath, 'utf8');
+
+  assert.match(routeSource, /getLeavePeriodsForDate\(today\)/);
+  assert.match(routeSource, /leavePeriod: leaveByStaffId\.get\(member\.id\) \|\| null/);
+  assert.match(pageSource, /leavePeriod\?: \{/);
+  assert.match(pageSource, /<StaffStatusBadges member=\{member\} \/>/);
+  assert.match(pageSource, />\s*On Leave\s*<\/span>/);
+  assert.match(pageSource, /aria-label=\{`On Leave: \$\{leaveDetails\}`\}/);
+  assert.match(pageSource, /bg-primary\/10 px-2 py-1 text-xs font-medium text-primary/);
+  assert.match(pageSource, /Open-ended/);
+});
+
+test('all staff status badges stay compact and move supporting details to tooltips', () => {
+  const pageSource = fs.readFileSync(staffPagePath, 'utf8');
+
+  assert.match(pageSource, /return member\.active \? 'Active' : 'Inactive'/);
+  assert.doesNotMatch(pageSource, /`Inactive — \$\{formatStaffInactiveReason/);
+  assert.match(pageSource, /Inactive since \$\{formatStaffDate\(member\.inactivePeriod\.startDate\)\}/);
+  assert.match(pageSource, /title=\{employmentDetails\}/);
+  assert.match(pageSource, /items-center whitespace-nowrap rounded-full px-2 py-1 text-xs font-medium/);
 });

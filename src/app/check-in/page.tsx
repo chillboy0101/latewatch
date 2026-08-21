@@ -200,6 +200,7 @@ function statusCopy(status: CheckInStatus | null) {
   if (!status.locationConfigured) return 'Office location not configured';
   if (!status.staff) return 'Profile not matched';
   if (status.device?.registered && !status.device.trusted) return 'Registered device required';
+  if (status.permission?.permissionType === 'leave') return 'On leave';
   if (status.permission?.permissionType === 'absence') return 'Permission recorded';
   if (status.isHoliday) return status.holidayName || 'Public holiday';
   if (status.isWeekend) return 'Weekend';
@@ -270,6 +271,7 @@ function attendanceButtonLabel(status: CheckInStatus | null, submitting: boolean
   if (status?.isAfterWorkdayEnd) return 'Closed - After Hours';
   if (status && !status.locationConfigured) return 'Location Not Configured';
   if (status && !status.staff) return 'Profile Not Matched';
+  if (status?.permission?.permissionType === 'leave') return 'On Leave - No Check-In';
   if (status?.permission?.permissionType === 'absence') return 'Excused - No Check-In';
   return 'Check In';
 }
@@ -279,6 +281,7 @@ function statusTone(status: CheckInStatus | null) {
   if (status.attendance?.signOutTime) return 'border-success/25 bg-success/10 text-success';
   if (hasNoSignOutPenalty(status) || hasLateCheckInPenalty(status)) return 'border-warning/25 bg-warning/10 text-warning';
   if (status.attendance?.status === 'present') return 'border-success/25 bg-success/10 text-success';
+  if (status.permission?.permissionType === 'leave') return 'border-success/25 bg-success/10 text-success';
   if (status.permission?.permissionType === 'absence') return 'border-primary/25 bg-primary/10 text-primary';
   if (!status.locationConfigured || !status.staff || (status.device?.registered && !status.device.trusted) || status.isHoliday || status.isWeekend) {
     return 'border-warning/25 bg-warning/10 text-warning';
@@ -349,7 +352,7 @@ function localCatchUpReminderStorageKey(status: CheckInStatus, reminderType: Loc
 
 function getLocalCatchUpReminder(status: CheckInStatus | null, pushStatus: PushReminderStatus | null) {
   if (!status?.staff || status.isWeekend || status.isHoliday) return null;
-  if (status.permission?.permissionType === 'absence') return null;
+  if (status.permission?.permissionType === 'absence' || status.permission?.permissionType === 'leave') return null;
   if (!status.device?.registered || !status.device.trusted) return null;
   if (status.transferRequest?.status === 'pending') return null;
 

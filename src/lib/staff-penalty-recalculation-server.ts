@@ -6,6 +6,7 @@ import { attendancePermission, attendanceRecord, latenessEntry } from '@/db/sche
 import { writeAuditEvent } from '@/lib/audit';
 import { publishRealtime } from '@/lib/realtime';
 import { planStaffPenaltyRecalculation } from '@/lib/staff-penalty-recalculation';
+import { expandLeavePeriodsToPermissions, getLeavePeriodsForRange } from '@/lib/staff-leave-periods';
 
 type ActorRef = {
   email?: string | null;
@@ -35,12 +36,24 @@ export async function recalculateStaffStoredPenalties(input: {
       .from(attendancePermission)
       .where(eq(attendancePermission.staffId, input.staffMember.id)),
   ]);
+  const affectedDates = [...attendanceRows, ...latenessRows]
+    .map((row) => String(row.date).slice(0, 10))
+    .sort();
+  const rangeStart = affectedDates[0];
+  const rangeEnd = affectedDates[affectedDates.length - 1];
+  const leavePermissions = rangeStart && rangeEnd
+    ? expandLeavePeriodsToPermissions(
+        await getLeavePeriodsForRange(rangeStart, rangeEnd, [input.staffMember.id]),
+        rangeStart,
+        rangeEnd,
+      )
+    : [];
   const plan = planStaffPenaltyRecalculation({
     attendanceRecords: attendanceRows,
     isAttendanceOnly: input.staffMember.isAttendanceOnly,
     isNssPersonnel: input.staffMember.isNssPersonnel,
     latenessEntries: latenessRows,
-    permissions: permissionRows,
+    permissions: [...permissionRows, ...leavePermissions],
     staffId: input.staffMember.id,
   });
   const reason = input.reason || 'staff-penalty-recalculation';

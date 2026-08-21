@@ -1,9 +1,10 @@
-export type AttendanceStatus = 'present' | 'late' | 'excused' | 'expected_late' | 'permission_overdue' | 'no_sign_out' | 'not_checked_in';
+export type AttendanceStatus = 'present' | 'late' | 'excused' | 'on_leave' | 'expected_late' | 'permission_overdue' | 'no_sign_out' | 'not_checked_in';
 
 const ATTENDANCE_STATUSES = new Set<AttendanceStatus>([
   'present',
   'late',
   'excused',
+  'on_leave',
   'expected_late',
   'permission_overdue',
   'no_sign_out',
@@ -20,17 +21,20 @@ function uniqueStatuses(statuses: AttendanceStatus[]) {
 
 export function getAttendanceStatusFlags({
   absencePermission,
+  leavePermission = false,
   attendanceStatus,
   fallbackStatus,
   hasAttendance,
   noSignOut,
 }: {
   absencePermission: boolean;
+  leavePermission?: boolean;
   attendanceStatus?: string | null;
   fallbackStatus: AttendanceStatus;
   hasAttendance: boolean;
   noSignOut: boolean;
 }) {
+  if (leavePermission) return ['on_leave'] satisfies AttendanceStatus[];
   if (absencePermission) return ['excused'] satisfies AttendanceStatus[];
 
   const statuses: AttendanceStatus[] = [];

@@ -2,13 +2,15 @@
 import { currentUser } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { staff } from '@/db/schema';
-import { and, asc, eq, ilike } from 'drizzle-orm';
+import { staff, staffInactivePeriod } from '@/db/schema';
+import { and, asc, eq, ilike, isNull } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { normalizeStaffEmail } from '@/lib/attendance';
 import { syncStaffEmailIdentity } from '@/lib/clerk-organization';
 import { enforceRole } from '@/lib/auth/roles';
+import { getAccraDateKey } from '@/lib/date-key';
+import { getLeavePeriodsForDate } from '@/lib/staff-leave-periods';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +29,8 @@ export async function GET(request: NextRequest) {
       ? and(eq(staff.active, false), eq(staff.archived, false))
       : undefined;
 
-    const staffList = await db.select({
+    const today = getAccraDateKey();
+    const [staffList, openInactivePeriods, currentLeavePeriods] = await Promise.all([db.select({
       id: staff.id,
       fullName: staff.fullName,
       email: staff.email,
@@ -47,9 +50,19 @@ export async function GET(request: NextRequest) {
     })
     .from(staff)
     .where(whereClause)
-    .orderBy(asc(staff.displayOrder), asc(staff.fullName));
+    .orderBy(asc(staff.displayOrder), asc(staff.fullName)), db.select()
+      .from(staffInactivePeriod)
+      .where(isNull(staffInactivePeriod.reactivatedOn)), getLeavePeriodsForDate(today)]);
 
-    return NextResponse.json(staffList, {
+    const inactiveByStaffId = new Map(openInactivePeriods.map((period) => [period.staffId, period]));
+    const leaveByStaffId = new Map(currentLeavePeriods.map((period) => [period.staffId, period]));
+    const response = staffList.map((member) => ({
+      ...member,
+      inactivePeriod: inactiveByStaffId.get(member.id) || null,
+      leavePeriod: leaveByStaffId.get(member.id) || null,
+    }));
+
+    return NextResponse.json(response, {
       headers: {
         'Cache-Control': 'no-store',
       },

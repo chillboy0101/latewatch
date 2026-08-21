@@ -8,6 +8,8 @@ import { isGeneralPardonReason, isPermissionWindowOverdue } from '@/lib/attendan
 import { getAttendanceStatusFlags, primaryAttendanceStatus, type AttendanceStatus } from '@/lib/attendance-status';
 import { resolveOfficeLocationForDate } from '@/lib/office-location-policy';
 import { isOnTimeCheckIn, shouldAlertNoSignOut } from '@/lib/work-hours';
+import { getLeavePeriodsForDate, leavePeriodToPermission } from '@/lib/staff-leave-periods';
+import { getAllInactivePeriods, inactivePeriodMap, isStaffActiveForDate } from '@/lib/staff-inactive-periods';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,7 +51,7 @@ export async function GET(request: NextRequest) {
 
     await requiredAttendanceQuery('attendance-lateness-sync', () => syncLatenessEntriesFromAttendanceForDate(date));
 
-    const [staffRows, attendanceRows, permissionRows] = await Promise.all([
+    const [allStaffRows, allPermissionStaffRows, attendanceRows, attendancePermissionRows, leavePeriods, inactivePeriods] = await Promise.all([
       requiredAttendanceQuery('staff', () => db.select({
         id: staff.id,
         fullName: staff.fullName,
@@ -62,7 +64,15 @@ export async function GET(request: NextRequest) {
         archived: staff.archived,
       })
         .from(staff)
-        .where(and(eq(staff.active, true), eq(staff.archived, false)))
+        .where(eq(staff.archived, false))
+        .orderBy(asc(staff.displayOrder), asc(staff.fullName))),
+      requiredAttendanceQuery('permission-staff', () => db.select({
+        active: staff.active,
+        fullName: staff.fullName,
+        id: staff.id,
+      })
+        .from(staff)
+        .where(eq(staff.archived, false))
         .orderBy(asc(staff.displayOrder), asc(staff.fullName))),
       requiredAttendanceQuery('attendance-records', () => db.select()
         .from(attendanceRecord)
@@ -84,7 +94,27 @@ export async function GET(request: NextRequest) {
         .from(attendancePermission)
         .leftJoin(staff, eq(attendancePermission.staffId, staff.id))
         .where(and(eq(attendancePermission.date, date), eq(attendancePermission.status, 'approved')))),
+      requiredAttendanceQuery('staff-leave-periods', () => getLeavePeriodsForDate(date)),
+      requiredAttendanceQuery('staff-inactive-periods', () => getAllInactivePeriods()),
     ]);
+
+    const inactiveByStaffId = inactivePeriodMap(inactivePeriods);
+    const staffRows = allStaffRows.filter((member) => isStaffActiveForDate(member, date, inactiveByStaffId));
+    const permissionStaffRows = allPermissionStaffRows.filter((member) => isStaffActiveForDate(member, date, inactiveByStaffId));
+
+    const permissionStaffById = new Map(permissionStaffRows.map((member) => [member.id, member]));
+    const leavePermissionRows = leavePeriods
+      .filter((period) => permissionStaffById.has(period.staffId))
+      .map((period) => {
+        const permission = leavePeriodToPermission(period, date);
+        const member = permissionStaffById.get(period.staffId);
+        return {
+          ...permission,
+          staffEmail: null,
+          staffName: member?.fullName || null,
+        };
+      });
+    const permissionRows = [...attendancePermissionRows, ...leavePermissionRows];
 
     const [attemptRows, deviceRows, network, locationRows, transferRows] = await Promise.all([
       optionalAttendanceQuery('attendance-attempts', [], () => db.select()
@@ -143,6 +173,7 @@ export async function GET(request: NextRequest) {
       );
       const fallbackStatus: AttendanceStatus = (() => {
         if (!permission) return 'not_checked_in';
+        if (permission.permissionType === 'leave') return 'on_leave';
         if (permission.permissionType === 'absence') return 'excused';
         if (isGeneralPardonReason(permission.reason)) return 'not_checked_in';
         if (isPermissionWindowOverdue(permission, date, clock.dateKey, clock.timeKey)) return 'permission_overdue';
@@ -150,6 +181,7 @@ export async function GET(request: NextRequest) {
       })();
       const statuses = getAttendanceStatusFlags({
         absencePermission: permission?.permissionType === 'absence',
+        leavePermission: permission?.permissionType === 'leave',
         attendanceStatus: attendance?.status,
         fallbackStatus,
         hasAttendance: Boolean(attendance),
@@ -208,12 +240,13 @@ export async function GET(request: NextRequest) {
       if (isOnTimeAttendanceRow(row)) acc.onTime += 1;
       if (row.statuses.includes('late')) acc.late += 1;
       if (row.statuses.includes('excused')) acc.excused += 1;
+      if (row.statuses.includes('on_leave')) acc.onLeave += 1;
       if (row.statuses.includes('expected_late')) acc.expectedLate += 1;
       if (row.statuses.includes('permission_overdue')) acc.permissionOverdue += 1;
       if (row.statuses.includes('no_sign_out')) acc.noSignOut += 1;
       if (row.statuses.includes('not_checked_in')) acc.notCheckedIn += 1;
       return acc;
-    }, { excused: 0, expectedLate: 0, late: 0, noSignOut: 0, notCheckedIn: 0, onTime: 0, permissionOverdue: 0, present: 0 });
+    }, { excused: 0, expectedLate: 0, late: 0, noSignOut: 0, notCheckedIn: 0, onLeave: 0, onTime: 0, permissionOverdue: 0, present: 0 });
 
     return NextResponse.json({
       date,
@@ -226,6 +259,7 @@ export async function GET(request: NextRequest) {
         userEmail: attempt.userEmail,
       })),
       permissions: permissionRows,
+      permissionStaff: permissionStaffRows,
       network: {
         configured: Boolean(network),
         allowedIp: network?.allowedIp || null,

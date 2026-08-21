@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { attendanceAttempt, attendancePermission, officeLocation, officeNetwork, staff, workCalendar } from '@/db/schema';
 import { getObservedGhanaHolidayForDate, isSuppressedGhanaHolidayDate } from '@/lib/ghana-holidays';
 import { resolveOfficeLocationForDate } from '@/lib/office-location-policy';
+import { getLeavePermissionForDate } from '@/lib/staff-leave-periods';
 import { normalizeStaffEmail, normalizeStaffName } from '@/lib/staff-normalize';
 export { getClientIp, getClientIpInfo, resolveClientIp, resolveClientIpInfo } from '@/lib/request-ip';
 export { normalizeStaffEmail, normalizeStaffName } from '@/lib/staff-normalize';
@@ -171,16 +172,19 @@ export async function getHolidayForDate(dateKey: string) {
 }
 
 export async function getApprovedAttendancePermission(staffId: string, dateKey: string) {
-  const [permission] = await db.select()
-    .from(attendancePermission)
-    .where(and(
-      eq(attendancePermission.staffId, staffId),
-      eq(attendancePermission.date, dateKey),
-      eq(attendancePermission.status, 'approved'),
-    ))
-    .limit(1);
+  const [leavePermission, [permission]] = await Promise.all([
+    getLeavePermissionForDate(staffId, dateKey),
+    db.select()
+      .from(attendancePermission)
+      .where(and(
+        eq(attendancePermission.staffId, staffId),
+        eq(attendancePermission.date, dateKey),
+        eq(attendancePermission.status, 'approved'),
+      ))
+      .limit(1),
+  ]);
 
-  return permission || null;
+  return leavePermission || permission || null;
 }
 
 export function isWeekendDate(dateKey: string) {

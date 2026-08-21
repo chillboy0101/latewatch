@@ -19,7 +19,7 @@ type ManualAttendanceCorrection = {
   reason: string | null;
   signOutAt?: Date | null;
   signOutTime?: string | null;
-  status: 'excused' | 'late' | 'present';
+  status: 'excused' | 'late' | 'on_leave' | 'present';
 };
 
 type ManualPermissionLike = {
@@ -82,6 +82,10 @@ function approvedAbsenceReason(permission: ManualPermissionLike) {
   return `Excused absence: ${formatAbsencePermissionReason(permission.reason || 'approved reason')}`.trim();
 }
 
+function approvedLeaveReason(permission: ManualPermissionLike) {
+  return `On leave: ${permission.reason || 'Other'}`.trim();
+}
+
 export function resolveManualPenalty(input: {
   activePermission?: ManualPermissionLike | null;
   arrivalTime: string | null;
@@ -90,6 +94,18 @@ export function resolveManualPenalty(input: {
   isNssPersonnel?: boolean;
   noSignIn?: boolean;
 }) {
+  if (
+    input.activePermission?.status === 'approved' &&
+    input.activePermission.permissionType === 'leave'
+  ) {
+    return {
+      amount: 0,
+      didNotSignOut: false,
+      reason: approvedLeaveReason(input.activePermission),
+      status: 'on_leave' as const,
+    };
+  }
+
   if (
     input.activePermission?.status === 'approved' &&
     input.activePermission.permissionType === 'absence'

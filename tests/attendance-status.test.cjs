@@ -37,3 +37,14 @@ test('absence permission overrides attendance issue flags', () => {
     noSignOut: true,
   }), ['excused']);
 });
+
+test('leave permission has its own status and suppresses absence and missing-attendance flags', () => {
+  assert.deepEqual(getAttendanceStatusFlags({
+    absencePermission: true,
+    attendanceStatus: 'late',
+    fallbackStatus: 'not_checked_in',
+    hasAttendance: true,
+    leavePermission: true,
+    noSignOut: true,
+  }), ['on_leave']);
+});

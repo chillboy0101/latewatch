@@ -1,4 +1,4 @@
-import { getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/attendance-permissions';
+import { getPermissionWindowBounds, isFullDayPermissionType, isPermissionWindowActive } from '@/lib/attendance-permissions';
 import {
   computePenalty,
   NO_SHOW_SIGN_IN_EFFECTIVE_DATE,
@@ -142,7 +142,7 @@ function resolvePenaltyState(input: {
   noSignIn?: boolean;
   permission: PermissionLike | null;
 }): PenaltyState {
-  if (input.noSignIn && input.permission?.status === 'approved' && input.permission.permissionType === 'absence') {
+  if (input.permission?.status === 'approved' && isFullDayPermissionType(input.permission.permissionType)) {
     return {
       amount: 0,
       amountText: '0.00',

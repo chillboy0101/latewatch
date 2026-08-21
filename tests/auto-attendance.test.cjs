@@ -50,10 +50,10 @@ test('check-in API repairs legacy entries fallback sign-outs', () => {
   assert.match(route, /attendance-sign-out-repair/);
 });
 
-test('approved absence permission only blocks check-in, never sign-out', () => {
+test('approved absence and leave permissions only block check-in, never sign-out', () => {
   const route = fs.readFileSync(checkInRoutePath, 'utf8');
 
-  assert.match(route, /if \(action === 'check_in' && permission\?\.permissionType === 'absence'\) \{/);
+  assert.match(route, /if \(action === 'check_in' && \['absence', 'leave'\]\.includes\(permission\?\.permissionType \|\| ''\)\) \{/);
   assert.doesNotMatch(route, /if \(permission\?\.permissionType === 'absence'\) \{/);
 });
 

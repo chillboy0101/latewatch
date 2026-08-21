@@ -270,7 +270,7 @@ function displayAuditDate(value: unknown, fallback = 'date') {
       }
       if (event.entityType === 'attendance_permission') {
         const name = afterData?.staffName || 'Staff member';
-        return `${name} approved for ${afterData?.permissionType === 'absence' ? 'excused absence' : 'late arrival'} on ${displayAuditDate(afterData?.date)}`;
+        return `${name} approved for ${afterData?.permissionType === 'leave' ? 'leave' : afterData?.permissionType === 'absence' ? 'excused absence' : 'late arrival'} on ${displayAuditDate(afterData?.date)}`;
       }
       if (event.entityType === 'emergency_contact') {
         const name = afterData?.contactName || 'Emergency contact';

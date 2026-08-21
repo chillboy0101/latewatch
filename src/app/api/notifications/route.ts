@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth, currentUser } from '@clerk/nextjs/server';
-import { and, count, desc, eq, gte, inArray, ne } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, ne } from 'drizzle-orm';
 import { format, subDays } from 'date-fns';
 import { db } from '@/db';
 import { attendancePermission, attendanceRecord, auditEvent, latenessEntry, notificationRead, staff, staffDevice, workCalendar } from '@/db/schema';
@@ -12,6 +12,7 @@ import { tryWriteAuditEvent } from '@/lib/audit';
 import { formatDisplayDate, isIsoDateKey } from '@/lib/date-format';
 import { publishRealtime } from '@/lib/realtime';
 import { NO_SIGN_OUT_ALERT_LABEL, shouldAlertNoSignOut } from '@/lib/work-hours';
+import { getLeavePeriodsForDate } from '@/lib/staff-leave-periods';
 
 export const dynamic = 'force-dynamic';
 
@@ -332,7 +333,7 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
           event,
           read,
           'Attendance permission approved',
-          `${staffName} was approved for ${afterData?.permissionType === 'absence' ? 'excused absence' : `late arrival (${window.label})`}.`,
+          `${staffName} was approved for ${afterData?.permissionType === 'leave' ? 'leave' : afterData?.permissionType === 'absence' ? 'excused absence' : `late arrival (${window.label})`}.`,
           'info',
           'normal',
           { href: '/attendance' },
@@ -832,10 +833,10 @@ async function getSystemNotifications(readIds: Set<string>): Promise<Notificatio
     ));
   }
 
-  const staffCountResult = await db.select({ count: count() })
+  const activeStaffRows = await db.select({ id: staff.id })
     .from(staff)
     .where(and(eq(staff.active, true), eq(staff.archived, false)));
-  const activeStaffCount = Number(staffCountResult[0]?.count || 0);
+  const activeStaffCount = activeStaffRows.length;
 
   if (isWeekday && !holidayCheck && activeStaffCount > 0) {
     const attendanceRows = await db.select({
@@ -849,7 +850,22 @@ async function getSystemNotifications(readIds: Set<string>): Promise<Notificatio
       .leftJoin(staff, eq(attendanceRecord.staffId, staff.id))
       .where(eq(attendanceRecord.date, todayStr));
     const checkedInStaffIds = new Set(attendanceRows.map((row) => row.staffId));
-    const checkedInCount = attendanceRows.length;
+    const [fullDayPermissions, leavePeriods] = await Promise.all([
+      db.select({ staffId: attendancePermission.staffId })
+        .from(attendancePermission)
+        .where(and(
+          eq(attendancePermission.date, todayStr),
+          eq(attendancePermission.status, 'approved'),
+          eq(attendancePermission.permissionType, 'absence'),
+        )),
+      getLeavePeriodsForDate(todayStr, activeStaffRows.map((row) => row.id)),
+    ]);
+    const checkInNotRequiredIds = new Set([
+      ...fullDayPermissions.map((row) => row.staffId),
+      ...leavePeriods.map((row) => row.staffId),
+    ]);
+    const eligibleStaffCount = activeStaffCount - checkInNotRequiredIds.size;
+    const checkedInCount = attendanceRows.filter((row) => !checkInNotRequiredIds.has(row.staffId)).length;
 
     const latePermissions = await db.select({
       arrivalWindow: attendancePermission.arrivalWindow,
@@ -907,7 +923,7 @@ async function getSystemNotifications(readIds: Set<string>): Promise<Notificatio
     }
 
     if (currentHour >= 10) {
-      if (checkedInCount < activeStaffCount) {
+      if (checkedInCount < eligibleStaffCount) {
         const alertId = `system-attendance-missing-${todayStr}`;
         notifications.push(makeNotification(
           {
@@ -916,13 +932,13 @@ async function getSystemNotifications(readIds: Set<string>): Promise<Notificatio
             entityId: 'today-attendance',
             action: 'ALERT',
             beforeJson: null,
-            afterJson: { date: todayStr, checkedInCount, activeStaffCount },
+            afterJson: { date: todayStr, checkedInCount, activeStaffCount: eligibleStaffCount },
             actorEmail: 'system',
             timestamp: today,
           },
           readIds.has(alertId),
           'Attendance check-ins incomplete',
-          `${activeStaffCount - checkedInCount} active staff member${activeStaffCount - checkedInCount === 1 ? '' : 's'} have not checked in today.`,
+          `${eligibleStaffCount - checkedInCount} active staff member${eligibleStaffCount - checkedInCount === 1 ? '' : 's'} have not checked in today.`,
           'alert',
           'high',
           {
@@ -933,7 +949,7 @@ async function getSystemNotifications(readIds: Set<string>): Promise<Notificatio
       }
 
       if (shouldAlertNoSignOut(clock.timeKey)) {
-        const noSignOutRows = attendanceRows.filter((row) => !row.signOutTime && row.noSignOutWaived !== true);
+        const noSignOutRows = attendanceRows.filter((row) => !checkInNotRequiredIds.has(row.staffId) && !row.signOutTime && row.noSignOutWaived !== true);
         for (const row of noSignOutRows) {
           const alertId = `system-no-sign-out-${todayStr}-${row.staffId}`;
           notifications.push(makeNotification(

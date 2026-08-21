@@ -565,6 +565,7 @@ test('reminder eligibility follows workday, permission, and attendance rules', (
   assert.equal(shouldSendPushReminder({ ...base, reminderType: 'sign_in' }), true);
   assert.equal(shouldSendPushReminder({ ...base, reminderType: 'sign_in', attendance: { checkInTime: '08:10', signOutTime: null } }), false);
   assert.equal(shouldSendPushReminder({ ...base, reminderType: 'sign_in', permission: { permissionType: 'absence' } }), false);
+  assert.equal(shouldSendPushReminder({ ...base, reminderType: 'sign_in', permission: { permissionType: 'leave' } }), false);
   assert.equal(shouldSendPushReminder({ ...base, reminderType: 'sign_in', permission: { permissionType: 'late_arrival' } }), false);
   assert.equal(shouldSendPushReminder({ ...base, reminderType: 'sign_in', isHoliday: true }), false);
   // Monitoring-only (attendance-only) staff now receive reminders and appear on the monitor like everyone else.
@@ -572,6 +573,7 @@ test('reminder eligibility follows workday, permission, and attendance rules', (
   assert.equal(shouldSendPushReminder({ ...base, reminderType: 'sign_in', subscription: { signInEnabled: false, signOutEnabled: true, disabledAt: null } }), false);
 
   assert.equal(shouldSendPushReminder({ ...base, reminderType: 'sign_out', attendance: { checkInTime: '08:10', signOutTime: null } }), true);
+  assert.equal(shouldSendPushReminder({ ...base, reminderType: 'sign_out', attendance: { checkInTime: '08:10', signOutTime: null }, permission: { permissionType: 'leave' } }), false);
   assert.equal(shouldSendPushReminder({ ...base, reminderType: 'sign_out', attendance: { checkInTime: '08:10', signOutTime: '16:45' } }), false);
   assert.equal(shouldSendPushReminder({ ...base, reminderType: 'sign_out', attendance: null }), false);
   assert.equal(shouldSendPushReminder({ ...base, reminderType: 'sign_out', subscription: { signInEnabled: true, signOutEnabled: false, disabledAt: null } }), false);

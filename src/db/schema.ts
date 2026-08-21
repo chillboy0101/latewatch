@@ -31,6 +31,7 @@ export const staffRelations = relations(staff, ({ many }) => ({
   devices: many(staffDevice),
   emergencyContacts: many(emergencyContact),
   entries: many(latenessEntry),
+  inactivePeriods: many(staffInactivePeriod),
   latenessPayments: many(latenessPayment),
   leavePeriods: many(staffLeavePeriod),
 }));
@@ -41,7 +42,10 @@ export const staffLeavePeriod = pgTable('staff_leave_period', {
   startDate: date('start_date').notNull(),
   endDate: date('end_date'),
   source: text('source').notNull().default('staff_status'),
+  leaveType: text('leave_type').notNull().default('other'),
+  note: text('note'),
   createdByEmail: text('created_by_email').notNull().default('system'),
+  updatedByEmail: text('updated_by_email'),
   closedByEmail: text('closed_by_email'),
   createdAt: timestamp('created_at').defaultNow(),
   closedAt: timestamp('closed_at'),
@@ -54,6 +58,30 @@ export const staffLeavePeriod = pgTable('staff_leave_period', {
 export const staffLeavePeriodRelations = relations(staffLeavePeriod, ({ one }) => ({
   staff: one(staff, {
     fields: [staffLeavePeriod.staffId],
+    references: [staff.id],
+  }),
+}));
+
+export const staffInactivePeriod = pgTable('staff_inactive_period', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  staffId: uuid('staff_id').notNull().references(() => staff.id, { onDelete: 'cascade' }),
+  startDate: date('start_date').notNull(),
+  reactivatedOn: date('reactivated_on'),
+  reasonCode: text('reason_code').notNull(),
+  note: text('note'),
+  createdByEmail: text('created_by_email').notNull().default('system'),
+  reactivatedByEmail: text('reactivated_by_email'),
+  createdAt: timestamp('created_at').defaultNow(),
+  reactivatedAt: timestamp('reactivated_at'),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => [
+  index('staff_inactive_period_staff_date_idx').on(table.staffId, table.startDate, table.reactivatedOn),
+  unique().on(table.staffId, table.startDate),
+]);
+
+export const staffInactivePeriodRelations = relations(staffInactivePeriod, ({ one }) => ({
+  staff: one(staff, {
+    fields: [staffInactivePeriod.staffId],
     references: [staff.id],
   }),
 }));

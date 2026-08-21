@@ -4,6 +4,7 @@ import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '@/db';
 import { attendancePermission, attendanceRecord, pushReminderDelivery, pushSubscription, reminderCronRun, staff, staffDevice } from '@/db/schema';
 import { getAccraClock, getHolidayForDate, isWeekendDate } from '@/lib/attendance';
+import { getLeavePeriodsForDate } from '@/lib/staff-leave-periods';
 
 export type ReminderMonitorType = 'sign_in' | 'sign_out';
 export type ReminderMonitorRowStatus =
@@ -83,6 +84,7 @@ function missingDeliveryReason(input: {
 }
 
 function permissionLabel(permissionType: string | null | undefined) {
+  if (permissionType === 'leave') return 'Approved leave permission';
   if (permissionType === 'absence') return 'Approved absence permission';
   if (permissionType === 'late_arrival') return 'Approved late-arrival permission';
   return 'Approved attendance permission';
@@ -168,7 +170,7 @@ export async function getReminderDeliveryMonitor(date: string) {
     .orderBy(asc(staff.displayOrder), asc(staff.fullName));
 
   const staffIds = staffRows.map((row) => row.id);
-  const [attendanceRows, permissionRows, subscriptionRows, deliveryRows, deviceRows] = staffIds.length
+  const [attendanceRows, permissionRows, leavePeriods, subscriptionRows, deliveryRows, deviceRows] = staffIds.length
     ? await Promise.all([
         db.select({
           checkInTime: attendanceRecord.checkInTime,
@@ -187,6 +189,7 @@ export async function getReminderDeliveryMonitor(date: string) {
             eq(attendancePermission.status, 'approved'),
             inArray(attendancePermission.staffId, staffIds),
           )),
+        getLeavePeriodsForDate(date, staffIds),
         db.select({
           disabledAt: pushSubscription.disabledAt,
           id: pushSubscription.id,
@@ -223,7 +226,7 @@ export async function getReminderDeliveryMonitor(date: string) {
           .from(staffDevice)
           .where(inArray(staffDevice.staffId, staffIds)),
       ])
-    : [[], [], [], [], []];
+    : [[], [], [], [], [], []];
 
   const cronRunRows = await db.select({
     ranAt: reminderCronRun.ranAt,
@@ -247,6 +250,7 @@ export async function getReminderDeliveryMonitor(date: string) {
 
   const attendanceByStaffId = new Map(attendanceRows.map((row) => [row.staffId, row]));
   const permissionByStaffId = new Map(permissionRows.map((row) => [row.staffId, row]));
+  leavePeriods.forEach((row) => permissionByStaffId.set(row.staffId, { permissionType: 'leave', staffId: row.staffId }));
   const trustedDeviceStaffIds = new Set(deviceRows.map((row) => row.staffId));
   const subscriptionsByStaffId = new Map<string, typeof subscriptionRows>();
   const deliveriesByStaffAndType = new Map<string, typeof deliveryRows>();
@@ -309,6 +313,8 @@ export async function getReminderDeliveryMonitor(date: string) {
         reason = holiday?.holidayNote ? `Holiday: ${holiday.holidayNote}` : 'Holiday';
       } else if (reminderType === 'sign_in' && signedInByReminder) {
         reason = `Already signed in at ${attendance?.checkInTime}`;
+      } else if (permission?.permissionType === 'leave') {
+        reason = permissionLabel(permission.permissionType);
       } else if (reminderType === 'sign_in' && ['absence', 'late_arrival'].includes(permission?.permissionType || '')) {
         reason = permissionLabel(permission?.permissionType);
       } else if (reminderType === 'sign_out' && !signedInBySignOutReminder) {

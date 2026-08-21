@@ -74,6 +74,9 @@ function formatPermissionFallbackReason(row: PermissionEntryPresentationRow) {
   if (row.permissionType === 'absence') {
     return `Excused absence: ${formatAbsencePermissionReason(row.reason)}`.trim();
   }
+  if (row.permissionType === 'leave') {
+    return `On leave: ${row.reason || 'Other'}`;
+  }
 
   const window = getPermissionWindowBounds({
     arrivalWindow: row.arrivalWindow || 'any_time_today',
@@ -96,7 +99,8 @@ function hasVisibleAttendanceState(row: AttendanceEntryPresentationRow) {
     row.source === 'entries_manual_check_in' ||
     row.source === 'no_show_sign_in_waiver' ||
     row.status === 'late' ||
-    row.status === 'excused'
+    row.status === 'excused' ||
+    row.status === 'on_leave'
   );
 }
 
@@ -145,7 +149,7 @@ export function mergeAttendanceRowsIntoEntryRows(input: {
     ...attendanceFallbackRows.map((row) => `${row.staffId}:${dateKey(row.date)}`),
   ]);
   const permissionFallbackRows = (input.permissionRows || [])
-    .filter((row) => row.status === 'approved' && (row.permissionType === 'absence' || row.permissionType === 'late_arrival'))
+    .filter((row) => row.status === 'approved' && ['absence', 'leave', 'late_arrival'].includes(row.permissionType || ''))
     .filter((row) => !occupiedKeys.has(`${row.staffId}:${dateKey(row.date)}`))
     .map((row): LatenessEntryPresentationRow => ({
       arrivalTime: null,

@@ -25,10 +25,24 @@ export const ABSENCE_PERMISSION_WINDOWS = [
 
 export const LATE_ARRIVAL_PERMISSION_REASONS = ABSENCE_PERMISSION_REASONS;
 
+export const LEAVE_PERMISSION_TYPES = [
+  { value: 'annual', label: 'Annual' },
+  { value: 'sick', label: 'Sick' },
+  { value: 'maternity', label: 'Maternity' },
+  { value: 'paternity', label: 'Paternity' },
+  { value: 'study', label: 'Study' },
+  { value: 'compassionate', label: 'Compassionate' },
+  { value: 'unpaid', label: 'Unpaid' },
+  { value: 'other', label: 'Other' },
+] as const;
+
+export const MAX_LEAVE_PERMISSION_DAYS = 366;
+
 export type AttendancePermissionWindow = typeof ATTENDANCE_PERMISSION_WINDOWS[number]['value'];
 export type AbsencePermissionReason = typeof ABSENCE_PERMISSION_REASONS[number]['value'];
 export type AbsencePermissionWindow = typeof ABSENCE_PERMISSION_WINDOWS[number]['value'];
 export type LateArrivalPermissionReason = typeof LATE_ARRIVAL_PERMISSION_REASONS[number]['value'];
+export type LeavePermissionType = typeof LEAVE_PERMISSION_TYPES[number]['value'];
 
 export type AttendancePermissionLike = {
   arrivalWindow?: string | null;
@@ -41,6 +55,7 @@ const VALID_WINDOWS = new Set<string>(ATTENDANCE_PERMISSION_WINDOWS.map((option)
 const VALID_ABSENCE_WINDOWS = new Set<string>(ABSENCE_PERMISSION_WINDOWS.map((option) => option.value));
 const VALID_ABSENCE_REASONS = new Set<string>(ABSENCE_PERMISSION_REASONS.map((option) => option.value));
 const VALID_LATE_ARRIVAL_REASONS = new Set<string>(LATE_ARRIVAL_PERMISSION_REASONS.map((option) => option.value));
+const VALID_LEAVE_TYPES = new Set<string>(LEAVE_PERMISSION_TYPES.map((option) => option.value));
 const LEGACY_REASON_LABELS: Record<string, string> = {
   'field work': 'Official duty',
 };
@@ -84,6 +99,21 @@ export function getInclusivePermissionDateRange(startDate: string, endDate = sta
   }
 
   return dates;
+}
+
+export function normalizeLeavePermissionType(value: unknown): LeavePermissionType | null {
+  if (typeof value !== 'string') return null;
+  const leaveType = value.trim().toLowerCase();
+  return VALID_LEAVE_TYPES.has(leaveType) ? leaveType as LeavePermissionType : null;
+}
+
+export function formatLeavePermissionType(value: string | null | undefined) {
+  const leaveType = normalizeLeavePermissionType(value) || 'other';
+  return LEAVE_PERMISSION_TYPES.find((option) => option.value === leaveType)?.label || 'Other';
+}
+
+export function isFullDayPermissionType(value: string | null | undefined) {
+  return value === 'absence' || value === 'leave' || value === 'inactive';
 }
 
 export function normalizeAbsencePermissionReason(value: unknown): AbsencePermissionReason | null {
@@ -142,6 +172,14 @@ export function formatTimeLabel(value: string | null | undefined) {
 }
 
 export function getPermissionWindowBounds(permission: AttendancePermissionLike | null | undefined) {
+  if (permission?.permissionType === 'leave') {
+    return {
+      endTime: null,
+      label: 'On leave',
+      startTime: null,
+    };
+  }
+
   if (!permission || permission.permissionType === 'absence') {
     return {
       endTime: null,

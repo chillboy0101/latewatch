@@ -4,6 +4,7 @@ import { and, eq, gte, lte } from 'drizzle-orm';
 import { db } from '@/db';
 import { attendancePermission, attendanceRecord, latenessEntry, staff, workCalendar } from '@/db/schema';
 import { getAccraClock, getHolidayForDate, isWeekendDate } from '@/lib/attendance';
+import { isFullDayPermissionType } from '@/lib/attendance-permissions';
 import { getObservedGhanaHolidayForDate, isSuppressedGhanaHolidayDate } from '@/lib/ghana-holidays';
 import { resolveManualPenalty } from '@/lib/manual-attendance-correction';
 import { NO_SHOW_SIGN_IN_CUTOFF_TIME, shouldAlertNoSignOut } from '@/lib/work-hours';
@@ -12,6 +13,14 @@ import {
   NO_SHOW_SIGN_IN_REASON,
   NO_SHOW_SIGN_IN_WAIVED_REASON,
 } from '@/lib/penalty-calculator';
+import { expandLeavePeriodsToPermissions, getLeavePeriodsForRange } from '@/lib/staff-leave-periods';
+import {
+  expandInactivePeriodsToPermissions,
+  getAllInactivePeriods,
+  getInactivePeriodsForRange,
+  inactivePeriodMap,
+  isStaffActiveForDate,
+} from '@/lib/staff-inactive-periods';
 
 function enumerateDateKeys(startDate: string, endDate: string) {
   const dates: string[] = [];
@@ -54,6 +63,26 @@ function isLegacyEntriesFallbackSignOut(input: {
 
 function rowKey(staffId: string, date: string) {
   return `${staffId}:${date}`;
+}
+
+async function getResolvedPermissionRowsForRange(startDate: string, endDate: string) {
+  const [permissionRows, leavePeriods, inactivePeriods] = await Promise.all([
+    db.select()
+      .from(attendancePermission)
+      .where(and(
+        gte(attendancePermission.date, startDate),
+        lte(attendancePermission.date, endDate),
+        eq(attendancePermission.status, 'approved'),
+      )),
+    getLeavePeriodsForRange(startDate, endDate),
+    getInactivePeriodsForRange(startDate, endDate),
+  ]);
+
+  return [
+    ...permissionRows,
+    ...expandLeavePeriodsToPermissions(leavePeriods, startDate, endDate),
+    ...expandInactivePeriodsToPermissions(inactivePeriods, startDate, endDate),
+  ];
 }
 
 function shouldApplyNoSignOutPenalty(input: {
@@ -109,12 +138,16 @@ export async function applyNoShowSignInPenaltiesForDate(dateKey: string) {
   }
 
   const staffRows = await db.select({
+    active: staff.active,
+    archived: staff.archived,
     id: staff.id,
     isAttendanceOnly: staff.isAttendanceOnly,
     isNssPersonnel: staff.isNssPersonnel,
   })
     .from(staff)
-    .where(and(eq(staff.active, true), eq(staff.archived, false)));
+    .where(eq(staff.archived, false));
+  const inactiveByStaffId = inactivePeriodMap(await getAllInactivePeriods(staffRows.map((member) => member.id)));
+  const eligibleStaffRows = staffRows.filter((member) => isStaffActiveForDate(member, dateKey, inactiveByStaffId));
   const attendanceRows = await db.select({
     checkInTime: attendanceRecord.checkInTime,
     date: attendanceRecord.date,
@@ -126,9 +159,7 @@ export async function applyNoShowSignInPenaltiesForDate(dateKey: string) {
     .from(attendanceRecord)
     .where(eq(attendanceRecord.date, dateKey));
   const attendanceByStaffId = new Map(attendanceRows.map((row) => [row.staffId, row]));
-  const permissionRows = await db.select()
-    .from(attendancePermission)
-    .where(and(eq(attendancePermission.date, dateKey), eq(attendancePermission.status, 'approved')));
+  const permissionRows = await getResolvedPermissionRowsForRange(dateKey, dateKey);
   const permissionsByStaffId = new Map(permissionRows.map((permission) => [permission.staffId, permission]));
   const existingRows = await db.select()
     .from(latenessEntry)
@@ -139,7 +170,7 @@ export async function applyNoShowSignInPenaltiesForDate(dateKey: string) {
   let skipped = 0;
   let updated = 0;
 
-  for (const member of staffRows) {
+  for (const member of eligibleStaffRows) {
     if (member.isAttendanceOnly === true) {
       skipped += 1;
       continue;
@@ -157,7 +188,7 @@ export async function applyNoShowSignInPenaltiesForDate(dateKey: string) {
     }
 
     const permission = permissionsByStaffId.get(member.id);
-    if (permission?.permissionType === 'absence') {
+    if (isFullDayPermissionType(permission?.permissionType)) {
       skipped += 1;
       continue;
     }
@@ -258,12 +289,15 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
   }
 
   const staffRows = await db.select({
+    active: staff.active,
+    archived: staff.archived,
     id: staff.id,
     isAttendanceOnly: staff.isAttendanceOnly,
     isNssPersonnel: staff.isNssPersonnel,
   })
     .from(staff)
-    .where(and(eq(staff.active, true), eq(staff.archived, false)));
+    .where(eq(staff.archived, false));
+  const inactiveByStaffId = inactivePeriodMap(await getAllInactivePeriods(staffRows.map((member) => member.id)));
 
   const attendanceRows = await db.select({
     checkInTime: attendanceRecord.checkInTime,
@@ -279,13 +313,7 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
     attendanceRows.map((row) => [rowKey(row.staffId, normalizeDateKey(row.date)), row]),
   );
 
-  const permissionRows = await db.select()
-    .from(attendancePermission)
-    .where(and(
-      gte(attendancePermission.date, startDate),
-      lte(attendancePermission.date, endDate),
-      eq(attendancePermission.status, 'approved'),
-    ));
+  const permissionRows = await getResolvedPermissionRowsForRange(startDate, endDate);
   const permissionsByKey = new Map(
     permissionRows.map((row) => [rowKey(row.staffId, normalizeDateKey(row.date)), row]),
   );
@@ -303,6 +331,10 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
 
   for (const date of workingDates) {
     for (const member of staffRows) {
+      if (!isStaffActiveForDate(member, date, inactiveByStaffId)) {
+        skipped += 1;
+        continue;
+      }
       if (member.isAttendanceOnly === true) {
         skipped += 1;
         continue;
@@ -320,7 +352,7 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
       }
 
       const permission = permissionsByKey.get(key);
-      if (permission?.permissionType === 'absence') {
+      if (isFullDayPermissionType(permission?.permissionType)) {
         skipped += 1;
         continue;
       }
@@ -410,13 +442,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     .leftJoin(staff, eq(staff.id, attendanceRecord.staffId))
     .where(and(gte(attendanceRecord.date, startDate), lte(attendanceRecord.date, endDate)));
 
-  const permissionRows = await db.select()
-    .from(attendancePermission)
-    .where(and(
-      gte(attendancePermission.date, startDate),
-      lte(attendancePermission.date, endDate),
-      eq(attendancePermission.status, 'approved'),
-    ));
+  const permissionRows = await getResolvedPermissionRowsForRange(startDate, endDate);
   const permissionsByStaffDate = new Map(
     permissionRows.map((permission) => [
       rowKey(permission.staffId, normalizeDateKey(permission.date)),

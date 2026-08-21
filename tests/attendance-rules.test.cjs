@@ -22,11 +22,15 @@ const {
 } = require('../src/lib/work-hours.ts');
 const {
   ABSENCE_PERMISSION_REASONS,
+  LEAVE_PERMISSION_TYPES,
+  MAX_LEAVE_PERMISSION_DAYS,
+  formatLeavePermissionType,
   formatAbsencePermissionReason,
   formatLateArrivalPermissionReason,
   getAbsencePeriodBounds,
   getInclusivePermissionDateRange,
   isGeneralPardonReason,
+  normalizeLeavePermissionType,
   isValidAbsencePermissionReason,
   isValidLateArrivalPermissionReason,
 } = require('../src/lib/attendance-permissions.ts');
@@ -240,6 +244,20 @@ test('excused absence permissions use date ranges and full-day bounds', () => {
       startTime: null,
     },
   );
+});
+
+test('leave permissions use the approved types and a 366-day inclusive boundary', () => {
+  assert.deepEqual(
+    LEAVE_PERMISSION_TYPES.map((option) => option.value),
+    ['annual', 'sick', 'maternity', 'paternity', 'study', 'compassionate', 'unpaid', 'other'],
+  );
+  assert.equal(MAX_LEAVE_PERMISSION_DAYS, 366);
+  assert.equal(normalizeLeavePermissionType(' Maternity '), 'maternity');
+  assert.equal(normalizeLeavePermissionType('vacation'), null);
+  assert.equal(formatLeavePermissionType('compassionate'), 'Compassionate');
+  assert.equal(formatLeavePermissionType('legacy value'), 'Other');
+  assert.equal(getInclusivePermissionDateRange('2026-01-01', '2027-01-01').length, 366);
+  assert.equal(getInclusivePermissionDateRange('2026-01-01', '2027-01-02').length, 367);
 });
 
 test('office network audit display includes the saved network IP', () => {

@@ -40,6 +40,10 @@ function approvedAbsenceReason(permission: PermissionRecord) {
   return `Excused absence: ${formatAbsencePermissionReason(permission.reason)}`.trim();
 }
 
+function approvedLeaveReason(permission: PermissionRecord) {
+  return `On leave: ${permission.reason}`.trim();
+}
+
 function resolveNextAttendanceState(input: {
   arrivalTime: string | null;
   existingLateness: LatenessRecord | null;
@@ -48,6 +52,19 @@ function resolveNextAttendanceState(input: {
 }) {
   const arrivalTime = input.arrivalTime;
   const didNotSignOut = input.existingLateness?.didNotSignOut === true;
+
+  if (
+    input.permission?.status === 'approved' &&
+    input.permission.permissionType === 'leave'
+  ) {
+    return {
+      amount: 0,
+      didNotSignOut: false,
+      pardoned: true,
+      reason: approvedLeaveReason(input.permission),
+      status: 'on_leave',
+    };
+  }
 
   if (
     input.permission?.status === 'approved' &&

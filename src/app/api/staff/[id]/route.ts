@@ -2,18 +2,17 @@
 import { currentUser } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { latenessEntry, staff, staffDevice } from '@/db/schema';
-import { and, count, eq, ilike, ne } from 'drizzle-orm';
+import { latenessEntry, staff, staffDevice, staffLeavePeriod } from '@/db/schema';
+import { and, count, eq, gte, ilike, isNull, ne, or } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { normalizeStaffEmail } from '@/lib/attendance';
 import { syncStaffEmailIdentity, unlinkStaffEmailIdentity } from '@/lib/clerk-organization';
-import { recordStaffLeaveTransition } from '@/lib/staff-leave-periods';
 import { recalculateStaffStoredPenalties } from '@/lib/staff-penalty-recalculation-server';
 import { enforceRole } from '@/lib/auth/roles';
+import { getAccraDateKey } from '@/lib/date-key';
 
 type StaffUpdateBody = {
-  active?: boolean;
   archived?: boolean;
   department?: string | null;
   email?: string | null;
@@ -89,7 +88,6 @@ export async function PUT(
       staffNo,
       gender,
       rank,
-      active,
       archived,
       isAttendanceOnly,
       isNssPersonnel,
@@ -101,6 +99,22 @@ export async function PUT(
       return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
     }
 
+    if (archived === true && before.archived !== true) {
+      if (before.active === false) {
+        return NextResponse.json({ error: 'Reactivate this staff member before marking them as former personnel.' }, { status: 409 });
+      }
+      const [currentOrFutureLeave] = await db.select({ id: staffLeavePeriod.id })
+        .from(staffLeavePeriod)
+        .where(and(
+          eq(staffLeavePeriod.staffId, id),
+          or(isNull(staffLeavePeriod.endDate), gte(staffLeavePeriod.endDate, getAccraDateKey())),
+        ))
+        .limit(1);
+      if (currentOrFutureLeave) {
+        return NextResponse.json({ error: 'End or remove current and future leave before marking this staff member as former personnel.' }, { status: 409 });
+      }
+    }
+
     const updateData: Partial<typeof staff.$inferInsert> = { updatedAt: new Date() };
     if (fullName !== undefined) updateData.fullName = fullName.trim();
     if (email !== undefined) updateData.email = normalizeStaffEmail(email);
@@ -109,7 +123,9 @@ export async function PUT(
     applyProfileMetadataUpdate(updateData, 'staffNo', staffNo, before.staffNo);
     applyProfileMetadataUpdate(updateData, 'gender', gender, before.gender);
     applyProfileMetadataUpdate(updateData, 'rank', rank, before.rank);
-    if (active !== undefined) updateData.active = active;
+    if ('active' in body) {
+      return NextResponse.json({ error: 'Use the Deactivate or Reactivate action to change attendance status.' }, { status: 400 });
+    }
     if (isAttendanceOnly !== undefined) updateData.isAttendanceOnly = isAttendanceOnly === true;
     if (isNssPersonnel !== undefined || isAttendanceOnly !== undefined) {
       updateData.isNssPersonnel = isAttendanceOnly === true ? false : isNssPersonnel === true;
@@ -161,8 +177,6 @@ export async function PUT(
 
     const auditAction = typeof archived === 'boolean' && before.archived !== archived
       ? archived ? 'ARCHIVE' : 'RESTORE'
-      : typeof active === 'boolean' && before.active !== active
-      ? active ? 'ACTIVATE' : 'DEACTIVATE'
       : 'UPDATE';
 
     await writeAuditEvent({
@@ -172,13 +186,6 @@ export async function PUT(
       before,
       after: updated[0],
       reason: 'staff',
-    });
-
-    await recordStaffLeaveTransition({
-      action: auditAction,
-      actorEmail: actor?.emailAddresses[0]?.emailAddress,
-      after: updated[0],
-      before,
     });
 
     if (penaltyTypeChanged) {

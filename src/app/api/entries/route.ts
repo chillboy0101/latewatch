@@ -11,6 +11,12 @@ import {
 } from '@/lib/attendance-lateness-sync';
 import { mergeAttendanceRowsIntoEntryRows } from '@/lib/lateness-entry-presentation';
 import {
+  expandLeavePeriodsToPermissions,
+  getLeavePeriodsForDate,
+  getLeavePeriodsForRange,
+  leavePeriodToPermission,
+} from '@/lib/staff-leave-periods';
+import {
   manualAttendanceCorrectionChanged,
   resolveManualAttendanceCorrection,
   resolveManualPenalty,
@@ -49,7 +55,7 @@ async function getAttendanceRowsForEntries(start: string, end: string) {
 }
 
 async function getPermissionRowsForEntries(start: string, end: string) {
-  return db.select({
+  const [permissionRows, leavePeriods] = await Promise.all([db.select({
     arrivalWindow: attendancePermission.arrivalWindow,
     expectedEndTime: attendancePermission.expectedEndTime,
     expectedStartTime: attendancePermission.expectedStartTime,
@@ -65,15 +71,23 @@ async function getPermissionRowsForEntries(start: string, end: string) {
       gte(attendancePermission.date, start),
       lte(attendancePermission.date, end),
       eq(attendancePermission.status, 'approved'),
-    ));
+    )), getLeavePeriodsForRange(start, end)]);
+
+  return [...permissionRows, ...expandLeavePeriodsToPermissions(leavePeriods, start, end)];
 }
 
 async function getActivePermissionsForDate(date: string) {
-  const permissionRows = await db.select()
-    .from(attendancePermission)
-    .where(and(eq(attendancePermission.date, date), eq(attendancePermission.status, 'approved')));
+  const [permissionRows, leavePeriods] = await Promise.all([
+    db.select()
+      .from(attendancePermission)
+      .where(and(eq(attendancePermission.date, date), eq(attendancePermission.status, 'approved'))),
+    getLeavePeriodsForDate(date),
+  ]);
 
-  return new Map(permissionRows.map((permission) => [permission.staffId, permission]));
+  return new Map([
+    ...permissionRows,
+    ...leavePeriods.map((period) => leavePeriodToPermission(period, date)),
+  ].map((permission) => [permission.staffId, permission]));
 }
 
 function buildManualCheckInAt(date: string, time: string) {

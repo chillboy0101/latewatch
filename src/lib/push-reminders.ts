@@ -6,6 +6,7 @@ import { db } from '@/db';
 import { attendancePermission, attendanceRecord, pushReminderDelivery, pushSubscription, reminderCronRun, staff } from '@/db/schema';
 import { getAccraClock, getHolidayForDate, isWeekendDate } from '@/lib/attendance';
 import { publishRealtime } from '@/lib/realtime';
+import { getLeavePeriodsForDate } from '@/lib/staff-leave-periods';
 
 export type PushReminderType = 'sign_in' | 'sign_out' | 'holiday';
 
@@ -135,6 +136,7 @@ export function shouldSendPushReminder(input: ReminderEligibilityInput) {
   }
 
   if (input.isWeekend || input.isHoliday) return false;
+  if (input.permission?.permissionType === 'leave') return false;
 
   if (input.reminderType === 'sign_in') {
     if (input.subscription.signInEnabled !== true) return false;
@@ -470,7 +472,7 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
 
   if (reminderType !== 'holiday') {
     const staffIds = Array.from(new Set(subscriptionRows.map((row) => row.staffId)));
-    const [attendanceRows, permissionRows] = await Promise.all([
+    const [attendanceRows, permissionRows, leavePeriods] = await Promise.all([
       db.select()
         .from(attendanceRecord)
         .where(and(eq(attendanceRecord.date, date), inArray(attendanceRecord.staffId, staffIds))),
@@ -481,10 +483,12 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
           eq(attendancePermission.status, 'approved'),
           inArray(attendancePermission.staffId, staffIds),
         )),
+      getLeavePeriodsForDate(date, staffIds),
     ]);
 
     attendanceRows.forEach((row) => attendanceByStaffId.set(row.staffId, row));
     permissionRows.forEach((row) => permissionByStaffId.set(row.staffId, row));
+    leavePeriods.forEach((row) => permissionByStaffId.set(row.staffId, { permissionType: 'leave' }));
   }
 
   for (const row of subscriptionRows) {

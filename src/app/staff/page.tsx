@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
+import { DateField } from '@/components/ui/date-field';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -20,6 +21,9 @@ import {
 } from '@/components/ui/dialog';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { getStaffIdentitySyncCopy, type StaffIdentitySyncTone } from '@/lib/staff-identity-sync-copy';
+import { getAccraDateKey } from '@/lib/date-key';
+import { formatStaffInactiveReason, STAFF_INACTIVE_REASONS } from '@/lib/staff-inactive-policy';
+import { formatLeavePermissionType } from '@/lib/attendance-permissions';
 
 interface StaffMember {
   id: string;
@@ -35,6 +39,19 @@ interface StaffMember {
   active: boolean | null;
   archived: boolean | null;
   archivedAt?: string | null;
+  inactivePeriod?: {
+    id: string;
+    note: string | null;
+    reasonCode: string;
+    startDate: string;
+  } | null;
+  leavePeriod?: {
+    endDate: string | null;
+    id: string;
+    leaveType: string;
+    note: string | null;
+    startDate: string;
+  } | null;
 }
 
 type StaffFilter = 'all' | 'active' | 'inactive' | 'former' | 'nss' | 'attendanceOnly';
@@ -55,6 +72,12 @@ export default function StaffPage() {
   const [deleteTarget, setDeleteTarget] = useState<StaffMember | null>(null);
   const [deleteError, setDeleteError] = useState('');
   const [deleteRecords, setDeleteRecords] = useState(false);
+  const [deactivationTarget, setDeactivationTarget] = useState<StaffMember | null>(null);
+  const [reactivationTarget, setReactivationTarget] = useState<StaffMember | null>(null);
+  const [deactivationStartDate, setDeactivationStartDate] = useState(getAccraDateKey());
+  const [deactivationReason, setDeactivationReason] = useState('temporarily_not_monitored');
+  const [deactivationNote, setDeactivationNote] = useState('');
+  const [transitionError, setTransitionError] = useState('');
 
   // Add form state
   const [newName, setNewName] = useState('');
@@ -168,33 +191,6 @@ export default function StaffPage() {
     }
   };
 
-  const handleToggleActive = async (id: string, currentActive: boolean) => {
-    const previousStaff = staff;
-    const nextActive = !currentActive;
-    setActioningId(id);
-    setStaff((prev) => prev.map((s) => (s.id === id ? { ...s, active: nextActive } : s)));
-
-    try {
-      const response = await fetch(`/api/staff/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ active: nextActive }),
-      });
-
-      if (response.ok) {
-        const updated = await response.json();
-        setStaff((prev) => prev.map((s) => (s.id === id ? { ...s, ...updated } : s)));
-      } else {
-        setStaff(previousStaff);
-      }
-    } catch (error) {
-      console.error('Failed to update staff:', error);
-      setStaff(previousStaff);
-    } finally {
-      setActioningId(null);
-    }
-  };
-
   const handleToggleArchived = async (member: StaffMember, archived: boolean) => {
     const previousStaff = staff;
     setActioningId(member.id);
@@ -205,6 +201,7 @@ export default function StaffPage() {
     )));
 
     try {
+      setTransitionError('');
       const response = await fetch(`/api/staff/${member.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -216,11 +213,62 @@ export default function StaffPage() {
         setStaff((prev) => prev.map((s) => (s.id === member.id ? { ...s, ...updated } : s)));
         setArchiveTarget(null);
       } else {
+        const result = await response.json().catch(() => ({}));
+        setTransitionError(result.error || 'Could not update former-personnel status');
         setStaff(previousStaff);
       }
     } catch (error) {
       console.error('Failed to update staff archive state:', error);
       setStaff(previousStaff);
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const handleDeactivate = async () => {
+    if (!deactivationTarget) return;
+    setActioningId(deactivationTarget.id);
+    setTransitionError('');
+    try {
+      const response = await fetch(`/api/staff/${deactivationTarget.id}/deactivation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          note: deactivationNote.trim() || null,
+          reasonCode: deactivationReason,
+          startDate: deactivationStartDate,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Could not deactivate this staff member');
+      await fetchStaff();
+      setDeactivationTarget(null);
+      setDeactivationNote('');
+      if (result.accessCleanupWarning) setTransitionError(result.accessCleanupWarning);
+    } catch (error) {
+      setTransitionError(error instanceof Error ? error.message : 'Could not deactivate this staff member');
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const handleReactivate = async () => {
+    const periodId = reactivationTarget?.inactivePeriod?.id;
+    if (!reactivationTarget || !periodId) return;
+    setActioningId(reactivationTarget.id);
+    setTransitionError('');
+    try {
+      const response = await fetch(`/api/staff/${reactivationTarget.id}/deactivation/${periodId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reactivatedOn: getAccraDateKey() }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Could not reactivate this staff member');
+      await fetchStaff();
+      setReactivationTarget(null);
+    } catch (error) {
+      setTransitionError(error instanceof Error ? error.message : 'Could not reactivate this staff member');
     } finally {
       setActioningId(null);
     }
@@ -374,6 +422,7 @@ export default function StaffPage() {
           s.rank || '',
           s.department || '',
           s.unit || '',
+          s.leavePeriod ? `on leave ${formatLeavePermissionType(s.leavePeriod.leaveType)} ${s.leavePeriod.note || ''}` : '',
           s.isAttendanceOnly ? 'attendance monitoring only special staff intern interns no penalty' : s.isNssPersonnel ? 'nss national service personnel' : 'staff',
         ].join(' ').toLowerCase();
 
@@ -618,6 +667,11 @@ export default function StaffPage() {
             <p className="mt-1 text-sm leading-5 text-foreground/70">{identityNotice.detail}</p>
           </div>
         )}
+        {transitionError && (
+          <div className="rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+            {transitionError}
+          </div>
+        )}
 
         {/* Staff Table */}
         <Card>
@@ -752,9 +806,7 @@ export default function StaffPage() {
                             </span>
                           </label>
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <span className={`inline-flex w-fit items-center rounded-full px-2 py-1 text-xs font-medium ${getStaffStatusClass(member)}`}>
-                              {getStaffStatusLabel(member)}
-                            </span>
+                            <StaffStatusBadges member={member} />
                             <div className="flex flex-wrap gap-2 sm:justify-end">
                               <Button size="sm" onClick={handleEdit} className="h-9 gap-2" disabled={savingEdit}>
                                 {savingEdit && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
@@ -778,9 +830,7 @@ export default function StaffPage() {
                           <StaffField label="Type" value={member.isAttendanceOnly ? 'Special staff / Intern' : member.isNssPersonnel ? 'NSS' : 'Staff'} />
                           <div className="min-w-0">
                             <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground xl:hidden">Status</p>
-                            <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getStaffStatusClass(member)}`}>
-                              {getStaffStatusLabel(member)}
-                            </span>
+                            <StaffStatusBadges member={member} />
                           </div>
                           <div className="flex min-w-0 flex-wrap gap-2 xl:justify-end">
                             <Button variant="outline" size="sm" className="h-8 gap-2" onClick={() => openEdit(member)}>
@@ -835,22 +885,39 @@ export default function StaffPage() {
                               </>
                             ) : (
                               <>
-                                <Button
-                                  variant={member.active ? 'outline' : 'default'}
-                                  size="sm"
-                                  className="h-8 gap-2"
-                                  onClick={() => handleToggleActive(member.id, !!member.active)}
-                                  disabled={actioningId === member.id}
-                                >
-                                  {actioningId === member.id ? (
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                  ) : member.active ? (
+                                {member.active ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 gap-2"
+                                    onClick={() => {
+                                      setTransitionError('');
+                                      setDeactivationStartDate(getAccraDateKey());
+                                      setDeactivationReason('temporarily_not_monitored');
+                                      setDeactivationNote('');
+                                      setDeactivationTarget(member);
+                                    }}
+                                    disabled={actioningId === member.id}
+                                  >
                                     <UserX className="h-3.5 w-3.5" />
-                                  ) : (
+                                    Deactivate
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="default"
+                                    size="sm"
+                                    className="h-8 gap-2"
+                                    onClick={() => {
+                                      setTransitionError('');
+                                      setReactivationTarget(member);
+                                    }}
+                                    disabled={actioningId === member.id || !member.inactivePeriod}
+                                    title={member.inactivePeriod ? undefined : 'This legacy inactive record needs administrator reconciliation'}
+                                  >
                                     <UserCheck className="h-3.5 w-3.5" />
-                                  )}
-                                  {member.active ? 'Deactivate' : 'Activate'}
-                                </Button>
+                                    Reactivate
+                                  </Button>
+                                )}
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -916,6 +983,82 @@ export default function StaffPage() {
                     <Archive className="h-4 w-4" />
                   )}
                   Mark as Former
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={!!deactivationTarget} onOpenChange={(open) => !open && setDeactivationTarget(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Deactivate Staff Member</DialogTitle>
+              <DialogDescription>
+                Temporarily remove this person from attendance, reminders, penalties, and active-roster exports.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 pt-2">
+              <p className="text-sm font-medium">{deactivationTarget?.fullName}</p>
+              <DateField label="Effective Date" value={deactivationStartDate} onChange={setDeactivationStartDate} />
+              <div className="space-y-2">
+                <Label htmlFor="deactivation-reason">Reason</Label>
+                <select
+                  id="deactivation-reason"
+                  className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
+                  value={deactivationReason}
+                  onChange={(event) => setDeactivationReason(event.target.value)}
+                >
+                  {STAFF_INACTIVE_REASONS.map((reason) => (
+                    <option key={reason.value} value={reason.value}>{reason.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="deactivation-note">Note {deactivationReason === 'other' ? '(required)' : '(optional)'}</Label>
+                <Input
+                  id="deactivation-note"
+                  maxLength={300}
+                  value={deactivationNote}
+                  onChange={(event) => setDeactivationNote(event.target.value)}
+                  placeholder="Add administrative context"
+                />
+              </div>
+              {transitionError && <p className="text-sm text-danger">{transitionError}</p>}
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setDeactivationTarget(null)}>Cancel</Button>
+                <Button
+                  onClick={handleDeactivate}
+                  disabled={!deactivationTarget || actioningId === deactivationTarget.id || (deactivationReason === 'other' && !deactivationNote.trim())}
+                  className="gap-2"
+                >
+                  {deactivationTarget && actioningId === deactivationTarget.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserX className="h-4 w-4" />}
+                  Deactivate
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={!!reactivationTarget} onOpenChange={(open) => !open && setReactivationTarget(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reactivate Staff Member</DialogTitle>
+              <DialogDescription>
+                Restore attendance access from today. The person must sign in again and re-enable reminders.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 pt-2 text-sm">
+              <p><span className="font-medium">{reactivationTarget?.fullName}</span> has been inactive since {reactivationTarget?.inactivePeriod?.startDate || '-'}.</p>
+              <p className="text-muted-foreground">
+                Reason: {formatStaffInactiveReason(reactivationTarget?.inactivePeriod?.reasonCode)}
+                {reactivationTarget?.inactivePeriod?.note ? ` — ${reactivationTarget.inactivePeriod.note}` : ''}
+              </p>
+              {transitionError && <p className="text-danger">{transitionError}</p>}
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setReactivationTarget(null)}>Cancel</Button>
+                <Button onClick={handleReactivate} disabled={!reactivationTarget || actioningId === reactivationTarget.id} className="gap-2">
+                  {reactivationTarget && actioningId === reactivationTarget.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCheck className="h-4 w-4" />}
+                  Reactivate Today
                 </Button>
               </div>
             </div>
@@ -1000,6 +1143,52 @@ function getStaffStatusLabel(member: StaffMember) {
 function getStaffStatusClass(member: StaffMember) {
   if (member.archived) return 'bg-warning/10 text-warning';
   return member.active ? 'bg-success/10 text-success' : 'bg-muted/10 text-muted-foreground';
+}
+
+function formatStaffDate(dateKey: string) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  if (!year || !month || !day) return dateKey;
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'Africa/Accra',
+  }).format(new Date(Date.UTC(year, month - 1, day, 12)));
+}
+
+function StaffStatusBadges({ member }: { member: StaffMember }) {
+  const leave = member.leavePeriod;
+  const employmentDetails = member.archived
+    ? `Former personnel${member.archivedAt ? ` · Archived ${formatStaffDate(member.archivedAt.slice(0, 10))}` : ''}`
+    : member.active
+      ? 'Active staff member'
+      : member.inactivePeriod
+        ? `${formatStaffInactiveReason(member.inactivePeriod.reasonCode)} · Inactive since ${formatStaffDate(member.inactivePeriod.startDate)}${member.inactivePeriod.note ? ` · ${member.inactivePeriod.note}` : ''}`
+        : 'Inactive · Administrative review required';
+  const leaveDetails = leave
+    ? `${formatLeavePermissionType(leave.leaveType)} leave · ${formatStaffDate(leave.startDate)}–${leave.endDate ? formatStaffDate(leave.endDate) : 'Open-ended'}${leave.note ? ` · ${leave.note}` : ''}`
+    : '';
+
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+      <span
+        aria-label={`${getStaffStatusLabel(member)}: ${employmentDetails}`}
+        className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-1 text-xs font-medium ${getStaffStatusClass(member)}`}
+        title={employmentDetails}
+      >
+        {getStaffStatusLabel(member)}
+      </span>
+      {leave && !member.archived && member.active && (
+        <span
+          aria-label={`On Leave: ${leaveDetails}`}
+          className="inline-flex items-center whitespace-nowrap rounded-full bg-primary/10 px-2 py-1 text-xs font-medium text-primary"
+          title={leaveDetails}
+        >
+          On Leave
+        </span>
+      )}
+    </div>
+  );
 }
 
 function StaffField({

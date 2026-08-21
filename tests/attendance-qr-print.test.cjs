@@ -12,6 +12,7 @@ const attendanceCheckInApiPath = path.join(__dirname, '../src/app/api/attendance
 const attendanceDeviceRoutePath = path.join(__dirname, '../src/app/api/attendance/devices/[staffId]/route.ts');
 const deviceTransferRoutePath = path.join(__dirname, '../src/app/api/attendance/device-transfers/[id]/route.ts');
 const attendancePermissionsApiPath = path.join(__dirname, '../src/app/api/attendance/permissions/route.ts');
+const attendancePermissionByIdApiPath = path.join(__dirname, '../src/app/api/attendance/permissions/[id]/route.ts');
 const notificationsApiPath = path.join(__dirname, '../src/app/api/notifications/route.ts');
 const deviceHealthApiPath = path.join(__dirname, '../src/app/api/attendance/device-health/route.ts');
 const deviceHealthLibPath = path.join(__dirname, '../src/lib/device-session-health.ts');
@@ -30,6 +31,9 @@ const pushSubscriptionsLibPath = path.join(__dirname, '../src/lib/push-subscript
 const schemaPath = path.join(__dirname, '../src/db/schema.ts');
 const seedMigrateRoutePath = path.join(__dirname, '../src/app/api/seed/migrate/route.ts');
 const attendanceDeviceSessionMigrationPath = path.join(__dirname, '../drizzle/0028_attendance_device_session_ids.sql');
+const leavePermissionMigrationPath = path.join(__dirname, '../drizzle/0030_attendance_leave_permissions.sql');
+const inactivePeriodMigrationPath = path.join(__dirname, '../drizzle/0031_staff_inactive_periods.sql');
+const leaveMigrationScriptPath = path.join(__dirname, '../scripts/migrate-staff-leave-permissions.mjs');
 const clerkSessionCleanupScriptPath = path.join(__dirname, '../scripts/cleanup-staff-sessions.mjs');
 const packageJsonPath = path.join(__dirname, '../package.json');
 
@@ -88,6 +92,58 @@ test('attendance permission API validates both permission reason lists and full-
   assert.match(source, /expectedStartTime = null/);
 });
 
+test('leave permission UI and APIs manage bounded and open-ended ranges', () => {
+  const pageSource = fs.readFileSync(attendancePagePath, 'utf8');
+  const collectionSource = fs.readFileSync(attendancePermissionsApiPath, 'utf8');
+  const itemSource = fs.readFileSync(attendancePermissionByIdApiPath, 'utf8');
+
+  assert.match(pageSource, /<option value="leave">Leave<\/option>/);
+  assert.match(pageSource, /LEAVE_PERMISSION_TYPES/);
+  assert.match(pageSource, /label="Leave Start"/);
+  assert.match(pageSource, /label="Leave End"/);
+  assert.match(pageSource, /Open-ended leave/);
+  assert.match(pageSource, /endDate: isOpenEndedLeave \? null/);
+  assert.match(pageSource, /label="Leave Type"/);
+  assert.match(pageSource, />Note \(optional\)<\/label>/);
+  assert.match(collectionSource, /MAX_LEAVE_PERMISSION_DAYS/);
+  assert.match(collectionSource, /Leave overlaps an existing attendance permission/);
+  assert.match(itemSource, /export async function PATCH/);
+  assert.match(itemSource, /db\.delete\(staffLeavePeriod\)/);
+  assert.match(itemSource, /syncLatenessEntriesFromAttendanceForRange/);
+});
+
+test('leave overlap validation has a database-level atomic guard', () => {
+  const migration = fs.readFileSync(leavePermissionMigrationPath, 'utf8');
+
+  assert.match(migration, /pg_advisory_xact_lock/);
+  assert.match(migration, /attendance_permission_overlap/);
+  assert.match(migration, /staff_leave_period_non_overlap/);
+  assert.match(migration, /attendance_permission_leave_non_overlap/);
+  assert.match(migration, /ERRCODE = '23P01'/);
+});
+
+test('legacy leave conversion is dry-run first and explicitly reconciles George and Michael', () => {
+  const source = fs.readFileSync(leaveMigrationScriptPath, 'utf8');
+
+  assert.match(source, /const applyChanges = process\.argv\.includes\('--apply'\)/);
+  assert.match(source, /GEORGE_LEAVE_ID/);
+  assert.match(source, /MICHAEL_LEAVE_ID/);
+  assert.match(source, /temporarily_not_monitored/);
+  assert.match(source, /staff_inactive_period/);
+  assert.match(source, /No changes made\. Re-run with --apply/);
+  assert.match(source, /coalesce\(s\.archived, false\) = false/);
+});
+
+test('inactive periods enforce atomic overlap rules with attendance permissions', () => {
+  const migration = fs.readFileSync(inactivePeriodMigrationPath, 'utf8');
+
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS staff_inactive_period/);
+  assert.match(migration, /staff_inactive_period_one_open_idx/);
+  assert.match(migration, /pg_advisory_xact_lock/);
+  assert.match(migration, /attendance_permission_overlap/);
+  assert.match(migration, /reactivated_on/);
+});
+
 test('attendance page confirms general pardons before calling the bulk endpoint', () => {
   const source = fs.readFileSync(attendancePagePath, 'utf8');
 
@@ -118,14 +174,14 @@ test('attendance page lets admins change an existing permission from the permiss
   assert.match(source, />\s*Cancel\s*</);
 });
 
-test('general pardon API bulk applies to active staff and skips existing specific permissions', () => {
+test('general pardon API bulk applies to date-active staff and skips existing specific permissions', () => {
   assert.equal(fs.existsSync(generalPardonApiPath), true);
   const source = fs.readFileSync(generalPardonApiPath, 'utf8');
 
   assert.match(source, /currentUser\(\)/);
   assert.match(source, /pardonType/);
   assert.match(source, /Invalid pardon type/);
-  assert.match(source, /eq\(staff\.active, true\)/);
+  assert.match(source, /isStaffActiveForDate/);
   assert.match(source, /eq\(staff\.archived, false\)/);
   assert.match(source, /isAttendanceOnly: staff\.isAttendanceOnly/);
   assert.match(source, /isNssPersonnel: staff\.isNssPersonnel/);
@@ -185,7 +241,7 @@ test('attendance present and on-time filters stay distinct', () => {
   assert.match(pageSource, /activeFilter === 'present'[\s\S]*row\.attendance\?\.checkInTime/);
   assert.match(pageSource, /activeFilter === 'on_time'[\s\S]*isOnTimeAttendanceRow\(row\)/);
   assert.match(pageSource, /if \(status === 'present'\) return 'On Time'/);
-  assert.match(pageSource, /auto-cols-\[minmax\(7\.75rem,1fr\)\][\s\S]*xl:grid-cols-9/);
+  assert.match(pageSource, /auto-cols-\[minmax\(7\.75rem,1fr\)\][\s\S]*xl:grid-cols-10/);
 
   assert.match(apiSource, /if \(row\.attendance\?\.checkInTime\) acc\.present \+= 1/);
   assert.match(apiSource, /if \(isOnTimeAttendanceRow\(row\)\) acc\.onTime \+= 1/);
