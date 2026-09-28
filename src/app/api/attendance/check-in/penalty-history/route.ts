@@ -87,7 +87,7 @@ export async function GET() {
         const forgivenAmount = pardonsByEntryId.get(entry.id);
         return forgivenAmount == null
           ? entry
-          : { ...entry, isPardoned: true, pardonedAmount: forgivenAmount };
+          : { ...entry, pardonedAmount: forgivenAmount };
       }),
     });
     const payments = await db.select()

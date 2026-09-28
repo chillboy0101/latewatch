@@ -89,7 +89,7 @@ interface CheckInStatus {
   workdayStartLabel: string;
 }
 
-type PenaltyPaymentStatus = 'paid' | 'partially_paid' | 'unpaid' | 'pardoned';
+type PenaltyPaymentStatus = 'paid' | 'partially_paid' | 'unpaid' | 'pardoned' | 'partially_pardoned';
 
 interface PushReminderStatus {
   configured: boolean;
@@ -496,6 +496,7 @@ function paymentStatusLabel(status: PenaltyPaymentStatus) {
   if (status === 'paid') return 'Paid';
   if (status === 'partially_paid') return 'Partially paid';
   if (status === 'pardoned') return 'Pardoned';
+  if (status === 'partially_pardoned') return 'Partially pardoned';
   return 'Unpaid';
 }
 
@@ -1589,6 +1590,7 @@ function PenaltyHistoryEntries({ emptyLabel, entries }: { emptyLabel: string; en
               entry.status === 'partially_paid' && 'border-warning/25 bg-warning/10 text-warning',
               entry.status === 'unpaid' && 'border-danger/25 bg-danger/10 text-danger',
               entry.status === 'pardoned' && 'border-success/25 bg-success/10 text-success',
+              entry.status === 'partially_pardoned' && 'border-warning/25 bg-warning/10 text-warning',
             )}>
               {paymentStatusLabel(entry.status)}
             </span>

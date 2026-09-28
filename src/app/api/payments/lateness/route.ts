@@ -146,7 +146,7 @@ export async function GET(request: NextRequest) {
       const forgivenAmount = pardonsByEntryId.get(entry.id);
       list.push(forgivenAmount == null
         ? entry
-        : { ...entry, isPardoned: true, pardonedAmount: forgivenAmount });
+        : { ...entry, pardonedAmount: forgivenAmount });
       entriesByStaff.set(entry.staffId, list);
     }
 
@@ -257,7 +257,7 @@ export async function POST(request: NextRequest) {
       const forgivenAmount = pardonsByEntryId.get(entry.id);
       return forgivenAmount == null
         ? entry
-        : { ...entry, isPardoned: true, pardonedAmount: forgivenAmount };
+        : { ...entry, pardonedAmount: forgivenAmount };
     });
     let allocationPlan: ReturnType<typeof allocateLatenessPayment>;
 

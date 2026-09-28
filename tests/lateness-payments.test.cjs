@@ -104,9 +104,9 @@ test('lateness payment summaries calculate paid status and outstanding balance',
   assert.equal(getLatenessPaymentStatus(15, 0), 'unpaid');
 });
 
-test('pardoned entries stay settled after recalculation and future penalties remain payable', () => {
+test('pardons waive the snapshotted amount while later penalties remain payable', () => {
   const recalculatedEntries = [
-    { ...entries[0], computedAmount: '12.00', isPardoned: true, pardonedAmount: '10.00' },
+    { ...entries[0], computedAmount: '12.00', pardonedAmount: '10.00' },
     { ...entries[1], computedAmount: '15.00' },
   ];
   const summaries = summarizeLatenessPaymentEntries({
@@ -114,9 +114,9 @@ test('pardoned entries stay settled after recalculation and future penalties rem
     allocations: [],
   });
 
-  assert.equal(summaries[0].outstandingAmount, '0.00');
+  assert.equal(summaries[0].outstandingAmount, '2.00');
   assert.equal(summaries[0].pardonedAmount, '10.00');
-  assert.equal(summaries[0].status, 'pardoned');
+  assert.equal(summaries[0].status, 'partially_pardoned');
   assert.equal(summaries[1].outstandingAmount, '15.00');
   assert.equal(summaries[1].status, 'unpaid');
 
@@ -125,7 +125,10 @@ test('pardoned entries stay settled after recalculation and future penalties rem
     entries: recalculatedEntries,
     existingAllocations: [],
   });
-  assert.deepEqual(allocation.allocations, [{ amount: '5.00', entryId: 'entry-b' }]);
+  assert.deepEqual(allocation.allocations, [
+    { amount: '2.00', entryId: 'entry-a' },
+    { amount: '3.00', entryId: 'entry-b' },
+  ]);
 });
 
 test('lateness payment receipt numbers are stable and date-based', () => {

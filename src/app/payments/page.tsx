@@ -13,7 +13,7 @@ import { formatDisplayDate } from '@/lib/date-format';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 
-type PaymentStatus = 'paid' | 'partially_paid' | 'unpaid' | 'pardoned';
+type PaymentStatus = 'paid' | 'partially_paid' | 'unpaid' | 'pardoned' | 'partially_pardoned';
 type StaffPaymentStatus = 'paid' | 'unpaid';
 type PaymentFilter = 'all' | StaffPaymentStatus;
 
@@ -129,6 +129,7 @@ function statusLabel(status: PaymentStatus) {
   if (status === 'paid') return 'Paid';
   if (status === 'partially_paid') return 'Partially paid';
   if (status === 'pardoned') return 'Pardoned';
+  if (status === 'partially_pardoned') return 'Partially pardoned';
   return 'Unpaid';
 }
 
@@ -916,6 +917,7 @@ function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
       status === 'partially_paid' && 'border-warning/25 bg-warning/10 text-warning',
       status === 'unpaid' && 'border-danger/25 bg-danger/10 text-danger',
       status === 'pardoned' && 'border-success/25 bg-success/10 text-success',
+      status === 'partially_pardoned' && 'border-warning/25 bg-warning/10 text-warning',
     )}>
       {statusLabel(status)}
     </span>
