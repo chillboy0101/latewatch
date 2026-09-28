@@ -183,13 +183,22 @@ test('offence book subtracts pardoned debt without counting it as cash received'
     staff,
     year: 2026,
   });
+  const withoutPardon = calculateOffenceBookFinancialSummary({
+    allocations,
+    entries,
+    items,
+    month: 4,
+    staff,
+    year: 2026,
+  });
 
   assert.equal(summary.totalPardoned, '10.00');
   assert.equal(summary.totalPaid, '30.00');
   assert.equal(beforePardon.totalPardoned, '0.00');
   assert.equal(beforePardon.totalUnpaid, '10.00');
   assert.equal(summary.openingBalance, '10.00');
-  assert.equal(summary.calculatedClosingBalance, '980.00');
+  assert.equal(summary.calculatedClosingBalance, withoutPardon.calculatedClosingBalance);
+  assert.equal(summary.totalUnpaid, withoutPardon.totalUnpaid);
 });
 
 test('offence book financial summary ignores a stray closing_balance item — closing balance is always calculated', () => {

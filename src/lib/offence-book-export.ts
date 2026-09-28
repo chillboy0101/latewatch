@@ -313,13 +313,6 @@ function summarizeWeeklyFinancialTotals(input: {
 
 const MAX_OPENING_BALANCE_LOOKBACK_MONTHS = 600;
 
-function sumPardonedForMonth(entries: OffenceBookEntryInput[], monthKey: string) {
-  const monthEnd = monthEndKey(Number(monthKey.slice(0, 4)), Number(monthKey.slice(5, 7)) - 1);
-  return entries
-    .filter((entry) => entry.pardonDate && dateKey(entry.pardonDate) >= monthKey && dateKey(entry.pardonDate) <= monthEnd)
-    .reduce((sum, entry) => sum + Math.max(0, cents(entry.pardonedAmount)), 0);
-}
-
 function shiftMonth(year: number, month: number, offset: number) {
   const shifted = new Date(year, month + offset, 1);
   return { month: shifted.getMonth(), year: shifted.getFullYear() };
@@ -379,9 +372,7 @@ export function resolveOpeningBalanceCents(input: {
       staff: input.staff,
       year: previous.year,
     });
-    const previousPardonedCents = sumPardonedForMonth(input.entries, previousMonthKey);
-
-    accumulatedFlowCents += previousExternalMoneyCents + previousWeeklyTotals.paidCents - previousExpenditureCents - previousPardonedCents;
+    accumulatedFlowCents += previousExternalMoneyCents + previousWeeklyTotals.paidCents - previousExpenditureCents;
 
     const previousOpeningItems = monthItems(input.items, 'opening_balance', previousMonthKey);
     if (previousOpeningItems.length > 0) {
@@ -414,7 +405,7 @@ export function calculateOffenceBookFinancialSummary({
   const expenditureCents = monthItems(items, 'expenditure', selectedMonthKey)
     .reduce((sum, item) => sum + cents(item.amount), 0);
   const weeklyTotals = summarizeWeeklyFinancialTotals({ allocations, entries, month, staff, year });
-  const calculatedClosingBalanceCents = openingBalanceCents + externalMoneyCents + weeklyTotals.paidCents - expenditureCents - totalPardonedCents;
+  const calculatedClosingBalanceCents = openingBalanceCents + externalMoneyCents + weeklyTotals.paidCents - expenditureCents;
 
   return {
     calculatedClosingBalance: moneyText(calculatedClosingBalanceCents),
@@ -628,7 +619,7 @@ export async function buildOffenceBookWorkbookFromData({
   const totalPardonedCents = entries
     .filter((entry) => entry.pardonDate && dateKey(entry.pardonDate) >= selectedMonthKey && dateKey(entry.pardonDate) <= selectedMonthEnd)
     .reduce((sum, entry) => sum + Math.max(0, cents(entry.pardonedAmount)), 0);
-  const calculatedClosingBalanceCents = openingBalanceCents + externalMoneyCents + totalPaidCents - expenditureCents - totalPardonedCents;
+  const calculatedClosingBalanceCents = openingBalanceCents + externalMoneyCents + totalPaidCents - expenditureCents;
 
   worksheet.getCell('P5').value = money(openingBalanceCents);
   worksheet.getCell('P5').numFmt = '#,##0.00';
@@ -654,9 +645,9 @@ export async function buildOffenceBookWorkbookFromData({
     worksheet.getCell(row, 19).numFmt = '#,##0.00';
   }
   writeFormula(worksheet.getCell('S15'), 'SUM(S6:S14)', expenditureCents);
-  writeFormula(worksheet.getCell('T5'), 'SUM(P5,P12,P15)-S15-Q24', openingBalanceCents + externalMoneyCents + totalPenaltyCents - expenditureCents - totalPardonedCents);
+  writeFormula(worksheet.getCell('T5'), 'SUM(P5,P12,P15)-S15', openingBalanceCents + externalMoneyCents + totalPenaltyCents - expenditureCents);
   writeFormula(worksheet.getCell('T8'), 'SUM(P5,P12,P18)', openingBalanceCents + externalMoneyCents + totalPaidCents);
-  writeFormula(worksheet.getCell('T11'), 'SUM(P5,P12,P18)-S15-Q24', calculatedClosingBalanceCents);
+  writeFormula(worksheet.getCell('T11'), 'SUM(P5,P12,P18)-S15', calculatedClosingBalanceCents);
 
   const owedHighlightNameStyle = cloneStyle(worksheet.getCell('P27').style);
   const owedHighlightAmountStyle = cloneStyle(worksheet.getCell('Q27').style);
