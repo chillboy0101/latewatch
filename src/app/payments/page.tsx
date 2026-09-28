@@ -13,7 +13,7 @@ import { formatDisplayDate } from '@/lib/date-format';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 
-type PaymentStatus = 'paid' | 'partially_paid' | 'unpaid';
+type PaymentStatus = 'paid' | 'partially_paid' | 'unpaid' | 'pardoned';
 type StaffPaymentStatus = 'paid' | 'unpaid';
 type PaymentFilter = 'all' | StaffPaymentStatus;
 
@@ -22,6 +22,7 @@ interface PaymentEntry {
   date: string;
   entryId: string;
   outstandingAmount: string;
+  pardonedAmount: string;
   paidAmount: string;
   penaltyAmount: string;
   reason: string | null;
@@ -127,6 +128,7 @@ function offenceBookDraftsFromRows(rows: OffenceBookStoredItem[]) {
 function statusLabel(status: PaymentStatus) {
   if (status === 'paid') return 'Paid';
   if (status === 'partially_paid') return 'Partially paid';
+  if (status === 'pardoned') return 'Pardoned';
   return 'Unpaid';
 }
 
@@ -140,7 +142,7 @@ function staffPaymentStatusForRow(row: PaymentStaffRow): StaffPaymentStatus {
 }
 
 function compactPenaltyLine(entry: PaymentEntry) {
-  return `${currency(entry.penaltyAmount)} | paid ${currency(entry.paidAmount)} | bal ${currency(entry.outstandingAmount)}`;
+  return `${currency(entry.penaltyAmount)} | paid ${currency(entry.paidAmount)} | pardoned ${currency(entry.pardonedAmount)} | bal ${currency(entry.outstandingAmount)}`;
 }
 
 function sortPaymentRowsByBalance(rows: PaymentStaffRow[]) {
@@ -913,6 +915,7 @@ function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
       status === 'paid' && 'border-success/25 bg-success/10 text-success',
       status === 'partially_paid' && 'border-warning/25 bg-warning/10 text-warning',
       status === 'unpaid' && 'border-danger/25 bg-danger/10 text-danger',
+      status === 'pardoned' && 'border-success/25 bg-success/10 text-success',
     )}>
       {statusLabel(status)}
     </span>

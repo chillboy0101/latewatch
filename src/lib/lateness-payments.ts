@@ -1,12 +1,14 @@
 import type { LatenessPaymentReceiptSummary } from '@/lib/lateness-payment-receipts';
 
-export type LatenessPaymentStatus = 'paid' | 'partially_paid' | 'unpaid';
+export type LatenessPaymentStatus = 'paid' | 'partially_paid' | 'unpaid' | 'pardoned';
 
 export type LatenessPaymentEntryLike = {
   arrivalTime?: string | null;
   computedAmount: number | string | null;
   date: string;
   id: string;
+  isPardoned?: boolean;
+  pardonedAmount?: number | string | null;
   reason?: string | null;
   staffId?: string | null;
 };
@@ -22,6 +24,7 @@ export type LatenessPaymentEntrySummary = {
   date: string;
   entryId: string;
   outstandingAmount: string;
+  pardonedAmount: string;
   paidAmount: string;
   penaltyAmount: string;
   reason: string | null;
@@ -117,17 +120,21 @@ export function summarizeLatenessPaymentEntries(input: {
   return sortedPenaltyEntries(input.entries).map((entry) => {
     const penaltyCents = cents(entry.computedAmount);
     const paidCents = Math.min(penaltyCents, paidByEntry.get(entry.id) || 0);
-    const outstandingCents = Math.max(0, penaltyCents - paidCents);
+    const pardonedCents = cents(entry.pardonedAmount);
+    const outstandingCents = entry.isPardoned ? 0 : Math.max(0, penaltyCents - paidCents);
 
     return {
       arrivalTime: entry.arrivalTime || null,
       date: entry.date,
       entryId: entry.id,
       outstandingAmount: money(outstandingCents),
+      pardonedAmount: money(pardonedCents),
       paidAmount: money(paidCents),
       penaltyAmount: money(penaltyCents),
       reason: entry.reason || null,
-      status: getLatenessPaymentStatus(penaltyCents / 100, paidCents / 100),
+      status: entry.isPardoned
+        ? 'pardoned'
+        : getLatenessPaymentStatus(penaltyCents / 100, paidCents / 100),
     };
   });
 }
@@ -146,8 +153,8 @@ export function allocateLatenessPayment(input: {
   const entries = sortedPenaltyEntries(input.entries);
   const paidByEntry = paidCentsByEntry(input.existingAllocations);
   const candidates = input.entryId
-    ? entries.filter((entry) => entry.id === input.entryId)
-    : entries;
+    ? entries.filter((entry) => entry.id === input.entryId && !entry.isPardoned)
+    : entries.filter((entry) => !entry.isPardoned);
 
   if (input.entryId && candidates.length === 0) {
     throw new Error('Lateness entry was not found');
@@ -227,7 +234,8 @@ export function summarizePenaltyHistoryWeeks(input: {
     ));
     const totalPenaltyCents = entries.reduce((sum, entry) => sum + cents(entry.penaltyAmount), 0);
     const paidCents = entries.reduce((sum, entry) => sum + cents(entry.paidAmount), 0);
-    const outstandingCents = Math.max(0, totalPenaltyCents - paidCents);
+    const pardonedCents = entries.reduce((sum, entry) => sum + cents(entry.pardonedAmount), 0);
+    const outstandingCents = entries.reduce((sum, entry) => sum + cents(entry.outstandingAmount), 0);
 
     return {
       endDate: weekEnd,
@@ -236,7 +244,9 @@ export function summarizePenaltyHistoryWeeks(input: {
       paidAmount: money(paidCents),
       receipts: weekReceipts,
       startDate: weekStart,
-      status: getLatenessPaymentStatus(totalPenaltyCents / 100, paidCents / 100),
+      status: outstandingCents === 0
+        ? pardonedCents > 0 ? 'pardoned' : 'paid'
+        : paidCents > 0 ? 'partially_paid' : 'unpaid',
       totalPenalty: money(totalPenaltyCents),
     };
   };

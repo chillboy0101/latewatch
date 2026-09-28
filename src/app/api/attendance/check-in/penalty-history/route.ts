@@ -2,7 +2,7 @@ import { currentUser } from '@clerk/nextjs/server';
 import { desc, eq, inArray } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { latenessEntry, latenessPayment, latenessPaymentAllocation } from '@/db/schema';
+import { latenessDebtPardonEntry, latenessEntry, latenessPayment, latenessPaymentAllocation } from '@/db/schema';
 import { getAccraClock, getOrAutoLinkStaffByEmail } from '@/lib/attendance';
 import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 import { summarizeLatenessPaymentReceipts } from '@/lib/lateness-payment-receipts';
@@ -72,9 +72,23 @@ export async function GET() {
       : await db.select()
         .from(latenessPaymentAllocation)
         .where(inArray(latenessPaymentAllocation.entryId, penaltyEntries.map((entry) => entry.id)));
+    const pardonRows = penaltyEntries.length === 0
+      ? []
+      : await db.select({
+        entryId: latenessDebtPardonEntry.entryId,
+        forgivenAmount: latenessDebtPardonEntry.forgivenAmount,
+      })
+        .from(latenessDebtPardonEntry)
+        .where(inArray(latenessDebtPardonEntry.entryId, penaltyEntries.map((entry) => entry.id)));
+    const pardonsByEntryId = new Map(pardonRows.map((pardon) => [pardon.entryId, pardon.forgivenAmount]));
     const entrySummaries = summarizeLatenessPaymentEntries({
       allocations,
-      entries: penaltyEntries,
+      entries: penaltyEntries.map((entry) => {
+        const forgivenAmount = pardonsByEntryId.get(entry.id);
+        return forgivenAmount == null
+          ? entry
+          : { ...entry, isPardoned: true, pardonedAmount: forgivenAmount };
+      }),
     });
     const payments = await db.select()
       .from(latenessPayment)

@@ -36,6 +36,8 @@ export type OffenceBookEntryInput = {
   computedAmount: number | string | null;
   date: string;
   id: string;
+  pardonDate?: string | null;
+  pardonedAmount?: number | string | null;
   staffId: string;
 };
 
@@ -67,6 +69,8 @@ export type OffenceBookFinancialSummary = {
   openingBalanceCents: number;
   totalPaid: string;
   totalPaidCents: number;
+  totalPardoned: string;
+  totalPardonedCents: number;
   totalPenalty: string;
   totalPenaltyCents: number;
   totalUnpaid: string;
@@ -223,8 +227,9 @@ function setAmountCell(cell: ExcelJS.Cell, centsValue: number, strike = false) {
   setStrike(cell, strike);
 }
 
-function paymentStatus(rowPenaltyCents: number, rowPaidCents: number, rowUnpaidCents: number) {
+function paymentStatus(rowPenaltyCents: number, rowPaidCents: number, rowUnpaidCents: number, rowPardonedCents: number) {
   if (rowPenaltyCents <= 0) return null;
+  if (rowUnpaidCents <= 0 && rowPardonedCents > 0) return 'PARDONED';
   if (rowUnpaidCents <= 0) return 'PAID';
   if (rowPaidCents > 0) return 'PARTIALLY PAID';
   return 'UNPAID';
@@ -245,14 +250,24 @@ function entryPaidCents(entry: OffenceBookEntryInput, paidByEntry: Map<string, n
   return Math.min(entryAmountCents(entry), paidByEntry.get(entry.id) || 0);
 }
 
+function entryPardonedCents(entry: OffenceBookEntryInput, paidByEntry: Map<string, number>, asOfDate?: string) {
+  if (entry.pardonDate && asOfDate && dateKey(entry.pardonDate) > asOfDate) return 0;
+  const remainingCents = Math.max(0, entryAmountCents(entry) - entryPaidCents(entry, paidByEntry));
+  return Math.min(remainingCents, Math.max(0, cents(entry.pardonedAmount)));
+}
+
 function sumEntryBalanceCents(
   entries: OffenceBookEntryInput[],
   paidByEntry: Map<string, number>,
   predicate: (entry: OffenceBookEntryInput) => boolean,
+  asOfDate?: string,
 ) {
   return entries
     .filter(predicate)
-    .reduce((total, entry) => total + Math.max(0, entryAmountCents(entry) - entryPaidCents(entry, paidByEntry)), 0);
+    .reduce((total, entry) => total + Math.max(
+      0,
+      entryAmountCents(entry) - entryPaidCents(entry, paidByEntry) - entryPardonedCents(entry, paidByEntry, asOfDate),
+    ), 0);
 }
 
 function summarizeWeeklyFinancialTotals(input: {
@@ -283,9 +298,10 @@ function summarizeWeeklyFinancialTotals(input: {
           const dayEntries = selectedEntriesByStaffDate.get(`${member.id}:${date}`) || [];
           const dayPenaltyCents = dayEntries.reduce((sum, entry) => sum + entryAmountCents(entry), 0);
           const dayPaidCents = dayEntries.reduce((sum, entry) => sum + entryPaidCents(entry, paidByEntry), 0);
+          const dayPardonedCents = dayEntries.reduce((sum, entry) => sum + entryPardonedCents(entry, paidByEntry, selectedMonthEnd), 0);
           totals.penaltyCents += dayPenaltyCents;
           totals.paidCents += dayPaidCents;
-          totals.unpaidCents += Math.max(0, dayPenaltyCents - dayPaidCents);
+          totals.unpaidCents += Math.max(0, dayPenaltyCents - dayPaidCents - dayPardonedCents);
         }
       }
 
@@ -296,6 +312,13 @@ function summarizeWeeklyFinancialTotals(input: {
 }
 
 const MAX_OPENING_BALANCE_LOOKBACK_MONTHS = 600;
+
+function sumPardonedForMonth(entries: OffenceBookEntryInput[], monthKey: string) {
+  const monthEnd = monthEndKey(Number(monthKey.slice(0, 4)), Number(monthKey.slice(5, 7)) - 1);
+  return entries
+    .filter((entry) => entry.pardonDate && dateKey(entry.pardonDate) >= monthKey && dateKey(entry.pardonDate) <= monthEnd)
+    .reduce((sum, entry) => sum + Math.max(0, cents(entry.pardonedAmount)), 0);
+}
 
 function shiftMonth(year: number, month: number, offset: number) {
   const shifted = new Date(year, month + offset, 1);
@@ -331,7 +354,12 @@ export function resolveOpeningBalanceCents(input: {
 
   if (!hasAnchorBefore) {
     const paidByEntry = paidCentsByEntry(input.allocations);
-    return sumEntryBalanceCents(input.entries, paidByEntry, (entry) => dateKey(entry.date) < selectedMonthKey);
+    return sumEntryBalanceCents(
+      input.entries,
+      paidByEntry,
+      (entry) => dateKey(entry.date) < selectedMonthKey,
+      monthEndKey(input.year, input.month - 1),
+    );
   }
 
   let { month, year } = input;
@@ -351,8 +379,9 @@ export function resolveOpeningBalanceCents(input: {
       staff: input.staff,
       year: previous.year,
     });
+    const previousPardonedCents = sumPardonedForMonth(input.entries, previousMonthKey);
 
-    accumulatedFlowCents += previousExternalMoneyCents + previousWeeklyTotals.paidCents - previousExpenditureCents;
+    accumulatedFlowCents += previousExternalMoneyCents + previousWeeklyTotals.paidCents - previousExpenditureCents - previousPardonedCents;
 
     const previousOpeningItems = monthItems(input.items, 'opening_balance', previousMonthKey);
     if (previousOpeningItems.length > 0) {
@@ -375,13 +404,17 @@ export function calculateOffenceBookFinancialSummary({
   year,
 }: Omit<BuildOffenceBookWorkbookInput, 'templatePath'>): OffenceBookFinancialSummary {
   const selectedMonthKey = monthStartKey(year, month);
+  const selectedMonthEnd = monthEndKey(year, month);
+  const totalPardonedCents = entries
+    .filter((entry) => entry.pardonDate && dateKey(entry.pardonDate) >= selectedMonthKey && dateKey(entry.pardonDate) <= selectedMonthEnd)
+    .reduce((sum, entry) => sum + Math.max(0, cents(entry.pardonedAmount)), 0);
   const openingBalanceCents = resolveOpeningBalanceCents({ allocations, entries, items, month, staff, year });
   const externalMoneyCents = monthItems(items, 'external_money', selectedMonthKey)
     .reduce((sum, item) => sum + cents(item.amount), 0);
   const expenditureCents = monthItems(items, 'expenditure', selectedMonthKey)
     .reduce((sum, item) => sum + cents(item.amount), 0);
   const weeklyTotals = summarizeWeeklyFinancialTotals({ allocations, entries, month, staff, year });
-  const calculatedClosingBalanceCents = openingBalanceCents + externalMoneyCents + weeklyTotals.paidCents - expenditureCents;
+  const calculatedClosingBalanceCents = openingBalanceCents + externalMoneyCents + weeklyTotals.paidCents - expenditureCents - totalPardonedCents;
 
   return {
     calculatedClosingBalance: moneyText(calculatedClosingBalanceCents),
@@ -396,6 +429,8 @@ export function calculateOffenceBookFinancialSummary({
     openingBalanceCents,
     totalPaid: moneyText(weeklyTotals.paidCents),
     totalPaidCents: weeklyTotals.paidCents,
+    totalPardoned: moneyText(totalPardonedCents),
+    totalPardonedCents,
     totalPenalty: moneyText(weeklyTotals.penaltyCents),
     totalPenaltyCents: weeklyTotals.penaltyCents,
     totalUnpaid: moneyText(weeklyTotals.unpaidCents),
@@ -511,6 +546,7 @@ export async function buildOffenceBookWorkbookFromData({
       entries.filter((entry) => entry.staffId === member.id),
       paidByEntry,
       (entry) => dateKey(entry.date) <= selectedMonthEnd,
+      selectedMonthEnd,
     ));
   }
 
@@ -542,21 +578,24 @@ export async function buildOffenceBookWorkbookFromData({
 
       let rowPenaltyCents = 0;
       let rowPaidCents = 0;
+      let rowPardonedCents = 0;
       for (const date of weekDates) {
         const column = dateColumn(date);
         if (!column) continue;
         const dayEntries = selectedEntriesByStaffDate.get(`${member.id}:${date}`) || [];
         const dayPenaltyCents = dayEntries.reduce((sum, entry) => sum + entryAmountCents(entry), 0);
         const dayPaidCents = dayEntries.reduce((sum, entry) => sum + entryPaidCents(entry, paidByEntry), 0);
+        const dayPardonedCents = dayEntries.reduce((sum, entry) => sum + entryPardonedCents(entry, paidByEntry, selectedMonthEnd), 0);
 
         rowPenaltyCents += dayPenaltyCents;
         rowPaidCents += dayPaidCents;
-        setAmountCell(worksheet.getCell(row, column), dayPenaltyCents, dayPenaltyCents > 0 && dayPaidCents >= dayPenaltyCents);
+        rowPardonedCents += dayPardonedCents;
+        setAmountCell(worksheet.getCell(row, column), dayPenaltyCents, dayPenaltyCents > 0 && dayPaidCents + dayPardonedCents >= dayPenaltyCents);
       }
 
-      const rowUnpaidCents = Math.max(0, rowPenaltyCents - rowPaidCents);
+      const rowUnpaidCents = Math.max(0, rowPenaltyCents - rowPaidCents - rowPardonedCents);
       writeFormula(worksheet.getCell(row, TOTAL_COLUMN), `SUM(D${row}:I${row})`, rowPenaltyCents);
-      worksheet.getCell(row, STATUS_COLUMN).value = paymentStatus(rowPenaltyCents, rowPaidCents, rowUnpaidCents);
+      worksheet.getCell(row, STATUS_COLUMN).value = paymentStatus(rowPenaltyCents, rowPaidCents, rowUnpaidCents, rowPardonedCents);
       setAmountCell(worksheet.getCell(row, PAID_COLUMN), rowPaidCents);
       writeFormula(worksheet.getCell(row, UNPAID_COLUMN), `J${row}-M${row}`, rowUnpaidCents);
 
@@ -586,7 +625,10 @@ export async function buildOffenceBookWorkbookFromData({
   const totalPenaltyCents = weeklyTotals.reduce((sum, week) => sum + week.penaltyCents, 0);
   const totalPaidCents = weeklyTotals.reduce((sum, week) => sum + week.paidCents, 0);
   const totalUnpaidCents = weeklyTotals.reduce((sum, week) => sum + week.unpaidCents, 0);
-  const calculatedClosingBalanceCents = openingBalanceCents + externalMoneyCents + totalPaidCents - expenditureCents;
+  const totalPardonedCents = entries
+    .filter((entry) => entry.pardonDate && dateKey(entry.pardonDate) >= selectedMonthKey && dateKey(entry.pardonDate) <= selectedMonthEnd)
+    .reduce((sum, entry) => sum + Math.max(0, cents(entry.pardonedAmount)), 0);
+  const calculatedClosingBalanceCents = openingBalanceCents + externalMoneyCents + totalPaidCents - expenditureCents - totalPardonedCents;
 
   worksheet.getCell('P5').value = money(openingBalanceCents);
   worksheet.getCell('P5').numFmt = '#,##0.00';
@@ -601,6 +643,9 @@ export async function buildOffenceBookWorkbookFromData({
   writeFormula(worksheet.getCell('P15'), cellRangeFormula('J', WEEK_BLOCK_TITLE_ROWS.map((row) => row + 19)), totalPenaltyCents);
   writeFormula(worksheet.getCell('P18'), cellRangeFormula('M', WEEK_BLOCK_TITLE_ROWS.map((row) => row + 19)), totalPaidCents);
   writeFormula(worksheet.getCell('P23'), cellRangeFormula('N', WEEK_BLOCK_TITLE_ROWS.map((row) => row + 19)), totalUnpaidCents);
+  worksheet.getCell('P24').value = 'TOTAL PARDONED';
+  worksheet.getCell('Q24').value = money(totalPardonedCents);
+  worksheet.getCell('Q24').numFmt = '#,##0.00';
 
   for (const [index, row] of EXPENDITURE_ROWS.entries()) {
     const item = expenditureItems[index];
@@ -609,9 +654,9 @@ export async function buildOffenceBookWorkbookFromData({
     worksheet.getCell(row, 19).numFmt = '#,##0.00';
   }
   writeFormula(worksheet.getCell('S15'), 'SUM(S6:S14)', expenditureCents);
-  writeFormula(worksheet.getCell('T5'), 'SUM(P5,P12,P15)-S15', openingBalanceCents + externalMoneyCents + totalPenaltyCents - expenditureCents);
+  writeFormula(worksheet.getCell('T5'), 'SUM(P5,P12,P15)-S15-Q24', openingBalanceCents + externalMoneyCents + totalPenaltyCents - expenditureCents - totalPardonedCents);
   writeFormula(worksheet.getCell('T8'), 'SUM(P5,P12,P18)', openingBalanceCents + externalMoneyCents + totalPaidCents);
-  writeFormula(worksheet.getCell('T11'), 'SUM(P5,P12,P18)-S15', calculatedClosingBalanceCents);
+  writeFormula(worksheet.getCell('T11'), 'SUM(P5,P12,P18)-S15-Q24', calculatedClosingBalanceCents);
 
   const owedHighlightNameStyle = cloneStyle(worksheet.getCell('P27').style);
   const owedHighlightAmountStyle = cloneStyle(worksheet.getCell('Q27').style);

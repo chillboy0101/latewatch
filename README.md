@@ -258,9 +258,57 @@ npm run clerk:sessions:cleanup              # Revoke stale staff sessions (dry r
 npm run cronjob-org:reminders               # Register the reminder cron jobs
 npm run penalties:recalculate               # ⚠ Recompute penalties for regular staff
 npm run no-signout:repair-waivers           # ⚠ Repair no-sign-out waivers
+npm run lateness-debt:pardon                # ⚠ Pardon outstanding historical lateness debt (dry run by default)
 npm run attendance:repair-retroactive-no-show   # ⚠ Backfill no-show sign-in penalties
 npm run no-show:correct-amount              # ⚠ Correct no-show penalty amounts
 ```
+
+### Executive lateness-debt pardon
+
+`drizzle/0030_lateness_debt_pardon.sql` adds an immutable pardon event and per-entry audit
+snapshot. The pardon applies only to unpaid lateness-related penalties represented by entries
+that exist at apply time. It includes active, inactive, archived, and attendance-only staff.
+It does not alter penalties, payment receipts, allocations, contributions, or offence-book cash
+items. Future entries continue to use the regular penalty and payment rules.
+
+Before previewing, back up the production database and complete attendance-to-penalty
+reconciliation through the intended cutoff using the normal application process. The pardon
+script deliberately does not run sync or recalculation: those paths can update or delete
+historical entries, and deletion can cascade to payment allocations. Schedule a quiet period so
+no attendance, penalty, or payment changes occur between final review and apply.
+
+After the migration is reviewed and applied through the normal database release process, run a
+read-only preview against the intended database:
+
+```bash
+npm run lateness-debt:pardon -- \
+  --reason "Executive debt pardon, order REFERENCE" \
+  --operator-email "operator@example.com" \
+  --idempotency-key "executive-pardon-2026-09-28"
+```
+
+Review the full account breakdown, including archived/inactive/attendance-only flags, affected
+entry count, penalty total, previously allocated payments, pardon total, and snapshot hash.
+Compare these figures with an independent database export/reconciliation and obtain accounting
+sign-off. A dry run never writes to the database.
+
+Only after that review, re-run with the same metadata and hash:
+
+```bash
+npm run lateness-debt:pardon -- \
+  --reason "Executive debt pardon, order REFERENCE" \
+  --operator-email "operator@example.com" \
+  --idempotency-key "executive-pardon-2026-09-28" \
+  --expected-snapshot-hash "HASH_FROM_REVIEWED_PREVIEW" \
+  --apply --confirm-pardon
+```
+
+Apply rechecks the exact entry snapshot inside the same atomic statement that writes the pardon,
+entry details, and system audit event. A changed snapshot aborts without applying. Reusing the
+idempotency key with matching metadata is a no-op; using it with different metadata is rejected.
+Afterward, reconcile per staff and entry, confirm balances are zero for pardoned entries, verify
+payments and allocations are unchanged, and confirm new penalties remain outstanding and
+payable. Never run apply against production before reviewing its migration and dry-run totals.
 
 ---
 

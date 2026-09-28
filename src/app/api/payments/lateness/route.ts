@@ -2,11 +2,11 @@ import { currentUser } from '@clerk/nextjs/server';
 import { and, asc, eq, gte, inArray, lte } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { latenessEntry, latenessPayment, latenessPaymentAllocation, staff } from '@/db/schema';
+import { latenessDebtPardonEntry, latenessEntry, latenessPayment, latenessPaymentAllocation, staff } from '@/db/schema';
 import { getAccraDateKey } from '@/lib/date-key';
 import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 import { sendLatenessPaymentReceiptPush } from '@/lib/lateness-payment-receipt-push';
-import { allocateLatenessPayment, getWeekBoundsForDate, summarizeLatenessPaymentEntries } from '@/lib/lateness-payments';
+import { allocateLatenessPayment, getWeekBoundsForDate, summarizeLatenessPaymentEntries, type LatenessPaymentEntryLike } from '@/lib/lateness-payments';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 
@@ -129,12 +129,24 @@ export async function GET(request: NextRequest) {
 
     const penaltyEntries = entryRows.filter((entry) => Number(entry.computedAmount || 0) > 0);
     const allocations = await getAllocationsForEntries(penaltyEntries.map((entry) => entry.id));
+    const pardonRows = penaltyEntries.length === 0
+      ? []
+      : await db.select({
+        entryId: latenessDebtPardonEntry.entryId,
+        forgivenAmount: latenessDebtPardonEntry.forgivenAmount,
+      })
+        .from(latenessDebtPardonEntry)
+        .where(inArray(latenessDebtPardonEntry.entryId, penaltyEntries.map((entry) => entry.id)));
+    const pardonsByEntryId = new Map(pardonRows.map((pardon) => [pardon.entryId, pardon.forgivenAmount]));
     const allocationsByStaff = new Map<string, typeof allocations>();
-    const entriesByStaff = new Map<string, typeof penaltyEntries>();
+    const entriesByStaff = new Map<string, LatenessPaymentEntryLike[]>();
 
     for (const entry of penaltyEntries) {
       const list = entriesByStaff.get(entry.staffId) || [];
-      list.push(entry);
+      const forgivenAmount = pardonsByEntryId.get(entry.id);
+      list.push(forgivenAmount == null
+        ? entry
+        : { ...entry, isPardoned: true, pardonedAmount: forgivenAmount });
       entriesByStaff.set(entry.staffId, list);
     }
 
@@ -232,12 +244,27 @@ export async function POST(request: NextRequest) {
     const entries = await getWeekEntries({ entryId, hasDateFilter, staffId, weekEnd, weekStart });
     const penaltyEntries = entries.filter((entry) => Number(entry.computedAmount || 0) > 0);
     const existingAllocations = await getAllocationsForEntries(penaltyEntries.map((entry) => entry.id));
+    const pardonRows = penaltyEntries.length === 0
+      ? []
+      : await db.select({
+        entryId: latenessDebtPardonEntry.entryId,
+        forgivenAmount: latenessDebtPardonEntry.forgivenAmount,
+      })
+        .from(latenessDebtPardonEntry)
+        .where(inArray(latenessDebtPardonEntry.entryId, penaltyEntries.map((entry) => entry.id)));
+    const pardonsByEntryId = new Map(pardonRows.map((pardon) => [pardon.entryId, pardon.forgivenAmount]));
+    const payableEntries = penaltyEntries.map((entry) => {
+      const forgivenAmount = pardonsByEntryId.get(entry.id);
+      return forgivenAmount == null
+        ? entry
+        : { ...entry, isPardoned: true, pardonedAmount: forgivenAmount };
+    });
     let allocationPlan: ReturnType<typeof allocateLatenessPayment>;
 
     try {
       allocationPlan = allocateLatenessPayment({
         amount,
-        entries: penaltyEntries,
+        entries: payableEntries,
         existingAllocations,
         entryId,
       });
@@ -247,12 +274,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: message }, { status });
     }
 
-    const dateByEntryId = new Map(penaltyEntries.map((entry) => [entry.id, entry.date]));
+    const dateByEntryId = new Map(payableEntries.map((entry) => [entry.id, entry.date]));
     const allocatedDates = allocationPlan.allocations
       .map((allocation) => dateByEntryId.get(allocation.entryId))
       .filter((date): date is string => Boolean(date))
       .sort();
-    const fallbackDate = penaltyEntries[0]?.date || new Date().toISOString().slice(0, 10);
+    const fallbackDate = payableEntries[0]?.date || new Date().toISOString().slice(0, 10);
     const firstPaymentDate = allocatedDates[0] || fallbackDate;
     const lastPaymentDate = allocatedDates[allocatedDates.length - 1] || firstPaymentDate;
     const firstPaymentWeek = getWeekBoundsForDate(firstPaymentDate);

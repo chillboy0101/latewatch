@@ -160,6 +160,38 @@ test('offence book financial summary exposes the calculated closing balance for 
   assert.equal(summary.closingBalance, '990.00');
 });
 
+test('offence book subtracts pardoned debt without counting it as cash received', () => {
+  const beforePardon = calculateOffenceBookFinancialSummary({
+    allocations,
+    entries: [
+      { ...entries[0], pardonDate: '2026-05-15', pardonedAmount: '10.00' },
+      ...entries.slice(1),
+    ],
+    items,
+    month: 3,
+    staff,
+    year: 2026,
+  });
+  const summary = calculateOffenceBookFinancialSummary({
+    allocations,
+    entries: [
+      { ...entries[0], pardonDate: '2026-05-15', pardonedAmount: '10.00' },
+      ...entries.slice(1),
+    ],
+    items,
+    month: 4,
+    staff,
+    year: 2026,
+  });
+
+  assert.equal(summary.totalPardoned, '10.00');
+  assert.equal(summary.totalPaid, '30.00');
+  assert.equal(beforePardon.totalPardoned, '0.00');
+  assert.equal(beforePardon.totalUnpaid, '10.00');
+  assert.equal(summary.openingBalance, '10.00');
+  assert.equal(summary.calculatedClosingBalance, '980.00');
+});
+
 test('offence book financial summary ignores a stray closing_balance item — closing balance is always calculated', () => {
   const summary = calculateOffenceBookFinancialSummary({
     allocations,

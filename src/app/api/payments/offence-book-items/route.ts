@@ -2,7 +2,7 @@ import { currentUser } from '@clerk/nextjs/server';
 import { and, asc, eq, inArray, lt, lte } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { latenessEntry, latenessPaymentAllocation, offenceBookItem, staff } from '@/db/schema';
+import { latenessDebtPardon, latenessDebtPardonEntry, latenessEntry, latenessPaymentAllocation, offenceBookItem, staff } from '@/db/schema';
 import { getAccraClock } from '@/lib/attendance';
 import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 import { writeAuditEvent } from '@/lib/audit';
@@ -213,11 +213,26 @@ async function loadFinancialSummary(input: { month: number; monthKey: string; ye
     })
       .from(latenessPaymentAllocation)
       .where(inArray(latenessPaymentAllocation.entryId, entryIds));
+  const pardonRows = entryIds.length === 0
+    ? []
+    : await db.select({
+      entryId: latenessDebtPardonEntry.entryId,
+      forgivenAmount: latenessDebtPardonEntry.forgivenAmount,
+      pardonDate: latenessDebtPardon.cutoffDate,
+    })
+      .from(latenessDebtPardonEntry)
+      .innerJoin(latenessDebtPardon, eq(latenessDebtPardonEntry.pardonId, latenessDebtPardon.id))
+      .where(inArray(latenessDebtPardonEntry.entryId, entryIds));
+  const pardonsByEntryId = new Map(pardonRows.map((pardon) => [pardon.entryId, pardon]));
 
   const allocations = allocationRows;
   const entries = entryRows.map((entry) => ({
     ...entry,
     date: normalizeDateKey(entry.date),
+    pardonDate: pardonsByEntryId.get(entry.id)?.pardonDate
+      ? normalizeDateKey(pardonsByEntryId.get(entry.id)!.pardonDate)
+      : null,
+    pardonedAmount: pardonsByEntryId.get(entry.id)?.forgivenAmount || '0.00',
   }));
   const items = itemRows.map((item) => ({
     amount: item.amount,

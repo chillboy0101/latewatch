@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, lte } from 'drizzle-orm';
 import { endOfMonth, format, startOfMonth } from 'date-fns';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { latenessEntry, latenessPaymentAllocation, offenceBookItem, staff } from '@/db/schema';
+import { latenessDebtPardon, latenessDebtPardonEntry, latenessEntry, latenessPaymentAllocation, offenceBookItem, staff } from '@/db/schema';
 import { getAccraClock } from '@/lib/attendance';
 import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 import { getAuditActor, tryWriteAuditEvent } from '@/lib/audit';
@@ -85,6 +85,17 @@ export async function buildOffenceBookExportWorkbook(input: {
     })
       .from(latenessPaymentAllocation)
       .where(inArray(latenessPaymentAllocation.entryId, entryIds));
+  const pardonRows = entryIds.length === 0
+    ? []
+    : await db.select({
+      entryId: latenessDebtPardonEntry.entryId,
+      forgivenAmount: latenessDebtPardonEntry.forgivenAmount,
+      pardonDate: latenessDebtPardon.cutoffDate,
+    })
+      .from(latenessDebtPardonEntry)
+      .innerJoin(latenessDebtPardon, eq(latenessDebtPardonEntry.pardonId, latenessDebtPardon.id))
+      .where(inArray(latenessDebtPardonEntry.entryId, entryIds));
+  const pardonsByEntryId = new Map(pardonRows.map((pardon) => [pardon.entryId, pardon]));
 
   const itemRows = await db.select({
     amount: offenceBookItem.amount,
@@ -102,6 +113,10 @@ export async function buildOffenceBookExportWorkbook(input: {
     entries: entryRows.map((entry) => ({
       ...entry,
       date: normalizeDateKey(entry.date),
+      pardonDate: pardonsByEntryId.get(entry.id)?.pardonDate
+        ? normalizeDateKey(pardonsByEntryId.get(entry.id)!.pardonDate)
+        : null,
+      pardonedAmount: pardonsByEntryId.get(entry.id)?.forgivenAmount || '0.00',
     })),
     items: itemRows.map((item) => ({
       ...item,

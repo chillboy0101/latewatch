@@ -31,6 +31,7 @@ export const staffRelations = relations(staff, ({ many }) => ({
   devices: many(staffDevice),
   emergencyContacts: many(emergencyContact),
   entries: many(latenessEntry),
+  latenessDebtPardons: many(latenessDebtPardonEntry),
   latenessPayments: many(latenessPayment),
   leavePeriods: many(staffLeavePeriod),
 }));
@@ -112,6 +113,7 @@ export const latenessEntry = pgTable('lateness_entry', {
 ]);
 
 export const latenessEntryRelations = relations(latenessEntry, ({ many, one }) => ({
+  debtPardons: many(latenessDebtPardonEntry),
   paymentAllocations: many(latenessPaymentAllocation),
   staff: one(staff, {
     fields: [latenessEntry.staffId],
@@ -163,6 +165,60 @@ export const latenessPaymentAllocationRelations = relations(latenessPaymentAlloc
   payment: one(latenessPayment, {
     fields: [latenessPaymentAllocation.paymentId],
     references: [latenessPayment.id],
+  }),
+}));
+
+export const latenessDebtPardon = pgTable('lateness_debt_pardon', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  cutoffAt: timestamp('cutoff_at', { withTimezone: true }).notNull(),
+  cutoffDate: date('cutoff_date').notNull(),
+  reason: text('reason').notNull(),
+  actorUserId: text('actor_user_id'),
+  actorEmail: text('actor_email').notNull(),
+  idempotencyKey: text('idempotency_key').notNull(),
+  snapshotHash: text('snapshot_hash').notNull(),
+  entryCount: integer('entry_count').notNull(),
+  staffCount: integer('staff_count').notNull(),
+  originalPenaltyTotal: decimal('original_penalty_total', { precision: 12, scale: 2 }).notNull(),
+  paidTotal: decimal('paid_total', { precision: 12, scale: 2 }).notNull(),
+  pardonedTotal: decimal('pardoned_total', { precision: 12, scale: 2 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  unique().on(table.idempotencyKey),
+  index('lateness_debt_pardon_cutoff_idx').on(table.cutoffDate),
+]);
+
+export const latenessDebtPardonEntry = pgTable('lateness_debt_pardon_entry', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  pardonId: uuid('pardon_id').notNull().references(() => latenessDebtPardon.id, { onDelete: 'restrict' }),
+  entryId: uuid('entry_id').notNull().references(() => latenessEntry.id, { onDelete: 'restrict' }),
+  staffId: uuid('staff_id').notNull().references(() => staff.id, { onDelete: 'restrict' }),
+  entryDate: date('entry_date').notNull(),
+  penaltyAmount: decimal('penalty_amount', { precision: 10, scale: 2 }).notNull(),
+  paidAmount: decimal('paid_amount', { precision: 10, scale: 2 }).notNull(),
+  forgivenAmount: decimal('forgiven_amount', { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  unique().on(table.entryId),
+  index('lateness_debt_pardon_entry_staff_date_idx').on(table.staffId, table.entryDate),
+]);
+
+export const latenessDebtPardonRelations = relations(latenessDebtPardon, ({ many }) => ({
+  entries: many(latenessDebtPardonEntry),
+}));
+
+export const latenessDebtPardonEntryRelations = relations(latenessDebtPardonEntry, ({ one }) => ({
+  entry: one(latenessEntry, {
+    fields: [latenessDebtPardonEntry.entryId],
+    references: [latenessEntry.id],
+  }),
+  pardon: one(latenessDebtPardon, {
+    fields: [latenessDebtPardonEntry.pardonId],
+    references: [latenessDebtPardon.id],
+  }),
+  staff: one(staff, {
+    fields: [latenessDebtPardonEntry.staffId],
+    references: [staff.id],
   }),
 }));
 

@@ -104,6 +104,30 @@ test('lateness payment summaries calculate paid status and outstanding balance',
   assert.equal(getLatenessPaymentStatus(15, 0), 'unpaid');
 });
 
+test('pardoned entries stay settled after recalculation and future penalties remain payable', () => {
+  const recalculatedEntries = [
+    { ...entries[0], computedAmount: '12.00', isPardoned: true, pardonedAmount: '10.00' },
+    { ...entries[1], computedAmount: '15.00' },
+  ];
+  const summaries = summarizeLatenessPaymentEntries({
+    entries: recalculatedEntries,
+    allocations: [],
+  });
+
+  assert.equal(summaries[0].outstandingAmount, '0.00');
+  assert.equal(summaries[0].pardonedAmount, '10.00');
+  assert.equal(summaries[0].status, 'pardoned');
+  assert.equal(summaries[1].outstandingAmount, '15.00');
+  assert.equal(summaries[1].status, 'unpaid');
+
+  const allocation = allocateLatenessPayment({
+    amount: 5,
+    entries: recalculatedEntries,
+    existingAllocations: [],
+  });
+  assert.deepEqual(allocation.allocations, [{ amount: '5.00', entryId: 'entry-b' }]);
+});
+
 test('lateness payment receipt numbers are stable and date-based', () => {
   assert.equal(
     getLatenessPaymentReceiptNumber('123e4567-e89b-12d3-a456-426614174000', '2026-05-29T10:20:00.000Z'),

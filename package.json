@@ -15,6 +15,7 @@
     "cronjob-org:reminders": "node scripts/setup-cron-job-org-reminders.mjs",
     "penalties:recalculate": "node scripts/recalculate-regular-staff-penalties.mjs",
     "no-signout:repair-waivers": "node scripts/repair-no-signout-waivers.mjs",
+    "lateness-debt:pardon": "node scripts/pardon-lateness-debt.mjs",
     "attendance:repair-retroactive-no-show": "node scripts/repair-retroactive-no-show-sign-in-penalties.mjs",
     "no-show:correct-amount": "node scripts/correct-no-show-sign-in-amount.mjs"
   },

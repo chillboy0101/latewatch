@@ -89,7 +89,7 @@ interface CheckInStatus {
   workdayStartLabel: string;
 }
 
-type PenaltyPaymentStatus = 'paid' | 'partially_paid' | 'unpaid';
+type PenaltyPaymentStatus = 'paid' | 'partially_paid' | 'unpaid' | 'pardoned';
 
 interface PushReminderStatus {
   configured: boolean;
@@ -107,6 +107,7 @@ interface PenaltyHistoryEntry {
   date: string;
   entryId: string;
   outstandingAmount: string;
+  pardonedAmount: string;
   paidAmount: string;
   penaltyAmount: string;
   reason: string | null;
@@ -494,6 +495,7 @@ function ghc(value: string | number | null | undefined) {
 function paymentStatusLabel(status: PenaltyPaymentStatus) {
   if (status === 'paid') return 'Paid';
   if (status === 'partially_paid') return 'Partially paid';
+  if (status === 'pardoned') return 'Pardoned';
   return 'Unpaid';
 }
 
@@ -1586,13 +1588,15 @@ function PenaltyHistoryEntries({ emptyLabel, entries }: { emptyLabel: string; en
               entry.status === 'paid' && 'border-success/25 bg-success/10 text-success',
               entry.status === 'partially_paid' && 'border-warning/25 bg-warning/10 text-warning',
               entry.status === 'unpaid' && 'border-danger/25 bg-danger/10 text-danger',
+              entry.status === 'pardoned' && 'border-success/25 bg-success/10 text-success',
             )}>
               {paymentStatusLabel(entry.status)}
             </span>
           </div>
-          <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
             <PenaltyHistoryStat label="Penalty" value={ghc(entry.penaltyAmount)} />
             <PenaltyHistoryStat label="Paid" value={ghc(entry.paidAmount)} />
+            <PenaltyHistoryStat label="Pardoned" value={ghc(entry.pardonedAmount)} />
             <PenaltyHistoryStat label="Balance" value={ghc(entry.outstandingAmount)} highlight />
           </div>
         </div>
