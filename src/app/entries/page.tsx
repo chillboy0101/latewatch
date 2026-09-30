@@ -148,6 +148,7 @@ function EntriesPageContent() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [originalEntrySnapshots, setOriginalEntrySnapshots] = useState<Record<string, EntrySnapshot>>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [isHoliday, setIsHoliday] = useState(false);
   const [holidayName, setHolidayName] = useState('');
@@ -166,6 +167,12 @@ function EntriesPageContent() {
         fetch(`/api/calendar?start=${selectedDateKey}&end=${selectedDateKey}`, { cache: 'no-store' }),
         fetch(`/api/entries?date=${selectedDateKey}`, { cache: 'no-store' }),
       ]);
+
+      const failedResponse = [staffResponse, calendarResponse, entriesResponse].find((response) => !response.ok);
+      if (failedResponse) {
+        const errorData = await failedResponse.json().catch(() => null);
+        throw new Error(errorData?.error || `Could not load entries (${failedResponse.status})`);
+      }
 
       const [staffData, calendarData, entriesData] = await Promise.all([
         staffResponse.json(),
@@ -208,8 +215,10 @@ function EntriesPageContent() {
       setOriginalEntrySnapshots(Object.fromEntries(
         mergedEntries.map((entry) => [entry.staffId, snapshotEntry(entry)]),
       ));
+      setLoadError(null);
     } catch (error) {
       console.error('Failed to fetch data:', error);
+      setLoadError(error instanceof Error ? error.message : 'Failed to load entries');
     } finally {
       setLoading(false);
     }
@@ -581,6 +590,26 @@ function EntriesPageContent() {
           label="Loading entries"
           description="Checking staff, holidays, and saved records."
         />
+      </DashboardLayout>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <DashboardLayout title="Entries">
+        <div role="alert" className="flex flex-col items-start gap-3 rounded-md border border-danger/30 bg-danger/10 p-5 text-danger sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <p className="font-medium">Entries could not be loaded</p>
+              <p className="mt-1 text-sm">{loadError}</p>
+            </div>
+          </div>
+          <Button variant="outline" onClick={() => void fetchStaffAndEntries()}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Retry
+          </Button>
+        </div>
       </DashboardLayout>
     );
   }

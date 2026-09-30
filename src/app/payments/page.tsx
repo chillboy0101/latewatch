@@ -185,6 +185,7 @@ export default function PenaltyPaymentsPage() {
   const [message, setMessage] = useState<{ text: string; type: 'error' | 'success' } | null>(null);
   const [offenceBookMonth, setOffenceBookMonth] = useState(new Date().getMonth());
   const [offenceBookYear, setOffenceBookYear] = useState(new Date().getFullYear());
+  const [loadedOffenceBookKey, setLoadedOffenceBookKey] = useState<string | null>(null);
   const [offenceBookLoading, setOffenceBookLoading] = useState(true);
   const [offenceBookSaving, setOffenceBookSaving] = useState(false);
   const [offenceBookMessage, setOffenceBookMessage] = useState<{ text: string; type: 'error' | 'success' } | null>(null);
@@ -222,6 +223,7 @@ export default function PenaltyPaymentsPage() {
 
   const loadOffenceBookItems = useCallback(async () => {
     setOffenceBookLoading(true);
+    setLoadedOffenceBookKey(null);
     setOffenceBookMessage(null);
 
     const timeout = AbortSignal.timeout(20_000);
@@ -239,13 +241,9 @@ export default function PenaltyPaymentsPage() {
       setOpeningBalance(body.openingBalance || body.carriedOpeningBalance || '');
       setClosingBalance(body.closingBalance || body.calculatedClosingBalance || '');
       setPaymentsCollected(body.paymentsCollected || '0.00');
+      setLoadedOffenceBookKey(`${offenceBookYear}-${offenceBookMonth}`);
     } catch (error) {
       console.error('Failed to load offence book inputs:', error);
-      setOpeningBalance('');
-      setClosingBalance('');
-      setPaymentsCollected('0.00');
-      setExternalMoneyDrafts([createOffenceBookDraftItem()]);
-      setExpenditureDrafts([createOffenceBookDraftItem()]);
       const text = error instanceof Error && error.name === 'TimeoutError'
         ? 'Loading offence book inputs timed out. Please try again.'
         : error instanceof Error ? error.message : 'Could not load offence book inputs';
@@ -470,6 +468,8 @@ export default function PenaltyPaymentsPage() {
   }
 
   const manualAmount = moneyNumber(amount);
+  const offenceBookReady = !offenceBookLoading
+    && loadedOffenceBookKey === `${offenceBookYear}-${offenceBookMonth}`;
 
   return (
     <DashboardLayout title="Payments">
@@ -533,7 +533,7 @@ export default function PenaltyPaymentsPage() {
                       className="cursor-default select-none"
                       placeholder="0.00"
                       inputMode="decimal"
-                      disabled={offenceBookLoading || offenceBookSaving}
+                      disabled={!offenceBookReady || offenceBookSaving}
                     />
                   </div>
                   <div>
@@ -546,7 +546,7 @@ export default function PenaltyPaymentsPage() {
                       className="cursor-default select-none"
                       placeholder="0.00"
                       inputMode="decimal"
-                      disabled={offenceBookLoading || offenceBookSaving}
+                      disabled={!offenceBookReady || offenceBookSaving}
                     />
                   </div>
                   <div>
@@ -559,7 +559,7 @@ export default function PenaltyPaymentsPage() {
                       className="cursor-default select-none"
                       placeholder="0.00"
                       inputMode="decimal"
-                      disabled={offenceBookLoading || offenceBookSaving}
+                      disabled={!offenceBookReady || offenceBookSaving}
                     />
                   </div>
                 </div>
@@ -567,7 +567,7 @@ export default function PenaltyPaymentsPage() {
               <Button
                 type="button"
                 className="h-10 gap-2"
-                disabled={offenceBookLoading || offenceBookSaving}
+                disabled={!offenceBookReady || offenceBookSaving}
                 onClick={saveOffenceBookItems}
               >
                 {offenceBookSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -580,7 +580,7 @@ export default function PenaltyPaymentsPage() {
             <OffenceBookInputSection
               addLabel="Add source"
               amountLabel="Amount"
-              disabled={offenceBookLoading || offenceBookSaving}
+              disabled={!offenceBookReady || offenceBookSaving}
               label="External Money"
               labelPlaceholder="Source"
               limit={offenceBookLimits.externalMoney}
@@ -592,7 +592,7 @@ export default function PenaltyPaymentsPage() {
             <OffenceBookInputSection
               addLabel="Add item"
               amountLabel="Amount"
-              disabled={offenceBookLoading || offenceBookSaving}
+              disabled={!offenceBookReady || offenceBookSaving}
               label="Expenditure"
               labelPlaceholder="Item"
               limit={offenceBookLimits.expenditure}

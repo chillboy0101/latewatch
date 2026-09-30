@@ -20,6 +20,7 @@ function createTable(name, columns) {
 const fixture = {
   attendancePermission: [],
   attendanceRecord: [],
+  latenessDebtPardonEntry: [],
   latenessEntry: [],
   staff: [],
   workCalendar: [],
@@ -57,6 +58,7 @@ function resetFixture() {
     },
   ];
   fixture.latenessEntry = [];
+  fixture.latenessDebtPardonEntry = [];
   fixture.workCalendar = [];
   fixture.staff = [
     {
@@ -125,7 +127,7 @@ function attendanceRowsForCondition(condition) {
 function rowsForTable(tableName, condition) {
   const { end, start } = collectDateBounds(condition);
   return fixture[tableName]
-    .filter((row) => !row.date || rowInRange(row, start, end))
+    .filter((row) => !(row.date || row.entryDate) || rowInRange({ date: row.date || row.entryDate }, start, end))
     .map(cloneRow);
 }
 
@@ -135,6 +137,9 @@ const fakeDb = {
       where(condition) {
         if (table.__table !== 'latenessEntry') throw new Error(`Unexpected delete table: ${table.__table}`);
         const id = eqIdFromCondition(condition);
+        if (fixture.latenessDebtPardonEntry.some((row) => row.entryId === id)) {
+          throw Object.assign(new Error('Foreign key violation: pardon entry restricts deletion'), { code: '23503' });
+        }
         fixture.latenessEntry = id
           ? fixture.latenessEntry.filter((row) => row.id !== id)
           : [];
@@ -201,6 +206,7 @@ const fakeDb = {
 
 const schema = {
   attendancePermission: createTable('attendancePermission', ['date', 'staffId', 'status']),
+  latenessDebtPardonEntry: createTable('latenessDebtPardonEntry', ['entryDate', 'entryId']),
   attendanceRecord: createTable('attendanceRecord', [
     'checkInTime',
     'computedAmount',
@@ -286,6 +292,32 @@ test('sync deletes an existing positive lateness entry when a general pardon cle
   assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
   assert.equal(fixture.attendanceRecord[0].status, 'present');
   assert.match(fixture.attendanceRecord[0].reason, /general pardon/);
+});
+
+test('sync zeros a pardon-linked entry instead of violating its restrictive foreign key', async () => {
+  resetFixture();
+  fixture.latenessEntry = [
+    {
+      id: 'entry-1',
+      arrivalTime: '09:12:00',
+      computedAmount: '15.00',
+      date: '2026-05-15',
+      didNotSignOut: false,
+      reason: "DIDN'T COME BEFORE 8:30AM",
+      staffId: 'staff-1',
+    },
+  ];
+  fixture.latenessDebtPardonEntry = [
+    { entryDate: '2026-05-15', entryId: 'entry-1' },
+  ];
+
+  await syncLatenessEntriesFromAttendanceForDate('2026-05-15');
+
+  assert.equal(fixture.latenessEntry.length, 1);
+  assert.equal(fixture.latenessEntry[0].computedAmount, '0.00');
+  assert.equal(fixture.latenessEntry[0].didNotSignOut, false);
+  assert.match(fixture.latenessEntry[0].reason, /general pardon/);
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
 });
 
 test('sync keeps only the no-sign-out amount for a late-only general pardon', async () => {

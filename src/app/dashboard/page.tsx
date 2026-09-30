@@ -5,11 +5,13 @@ import Link from 'next/link';
 import { addDays, startOfWeek } from 'date-fns';
 import {
   Activity,
+  AlertCircle,
   ClipboardList,
   DollarSign,
   Download,
   Eye,
   Plus,
+  RefreshCw,
   TrendingUp,
   Users,
 } from 'lucide-react';
@@ -49,15 +51,18 @@ interface DashboardStats {
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchDashboardData = useCallback(async () => {
     try {
       const res = await fetch('/api/dashboard', { cache: 'no-store' });
-      if (res.ok) {
-        setStats(await res.json());
-      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Dashboard request failed (${res.status})`);
+      setStats(data);
+      setLoadError(null);
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
+      setLoadError(error instanceof Error ? error.message : 'Failed to load dashboard data');
     } finally {
       setLoading(false);
     }
@@ -101,6 +106,26 @@ export default function DashboardPage() {
     );
   }
 
+  if (!stats) {
+    return (
+      <DashboardLayout title="Dashboard">
+        <div role="alert" className="flex flex-col items-start gap-3 rounded-md border border-danger/30 bg-danger/10 p-5 text-danger sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <p className="font-medium">Dashboard data could not be loaded</p>
+              <p className="mt-1 text-sm">{loadError || 'Please try again.'}</p>
+            </div>
+          </div>
+          <Button variant="outline" onClick={() => void fetchDashboardData()}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Retry
+          </Button>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   const weekRange = (() => {
     const today = new Date();
     const start = startOfWeek(today, { weekStartsOn: 1 });
@@ -119,6 +144,12 @@ export default function DashboardPage() {
   return (
     <DashboardLayout title="Dashboard">
       <div className="space-y-6">
+        {loadError && (
+          <div role="alert" className="flex items-center gap-3 rounded-md border border-warning/30 bg-warning/10 p-4 text-sm text-warning">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            Could not refresh dashboard data. Showing the last successful results.
+          </div>
+        )}
         <div className="grid gap-4 md:grid-cols-3">
           <StatCard
             title="Weekly Penalties"

@@ -2,7 +2,7 @@ import 'server-only';
 
 import { and, eq, gte, lte } from 'drizzle-orm';
 import { db } from '@/db';
-import { attendancePermission, attendanceRecord, latenessEntry, staff, workCalendar } from '@/db/schema';
+import { attendancePermission, attendanceRecord, latenessDebtPardonEntry, latenessEntry, staff, workCalendar } from '@/db/schema';
 import { getAccraClock, getHolidayForDate, isWeekendDate } from '@/lib/attendance';
 import { getObservedGhanaHolidayForDate, isSuppressedGhanaHolidayDate } from '@/lib/ghana-holidays';
 import { resolveManualPenalty } from '@/lib/manual-attendance-correction';
@@ -426,6 +426,13 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
   const existingRows = await db.select()
     .from(latenessEntry)
     .where(and(gte(latenessEntry.date, startDate), lte(latenessEntry.date, endDate)));
+  const pardonRows = await db.select({ entryId: latenessDebtPardonEntry.entryId })
+    .from(latenessDebtPardonEntry)
+    .where(and(
+      gte(latenessDebtPardonEntry.entryDate, startDate),
+      lte(latenessDebtPardonEntry.entryDate, endDate),
+    ));
+  const pardonedEntryIds = new Set(pardonRows.map((row) => row.entryId));
   const existingByStaffDate = new Map<string, typeof existingRows>();
   for (const entry of existingRows) {
     const key = rowKey(entry.staffId, normalizeDateKey(entry.date));
@@ -522,8 +529,21 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
 
     if (penalty.amount <= 0) {
       for (const staleEntry of existingEntriesForKey) {
-        await db.delete(latenessEntry).where(eq(latenessEntry.id, staleEntry.id));
-        deleted += 1;
+        if (pardonedEntryIds.has(staleEntry.id)) {
+          await db.update(latenessEntry)
+            .set({
+              arrivalTime,
+              computedAmount,
+              didNotSignOut: penalty.didNotSignOut,
+              reason,
+              updatedAt: new Date(),
+            })
+            .where(eq(latenessEntry.id, staleEntry.id));
+          updated += 1;
+        } else {
+          await db.delete(latenessEntry).where(eq(latenessEntry.id, staleEntry.id));
+          deleted += 1;
+        }
       }
       continue;
     }
@@ -585,8 +605,20 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     const computedAmount = amountText(penalty.amount);
 
     if (penalty.amount <= 0) {
-      await db.delete(latenessEntry).where(eq(latenessEntry.id, existing.id));
-      deleted += 1;
+      if (pardonedEntryIds.has(existing.id)) {
+        await db.update(latenessEntry)
+          .set({
+            computedAmount,
+            didNotSignOut: penalty.didNotSignOut,
+            reason: penalty.reason || existing.reason || 'Late arrival',
+            updatedAt: new Date(),
+          })
+          .where(eq(latenessEntry.id, existing.id));
+        updated += 1;
+      } else {
+        await db.delete(latenessEntry).where(eq(latenessEntry.id, existing.id));
+        deleted += 1;
+      }
       continue;
     }
 

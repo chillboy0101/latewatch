@@ -1,0 +1,17 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Read July 2026 offence-book records",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				"--input-type=module",
+				"-e",
+				"import dotenv from 'dotenv'; import { neon } from '@neondatabase/serverless'; dotenv.config({ path: '.env', quiet: true }); dotenv.config({ path: '.env.local', override: true, quiet: true }); const sql = neon(process.env.DATABASE_URL); const [july, comparison] = await Promise.all([sql`SELECT id::text, month_key::text, item_type, label, amount::text, display_order FROM offence_book_item WHERE month_key = make_date(2026, 7, 1) ORDER BY item_type, display_order`, sql`SELECT month_key::text, item_type, COUNT(*)::int AS row_count, SUM(amount)::numeric(12,2)::text AS amount_total FROM offence_book_item WHERE month_key >= make_date(2026, 6, 1) AND month_key < make_date(2026, 9, 1) GROUP BY month_key, item_type ORDER BY month_key, item_type`]); console.log(JSON.stringify({ july, juneToAugust: comparison }, null, 2));"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}
