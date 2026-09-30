@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { CheckCircle2, ExternalLink, Loader2, Plus, ReceiptText, Save, Search, Trash2 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
@@ -194,8 +194,13 @@ export default function PenaltyPaymentsPage() {
   const [paymentsCollected, setPaymentsCollected] = useState('0.00');
   const [externalMoneyDrafts, setExternalMoneyDrafts] = useState<OffenceBookDraftItem[]>(() => [createOffenceBookDraftItem()]);
   const [expenditureDrafts, setExpenditureDrafts] = useState<OffenceBookDraftItem[]>(() => [createOffenceBookDraftItem()]);
+  const paymentsRequestRef = useRef<Promise<void> | null>(null);
+  const offenceBookRequestRef = useRef<Promise<void> | null>(null);
 
   const loadPayments = useCallback(async () => {
+    if (paymentsRequestRef.current) return paymentsRequestRef.current;
+
+    const request = (async () => {
     setLoading(true);
     setMessage(null);
 
@@ -218,10 +223,17 @@ export default function PenaltyPaymentsPage() {
       setMessage({ type: 'error', text });
     } finally {
       setLoading(false);
+      paymentsRequestRef.current = null;
     }
+    })();
+    paymentsRequestRef.current = request;
+    return request;
   }, []);
 
   const loadOffenceBookItems = useCallback(async () => {
+    if (offenceBookRequestRef.current) return offenceBookRequestRef.current;
+
+    const request = (async () => {
     setOffenceBookLoading(true);
     setLoadedOffenceBookKey(null);
     setOffenceBookMessage(null);
@@ -250,7 +262,11 @@ export default function PenaltyPaymentsPage() {
       setOffenceBookMessage({ type: 'error', text });
     } finally {
       setOffenceBookLoading(false);
+      offenceBookRequestRef.current = null;
     }
+    })();
+    offenceBookRequestRef.current = request;
+    return request;
   }, [offenceBookMonth, offenceBookYear]);
 
   useEffect(() => {

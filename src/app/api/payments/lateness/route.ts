@@ -1,4 +1,4 @@
-import { currentUser } from '@clerk/nextjs/server';
+import { auth, currentUser } from '@clerk/nextjs/server';
 import { and, asc, eq, gte, inArray, lte } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
@@ -75,8 +75,8 @@ async function getAllocationsForEntries(entryIds: string[]) {
 
 export async function GET(request: NextRequest) {
   try {
-    const user = await currentUser();
-    if (!user) {
+    const session = await auth();
+    if (!session.userId) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
@@ -120,15 +120,18 @@ export async function GET(request: NextRequest) {
         .orderBy(asc(latenessEntry.date));
 
     const penaltyEntries = entryRows.filter((entry) => Number(entry.computedAmount || 0) > 0);
-    const allocations = await getAllocationsForEntries(penaltyEntries.map((entry) => entry.id));
-    const pardonRows = penaltyEntries.length === 0
-      ? []
-      : await db.select({
-        entryId: latenessDebtPardonEntry.entryId,
-        forgivenAmount: latenessDebtPardonEntry.forgivenAmount,
-      })
-        .from(latenessDebtPardonEntry)
-        .where(inArray(latenessDebtPardonEntry.entryId, penaltyEntries.map((entry) => entry.id)));
+    const entryIds = penaltyEntries.map((entry) => entry.id);
+    const [allocations, pardonRows] = await Promise.all([
+      getAllocationsForEntries(entryIds),
+      penaltyEntries.length === 0
+        ? Promise.resolve([])
+        : db.select({
+          entryId: latenessDebtPardonEntry.entryId,
+          forgivenAmount: latenessDebtPardonEntry.forgivenAmount,
+        })
+          .from(latenessDebtPardonEntry)
+          .where(inArray(latenessDebtPardonEntry.entryId, entryIds)),
+    ]);
     const pardonsByEntryId = new Map(pardonRows.map((pardon) => [pardon.entryId, pardon.forgivenAmount]));
     const allocationsByStaff = new Map<string, typeof allocations>();
     const entriesByStaff = new Map<string, LatenessPaymentEntryLike[]>();

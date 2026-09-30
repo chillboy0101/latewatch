@@ -14,6 +14,27 @@ export function roleFromMetadata(metadata: unknown): string | null {
   return normalizeRole((metadata as Record<string, unknown>).role);
 }
 
+export function roleFromOrganizationClaims(claims: unknown): string | null {
+  if (!claims || typeof claims !== 'object' || Array.isArray(claims)) return null;
+
+  const record = claims as Record<string, unknown>;
+  const organization = record.o && typeof record.o === 'object' && !Array.isArray(record.o)
+    ? record.o as Record<string, unknown>
+    : null;
+
+  return normalizeRole(
+    organization?.rol
+    || organization?.role
+    || record.org_role
+    || record.orgRole,
+  );
+}
+
+export function isAdminRole(role: unknown) {
+  const normalized = normalizeRole(role);
+  return normalized === 'admin' || normalized === 'org:admin';
+}
+
 export function adminUserIdsFromEnv(): Set<string> {
   return new Set(
     (process.env.ADMIN_USER_IDS || '')

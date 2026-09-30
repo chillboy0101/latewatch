@@ -5,6 +5,8 @@ import { attendanceAttempt, attendancePermission, attendanceRecord, deviceTransf
 import { getAccraClock, getActiveOfficeNetwork, getOfficeLocationsForAttendance, isOfficeIp, resolveClientIpInfo } from '@/lib/attendance';
 import { syncLatenessEntriesFromAttendanceForDate } from '@/lib/attendance-lateness-sync';
 import { isGeneralPardonReason, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
+import { getStaffLeavePeriodsForRange } from '@/lib/staff-leave-service';
+import { isStaffLeaveDate } from '@/lib/staff-leave';
 import { getAttendanceStatusFlags, primaryAttendanceStatus, type AttendanceStatus } from '@/lib/attendance-status';
 import { resolveOfficeLocationForDate } from '@/lib/office-location-policy';
 import { isOnTimeCheckIn, shouldAlertNoSignOut } from '@/lib/work-hours';
@@ -85,6 +87,11 @@ export async function GET(request: NextRequest) {
         .leftJoin(staff, eq(attendancePermission.staffId, staff.id))
         .where(and(eq(attendancePermission.date, date), eq(attendancePermission.status, 'approved')))),
     ]);
+    const leavePeriods = await getStaffLeavePeriodsForRange({
+      endDate: date,
+      staffIds: staffRows.map((member) => member.id),
+      startDate: date,
+    });
 
     const [attemptRows, deviceRows, network, locationRows, transferRows] = await Promise.all([
       optionalAttendanceQuery('attendance-attempts', [], () => db.select()
@@ -135,13 +142,16 @@ export async function GET(request: NextRequest) {
       const attendance = attendanceByStaffId.get(member.id) || null;
       const permission = permissionByStaffId.get(member.id) || null;
       const device = deviceByStaffId.get(member.id) || null;
+      const onLeave = isStaffLeaveDate(leavePeriods, member.id, date);
       const noSignOut = Boolean(
+        !onLeave &&
         attendance &&
         attendance.noSignOutWaived !== true &&
         !attendance.signOutTime &&
         (date < clock.dateKey || (date === clock.dateKey && shouldAlertNoSignOut(clock.timeKey))),
       );
       const fallbackStatus: AttendanceStatus = (() => {
+        if (onLeave) return 'on_leave';
         if (!permission) return 'not_checked_in';
         if (permission.permissionType === 'absence') return 'excused';
         if (isGeneralPardonReason(permission.reason)) return 'not_checked_in';
@@ -154,6 +164,7 @@ export async function GET(request: NextRequest) {
         fallbackStatus,
         hasAttendance: Boolean(attendance),
         noSignOut,
+        onLeave,
       });
       return {
         staff: member,
@@ -208,12 +219,13 @@ export async function GET(request: NextRequest) {
       if (isOnTimeAttendanceRow(row)) acc.onTime += 1;
       if (row.statuses.includes('late')) acc.late += 1;
       if (row.statuses.includes('excused')) acc.excused += 1;
+      if (row.statuses.includes('on_leave')) acc.onLeave += 1;
       if (row.statuses.includes('expected_late')) acc.expectedLate += 1;
       if (row.statuses.includes('permission_overdue')) acc.permissionOverdue += 1;
       if (row.statuses.includes('no_sign_out')) acc.noSignOut += 1;
       if (row.statuses.includes('not_checked_in')) acc.notCheckedIn += 1;
       return acc;
-    }, { excused: 0, expectedLate: 0, late: 0, noSignOut: 0, notCheckedIn: 0, onTime: 0, permissionOverdue: 0, present: 0 });
+    }, { excused: 0, expectedLate: 0, late: 0, noSignOut: 0, notCheckedIn: 0, onLeave: 0, onTime: 0, permissionOverdue: 0, present: 0 });
 
     return NextResponse.json({
       date,

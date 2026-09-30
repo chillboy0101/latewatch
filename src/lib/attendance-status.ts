@@ -1,4 +1,4 @@
-export type AttendanceStatus = 'present' | 'late' | 'excused' | 'expected_late' | 'permission_overdue' | 'no_sign_out' | 'not_checked_in';
+export type AttendanceStatus = 'present' | 'late' | 'excused' | 'expected_late' | 'permission_overdue' | 'no_sign_out' | 'not_checked_in' | 'on_leave';
 
 const ATTENDANCE_STATUSES = new Set<AttendanceStatus>([
   'present',
@@ -8,6 +8,7 @@ const ATTENDANCE_STATUSES = new Set<AttendanceStatus>([
   'permission_overdue',
   'no_sign_out',
   'not_checked_in',
+  'on_leave',
 ]);
 
 function isAttendanceStatus(value: string | null | undefined): value is AttendanceStatus {
@@ -24,23 +25,28 @@ export function getAttendanceStatusFlags({
   fallbackStatus,
   hasAttendance,
   noSignOut,
+  onLeave = false,
 }: {
   absencePermission: boolean;
   attendanceStatus?: string | null;
   fallbackStatus: AttendanceStatus;
   hasAttendance: boolean;
   noSignOut: boolean;
+  onLeave?: boolean;
 }) {
-  if (absencePermission) return ['excused'] satisfies AttendanceStatus[];
+  if (absencePermission) {
+    return onLeave ? ['excused', 'on_leave'] satisfies AttendanceStatus[] : ['excused'] satisfies AttendanceStatus[];
+  }
 
   const statuses: AttendanceStatus[] = [];
   if (hasAttendance && isAttendanceStatus(attendanceStatus)) {
     statuses.push(attendanceStatus);
   } else {
-    statuses.push(fallbackStatus);
+    statuses.push(onLeave ? 'on_leave' : fallbackStatus);
   }
 
-  if (noSignOut) statuses.push('no_sign_out');
+  if (noSignOut && !onLeave) statuses.push('no_sign_out');
+  if (onLeave && hasAttendance && !statuses.includes('on_leave')) statuses.push('on_leave');
   return uniqueStatuses(statuses);
 }
 

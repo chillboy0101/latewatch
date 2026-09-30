@@ -1,4 +1,4 @@
-import { currentUser } from '@clerk/nextjs/server';
+import { auth, currentUser } from '@clerk/nextjs/server';
 import { and, asc, eq, inArray, lt, lte } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
@@ -200,24 +200,26 @@ async function loadFinancialSummary(input: { month: number; monthKey: string; ye
         lte(latenessEntry.date, monthEnd),
       ));
   const entryIds = entryRows.map((entry) => entry.id);
-  const allocationRows = entryIds.length === 0
-    ? []
-    : await db.select({
-      allocatedAmount: latenessPaymentAllocation.allocatedAmount,
-      entryId: latenessPaymentAllocation.entryId,
-    })
-      .from(latenessPaymentAllocation)
-      .where(inArray(latenessPaymentAllocation.entryId, entryIds));
-  const pardonRows = entryIds.length === 0
-    ? []
-    : await db.select({
-      entryId: latenessDebtPardonEntry.entryId,
-      forgivenAmount: latenessDebtPardonEntry.forgivenAmount,
-      pardonDate: latenessDebtPardon.cutoffDate,
-    })
-      .from(latenessDebtPardonEntry)
-      .innerJoin(latenessDebtPardon, eq(latenessDebtPardonEntry.pardonId, latenessDebtPardon.id))
-      .where(inArray(latenessDebtPardonEntry.entryId, entryIds));
+  const [allocationRows, pardonRows] = await Promise.all([
+    entryIds.length === 0
+      ? Promise.resolve([])
+      : db.select({
+        allocatedAmount: latenessPaymentAllocation.allocatedAmount,
+        entryId: latenessPaymentAllocation.entryId,
+      })
+        .from(latenessPaymentAllocation)
+        .where(inArray(latenessPaymentAllocation.entryId, entryIds)),
+    entryIds.length === 0
+      ? Promise.resolve([])
+      : db.select({
+        entryId: latenessDebtPardonEntry.entryId,
+        forgivenAmount: latenessDebtPardonEntry.forgivenAmount,
+        pardonDate: latenessDebtPardon.cutoffDate,
+      })
+        .from(latenessDebtPardonEntry)
+        .innerJoin(latenessDebtPardon, eq(latenessDebtPardonEntry.pardonId, latenessDebtPardon.id))
+        .where(inArray(latenessDebtPardonEntry.entryId, entryIds)),
+  ]);
   const pardonsByEntryId = new Map(pardonRows.map((pardon) => [pardon.entryId, pardon]));
 
   const allocations = allocationRows;
@@ -266,8 +268,8 @@ function actorEmail(user: Awaited<ReturnType<typeof currentUser>>) {
 
 export async function GET(request: NextRequest) {
   try {
-    const user = await currentUser();
-    if (!user) {
+    const session = await auth();
+    if (!session.userId) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 

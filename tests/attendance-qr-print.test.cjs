@@ -185,7 +185,7 @@ test('attendance present and on-time filters stay distinct', () => {
   assert.match(pageSource, /activeFilter === 'present'[\s\S]*row\.attendance\?\.checkInTime/);
   assert.match(pageSource, /activeFilter === 'on_time'[\s\S]*isOnTimeAttendanceRow\(row\)/);
   assert.match(pageSource, /if \(status === 'present'\) return 'On Time'/);
-  assert.match(pageSource, /auto-cols-\[minmax\(7\.75rem,1fr\)\][\s\S]*xl:grid-cols-9/);
+  assert.match(pageSource, /auto-cols-\[minmax\(7\.75rem,1fr\)\][\s\S]*xl:grid-cols-10/);
 
   assert.match(apiSource, /if \(row\.attendance\?\.checkInTime\) acc\.present \+= 1/);
   assert.match(apiSource, /if \(isOnTimeAttendanceRow\(row\)\) acc\.onTime \+= 1/);

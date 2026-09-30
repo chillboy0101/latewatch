@@ -3,7 +3,7 @@ import { currentUser } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { staff, staffLeavePeriod } from '@/db/schema';
-import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, ilike, inArray, isNull, lte, ne, or } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { normalizeStaffEmail } from '@/lib/attendance';
@@ -56,7 +56,9 @@ export async function GET(request: NextRequest) {
         .from(staffLeavePeriod)
         .where(and(
           inArray(staffLeavePeriod.staffId, staffList.map((member) => member.id)),
+          ne(staffLeavePeriod.source, 'staff_status'),
           lte(staffLeavePeriod.startDate, currentDate),
+          or(isNull(staffLeavePeriod.returnedOn), gt(staffLeavePeriod.returnedOn, currentDate)),
           or(isNull(staffLeavePeriod.endDate), gte(staffLeavePeriod.endDate, currentDate)),
         ))
         .orderBy(desc(staffLeavePeriod.startDate))

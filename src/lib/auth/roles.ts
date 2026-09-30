@@ -1,7 +1,9 @@
-import { currentUser } from '@clerk/nextjs/server';
+import { auth, currentUser } from '@clerk/nextjs/server';
 import {
   adminEmailsFromEnv,
   adminUserIdsFromEnv,
+  isAdminRole,
+  roleFromOrganizationClaims,
   roleFromMetadata,
 } from '@/lib/auth/role-config';
 
@@ -19,27 +21,57 @@ function primaryEmail(user: ClerkUser) {
     || 'unknown';
 }
 
-function resolveRole(user: ClerkUser) {
+function sessionEmail(sessionClaims: unknown) {
+  if (!sessionClaims || typeof sessionClaims !== 'object' || Array.isArray(sessionClaims)) {
+    return 'unknown';
+  }
+
+  const claims = sessionClaims as Record<string, unknown>;
+  const email = [claims.email, claims.email_address, claims.primary_email_address]
+    .find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  return email || 'unknown';
+}
+
+function resolveRole(user: ClerkUser, sessionClaims: unknown) {
   const email = primaryEmail(user).toLowerCase();
 
   if (adminUserIdsFromEnv().has(user.id) || adminEmailsFromEnv().has(email)) {
     return 'admin';
   }
 
-  return roleFromMetadata(user.privateMetadata)
-    || roleFromMetadata(user.publicMetadata)
-    || 'viewer';
+  const metadataRole = roleFromMetadata(user.privateMetadata)
+    || roleFromMetadata(user.publicMetadata);
+  if (isAdminRole(metadataRole) || isAdminRole(roleFromOrganizationClaims(sessionClaims))) {
+    return 'admin';
+  }
+
+  return metadataRole || 'viewer';
 }
 
 export async function requireRole(allowedRoles: string[]): Promise<UserInfo> {
+  const session = await auth();
+  const allowed = new Set(allowedRoles.map((allowedRole) => allowedRole.toLowerCase()));
+
+  if (!session.userId) {
+    throw new Error('Unauthorized');
+  }
+
+  if (allowed.has('admin') && isAdminRole(roleFromOrganizationClaims(session.sessionClaims))) {
+    return {
+      id: session.userId,
+      email: sessionEmail(session.sessionClaims),
+      role: 'admin',
+    };
+  }
+
   const user = await currentUser();
 
   if (!user) {
     throw new Error('Unauthorized');
   }
 
-  const role = resolveRole(user);
-  const allowed = new Set(allowedRoles.map((allowedRole) => allowedRole.toLowerCase()));
+  const role = resolveRole(user, session.sessionClaims);
 
   if (!allowed.has(role)) {
     throw new Error('Forbidden');
@@ -72,7 +104,7 @@ export async function enforceRole(
 
 export async function getCurrentUser(): Promise<UserInfo | null> {
   try {
-    const user = await currentUser();
+    const [user, session] = await Promise.all([currentUser(), auth()]);
 
     if (!user) {
       return null;
@@ -81,7 +113,7 @@ export async function getCurrentUser(): Promise<UserInfo | null> {
     return {
       id: user.id,
       email: primaryEmail(user),
-      role: resolveRole(user),
+      role: resolveRole(user, session.sessionClaims),
     };
   } catch (error) {
     console.warn('Failed to get current user:', error);

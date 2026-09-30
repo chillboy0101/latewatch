@@ -18,6 +18,18 @@ test('protected app routes require the configured LateWatch Clerk organization',
   assert.doesNotMatch(proxy, /return !requiredOrgId \|\| activeOrgId === requiredOrgId/);
 });
 
+test('organization admins are accepted by middleware and server route guards', () => {
+  const proxy = fs.readFileSync(proxyPath, 'utf8');
+  const roles = fs.readFileSync(path.join(root, 'src/lib/auth/roles.ts'), 'utf8');
+  const roleConfig = fs.readFileSync(path.join(root, 'src/lib/auth/role-config.ts'), 'utf8');
+
+  assert.match(roleConfig, /roleFromOrganizationClaims/);
+  assert.match(roleConfig, /org:admin/);
+  assert.match(proxy, /roleFromOrganizationClaims\(sessionClaims\)/);
+  assert.match(roles, /roleFromOrganizationClaims\(session\.sessionClaims\)/);
+  assert.match(roles, /if \(allowed\.has\('admin'\)/);
+});
+
 test('public sign-in no longer advertises the sign-up route', () => {
   const authCard = fs.readFileSync(authCardPath, 'utf8');
   const signInBlock = authCard.slice(authCard.indexOf('<SignIn'));

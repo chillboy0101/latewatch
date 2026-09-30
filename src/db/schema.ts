@@ -41,6 +41,8 @@ export const staffLeavePeriod = pgTable('staff_leave_period', {
   staffId: uuid('staff_id').notNull().references(() => staff.id, { onDelete: 'cascade' }),
   startDate: date('start_date').notNull(),
   endDate: date('end_date'),
+  leaveType: text('leave_type').notNull().default('other'),
+  returnedOn: date('returned_on'),
   source: text('source').notNull().default('staff_status'),
   createdByEmail: text('created_by_email').notNull().default('system'),
   closedByEmail: text('closed_by_email'),

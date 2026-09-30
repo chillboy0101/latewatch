@@ -3,7 +3,9 @@ import { NextResponse } from 'next/server';
 import {
   adminEmailsFromEnv,
   adminUserIdsFromEnv,
+  isAdminRole,
   normalizeRole,
+  roleFromOrganizationClaims,
   roleFromMetadata,
 } from '@/lib/auth/role-config';
 
@@ -168,9 +170,13 @@ async function isAdminSession(userId: string | null | undefined, sessionClaims: 
     return true;
   }
 
+  if (isAdminRole(roleFromOrganizationClaims(sessionClaims))) {
+    return true;
+  }
+
   const userAccess = await getClerkUserAccess(userId);
 
-  return userAccess.role === 'admin'
+  return isAdminRole(userAccess.role)
     || Boolean(userAccess.email && adminEmailsFromEnv().has(userAccess.email));
 }
 

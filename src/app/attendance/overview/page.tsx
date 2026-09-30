@@ -123,6 +123,7 @@ interface AttendanceResponse {
     late: number;
     noSignOut: number;
     notCheckedIn: number;
+    onLeave: number;
     onTime: number;
     permissionOverdue: number;
     present: number;
@@ -147,6 +148,7 @@ function statusLabel(status: AttendanceStatus) {
   if (status === 'expected_late') return 'Expected later';
   if (status === 'permission_overdue') return 'Permission overdue';
   if (status === 'no_sign_out') return 'No sign-out';
+  if (status === 'on_leave') return 'On Leave';
   return 'Not checked in';
 }
 
@@ -157,6 +159,7 @@ function statusClass(status: AttendanceStatus) {
   if (status === 'expected_late') return 'border-primary/25 bg-primary/10 text-primary';
   if (status === 'permission_overdue') return 'border-danger/25 bg-danger/10 text-danger';
   if (status === 'no_sign_out') return 'border-warning/25 bg-warning/10 text-warning';
+  if (status === 'on_leave') return 'border-muted bg-muted/30 text-muted-foreground';
   return 'border-border bg-muted/20 text-muted-foreground';
 }
 
@@ -167,6 +170,7 @@ function StatusIcon({ status }: { status: AttendanceStatus }) {
   if (status === 'expected_late') return <Clock className="h-3.5 w-3.5" />;
   if (status === 'permission_overdue') return <AlertTriangle className="h-3.5 w-3.5" />;
   if (status === 'no_sign_out') return <AlertTriangle className="h-3.5 w-3.5" />;
+  if (status === 'on_leave') return <CalendarDays className="h-3.5 w-3.5" />;
   return <XCircle className="h-3.5 w-3.5" />;
 }
 
@@ -182,6 +186,7 @@ const STATUS_RANK: Record<AttendanceStatus, number> = {
   expected_late: 4,
   excused: 5,
   present: 6,
+  on_leave: 7,
 };
 
 function statusRankForRow(row: AttendanceRow) {
@@ -623,7 +628,7 @@ export default function AttendancePage() {
   return (
     <DashboardLayout title="Attendance">
       <div className="space-y-5">
-        <div className="grid auto-cols-[minmax(7.75rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-9 xl:overflow-visible xl:pb-0">
+        <div className="grid auto-cols-[minmax(7.75rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-10 xl:overflow-visible xl:pb-0">
           <SummaryCard
             active={activeFilter === 'all'}
             label="Total Staff"
@@ -662,6 +667,13 @@ export default function AttendancePage() {
             label="Excused"
             onClick={() => setActiveFilter('excused')}
             value={data?.totals.excused ?? 0}
+          />
+          <SummaryCard
+            active={activeFilter === 'on_leave'}
+            label="On Leave"
+            onClick={() => setActiveFilter('on_leave')}
+            tone="muted"
+            value={data?.totals.onLeave ?? 0}
           />
           <SummaryCard
             active={activeFilter === 'permission_overdue'}

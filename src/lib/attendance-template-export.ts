@@ -326,14 +326,6 @@ function isDailyExemptReason(reason: string | null | undefined) {
   return DAILY_EXEMPT_REASONS.has(normalizedAbsenceReason(reason));
 }
 
-function absenceRemarkLabel(reason: string | null | undefined) {
-  const normalized = normalizedAbsenceReason(reason);
-  if (normalized === 'training') return 'Exempt (Training)';
-  if (normalized === 'official duty') return OFFICIAL_DUTY_EXPORT_REMARK;
-  if (normalized === 'workshop') return 'Exempt (Workshop)';
-  return formatAbsencePermissionReason(reason);
-}
-
 function dailySummaryAbsenceRemarkLabel(reason: string | null | undefined) {
   const normalized = normalizedAbsenceReason(reason);
   if (normalized === 'training') return 'Exempt (Training)';

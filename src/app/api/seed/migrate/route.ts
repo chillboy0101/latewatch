@@ -272,6 +272,8 @@ export async function POST() {
         staff_id uuid NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
         start_date date NOT NULL,
         end_date date,
+        leave_type text DEFAULT 'other' NOT NULL,
+        returned_on date,
         source text DEFAULT 'staff_status' NOT NULL,
         created_by_email text DEFAULT 'system' NOT NULL,
         closed_by_email text,
@@ -280,6 +282,77 @@ export async function POST() {
         updated_at timestamp DEFAULT now(),
         UNIQUE(staff_id, start_date)
       )
+    `);
+    await db.execute(sql`ALTER TABLE staff_leave_period ADD COLUMN IF NOT EXISTS leave_type text DEFAULT 'other' NOT NULL`);
+    await db.execute(sql`ALTER TABLE staff_leave_period ADD COLUMN IF NOT EXISTS returned_on date`);
+    await db.execute(sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'staff_leave_period_type_check'
+            AND conrelid = 'staff_leave_period'::regclass
+        ) THEN
+          ALTER TABLE staff_leave_period
+            ADD CONSTRAINT staff_leave_period_type_check
+            CHECK (leave_type IN ('annual', 'sick', 'maternity_paternity', 'study', 'other'));
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'staff_leave_period_returned_on_check'
+            AND conrelid = 'staff_leave_period'::regclass
+        ) THEN
+          ALTER TABLE staff_leave_period
+            ADD CONSTRAINT staff_leave_period_returned_on_check
+            CHECK (returned_on IS NULL OR returned_on >= start_date);
+        END IF;
+      END
+      $$
+    `);
+    await db.execute(sql`ALTER TABLE staff_leave_period DROP CONSTRAINT IF EXISTS staff_leave_period_staff_id_start_date_key`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS staff_leave_period_approved_start_idx ON staff_leave_period (staff_id, start_date) WHERE source = 'approved_leave'`);
+    await db.execute(sql`
+      CREATE OR REPLACE FUNCTION prevent_overlapping_staff_leave_periods()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        IF NEW.source <> 'approved_leave' THEN
+          RETURN NEW;
+        END IF;
+        PERFORM pg_advisory_xact_lock(hashtextextended(NEW.staff_id::text, 0));
+        IF TG_OP = 'UPDATE' THEN
+          IF OLD.source = 'approved_leave'
+            AND NEW.staff_id = OLD.staff_id
+            AND NEW.start_date = OLD.start_date
+            AND NEW.end_date IS NOT DISTINCT FROM OLD.end_date
+            AND OLD.returned_on IS NULL
+            AND NEW.returned_on IS NOT NULL THEN
+            RETURN NEW;
+          END IF;
+        END IF;
+        IF EXISTS (
+          SELECT 1 FROM staff_leave_period existing
+          WHERE existing.staff_id = NEW.staff_id
+            AND existing.id <> NEW.id
+            AND existing.source <> 'staff_status'
+            AND existing.start_date <= COALESCE(NEW.returned_on - 1, NEW.end_date, 'infinity'::date)
+            AND COALESCE(existing.returned_on - 1, existing.end_date, 'infinity'::date) >= NEW.start_date
+        ) THEN
+          RAISE EXCEPTION 'Leave dates overlap an existing leave or approved absence period'
+            USING ERRCODE = '23P01', CONSTRAINT = 'staff_leave_period_no_overlap';
+        END IF;
+        RETURN NEW;
+      END;
+      $$
+    `);
+    await db.execute(sql`DROP TRIGGER IF EXISTS staff_leave_period_no_overlap_trigger ON staff_leave_period`);
+    await db.execute(sql`
+      CREATE TRIGGER staff_leave_period_no_overlap_trigger
+        BEFORE INSERT OR UPDATE OF staff_id, start_date, end_date, returned_on, source
+        ON staff_leave_period
+        FOR EACH ROW
+        EXECUTE FUNCTION prevent_overlapping_staff_leave_periods()
     `);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS staff_leave_period_staff_date_idx ON staff_leave_period(staff_id, start_date, end_date)`);
     await db.execute(sql`

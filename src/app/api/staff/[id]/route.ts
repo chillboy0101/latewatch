@@ -8,7 +8,6 @@ import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { normalizeStaffEmail } from '@/lib/attendance';
 import { syncStaffEmailIdentity, unlinkStaffEmailIdentity } from '@/lib/clerk-organization';
-import { recordStaffLeaveTransition } from '@/lib/staff-leave-periods';
 import { recalculateStaffStoredPenalties } from '@/lib/staff-penalty-recalculation-server';
 import { enforceRole } from '@/lib/auth/roles';
 
@@ -17,7 +16,6 @@ type StaffUpdateBody = {
   archived?: boolean;
   department?: string | null;
   email?: string | null;
-  endLeavePeriod?: boolean;
   fullName?: string;
   gender?: string | null;
   isAttendanceOnly?: boolean;
@@ -85,7 +83,6 @@ export async function PUT(
     const {
       fullName,
       email,
-      endLeavePeriod,
       department,
       unit,
       staffNo,
@@ -121,8 +118,6 @@ export async function PUT(
       updateData.archivedAt = archived ? new Date() : null;
       updateData.active = archived ? false : true;
     }
-    if (endLeavePeriod === true) updateData.active = true;
-
     if (updateData.email) {
       const [emailOwner] = await db.select({ id: staff.id })
         .from(staff)
@@ -162,9 +157,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
     }
 
-    const auditAction = endLeavePeriod === true
-      ? before.active === false ? 'ACTIVATE' : 'UPDATE'
-      : typeof archived === 'boolean' && before.archived !== archived
+    const auditAction = typeof archived === 'boolean' && before.archived !== archived
       ? archived ? 'ARCHIVE' : 'RESTORE'
       : typeof active === 'boolean' && before.active !== active
       ? active ? 'ACTIVATE' : 'DEACTIVATE'
@@ -176,14 +169,7 @@ export async function PUT(
       action: auditAction,
       before,
       after: updated[0],
-      reason: endLeavePeriod === true ? 'staff-leave-end' : 'staff',
-    });
-
-    await recordStaffLeaveTransition({
-      action: endLeavePeriod === true ? 'END_LEAVE' : auditAction,
-      actorEmail: actor?.emailAddresses[0]?.emailAddress,
-      after: updated[0],
-      before,
+      reason: 'staff',
     });
 
     if (penaltyTypeChanged) {

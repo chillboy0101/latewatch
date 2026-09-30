@@ -22,6 +22,8 @@ const fixture = {
   attendanceRecord: [],
   latenessDebtPardonEntry: [],
   latenessEntry: [],
+  latenessPaymentAllocation: [],
+  leavePeriods: [],
   staff: [],
   workCalendar: [],
 };
@@ -59,6 +61,8 @@ function resetFixture() {
   ];
   fixture.latenessEntry = [];
   fixture.latenessDebtPardonEntry = [];
+  fixture.latenessPaymentAllocation = [];
+  fixture.leavePeriods = [];
   fixture.workCalendar = [];
   fixture.staff = [
     {
@@ -242,6 +246,18 @@ Module._load = function patchedLoad(request, ...args) {
       }),
     };
   }
+  if (request === '@/lib/staff-leave-service') {
+    return {
+      getFinanciallyProtectedLeaveEntryIds: async (entryIds) => new Set(entryIds.filter((id) => (
+        fixture.latenessPaymentAllocation.some((row) => row.entryId === id) ||
+        fixture.latenessDebtPardonEntry.some((row) => row.entryId === id)
+      ))),
+      getStaffLeavePeriodsForRange: async ({ endDate, staffIds, startDate }) => fixture.leavePeriods.filter((period) => (
+        period.startDate <= endDate && (!period.endDate || period.endDate >= startDate) &&
+        (!staffIds || staffIds.includes(period.staffId))
+      )),
+    };
+  }
   if (request === 'drizzle-orm') {
     return {
       and: (...conditions) => ({ conditions, op: 'and' }),
@@ -255,7 +271,10 @@ Module._load = function patchedLoad(request, ...args) {
 
 require('tsx/cjs');
 
-const { syncLatenessEntriesFromAttendanceForDate } = require('../src/lib/attendance-lateness-sync.ts');
+const {
+  applyNoShowSignInPenaltiesForDate,
+  syncLatenessEntriesFromAttendanceForDate,
+} = require('../src/lib/attendance-lateness-sync.ts');
 
 test.after(() => {
   Module._load = originalLoad;
@@ -547,6 +566,66 @@ test('sync creates one no-show sign-in penalty for staff with no attendance row'
   assert.equal(fixture.latenessEntry[0].computedAmount, '10.00');
   assert.equal(fixture.latenessEntry[0].didNotSignOut, false);
   assert.equal(fixture.latenessEntry[0].reason, "DIDN'T SIGN IN BEFORE 4:30PM");
+});
+
+test('no-show date reconciliation clears an unprotected penalty during approved leave', async () => {
+  resetFixture();
+  fixture.attendanceRecord = [];
+  fixture.attendancePermission = [];
+  fixture.leavePeriods = [
+    { endDate: '2026-07-08', source: 'approved_leave', staffId: 'staff-1', startDate: '2026-07-08' },
+  ];
+  fixture.latenessEntry = [
+    {
+      id: 'entry-leave',
+      arrivalTime: null,
+      computedAmount: '10.00',
+      date: '2026-07-08',
+      didNotSignOut: false,
+      reason: "DIDN'T SIGN IN BEFORE 4:30PM",
+      staffId: 'staff-1',
+    },
+  ];
+
+  const result = await applyNoShowSignInPenaltiesForDate('2026-07-08');
+
+  assert.equal(result.deleted, 1);
+  assert.equal(fixture.latenessEntry.length, 0);
+  assert.equal(fixture.attendanceRecord.length, 0);
+});
+
+test('no-show date reconciliation preserves paid or pardoned entries during leave', async () => {
+  resetFixture();
+  fixture.attendanceRecord = [];
+  fixture.attendancePermission = [];
+  fixture.leavePeriods = [
+    { endDate: '2026-07-08', source: 'approved_leave', staffId: 'staff-1', startDate: '2026-07-08' },
+  ];
+  fixture.latenessEntry = [
+    {
+      id: 'entry-protected',
+      arrivalTime: null,
+      computedAmount: '10.00',
+      date: '2026-07-08',
+      didNotSignOut: false,
+      reason: "DIDN'T SIGN IN BEFORE 4:30PM",
+      staffId: 'staff-1',
+    },
+  ];
+  fixture.latenessDebtPardonEntry = [
+    { entryDate: '2026-07-08', entryId: 'entry-protected' },
+  ];
+  fixture.latenessPaymentAllocation = [
+    { allocatedAmount: '10.00', entryId: 'entry-protected' },
+  ];
+
+  const result = await applyNoShowSignInPenaltiesForDate('2026-07-08');
+
+  assert.equal(result.deleted, 0);
+  assert.equal(fixture.latenessEntry.length, 1);
+  assert.equal(fixture.latenessEntry[0].computedAmount, '10.00');
+  assert.equal(fixture.latenessDebtPardonEntry.length, 1);
+  assert.equal(fixture.latenessPaymentAllocation.length, 1);
 });
 
 test('sync does not create a no-show sign-in penalty for dates before the rule took effect', async () => {

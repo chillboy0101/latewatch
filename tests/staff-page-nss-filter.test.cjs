@@ -111,7 +111,7 @@ test('staff API omits removed manual message fields', () => {
   assert.doesNotMatch(updateSource, new RegExp(`valid ${displayFeature} number`));
 });
 
-test('staff leave periods are stored for deactivate and activate transitions', () => {
+test('staff status updates do not mutate independent leave periods', () => {
   const schemaSource = fs.readFileSync(schemaPath, 'utf8');
   const updateSource = fs.readFileSync(staffUpdateRoutePath, 'utf8');
   const migrationSource = fs.readFileSync(migrationPath, 'utf8');
@@ -123,26 +123,23 @@ test('staff leave periods are stored for deactivate and activate transitions', (
   assert.match(migrationSource, /CREATE TABLE IF NOT EXISTS staff_leave_period/);
   assert.match(seedMigrationSource, /CREATE TABLE IF NOT EXISTS staff_leave_period/);
 
-  assert.match(updateSource, /recordStaffLeaveTransition/);
-  assert.match(updateSource, /endLeavePeriod/);
+  assert.doesNotMatch(updateSource, /recordStaffLeaveTransition/);
+  assert.doesNotMatch(updateSource, /endLeavePeriod/);
   assert.match(updateSource, /action: auditAction/);
   assert.match(updateSource, /before,/);
   assert.match(updateSource, /after: updated\[0\]/);
-  // Previously duplicated against src/actions/staff.ts, a module nothing imported. That
-  // module is gone; the transition is recorded with the acting admin's email here.
-  assert.match(updateSource, /actorEmail: actor\?\.emailAddresses\[0\]\?\.emailAddress/);
+  assert.match(updateSource, /reason: 'staff'/);
 });
 
-test('staff page exposes leave start and return actions clearly', () => {
+test('staff page keeps leave management separate from employment status', () => {
   const pageSource = fs.readFileSync(staffPagePath, 'utf8');
-  const updateSource = fs.readFileSync(staffUpdateRoutePath, 'utf8');
 
   assert.match(pageSource, /label: 'On Leave'/);
-  assert.match(pageSource, /member\.active \? 'Put on leave' : member\.onLeave \? 'Return from leave' : 'Activate'/);
-  assert.match(pageSource, /return member\.active \? 'Active' : 'Inactive'/);
-  assert.match(pageSource, /handleEndLeave/);
-  assert.match(pageSource, /endLeavePeriod: true/);
-  assert.match(updateSource, /action: endLeavePeriod === true \? 'END_LEAVE' : auditAction/);
+  assert.match(pageSource, /window\.location\.assign\('\/attendance\/overview'\)/);
+  assert.match(pageSource, /member\.active \? 'Deactivate' : 'Activate'/);
+  assert.doesNotMatch(pageSource, /Put on leave/);
+  assert.doesNotMatch(pageSource, /Return from leave/);
+  assert.doesNotMatch(pageSource, /endLeavePeriod: true/);
 });
 
 test('attendance permissions distinguish date-based absence from ongoing leave', () => {

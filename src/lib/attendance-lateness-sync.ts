@@ -6,6 +6,8 @@ import { attendancePermission, attendanceRecord, latenessDebtPardonEntry, latene
 import { getAccraClock, getHolidayForDate, isWeekendDate } from '@/lib/attendance';
 import { getObservedGhanaHolidayForDate, isSuppressedGhanaHolidayDate } from '@/lib/ghana-holidays';
 import { resolveManualPenalty } from '@/lib/manual-attendance-correction';
+import { getFinanciallyProtectedLeaveEntryIds, getStaffLeavePeriodsForRange } from '@/lib/staff-leave-service';
+import { isStaffLeaveDate } from '@/lib/staff-leave';
 import { NO_SHOW_SIGN_IN_CUTOFF_TIME, shouldAlertNoSignOut } from '@/lib/work-hours';
 import {
   NO_SHOW_SIGN_IN_EFFECTIVE_DATE,
@@ -54,6 +56,30 @@ function isLegacyEntriesFallbackSignOut(input: {
 
 function rowKey(staffId: string, date: string) {
   return `${staffId}:${date}`;
+}
+
+async function clearUnprotectedLeavePenalty(input: {
+  attendance?: { computedAmount: string | number | null; id: string } | null;
+  entries: Array<{ id: string }>;
+  protectedEntryIds: Set<string>;
+}) {
+  if (input.entries.some((entry) => input.protectedEntryIds.has(entry.id))) {
+    return { attendanceUpdated: 0, deleted: 0 };
+  }
+
+  let attendanceUpdated = 0;
+  if (input.attendance && amountNumber(input.attendance.computedAmount) > 0) {
+    await db.update(attendanceRecord)
+      .set({ computedAmount: '0.00', reason: null, updatedAt: new Date() })
+      .where(eq(attendanceRecord.id, input.attendance.id));
+    attendanceUpdated = 1;
+  }
+
+  for (const entry of input.entries) {
+    await db.delete(latenessEntry).where(eq(latenessEntry.id, entry.id));
+  }
+
+  return { attendanceUpdated, deleted: input.entries.length };
 }
 
 function shouldApplyNoSignOutPenalty(input: {
@@ -117,6 +143,7 @@ export async function applyNoShowSignInPenaltiesForDate(dateKey: string) {
     .where(and(eq(staff.active, true), eq(staff.archived, false)));
   const attendanceRows = await db.select({
     checkInTime: attendanceRecord.checkInTime,
+    computedAmount: attendanceRecord.computedAmount,
     date: attendanceRecord.date,
     id: attendanceRecord.id,
     noShowSignInWaived: attendanceRecord.noShowSignInWaived,
@@ -133,13 +160,36 @@ export async function applyNoShowSignInPenaltiesForDate(dateKey: string) {
   const existingRows = await db.select()
     .from(latenessEntry)
     .where(eq(latenessEntry.date, dateKey));
+  const leavePeriods = await getStaffLeavePeriodsForRange({
+    endDate: dateKey,
+    staffIds: staffRows.map((member) => member.id),
+    startDate: dateKey,
+  });
+  const leaveEntryIds = existingRows
+    .filter((entry) => isStaffLeaveDate(leavePeriods, entry.staffId, dateKey))
+    .map((entry) => entry.id);
+  const protectedLeaveEntryIds = await getFinanciallyProtectedLeaveEntryIds(leaveEntryIds);
   const existingByStaffId = new Map(existingRows.map((entry) => [entry.staffId, entry]));
 
+  let deleted = 0;
   let inserted = 0;
   let skipped = 0;
   let updated = 0;
 
   for (const member of staffRows) {
+    if (isStaffLeaveDate(leavePeriods, member.id, dateKey)) {
+      const existing = existingByStaffId.get(member.id);
+      const result = await clearUnprotectedLeavePenalty({
+        attendance: attendanceByStaffId.get(member.id) || null,
+        entries: existing ? [existing] : [],
+        protectedEntryIds: protectedLeaveEntryIds,
+      });
+      deleted += result.deleted;
+      updated += result.attendanceUpdated;
+      skipped += 1;
+      continue;
+    }
+
     if (member.isAttendanceOnly === true) {
       skipped += 1;
       continue;
@@ -219,7 +269,7 @@ export async function applyNoShowSignInPenaltiesForDate(dateKey: string) {
     inserted += 1;
   }
 
-  return { deleted: 0, inserted, skipped, updated };
+  return { deleted, inserted, skipped, updated };
 }
 
 export async function applyNoShowSignInPenaltiesForRange(startDate: string, endDate: string) {
@@ -267,6 +317,7 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
 
   const attendanceRows = await db.select({
     checkInTime: attendanceRecord.checkInTime,
+    computedAmount: attendanceRecord.computedAmount,
     date: attendanceRecord.date,
     id: attendanceRecord.id,
     noShowSignInWaived: attendanceRecord.noShowSignInWaived,
@@ -293,16 +344,33 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
   const existingRows = await db.select()
     .from(latenessEntry)
     .where(and(gte(latenessEntry.date, startDate), lte(latenessEntry.date, endDate)));
+  const leavePeriods = await getStaffLeavePeriodsForRange({ endDate, staffIds: staffRows.map((member) => member.id), startDate });
+  const leaveEntryIds = existingRows
+    .filter((entry) => isStaffLeaveDate(leavePeriods, entry.staffId, normalizeDateKey(entry.date)))
+    .map((entry) => entry.id);
+  const protectedLeaveEntryIds = await getFinanciallyProtectedLeaveEntryIds(leaveEntryIds);
   const existingByKey = new Map(
     existingRows.map((row) => [rowKey(row.staffId, normalizeDateKey(row.date)), row]),
   );
 
+  let deleted = 0;
   let inserted = 0;
   let skipped = 0;
   let updated = 0;
 
   for (const date of workingDates) {
     for (const member of staffRows) {
+      if (isStaffLeaveDate(leavePeriods, member.id, date)) {
+        const existing = existingByKey.get(rowKey(member.id, date));
+        const result = await clearUnprotectedLeavePenalty({
+          entries: existing ? [existing] : [],
+          protectedEntryIds: protectedLeaveEntryIds,
+        });
+        deleted += result.deleted;
+        skipped += 1;
+        continue;
+      }
+
       if (member.isAttendanceOnly === true) {
         skipped += 1;
         continue;
@@ -383,7 +451,7 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
     }
   }
 
-  return { deleted: 0, inserted, skipped, updated };
+  return { deleted, inserted, skipped, updated };
 }
 
 export async function syncLatenessEntriesFromAttendanceForRange(startDate: string, endDate: string) {
@@ -426,6 +494,11 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
   const existingRows = await db.select()
     .from(latenessEntry)
     .where(and(gte(latenessEntry.date, startDate), lte(latenessEntry.date, endDate)));
+  const leavePeriods = await getStaffLeavePeriodsForRange({ endDate, startDate });
+  const leaveEntryIds = existingRows
+    .filter((entry) => isStaffLeaveDate(leavePeriods, entry.staffId, normalizeDateKey(entry.date)))
+    .map((entry) => entry.id);
+  const protectedLeaveEntryIds = await getFinanciallyProtectedLeaveEntryIds(leaveEntryIds);
   const pardonRows = await db.select({ entryId: latenessDebtPardonEntry.entryId })
     .from(latenessDebtPardonEntry)
     .where(and(
@@ -455,6 +528,17 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     const key = rowKey(row.staffId, date);
     const existingEntriesForKey = existingByStaffDate.get(key) || [];
     const existing = existingEntriesForKey[0] || null;
+    if (isStaffLeaveDate(leavePeriods, row.staffId, date)) {
+      processedKeys.add(key);
+      const result = await clearUnprotectedLeavePenalty({
+        attendance: row,
+        entries: existingEntriesForKey,
+        protectedEntryIds: protectedLeaveEntryIds,
+      });
+      deleted += result.deleted;
+      attendanceUpdated += result.attendanceUpdated;
+      continue;
+    }
     const activePermission = permissionsByStaffDate.get(key) || null;
     const hasLegacyEntriesFallbackSignOut = isLegacyEntriesFallbackSignOut(row);
     const noSignOutWaived = row.noSignOutWaived === true || hasLegacyEntriesFallbackSignOut;
@@ -592,6 +676,14 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     const date = normalizeDateKey(existing.date);
     const key = rowKey(existing.staffId, date);
     if (processedKeys.has(key)) continue;
+    if (isStaffLeaveDate(leavePeriods, existing.staffId, date)) {
+      const result = await clearUnprotectedLeavePenalty({
+        entries: [existing],
+        protectedEntryIds: protectedLeaveEntryIds,
+      });
+      deleted += result.deleted;
+      continue;
+    }
     if (existing.reason === NO_SHOW_SIGN_IN_REASON || existing.reason === NO_SHOW_SIGN_IN_WAIVED_REASON) continue;
 
     const activePermission = permissionsByStaffDate.get(key) || null;

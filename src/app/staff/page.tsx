@@ -173,7 +173,7 @@ export default function StaffPage() {
     const previousStaff = staff;
     const nextActive = !currentActive;
     setActioningId(id);
-    setStaff((prev) => prev.map((s) => (s.id === id ? { ...s, active: nextActive, onLeave: !nextActive } : s)));
+    setStaff((prev) => prev.map((s) => (s.id === id ? { ...s, active: nextActive } : s)));
 
     try {
       const response = await fetch(`/api/staff/${id}`, {
@@ -190,32 +190,6 @@ export default function StaffPage() {
       }
     } catch (error) {
       console.error('Failed to update staff:', error);
-      setStaff(previousStaff);
-    } finally {
-      setActioningId(null);
-    }
-  };
-
-  const handleEndLeave = async (member: StaffMember) => {
-    if (!window.confirm(`End ${member.fullName}'s leave period? Approved absence permissions will remain unchanged.`)) return;
-
-    const previousStaff = staff;
-    setActioningId(member.id);
-
-    try {
-      const response = await fetch(`/api/staff/${member.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ endLeavePeriod: true }),
-      });
-
-      if (!response.ok) throw new Error('Could not end leave period');
-      const updated = await response.json();
-      setStaff((prev) => prev.map((s) => s.id === member.id
-        ? { ...s, ...updated, active: true, onLeave: false }
-        : s));
-    } catch (error) {
-      console.error('Failed to end staff leave:', error);
       setStaff(previousStaff);
     } finally {
       setActioningId(null);
@@ -379,9 +353,9 @@ export default function StaffPage() {
 
   const statusFilteredStaff = Array.isArray(staff)
     ? staff.filter((s) => {
-        if (staffFilter === 'active') return s.active && !s.archived && !s.onLeave;
+        if (staffFilter === 'active') return s.active && !s.archived;
         if (staffFilter === 'onLeave') return s.onLeave && !s.archived;
-        if (staffFilter === 'inactive') return !s.active && !s.archived && !s.onLeave;
+        if (staffFilter === 'inactive') return !s.active && !s.archived;
         if (staffFilter === 'former') return s.archived;
         if (staffFilter === 'nss') return s.isNssPersonnel === true;
         if (staffFilter === 'attendanceOnly') return s.isAttendanceOnly === true;
@@ -410,7 +384,7 @@ export default function StaffPage() {
       })
     : [];
 
-  const activeCount = staff.filter((s) => s.active && !s.archived && !s.onLeave).length;
+  const activeCount = staff.filter((s) => s.active && !s.archived).length;
   const onLeaveCount = staff.filter((s) => s.onLeave && !s.archived).length;
   const inactiveCount = staff.filter((s) => !s.active && !s.archived && !s.onLeave).length;
   const formerCount = staff.filter((s) => s.archived).length;
@@ -865,17 +839,15 @@ export default function StaffPage() {
                                   Delete
                                 </Button>
                               </>
-                            ) : member.onLeave && member.active ? (
+                            ) : member.onLeave ? (
                               <Button
                                 variant="outline"
                                 size="sm"
                                 className="h-8 gap-2"
-                                onClick={() => handleEndLeave(member)}
-                                disabled={actioningId === member.id}
-                                title="Approved absence permissions are unchanged."
+                                onClick={() => window.location.assign('/attendance/overview')}
                               >
-                                {actioningId === member.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CalendarDays className="h-3.5 w-3.5" />}
-                                End leave
+                                <CalendarDays className="h-3.5 w-3.5" />
+                                Manage leave
                               </Button>
                             ) : (
                               <>
@@ -883,7 +855,7 @@ export default function StaffPage() {
                                   variant={member.active ? 'outline' : 'default'}
                                   size="sm"
                                   className="h-8 gap-2"
-                                  onClick={() => member.onLeave ? handleEndLeave(member) : handleToggleActive(member.id, !!member.active)}
+                                  onClick={() => handleToggleActive(member.id, !!member.active)}
                                   disabled={actioningId === member.id}
                                 >
                                   {actioningId === member.id ? (
@@ -893,7 +865,7 @@ export default function StaffPage() {
                                   ) : (
                                     <UserCheck className="h-3.5 w-3.5" />
                                   )}
-                                  {member.active ? 'Put on leave' : member.onLeave ? 'Return from leave' : 'Activate'}
+                                  {member.active ? 'Deactivate' : 'Activate'}
                                 </Button>
                                 <Button
                                   variant="outline"
@@ -1038,13 +1010,11 @@ export default function StaffPage() {
 
 function getStaffStatusLabel(member: StaffMember) {
   if (member.archived) return 'Former';
-  if (member.onLeave) return 'On Leave';
   return member.active ? 'Active' : 'Inactive';
 }
 
 function getStaffStatusClass(member: StaffMember) {
   if (member.archived) return 'bg-warning/10 text-warning';
-  if (member.onLeave) return 'bg-warning/10 text-warning';
   return member.active ? 'bg-success/10 text-success' : 'bg-muted/10 text-muted-foreground';
 }
 
