@@ -2,11 +2,12 @@
 import { currentUser } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { staff } from '@/db/schema';
-import { and, asc, eq, ilike } from 'drizzle-orm';
+import { staff, staffLeavePeriod } from '@/db/schema';
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { normalizeStaffEmail } from '@/lib/attendance';
+import { getAccraDateKey } from '@/lib/date-key';
 import { syncStaffEmailIdentity } from '@/lib/clerk-organization';
 import { enforceRole } from '@/lib/auth/roles';
 
@@ -49,7 +50,24 @@ export async function GET(request: NextRequest) {
     .where(whereClause)
     .orderBy(asc(staff.displayOrder), asc(staff.fullName));
 
-    return NextResponse.json(staffList, {
+    const currentDate = getAccraDateKey();
+    const leavePeriods = staffList.length > 0
+      ? await db.select({ staffId: staffLeavePeriod.staffId })
+        .from(staffLeavePeriod)
+        .where(and(
+          inArray(staffLeavePeriod.staffId, staffList.map((member) => member.id)),
+          lte(staffLeavePeriod.startDate, currentDate),
+          or(isNull(staffLeavePeriod.endDate), gte(staffLeavePeriod.endDate, currentDate)),
+        ))
+        .orderBy(desc(staffLeavePeriod.startDate))
+      : [];
+    const staffOnLeave = new Set(leavePeriods.map((period) => period.staffId));
+    const responseStaff = staffList.map((member) => ({
+      ...member,
+      onLeave: member.archived !== true && staffOnLeave.has(member.id),
+    }));
+
+    return NextResponse.json(responseStaff, {
       headers: {
         'Cache-Control': 'no-store',
       },

@@ -1,7 +1,8 @@
 'use client';
 
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ChevronDown, Clock, FileText, Loader2, Pencil, Plus, Printer, RotateCcw, Search, ShieldCheck, Smartphone, Trash2, UserRound, XCircle } from 'lucide-react';
+import Link from 'next/link';
+import { AlertTriangle, CalendarDays, CheckCircle2, ChevronDown, Clock, FileText, Loader2, Pencil, Plus, Printer, RotateCcw, Search, ShieldCheck, Smartphone, Trash2, UserRound, XCircle } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -692,6 +693,12 @@ export default function AttendancePage() {
               <p className="mt-1 text-xs text-muted-foreground">{formatDisplayDate(attendanceDate)}</p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Link href="/staff">
+                <Button className="h-10 gap-2" variant="outline">
+                  <CalendarDays className="h-4 w-4" />
+                  Manage ongoing leave
+                </Button>
+              </Link>
               <Button
                 className="h-10 gap-2"
                 variant="outline"
@@ -852,6 +859,9 @@ export default function AttendancePage() {
                     value={permissionAbsenceEndDate}
                     onChange={setPermissionAbsenceEndDate}
                   />
+                  <p className="sm:col-span-2 text-xs text-muted-foreground">
+                    Excused absence applies to these dates only. Use Manage ongoing leave for an open-ended staff leave period.
+                  </p>
                   <SelectField
                     className="sm:col-span-2"
                     icon={<FileText className="h-3.5 w-3.5" />}

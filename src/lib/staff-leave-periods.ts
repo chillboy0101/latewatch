@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, lte, or } from 'drizzle-orm';
 import { db } from '@/db';
 import { staffLeavePeriod } from '@/db/schema';
 import { getAccraDateKey } from '@/lib/date-key';
@@ -75,9 +75,37 @@ async function closeStaffLeavePeriod(staffId: string, dateKey: string, actorEmai
     .where(eq(staffLeavePeriod.id, openPeriod.id));
 }
 
+async function endCurrentStaffLeavePeriods(staffId: string, dateKey: string, actorEmail: string) {
+  const currentPeriods = await db.select()
+    .from(staffLeavePeriod)
+    .where(and(
+      eq(staffLeavePeriod.staffId, staffId),
+      lte(staffLeavePeriod.startDate, dateKey),
+      or(isNull(staffLeavePeriod.endDate), gte(staffLeavePeriod.endDate, dateKey)),
+    ));
+  const previousDate = previousDateKey(dateKey);
+
+  for (const period of currentPeriods) {
+    const endDate = previousDate < period.startDate ? period.startDate : previousDate;
+    await db.update(staffLeavePeriod)
+      .set({
+        closedAt: new Date(),
+        closedByEmail: actorEmail,
+        endDate,
+        updatedAt: new Date(),
+      })
+      .where(eq(staffLeavePeriod.id, period.id));
+  }
+}
+
 export async function recordStaffLeaveTransition(input: StaffLeaveTransitionInput) {
   const dateKey = input.transitionDate || getAccraDateKey();
   const actorEmail = transitionActorEmail(input.actorEmail);
+
+  if (input.action === 'END_LEAVE') {
+    await endCurrentStaffLeavePeriods(input.after.id, dateKey, actorEmail);
+    return;
+  }
 
   if (
     input.action === 'DEACTIVATE' &&

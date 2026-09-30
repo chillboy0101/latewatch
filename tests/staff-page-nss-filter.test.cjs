@@ -5,6 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const staffPagePath = path.join(__dirname, '../src/app/staff/page.tsx');
+const attendanceOverviewPath = path.join(__dirname, '../src/app/attendance/overview/page.tsx');
 const staffRoutePath = path.join(__dirname, '../src/app/api/staff/route.ts');
 const staffUpdateRoutePath = path.join(__dirname, '../src/app/api/staff/[id]/route.ts');
 const schemaPath = path.join(__dirname, '../src/db/schema.ts');
@@ -15,7 +16,7 @@ const seedMigrationPath = path.join(__dirname, '../src/app/api/seed/migrate/rout
 test('staff page exposes a top-level NSS personnel filter', () => {
   const source = fs.readFileSync(staffPagePath, 'utf8');
 
-  assert.match(source, /type StaffFilter = 'all' \| 'active' \| 'inactive' \| 'former' \| 'nss'/);
+  assert.match(source, /type StaffFilter = 'all' \| 'active' \| 'onLeave' \| 'inactive' \| 'former' \| 'nss'/);
   assert.match(source, /staffFilter === 'nss'/);
   assert.match(source, /label: 'NSS Personnel'/);
 });
@@ -24,9 +25,9 @@ test('staff page keeps attendance monitoring only staff in a separate table sect
   const source = fs.readFileSync(staffPagePath, 'utf8');
 
   assert.match(source, /isAttendanceOnly: boolean/);
-  assert.match(source, /type StaffFilter = 'all' \| 'active' \| 'inactive' \| 'former' \| 'nss' \| 'attendanceOnly'/);
+  assert.match(source, /type StaffFilter = 'all' \| 'active' \| 'onLeave' \| 'inactive' \| 'former' \| 'nss' \| 'attendanceOnly'/);
   assert.match(source, /label: 'Special Staff & Interns'/);
-  assert.match(source, /grid auto-cols-\[minmax\(10\.5rem,1fr\)\] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-6/);
+  assert.match(source, /grid auto-cols-\[minmax\(10\.5rem,1fr\)\] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-7/);
   assert.doesNotMatch(source, /xl:grid-cols-5/);
   assert.match(source, /Main Staff/);
   assert.match(source, /NSS Personnel/);
@@ -123,10 +124,40 @@ test('staff leave periods are stored for deactivate and activate transitions', (
   assert.match(seedMigrationSource, /CREATE TABLE IF NOT EXISTS staff_leave_period/);
 
   assert.match(updateSource, /recordStaffLeaveTransition/);
+  assert.match(updateSource, /endLeavePeriod/);
   assert.match(updateSource, /action: auditAction/);
   assert.match(updateSource, /before,/);
   assert.match(updateSource, /after: updated\[0\]/);
   // Previously duplicated against src/actions/staff.ts, a module nothing imported. That
   // module is gone; the transition is recorded with the acting admin's email here.
   assert.match(updateSource, /actorEmail: actor\?\.emailAddresses\[0\]\?\.emailAddress/);
+});
+
+test('staff page exposes leave start and return actions clearly', () => {
+  const pageSource = fs.readFileSync(staffPagePath, 'utf8');
+  const updateSource = fs.readFileSync(staffUpdateRoutePath, 'utf8');
+
+  assert.match(pageSource, /label: 'On Leave'/);
+  assert.match(pageSource, /member\.active \? 'Put on leave' : member\.onLeave \? 'Return from leave' : 'Activate'/);
+  assert.match(pageSource, /return member\.active \? 'Active' : 'Inactive'/);
+  assert.match(pageSource, /handleEndLeave/);
+  assert.match(pageSource, /endLeavePeriod: true/);
+  assert.match(updateSource, /action: endLeavePeriod === true \? 'END_LEAVE' : auditAction/);
+});
+
+test('attendance permissions distinguish date-based absence from ongoing leave', () => {
+  const source = fs.readFileSync(attendanceOverviewPath, 'utf8');
+
+  assert.match(source, /Manage ongoing leave/);
+  assert.match(source, /Excused absence applies to these dates only/);
+  assert.match(source, /href="\/staff"/);
+});
+
+test('staff API flags current leave periods separately from staff active status', () => {
+  const source = fs.readFileSync(staffRoutePath, 'utf8');
+
+  assert.match(source, /from\(staffLeavePeriod\)/);
+  assert.match(source, /lte\(staffLeavePeriod\.startDate, currentDate\)/);
+  assert.match(source, /gte\(staffLeavePeriod\.endDate, currentDate\)/);
+  assert.match(source, /onLeave: member\.archived !== true && staffOnLeave\.has\(member\.id\)/);
 });

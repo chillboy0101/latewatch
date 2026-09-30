@@ -17,6 +17,7 @@ type StaffUpdateBody = {
   archived?: boolean;
   department?: string | null;
   email?: string | null;
+  endLeavePeriod?: boolean;
   fullName?: string;
   gender?: string | null;
   isAttendanceOnly?: boolean;
@@ -84,6 +85,7 @@ export async function PUT(
     const {
       fullName,
       email,
+      endLeavePeriod,
       department,
       unit,
       staffNo,
@@ -119,6 +121,7 @@ export async function PUT(
       updateData.archivedAt = archived ? new Date() : null;
       updateData.active = archived ? false : true;
     }
+    if (endLeavePeriod === true) updateData.active = true;
 
     if (updateData.email) {
       const [emailOwner] = await db.select({ id: staff.id })
@@ -159,7 +162,9 @@ export async function PUT(
       return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
     }
 
-    const auditAction = typeof archived === 'boolean' && before.archived !== archived
+    const auditAction = endLeavePeriod === true
+      ? before.active === false ? 'ACTIVATE' : 'UPDATE'
+      : typeof archived === 'boolean' && before.archived !== archived
       ? archived ? 'ARCHIVE' : 'RESTORE'
       : typeof active === 'boolean' && before.active !== active
       ? active ? 'ACTIVATE' : 'DEACTIVATE'
@@ -171,11 +176,11 @@ export async function PUT(
       action: auditAction,
       before,
       after: updated[0],
-      reason: 'staff',
+      reason: endLeavePeriod === true ? 'staff-leave-end' : 'staff',
     });
 
     await recordStaffLeaveTransition({
-      action: auditAction,
+      action: endLeavePeriod === true ? 'END_LEAVE' : auditAction,
       actorEmail: actor?.emailAddresses[0]?.emailAddress,
       after: updated[0],
       before,
