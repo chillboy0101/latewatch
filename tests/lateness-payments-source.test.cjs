@@ -59,7 +59,7 @@ test('staff penalty history endpoint is scoped to the signed-in staff member', (
 
   assert.match(source, /currentUser\(\)/);
   assert.match(source, /resolveMemberForPenaltyHistory/);
-  assert.match(source, /syncLatenessEntriesFromAttendanceForRange/);
+  assert.doesNotMatch(source, /syncLatenessEntriesFromAttendanceForRange/);
   assert.match(source, /eq\(latenessEntry\.staffId, member\.id\)/);
   assert.match(source, /latenessPayment/);
   assert.match(source, /summarizeLatenessPaymentReceipts/);
@@ -96,10 +96,10 @@ test('staff receipt notification API returns only unseen signed-in staff payment
   assert.doesNotMatch(source, /searchParams\.get\('staffId'\)/);
 });
 
-test('dashboard syncs lateness entries before reading weekly totals', () => {
+test('dashboard reads stored lateness entries for weekly totals', () => {
   const source = fs.readFileSync(dashboardApiPath, 'utf8');
 
-  assert.match(source, /syncLatenessEntriesFromAttendanceForRange/);
+  assert.doesNotMatch(source, /syncLatenessEntriesFromAttendanceForRange/);
   assert.match(source, /prevWeekStartStr/);
   assert.match(source, /weekEndStr/);
 });

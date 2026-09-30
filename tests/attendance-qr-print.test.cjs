@@ -220,11 +220,11 @@ test('staff sign-out syncs penalties and invalidates entries and payment views',
   assert.match(source, /publishRealtime\('staff-penalty-history', 'invalidate', \{ date: clock\.dateKey, reason: 'attendance-sign-out' \}\)/);
 });
 
-test('system notifications sync lateness before reading weekly penalty totals', () => {
+test('system notifications read weekly penalties without running reconciliation', () => {
   const source = fs.readFileSync(notificationsApiPath, 'utf8');
 
-  assert.match(source, /syncLatenessEntriesFromAttendanceForRange/);
-  assert.match(source, /await syncLatenessEntriesFromAttendanceForRange\(weekStart, todayStr\)[\s\S]*const weekEntries/);
+  assert.doesNotMatch(source, /syncLatenessEntriesFromAttendanceForRange/);
+  assert.match(source, /const weekEntries = await db\.select/);
 });
 
 test('notifications endpoint isolates audit and system notification failures', () => {

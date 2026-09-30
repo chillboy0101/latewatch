@@ -4,14 +4,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { latenessDebtPardon, latenessDebtPardonEntry, latenessEntry, latenessPaymentAllocation, offenceBookItem, staff } from '@/db/schema';
 import { getAccraClock } from '@/lib/attendance';
-import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 import { getAuditActor, tryWriteAuditEvent } from '@/lib/audit';
 import { buildOffenceBookWorkbookFromData, type OffenceBookItemInput } from '@/lib/offence-book-export';
 import { enforceRole } from '@/lib/auth/roles';
 
 export const dynamic = 'force-dynamic';
-
-const PAYMENT_SYNC_START_DATE = '2000-01-01';
 
 function parseExportInput(body: unknown) {
   const year = Number((body as { year?: unknown })?.year);
@@ -46,8 +43,6 @@ export async function buildOffenceBookExportWorkbook(input: {
   const monthDate = new Date(input.year, input.month, 1);
   const monthStart = format(startOfMonth(monthDate), 'yyyy-MM-dd');
   const monthEnd = format(endOfMonth(monthDate), 'yyyy-MM-dd');
-
-  await syncLatenessEntriesFromAttendanceForRange(PAYMENT_SYNC_START_DATE, monthEnd);
 
   const staffRows = await db.select({
     fullName: staff.fullName,

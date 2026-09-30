@@ -3,7 +3,6 @@ import { and, gte, lte } from 'drizzle-orm';
 import { endOfMonth, format, startOfMonth } from 'date-fns';
 import { db } from '@/db';
 import { latenessEntry } from '@/db/schema';
-import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 import { getMonthWorkingWeeks } from '@/lib/export-weeks';
 import { summarizeLatenessExportEntries } from '@/lib/lateness-export-summary';
 import { enforceRole } from '@/lib/auth/roles';
@@ -46,8 +45,6 @@ export async function GET(request: NextRequest) {
     const selectedMonth = new Date(year, month, 1);
     const monthStart = format(startOfMonth(selectedMonth), 'yyyy-MM-dd');
     const monthEnd = format(endOfMonth(selectedMonth), 'yyyy-MM-dd');
-
-    await syncLatenessEntriesFromAttendanceForRange(monthStart, monthEnd);
 
     const entries = await db.select({
       computedAmount: latenessEntry.computedAmount,

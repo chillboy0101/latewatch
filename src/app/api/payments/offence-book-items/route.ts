@@ -4,7 +4,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { latenessDebtPardon, latenessDebtPardonEntry, latenessEntry, latenessPaymentAllocation, offenceBookItem, staff } from '@/db/schema';
 import { getAccraClock } from '@/lib/attendance';
-import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 import { writeAuditEvent } from '@/lib/audit';
 import {
   calculateOffenceBookFinancialSummary,
@@ -15,8 +14,6 @@ import {
 import { publishRealtime } from '@/lib/realtime';
 
 export const dynamic = 'force-dynamic';
-
-const PAYMENT_SYNC_START_DATE = '2000-01-01';
 
 type EditableItem = {
   amount?: unknown;
@@ -176,8 +173,6 @@ async function hasOpeningBalanceAnchorBefore(monthKey: string) {
 
 async function loadFinancialSummary(input: { month: number; monthKey: string; year: number }, itemRows: Array<typeof offenceBookItem.$inferSelect>) {
   const monthEnd = formatDateKey(new Date(input.year, input.month + 1, 0));
-
-  await syncLatenessEntriesFromAttendanceForRange(PAYMENT_SYNC_START_DATE, monthEnd);
 
   const staffRows = await db.select({
     fullName: staff.fullName,

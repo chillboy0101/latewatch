@@ -137,11 +137,11 @@ test('lateness export summary includes no-show amount without late or sign-out c
   });
 });
 
-test('lateness summary API is database-sourced and syncs before reading totals', () => {
+test('lateness summary API reads database totals without running reconciliation', () => {
   assert.equal(fs.existsSync(summaryRoutePath), true);
   const source = fs.readFileSync(summaryRoutePath, 'utf8');
 
-  assert.match(source, /syncLatenessEntriesFromAttendanceForRange/);
+  assert.doesNotMatch(source, /syncLatenessEntriesFromAttendanceForRange/);
   assert.match(source, /from\(latenessEntry\)/);
   assert.match(source, /getMonthWorkingWeeks/);
   assert.match(source, /summarizeLatenessExportEntries/);

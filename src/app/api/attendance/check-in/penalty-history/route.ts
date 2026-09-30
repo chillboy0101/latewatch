@@ -4,7 +4,6 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { latenessDebtPardonEntry, latenessEntry, latenessPayment, latenessPaymentAllocation } from '@/db/schema';
 import { getAccraClock, getOrAutoLinkStaffByEmail } from '@/lib/attendance';
-import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 import { summarizeLatenessPaymentReceipts } from '@/lib/lateness-payment-receipts';
 import { summarizeLatenessPaymentEntries, summarizePenaltyHistoryWeeks } from '@/lib/lateness-payments';
 
@@ -60,7 +59,6 @@ export async function GET() {
     }
 
     const clock = getAccraClock();
-    await syncLatenessEntriesFromAttendanceForRange('2000-01-01', clock.dateKey);
 
     const entries = await db.select()
       .from(latenessEntry)

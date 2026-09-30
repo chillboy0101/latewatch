@@ -3,7 +3,6 @@ import { and, asc, eq, gte, inArray, lte } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { latenessDebtPardonEntry, latenessEntry, latenessPayment, latenessPaymentAllocation, staff } from '@/db/schema';
-import { getAccraDateKey } from '@/lib/date-key';
 import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 import { sendLatenessPaymentReceiptPush } from '@/lib/lateness-payment-receipt-push';
 import { allocateLatenessPayment, getWeekBoundsForDate, summarizeLatenessPaymentEntries, type LatenessPaymentEntryLike } from '@/lib/lateness-payments';
@@ -14,8 +13,6 @@ export const dynamic = 'force-dynamic';
 
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const OVERPAYMENT_MESSAGE = 'Payment amount exceeds outstanding balance';
-const PAYMENT_SYNC_START_DATE = '2000-01-01';
-
 function isDateKey(value: string | null) {
   return Boolean(value && DATE_KEY_PATTERN.test(value));
 }
@@ -92,11 +89,6 @@ export async function GET(request: NextRequest) {
     if (hasDateFilter && (!isDateKey(weekStart) || !isDateKey(weekEnd))) {
       return NextResponse.json({ error: 'Valid start and end dates are required when filtering payments' }, { status: 400 });
     }
-    await syncLatenessEntriesFromAttendanceForRange(
-      hasDateFilter ? weekStart! : PAYMENT_SYNC_START_DATE,
-      hasDateFilter ? weekEnd! : getAccraDateKey(),
-    );
-
     const staffWhere = staffId
       ? and(eq(staff.id, staffId), eq(staff.active, true), eq(staff.archived, false), eq(staff.isAttendanceOnly, false))
       : and(eq(staff.active, true), eq(staff.archived, false), eq(staff.isAttendanceOnly, false));
@@ -218,10 +210,9 @@ export async function POST(request: NextRequest) {
     if (hasDateFilter && (!isDateKey(weekStart) || !isDateKey(weekEnd))) {
       return NextResponse.json({ error: 'Valid start and end dates are required when limiting a payment' }, { status: 400 });
     }
-    await syncLatenessEntriesFromAttendanceForRange(
-      hasDateFilter ? weekStart : PAYMENT_SYNC_START_DATE,
-      hasDateFilter ? weekEnd : getAccraDateKey(),
-    );
+    if (hasDateFilter) {
+      await syncLatenessEntriesFromAttendanceForRange(weekStart, weekEnd);
+    }
 
     const [member] = await db.select({
       email: staff.email,
