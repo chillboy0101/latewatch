@@ -10,6 +10,7 @@ import { normalizeStaffEmail } from '@/lib/attendance';
 import { getAccraDateKey } from '@/lib/date-key';
 import { syncStaffEmailIdentity } from '@/lib/clerk-organization';
 import { enforceRole } from '@/lib/auth/roles';
+import { getActiveLeavePeriod } from '@/lib/staff-leave';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,7 +56,14 @@ export async function GET(request: NextRequest) {
       ? requestedDate
       : getAccraDateKey();
     const leavePeriods = staffList.length > 0
-      ? await db.select({ staffId: staffLeavePeriod.staffId })
+      ? await db.select({
+          endDate: staffLeavePeriod.endDate,
+          leaveType: staffLeavePeriod.leaveType,
+          returnedOn: staffLeavePeriod.returnedOn,
+          source: staffLeavePeriod.source,
+          staffId: staffLeavePeriod.staffId,
+          startDate: staffLeavePeriod.startDate,
+        })
         .from(staffLeavePeriod)
         .where(and(
           inArray(staffLeavePeriod.staffId, staffList.map((member) => member.id)),
@@ -66,11 +74,21 @@ export async function GET(request: NextRequest) {
         ))
         .orderBy(desc(staffLeavePeriod.startDate))
       : [];
-    const staffOnLeave = new Set(leavePeriods.map((period) => period.staffId));
-    const responseStaff = staffList.map((member) => ({
-      ...member,
-      onLeave: member.archived !== true && staffOnLeave.has(member.id),
-    }));
+    const responseStaff = staffList.map((member) => {
+      const activeLeave = getActiveLeavePeriod(leavePeriods, member.id, currentDate);
+      return {
+        ...member,
+        activeLeave: member.archived !== true && activeLeave ? {
+          endDate: activeLeave.endDate,
+          leaveType: activeLeave.leaveType,
+          returnedOn: activeLeave.returnedOn,
+          source: activeLeave.source,
+          staffId: activeLeave.staffId,
+          startDate: activeLeave.startDate,
+        } : null,
+        onLeave: member.archived !== true && Boolean(activeLeave),
+      };
+    });
 
     return NextResponse.json(responseStaff, {
       headers: {

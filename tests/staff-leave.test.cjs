@@ -4,7 +4,7 @@ const test = require('node:test');
 
 require('tsx/cjs');
 
-const { isStaffLeaveDate, leaveRangesOverlap } = require('../src/lib/staff-leave.ts');
+const { formatLeaveDuration, getActiveLeavePeriod, isStaffLeaveDate, leaveRangesOverlap } = require('../src/lib/staff-leave.ts');
 
 test('leave coverage includes both approved range boundaries and excludes gaps', () => {
   const periods = [
@@ -44,4 +44,16 @@ test('range overlap is inclusive and returned periods end before the return date
   assert.equal(leaveRangesOverlap({ ...base, startDate: '2026-09-10', endDate: '2026-09-12' }), true);
   assert.equal(leaveRangesOverlap({ ...base, startDate: '2026-09-11', endDate: '2026-09-12' }), false);
   assert.equal(leaveRangesOverlap({ ...base, existingReturnedOn: '2026-09-08', startDate: '2026-09-08', endDate: '2026-09-12' }), false);
+});
+
+test('current leave period and duration are computed using the effective end date', () => {
+  const periods = [
+    { endDate: '2026-09-30', returnedOn: '2026-09-20', source: 'approved_leave', staffId: 'staff-1', startDate: '2026-09-01' },
+    { endDate: '2026-10-05', source: 'approved_leave', staffId: 'staff-1', startDate: '2026-10-01' },
+  ];
+
+  const currentPeriod = getActiveLeavePeriod(periods, 'staff-1', '2026-09-18');
+  assert.deepEqual(currentPeriod, periods[0]);
+  assert.equal(formatLeaveDuration(periods[0], '2026-09-18'), '18 days');
+  assert.equal(formatLeaveDuration(periods[1], '2026-10-02'), '2 days');
 });

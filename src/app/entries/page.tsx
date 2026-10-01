@@ -15,6 +15,7 @@ import { NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/pen
 import { getAccraDateKey } from '@/lib/date-key';
 import { formatLongDisplayDate } from '@/lib/date-format';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
+import { formatLeaveDuration } from '@/lib/staff-leave';
 
 interface StaffMember {
   id: string;
@@ -22,6 +23,14 @@ interface StaffMember {
   active?: boolean | null;
   archived?: boolean | null;
   onLeave?: boolean;
+  activeLeave?: {
+    endDate: string | null;
+    leaveType: string | null;
+    returnedOn: string | null;
+    source: string | null;
+    staffId: string;
+    startDate: string | null;
+  } | null;
   department?: string | null;
   email?: string | null;
   isAttendanceOnly?: boolean | null;
@@ -807,7 +816,7 @@ function EntriesPageContent() {
                           <span>{member?.fullName}</span>
                           {isOnLeave && (
                             <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
-                              On Leave
+                              On Leave{member?.activeLeave ? ` • ${formatLeaveDuration(member.activeLeave, selectedDate)}` : ''}
                             </span>
                           )}
                           {member?.archived && (

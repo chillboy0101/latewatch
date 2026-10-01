@@ -6,7 +6,7 @@ import { getAccraClock, getActiveOfficeNetwork, getOfficeLocationsForAttendance,
 import { syncLatenessEntriesFromAttendanceForDate } from '@/lib/attendance-lateness-sync';
 import { isGeneralPardonReason, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
 import { getStaffLeavePeriodsForRange } from '@/lib/staff-leave-service';
-import { isStaffLeaveDate } from '@/lib/staff-leave';
+import { getActiveLeavePeriod, isStaffLeaveDate } from '@/lib/staff-leave';
 import { getAttendanceStatusFlags, primaryAttendanceStatus, type AttendanceStatus } from '@/lib/attendance-status';
 import { resolveOfficeLocationForDate } from '@/lib/office-location-policy';
 import { isOnTimeCheckIn, shouldAlertNoSignOut } from '@/lib/work-hours';
@@ -142,7 +142,8 @@ export async function GET(request: NextRequest) {
       const attendance = attendanceByStaffId.get(member.id) || null;
       const permission = permissionByStaffId.get(member.id) || null;
       const device = deviceByStaffId.get(member.id) || null;
-      const onLeave = isStaffLeaveDate(leavePeriods, member.id, date);
+      const leavePeriod = getActiveLeavePeriod(leavePeriods, member.id, date);
+      const onLeave = Boolean(leavePeriod);
       const noSignOut = Boolean(
         !onLeave &&
         attendance &&
@@ -167,7 +168,17 @@ export async function GET(request: NextRequest) {
         onLeave,
       });
       return {
-        staff: member,
+        staff: {
+          ...member,
+          activeLeave: leavePeriod ? {
+            endDate: leavePeriod.endDate,
+            leaveType: leavePeriod.leaveType,
+            returnedOn: leavePeriod.returnedOn,
+            source: leavePeriod.source,
+            staffId: leavePeriod.staffId,
+            startDate: leavePeriod.startDate,
+          } : null,
+        },
         attendance: attendance
           ? {
               id: attendance.id,
