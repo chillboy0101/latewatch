@@ -39,7 +39,8 @@ Installed as a home-screen web app.
   and device resets
 - **Holiday calendar**, maintained manually or synchronised from Google Calendar
 - **Payments** recorded against outstanding penalties, with receipts issued to staff
-- **Contributions** and the **monthly offence book**
+- **Contributions** and the **monthly offence book**, whose inputs and payment summary are
+  scoped to the selected month
 - **Excel exports** — weekly, monthly, attendance, contributions, lateness summary, and
   offence book, generated from stored templates
 - **Audit trail** recording every change with its before and after state
@@ -316,12 +317,18 @@ payable. Never run apply against production before reviewing its migration and d
 
 ```bash
 npm run test
+node --test tests/offence-book-source.test.cjs tests/data-load-failures.test.cjs tests/lateness-payments-source.test.cjs
 ```
 
 The suite asserts against source files rather than running the UI — it checks that pages,
 routes, and libraries contain the behaviour they are supposed to. That makes it fast and
 dependency-free, but it also means **moving or renaming a page breaks its tests**, and those
 assertions must be updated alongside the change rather than deleted.
+
+The payments page keeps offence-book month changes request-safe: the most recently selected
+month owns the editable state, stale responses cannot replace it, and saving remains disabled
+until the selected month has finished loading. The payment summary categories are calculated
+from penalties created in the selected month; `Live outstanding` remains an all-time balance.
 
 ---
 

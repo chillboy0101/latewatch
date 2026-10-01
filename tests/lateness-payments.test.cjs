@@ -132,12 +132,12 @@ test('pardons waive the snapshotted amount while later penalties remain payable'
   ]);
 });
 
-test('monthly balances reflect current payments and pardons for each penalty month', () => {
+test('monthly balances reflect later payments and pardons in the original penalty month', () => {
   const months = summarizeLatenessPaymentsByMonth({
     currentDate: '2026-04-15',
     entries: [
       { id: 'feb-entry', date: '2026-02-10', computedAmount: '100.00' },
-      { id: 'mar-entry', date: '2026-03-10', computedAmount: '50.00', pardonedAmount: '20.00', pardonedAt: '2026-03-20T10:00:00.000Z' },
+      { id: 'mar-entry', date: '2026-03-10', computedAmount: '50.00', pardonedAmount: '20.00', pardonedAt: '2026-04-20T10:00:00.000Z' },
     ],
     allocations: [
       { entryId: 'feb-entry', allocatedAmount: '10.00', recordedAt: '2026-02-28T23:59:59.000Z' },

@@ -5,11 +5,10 @@ import { db } from '@/db';
 import { latenessDebtPardon, latenessDebtPardonEntry, latenessEntry, latenessPayment, latenessPaymentAllocation, staff } from '@/db/schema';
 import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 import { sendLatenessPaymentReceiptPush } from '@/lib/lateness-payment-receipt-push';
-import { allocateLatenessPayment, getWeekBoundsForDate, summarizeLatenessPaymentEntries, type LatenessPaymentEntryLike } from '@/lib/lateness-payments';
+import { allocateLatenessPayment, getWeekBoundsForDate, summarizeLatenessPaymentEntries, summarizeLatenessPaymentsByMonth, type LatenessPaymentEntryLike } from '@/lib/lateness-payments';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { getAccraDateKey } from '@/lib/date-key';
-import { summarizeLatenessPaymentsByMonth } from '@/lib/lateness-payments';
 
 export const dynamic = 'force-dynamic';
 
@@ -211,7 +210,6 @@ export async function GET(request: NextRequest) {
             : entry.date.slice(0, 10),
           id: entry.id,
           pardonedAmount: pardon?.forgivenAmount,
-          pardonedAt: pardon?.pardonedAt,
         };
       }),
     });

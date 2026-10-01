@@ -178,6 +178,13 @@ test('payments list uses binary paid or unpaid status with toolbar money totals'
   assert.match(page, /selectedMonthBalance\?\.paidAmount/);
   assert.match(page, /selectedMonthBalance\?\.pardonedAmount/);
   assert.match(page, /selectedMonthBalance\?\.unpaidAmount/);
+  assert.match(page, /PaymentToolbarTotal label="Penalties"/);
+  assert.match(page, /PaymentToolbarTotal label="Paid"/);
+  assert.match(page, /PaymentToolbarTotal label="Pardoned"/);
+  assert.match(page, /PaymentToolbarTotal label="Unpaid"/);
+  assert.doesNotMatch(page, /\$\{selectedMonthLabel\} (penalties|paid|pardoned|unpaid)/);
+  assert.match(page, /offenceBookRequestRef\.current\?\.key === requestKey/);
+  assert.match(page, /offenceBookSelectionRef\.current !== requestKey/);
   assert.doesNotMatch(page, /Monthly lateness balances/);
   assert.doesNotMatch(page, /Paid by month-end/);
 });

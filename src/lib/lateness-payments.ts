@@ -23,11 +23,6 @@ export type MonthlyLatenessPaymentEntryLike = {
   date: string;
   id: string;
   pardonedAmount?: number | string | null;
-  pardonedAt?: string | Date | null;
-};
-
-export type DatedLatenessPaymentAllocationLike = LatenessPaymentAllocationLike & {
-  recordedAt?: string | Date | null;
 };
 
 export type MonthlyLatenessPaymentBalance = {
@@ -97,12 +92,12 @@ function monthRange(startMonth: string, endMonth: string) {
 }
 
 export function summarizeLatenessPaymentsByMonth(input: {
-  allocations: DatedLatenessPaymentAllocationLike[];
+  allocations: LatenessPaymentAllocationLike[];
   currentDate: string;
   entries: MonthlyLatenessPaymentEntryLike[];
 }): MonthlyLatenessPaymentBalance[] {
   const entriesByMonth = new Map<string, MonthlyLatenessPaymentEntryLike[]>();
-  const allocationsByEntryId = new Map<string, DatedLatenessPaymentAllocationLike[]>();
+  const allocationsByEntryId = new Map<string, LatenessPaymentAllocationLike[]>();
 
   for (const entry of input.entries) {
     if (cents(entry.computedAmount) <= 0) continue;

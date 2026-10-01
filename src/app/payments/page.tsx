@@ -204,7 +204,9 @@ export default function PenaltyPaymentsPage() {
   const [externalMoneyDrafts, setExternalMoneyDrafts] = useState<OffenceBookDraftItem[]>(() => [createOffenceBookDraftItem()]);
   const [expenditureDrafts, setExpenditureDrafts] = useState<OffenceBookDraftItem[]>(() => [createOffenceBookDraftItem()]);
   const paymentsRequestRef = useRef<Promise<void> | null>(null);
-  const offenceBookRequestRef = useRef<Promise<void> | null>(null);
+  const offenceBookRequestRef = useRef<{ key: string; promise: Promise<void> } | null>(null);
+  const offenceBookSelectionRef = useRef(`${offenceBookYear}-${offenceBookMonth}`);
+  offenceBookSelectionRef.current = `${offenceBookYear}-${offenceBookMonth}`;
 
   const loadPayments = useCallback(async () => {
     if (paymentsRequestRef.current) return paymentsRequestRef.current;
@@ -240,7 +242,8 @@ export default function PenaltyPaymentsPage() {
   }, []);
 
   const loadOffenceBookItems = useCallback(async () => {
-    if (offenceBookRequestRef.current) return offenceBookRequestRef.current;
+    const requestKey = `${offenceBookYear}-${offenceBookMonth}`;
+    if (offenceBookRequestRef.current?.key === requestKey) return offenceBookRequestRef.current.promise;
 
     const request = (async () => {
     setOffenceBookLoading(true);
@@ -256,25 +259,28 @@ export default function PenaltyPaymentsPage() {
       });
       const body = await response.json().catch(() => ({})) as Partial<OffenceBookItemsResponse> & { error?: string };
       if (!response.ok) throw new Error(body.error || `Offence book request failed (${response.status})`);
+      if (offenceBookSelectionRef.current !== requestKey) return;
 
       setExternalMoneyDrafts(offenceBookDraftsFromRows(body.externalMoney || []));
       setExpenditureDrafts(offenceBookDraftsFromRows(body.expenditure || []));
       setOpeningBalance(body.openingBalance || body.carriedOpeningBalance || '');
       setClosingBalance(body.closingBalance || body.calculatedClosingBalance || '');
       setPaymentsCollected(body.paymentsCollected || '0.00');
-      setLoadedOffenceBookKey(`${offenceBookYear}-${offenceBookMonth}`);
+      setLoadedOffenceBookKey(requestKey);
     } catch (error) {
+      if (offenceBookSelectionRef.current !== requestKey) return;
       console.error('Failed to load offence book inputs:', error);
       const text = error instanceof Error && error.name === 'TimeoutError'
         ? 'Loading offence book inputs timed out. Please try again.'
         : error instanceof Error ? error.message : 'Could not load offence book inputs';
       setOffenceBookMessage({ type: 'error', text });
     } finally {
+      if (offenceBookRequestRef.current?.key !== requestKey) return;
       setOffenceBookLoading(false);
       offenceBookRequestRef.current = null;
     }
     })();
-    offenceBookRequestRef.current = request;
+    offenceBookRequestRef.current = { key: requestKey, promise: request };
     return request;
   }, [offenceBookMonth, offenceBookYear]);
 
@@ -363,8 +369,6 @@ export default function PenaltyPaymentsPage() {
     );
   }, [data?.staff]);
   const selectedMonthKey = `${offenceBookYear}-${String(offenceBookMonth + 1).padStart(2, '0')}`;
-  const selectedMonthLabel = new Date(offenceBookYear, offenceBookMonth, 1)
-    .toLocaleString(undefined, { month: 'long', year: 'numeric' });
   const selectedMonthBalance = data?.monthlyBreakdown.find((month) => month.month === selectedMonthKey);
   const paymentRosterSections = useMemo(() => {
     return [
@@ -658,10 +662,10 @@ export default function PenaltyPaymentsPage() {
               </div>
               <div className="flex flex-wrap items-center gap-2 lg:justify-center">
                 <PaymentToolbarTotal label="Live outstanding" value={currency(paymentTotals)} tone="live" />
-                <PaymentToolbarTotal label={`${selectedMonthLabel} penalties`} value={currency(selectedMonthBalance?.penaltyAmount)} tone="month" />
-                <PaymentToolbarTotal label={`${selectedMonthLabel} paid`} value={currency(selectedMonthBalance?.paidAmount)} tone="paid" />
-                <PaymentToolbarTotal label={`${selectedMonthLabel} pardoned`} value={currency(selectedMonthBalance?.pardonedAmount)} tone="month" />
-                <PaymentToolbarTotal label={`${selectedMonthLabel} unpaid`} value={currency(selectedMonthBalance?.unpaidAmount)} tone="unpaid" />
+                <PaymentToolbarTotal label="Penalties" value={currency(selectedMonthBalance?.penaltyAmount)} tone="month" />
+                <PaymentToolbarTotal label="Paid" value={currency(selectedMonthBalance?.paidAmount)} tone="paid" />
+                <PaymentToolbarTotal label="Pardoned" value={currency(selectedMonthBalance?.pardonedAmount)} tone="month" />
+                <PaymentToolbarTotal label="Unpaid" value={currency(selectedMonthBalance?.unpaidAmount)} tone="unpaid" />
               </div>
               <div className="relative w-full md:max-w-sm">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
