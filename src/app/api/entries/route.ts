@@ -1,8 +1,8 @@
 // app/api/entries/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { attendancePermission, attendanceRecord, entrySubmission, latenessEntry, workCalendar, staff } from '@/db/schema';
-import { eq, and, gte, lte } from 'drizzle-orm';
+import { attendancePermission, attendanceRecord, entrySubmission, latenessDebtPardonEntry, latenessEntry, latenessPaymentAllocation, staff, staffLeavePeriod, workCalendar } from '@/db/schema';
+import { and, eq, gte, gt, inArray, isNull, lte, ne, or } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 import { getAuditActor, writeAuditEvent } from '@/lib/audit';
 import {
@@ -10,6 +10,8 @@ import {
   syncLatenessEntriesFromAttendanceForRange,
 } from '@/lib/attendance-lateness-sync';
 import { mergeAttendanceRowsIntoEntryRows } from '@/lib/lateness-entry-presentation';
+import { isStaffLeaveDate } from '@/lib/staff-leave';
+import { isIsoDateKey, isoDateKeyToLocalDate } from '@/lib/date-format';
 import {
   manualAttendanceCorrectionChanged,
   resolveManualAttendanceCorrection,
@@ -132,6 +134,14 @@ export async function GET(request: NextRequest) {
     const start = url.searchParams.get('start');
     const end = url.searchParams.get('end');
 
+    if (date && !isIsoDateKey(date)) {
+      return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
+    }
+
+    if ((start || end) && (!isIsoDateKey(start) || !isIsoDateKey(end) || start! > end!)) {
+      return NextResponse.json({ error: 'Valid ordered start and end dates are required' }, { status: 400 });
+    }
+
     // Single date query
     if (date) {
       await syncLatenessEntriesFromAttendanceForDate(date);
@@ -205,11 +215,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
 
-    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    if (!isIsoDateKey(date)) {
       return NextResponse.json({ error: 'Invalid date format' }, { status: 400 });
     }
 
-    const selectedDate = new Date(`${date}T00:00:00`);
+    const selectedDate = isoDateKeyToLocalDate(date)!;
     if (selectedDate.getDay() === 0 || selectedDate.getDay() === 6) {
       return NextResponse.json(
         { error: 'Cannot create entries for weekends' },
@@ -250,6 +260,21 @@ export async function POST(request: NextRequest) {
       .from(latenessEntry)
       .where(eq(latenessEntry.date, date));
     const existingByStaffId = new Map(existingEntries.map((entry) => [entry.staffId, entry]));
+    const existingEntryIds = existingEntries.map((entry) => entry.id);
+    const [allocatedRows, pardonedRows] = existingEntryIds.length > 0
+      ? await Promise.all([
+        db.select({ entryId: latenessPaymentAllocation.entryId })
+          .from(latenessPaymentAllocation)
+          .where(inArray(latenessPaymentAllocation.entryId, existingEntryIds)),
+        db.select({ entryId: latenessDebtPardonEntry.entryId })
+          .from(latenessDebtPardonEntry)
+          .where(inArray(latenessDebtPardonEntry.entryId, existingEntryIds)),
+      ])
+      : [[], []];
+    const financiallyProtectedEntryIds = new Set([
+      ...allocatedRows.map((row) => row.entryId),
+      ...pardonedRows.map((row) => row.entryId),
+    ]);
     const existingEntryStaffIds = new Set(existingEntries.map((entry) => entry.staffId));
     const allowedStaffIds = new Set([...activeStaffIds, ...existingEntryStaffIds]);
     const attendanceRows = await db.select()
@@ -257,7 +282,52 @@ export async function POST(request: NextRequest) {
       .where(eq(attendanceRecord.date, date));
     const attendanceByStaffId = new Map(attendanceRows.map((record) => [record.staffId, record]));
     const activePermissionsByStaffId = await getActivePermissionsForDate(date);
+    const leavePeriodRows = await db.select({
+      endDate: staffLeavePeriod.endDate,
+      returnedOn: staffLeavePeriod.returnedOn,
+      source: staffLeavePeriod.source,
+      staffId: staffLeavePeriod.staffId,
+      startDate: staffLeavePeriod.startDate,
+    })
+      .from(staffLeavePeriod)
+      .where(and(
+        ne(staffLeavePeriod.source, 'staff_status'),
+        lte(staffLeavePeriod.startDate, date),
+        or(isNull(staffLeavePeriod.returnedOn), gt(staffLeavePeriod.returnedOn, date)),
+        or(isNull(staffLeavePeriod.endDate), gte(staffLeavePeriod.endDate, date)),
+      )) || [];
+    const leavePeriods = Array.isArray(leavePeriodRows)
+      ? leavePeriodRows.filter((period): period is NonNullable<typeof period> => Boolean(period))
+      : [];
     const actor = await getAuditActor();
+
+    for (const entry of entries) {
+      if (!entry || typeof entry.staffId !== 'string' || !allowedStaffIds.has(entry.staffId)) continue;
+
+      if (isStaffLeaveDate(leavePeriods, entry.staffId, date)) {
+        return NextResponse.json(
+          { error: 'Entries cannot be edited for staff on approved leave' },
+          { status: 409 },
+        );
+      }
+
+      const existing = existingByStaffId.get(entry.staffId);
+      if (existing && financiallyProtectedEntryIds.has(existing.id)) {
+        return NextResponse.json(
+          { error: 'This entry has payment or pardon history and requires financial review before correction' },
+          { status: 409 },
+        );
+      }
+
+      if (
+        hasOwn(entry, 'signOutTime') &&
+        typeof entry.signOutTime === 'string' &&
+        entry.signOutTime.trim() !== '' &&
+        !normalizeEntryTime(entry.signOutTime)
+      ) {
+        return NextResponse.json({ error: 'Invalid sign-out time format' }, { status: 400 });
+      }
+    }
 
     const results = [];
     let deletedCount = 0;
@@ -275,10 +345,11 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
+      const existing = existingByStaffId.get(entry.staffId);
+
       const arrivalTime = typeof entry.arrivalTime === 'string' && /^\d{2}:\d{2}$/.test(entry.arrivalTime)
         ? entry.arrivalTime
         : null;
-      const existing = existingByStaffId.get(entry.staffId);
       const existingAttendance = attendanceByStaffId.get(entry.staffId);
       const existingReason = existing?.reason || (typeof entry.reason === 'string' ? entry.reason : '');
       const isNoShowSignInEntry =
@@ -287,15 +358,6 @@ export async function POST(request: NextRequest) {
         entry.noShowSignInWaived === true ||
         existingAttendance?.noShowSignInWaived === true;
       const hasSubmittedSignOutTime = hasOwn(entry, 'signOutTime');
-      if (
-        hasSubmittedSignOutTime &&
-        typeof entry.signOutTime === 'string' &&
-        entry.signOutTime.trim() !== '' &&
-        !normalizeEntryTime(entry.signOutTime)
-      ) {
-        return NextResponse.json({ error: 'Invalid sign-out time format' }, { status: 400 });
-      }
-
       const legacyNoSignOutToggle = entry.didNotSignOut === true && !hasSubmittedSignOutTime;
       const submittedSignOutTime = legacyNoSignOutToggle
         ? null

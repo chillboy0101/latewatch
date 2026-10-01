@@ -6,11 +6,17 @@ import { attendancePermission, staff } from '@/db/schema';
 import { reconcileAttendanceForPermission } from '@/lib/attendance-permission-reconciliation';
 import { writeAuditEvent } from '@/lib/audit';
 import { publishRealtime } from '@/lib/realtime';
+import { enforceRole } from '@/lib/auth/roles';
 
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const authError = await enforceRole(['admin']);
+  if (authError) {
+    return NextResponse.json({ error: authError.error }, { status: authError.status });
+  }
+
   try {
     const user = await currentUser();
     if (!user) {
@@ -30,6 +36,7 @@ export async function DELETE(
     const [member] = await db.select({
       fullName: staff.fullName,
       id: staff.id,
+      isAttendanceOnly: staff.isAttendanceOnly,
       isNssPersonnel: staff.isNssPersonnel,
     })
       .from(staff)
@@ -68,13 +75,15 @@ export async function DELETE(
         staffMember: {
           fullName: member.fullName,
           id: member.id,
+          isAttendanceOnly: member.isAttendanceOnly,
           isNssPersonnel: member.isNssPersonnel,
         },
       });
     }
 
-    publishRealtime('dashboard', 'invalidate', { reason: 'attendance-permission' });
-    publishRealtime('notifications', 'invalidate', { reason: 'attendance-permission' });
+    for (const channel of ['dashboard', 'notifications', 'attendance', 'entries', 'payments', 'staff-penalty-history', 'audit-trail']) {
+      publishRealtime(channel, 'invalidate', { date: before.date, reason: 'attendance-permission' });
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

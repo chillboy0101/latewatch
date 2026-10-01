@@ -115,13 +115,29 @@ export async function getFinanciallyProtectedLeaveEntryIds(entryIds: string[]) {
   if (entryIds.length === 0) return new Set<string>();
 
   const [allocations, pardons] = await Promise.all([
-    db.select({ entryId: latenessPaymentAllocation.entryId })
-      .from(latenessPaymentAllocation)
-      .where(inArray(latenessPaymentAllocation.entryId, entryIds)),
-    db.select({ entryId: latenessDebtPardonEntry.entryId })
-      .from(latenessDebtPardonEntry)
-      .where(inArray(latenessDebtPardonEntry.entryId, entryIds)),
+    getFinanciallyAllocatedEntryIds(entryIds),
+    getPardonedEntryIds(entryIds),
   ]);
 
-  return new Set([...allocations, ...pardons].map((row) => row.entryId));
+  return new Set([...allocations, ...pardons]);
+}
+
+export async function getFinanciallyAllocatedEntryIds(entryIds: string[]) {
+  if (entryIds.length === 0) return new Set<string>();
+
+  const allocations = await db.select({ entryId: latenessPaymentAllocation.entryId })
+    .from(latenessPaymentAllocation)
+    .where(inArray(latenessPaymentAllocation.entryId, entryIds));
+
+  return new Set(allocations.map((row) => row.entryId));
+}
+
+export async function getPardonedEntryIds(entryIds: string[]) {
+  if (entryIds.length === 0) return new Set<string>();
+
+  const pardons = await db.select({ entryId: latenessDebtPardonEntry.entryId })
+    .from(latenessDebtPardonEntry)
+    .where(inArray(latenessDebtPardonEntry.entryId, entryIds));
+
+  return new Set(pardons.map((row) => row.entryId));
 }

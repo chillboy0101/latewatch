@@ -15,6 +15,17 @@ test('entries page live penalty calculation preserves monitoring-only staff rule
   assert.match(source, /isAttendanceOnly: member\?\.isAttendanceOnly === true/);
 });
 
+test('entries page shows leave for the selected date and excludes it from totals', () => {
+  const source = fs.readFileSync(entriesPagePath, 'utf8');
+
+  assert.match(source, /fetch\(`\/api\/staff\?date=\$\{selectedDateKey\}`/);
+  assert.match(source, /const isOnLeave = member\?\.onLeave === true/);
+  assert.match(source, /On Leave/);
+  assert.match(source, /const rowDisabled = entriesDisabled \|\| isOnLeave/);
+  assert.match(source, /staff\.find\(\(member\) => member\.id === entry\.staffId\)\?\.onLeave !== true && entry\.amount > 0/);
+  assert.match(source, /staff\.find\(\(member\) => member\.id === entry\.staffId\)\?\.onLeave === true \? 0 : entry\.amount/);
+});
+
 test('entries page exposes an icon-only refresh button beside save entries', () => {
   const source = fs.readFileSync(entriesPagePath, 'utf8');
 
@@ -135,6 +146,15 @@ test('entries API sources saved arrival times from attendance records', () => {
   assert.match(source, /expectedEndTime: attendancePermission\.expectedEndTime/);
   assert.match(source, /expectedStartTime: attendancePermission\.expectedStartTime/);
   assert.match(source, /mergeAttendanceRowsIntoEntryRows\(\{ attendanceRows, entryRows: entries, permissionRows \}\)/);
+});
+
+test('entries API refuses manual edits for staff on approved leave', () => {
+  const source = fs.readFileSync(entriesRoutePath, 'utf8');
+
+  assert.match(source, /staffLeavePeriod/);
+  assert.match(source, /isStaffLeaveDate\(leavePeriods, entry\.staffId, date\)/);
+  assert.match(source, /Entries cannot be edited for staff on approved leave/);
+  assert.match(source, /status: 409/);
 });
 
 test('entries page separates real sign-out time from waiver state', () => {

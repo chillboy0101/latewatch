@@ -5,8 +5,9 @@ import { db } from '@/db';
 import { attendancePermission, attendanceRecord, latenessEntry } from '@/db/schema';
 import { formatAbsencePermissionReason, getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/attendance-permissions';
 import { writeAuditEvent } from '@/lib/audit';
-import { computePenalty } from '@/lib/penalty-calculator';
+import { computePenalty, NO_SHOW_SIGN_IN_AMOUNT, NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/penalty-calculator';
 import { publishRealtime } from '@/lib/realtime';
+import { getFinanciallyAllocatedEntryIds, getPardonedEntryIds } from '@/lib/staff-leave-service';
 
 type ActorRef = {
   email: string;
@@ -16,6 +17,7 @@ type ActorRef = {
 type StaffRef = {
   fullName: string;
   id: string;
+  isAttendanceOnly?: boolean | null;
   isNssPersonnel?: boolean | null;
 };
 
@@ -43,6 +45,7 @@ function approvedAbsenceReason(permission: PermissionRecord) {
 function resolveNextAttendanceState(input: {
   arrivalTime: string | null;
   existingLateness: LatenessRecord | null;
+  noShowSignInWaived: boolean;
   permission: PermissionRecord | null;
   staffMember: StaffRef;
 }) {
@@ -59,6 +62,31 @@ function resolveNextAttendanceState(input: {
       pardoned: true,
       reason: approvedAbsenceReason(input.permission),
       status: 'excused',
+    };
+  }
+
+  if (input.staffMember.isAttendanceOnly === true) {
+    return {
+      amount: 0,
+      didNotSignOut,
+      pardoned: false,
+      reason: null,
+      status: arrivalTime ? 'present' : 'absent',
+    };
+  }
+
+  if (
+    !arrivalTime &&
+    (input.existingLateness?.reason === NO_SHOW_SIGN_IN_REASON ||
+      input.existingLateness?.reason === NO_SHOW_SIGN_IN_WAIVED_REASON)
+  ) {
+    const waived = input.noShowSignInWaived || input.existingLateness.reason === NO_SHOW_SIGN_IN_WAIVED_REASON;
+    return {
+      amount: waived ? 0 : NO_SHOW_SIGN_IN_AMOUNT,
+      didNotSignOut: false,
+      pardoned: waived,
+      reason: waived ? NO_SHOW_SIGN_IN_WAIVED_REASON : NO_SHOW_SIGN_IN_REASON,
+      status: 'absent',
     };
   }
 
@@ -139,12 +167,36 @@ export async function reconcileAttendanceForPermission(input: {
   const next = resolveNextAttendanceState({
     arrivalTime,
     existingLateness: existingLateness || null,
+    noShowSignInWaived: attendance?.noShowSignInWaived === true,
     permission: input.activePermission,
     staffMember: input.staffMember,
   });
   const nextAmount = amountText(next.amount);
   const now = new Date();
   let changed = false;
+
+  if (existingLateness) {
+    const allocatedEntryIds = await getFinanciallyAllocatedEntryIds([existingLateness.id]);
+    const entryWouldChange = next.amount <= 0 ||
+      amountText(Number(existingLateness.computedAmount || 0)) !== nextAmount ||
+      existingLateness.reason !== next.reason ||
+      existingLateness.didNotSignOut !== next.didNotSignOut;
+    const attendanceWouldChange = Boolean(attendance && (
+      attendance.status !== next.status ||
+      amountText(Number(attendance.computedAmount || 0)) !== nextAmount ||
+      (attendance.reason || null) !== (next.reason || null)
+    ));
+
+    if (allocatedEntryIds.has(existingLateness.id) && (entryWouldChange || attendanceWouldChange)) {
+      return {
+        changed: false,
+        financialReviewRequired: true,
+        pardoned: next.pardoned,
+        penaltyAmount: amountText(Number(existingLateness.computedAmount || 0)),
+        reason: 'financial_review_required',
+      };
+    }
+  }
 
   if (
     attendance &&
@@ -243,21 +295,48 @@ export async function reconcileAttendanceForPermission(input: {
       changed = true;
     }
   } else if (existingLateness) {
-    await db.delete(latenessEntry).where(eq(latenessEntry.id, existingLateness.id));
+    const pardonedEntryIds = await getPardonedEntryIds([existingLateness.id]);
+    if (pardonedEntryIds.has(existingLateness.id)) {
+      const [updatedEntry] = await db.update(latenessEntry)
+        .set({
+          arrivalTime,
+          computedAmount: '0.00',
+          didNotSignOut: next.didNotSignOut,
+          updatedAt: now,
+        })
+        .where(eq(latenessEntry.id, existingLateness.id))
+        .returning();
 
-    await writeAuditEvent({
-      entityType: 'entry',
-      entityId: existingLateness.id,
-      action: 'DELETE',
-      before: {
-        ...existingLateness,
-        permissionReason: input.reason,
-        staff: { fullName: input.staffMember.fullName },
-      },
-      after: null,
-      actor: { email: input.actor.email, id: input.actor.id },
-      reason: input.reason,
-    });
+      await writeAuditEvent({
+        entityType: 'entry',
+        entityId: existingLateness.id,
+        action: 'UPDATE',
+        before: existingLateness,
+        after: {
+          ...updatedEntry,
+          staff: { fullName: input.staffMember.fullName },
+        },
+        actor: { email: input.actor.email, id: input.actor.id },
+        reason: input.reason,
+      });
+      changed = true;
+    } else {
+      await db.delete(latenessEntry).where(eq(latenessEntry.id, existingLateness.id));
+
+      await writeAuditEvent({
+        entityType: 'entry',
+        entityId: existingLateness.id,
+        action: 'DELETE',
+        before: {
+          ...existingLateness,
+          permissionReason: input.reason,
+          staff: { fullName: input.staffMember.fullName },
+        },
+        after: null,
+        actor: { email: input.actor.email, id: input.actor.id },
+        reason: input.reason,
+      });
+    }
 
     changed = true;
   }

@@ -2,11 +2,16 @@ import 'server-only';
 
 import { and, eq, gte, lte } from 'drizzle-orm';
 import { db } from '@/db';
-import { attendancePermission, attendanceRecord, latenessDebtPardonEntry, latenessEntry, staff, workCalendar } from '@/db/schema';
+import { attendancePermission, attendanceRecord, latenessEntry, staff, workCalendar } from '@/db/schema';
 import { getAccraClock, getHolidayForDate, isWeekendDate } from '@/lib/attendance';
 import { getObservedGhanaHolidayForDate, isSuppressedGhanaHolidayDate } from '@/lib/ghana-holidays';
 import { resolveManualPenalty } from '@/lib/manual-attendance-correction';
-import { getFinanciallyProtectedLeaveEntryIds, getStaffLeavePeriodsForRange } from '@/lib/staff-leave-service';
+import {
+  getFinanciallyAllocatedEntryIds,
+  getFinanciallyProtectedLeaveEntryIds,
+  getPardonedEntryIds,
+  getStaffLeavePeriodsForRange,
+} from '@/lib/staff-leave-service';
 import { isStaffLeaveDate } from '@/lib/staff-leave';
 import { NO_SHOW_SIGN_IN_CUTOFF_TIME, shouldAlertNoSignOut } from '@/lib/work-hours';
 import {
@@ -165,10 +170,7 @@ export async function applyNoShowSignInPenaltiesForDate(dateKey: string) {
     staffIds: staffRows.map((member) => member.id),
     startDate: dateKey,
   });
-  const leaveEntryIds = existingRows
-    .filter((entry) => isStaffLeaveDate(leavePeriods, entry.staffId, dateKey))
-    .map((entry) => entry.id);
-  const protectedLeaveEntryIds = await getFinanciallyProtectedLeaveEntryIds(leaveEntryIds);
+  const protectedEntryIds = await getFinanciallyProtectedLeaveEntryIds(existingRows.map((entry) => entry.id));
   const existingByStaffId = new Map(existingRows.map((entry) => [entry.staffId, entry]));
 
   let deleted = 0;
@@ -182,7 +184,7 @@ export async function applyNoShowSignInPenaltiesForDate(dateKey: string) {
       const result = await clearUnprotectedLeavePenalty({
         attendance: attendanceByStaffId.get(member.id) || null,
         entries: existing ? [existing] : [],
-        protectedEntryIds: protectedLeaveEntryIds,
+        protectedEntryIds,
       });
       deleted += result.deleted;
       updated += result.attendanceUpdated;
@@ -226,6 +228,10 @@ export async function applyNoShowSignInPenaltiesForDate(dateKey: string) {
     }
 
     const existing = existingByStaffId.get(member.id);
+    if (existing && protectedEntryIds.has(existing.id)) {
+      skipped += 1;
+      continue;
+    }
     const computedAmount = amountText(penalty.amount);
     if (existing) {
       if (
@@ -345,10 +351,7 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
     .from(latenessEntry)
     .where(and(gte(latenessEntry.date, startDate), lte(latenessEntry.date, endDate)));
   const leavePeriods = await getStaffLeavePeriodsForRange({ endDate, staffIds: staffRows.map((member) => member.id), startDate });
-  const leaveEntryIds = existingRows
-    .filter((entry) => isStaffLeaveDate(leavePeriods, entry.staffId, normalizeDateKey(entry.date)))
-    .map((entry) => entry.id);
-  const protectedLeaveEntryIds = await getFinanciallyProtectedLeaveEntryIds(leaveEntryIds);
+  const protectedEntryIds = await getFinanciallyProtectedLeaveEntryIds(existingRows.map((entry) => entry.id));
   const existingByKey = new Map(
     existingRows.map((row) => [rowKey(row.staffId, normalizeDateKey(row.date)), row]),
   );
@@ -364,7 +367,7 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
         const existing = existingByKey.get(rowKey(member.id, date));
         const result = await clearUnprotectedLeavePenalty({
           entries: existing ? [existing] : [],
-          protectedEntryIds: protectedLeaveEntryIds,
+          protectedEntryIds,
         });
         deleted += result.deleted;
         skipped += 1;
@@ -407,6 +410,10 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
       }
 
       const existing = existingByKey.get(key);
+      if (existing && protectedEntryIds.has(existing.id)) {
+        skipped += 1;
+        continue;
+      }
       const computedAmount = amountText(penalty.amount);
       if (existing) {
         if (
@@ -495,17 +502,12 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     .from(latenessEntry)
     .where(and(gte(latenessEntry.date, startDate), lte(latenessEntry.date, endDate)));
   const leavePeriods = await getStaffLeavePeriodsForRange({ endDate, startDate });
-  const leaveEntryIds = existingRows
-    .filter((entry) => isStaffLeaveDate(leavePeriods, entry.staffId, normalizeDateKey(entry.date)))
-    .map((entry) => entry.id);
-  const protectedLeaveEntryIds = await getFinanciallyProtectedLeaveEntryIds(leaveEntryIds);
-  const pardonRows = await db.select({ entryId: latenessDebtPardonEntry.entryId })
-    .from(latenessDebtPardonEntry)
-    .where(and(
-      gte(latenessDebtPardonEntry.entryDate, startDate),
-      lte(latenessDebtPardonEntry.entryDate, endDate),
-    ));
-  const pardonedEntryIds = new Set(pardonRows.map((row) => row.entryId));
+  const existingEntryIds = existingRows.map((entry) => entry.id);
+  const [allocatedEntryIds, pardonedEntryIds] = await Promise.all([
+    getFinanciallyAllocatedEntryIds(existingEntryIds),
+    getPardonedEntryIds(existingEntryIds),
+  ]);
+  const protectedEntryIds = new Set([...allocatedEntryIds, ...pardonedEntryIds]);
   const existingByStaffDate = new Map<string, typeof existingRows>();
   for (const entry of existingRows) {
     const key = rowKey(entry.staffId, normalizeDateKey(entry.date));
@@ -518,6 +520,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
   let deleted = 0;
   let inserted = 0;
   let attendanceUpdated = 0;
+  let skipped = 0;
   let updated = 0;
 
   for (const row of attendanceRows) {
@@ -533,7 +536,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
       const result = await clearUnprotectedLeavePenalty({
         attendance: row,
         entries: existingEntriesForKey,
-        protectedEntryIds: protectedLeaveEntryIds,
+        protectedEntryIds,
       });
       deleted += result.deleted;
       attendanceUpdated += result.attendanceUpdated;
@@ -564,6 +567,11 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     const reason = penalty.reason || row.reason || 'Late arrival';
 
     processedKeys.add(key);
+
+    if (existingEntriesForKey.some((entry) => allocatedEntryIds.has(entry.id))) {
+      skipped += 1;
+      continue;
+    }
 
     const attendanceAmount = amountText(amountNumber(row.computedAmount));
     const needsPenaltyAttendanceUpdate =
@@ -679,9 +687,13 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     if (isStaffLeaveDate(leavePeriods, existing.staffId, date)) {
       const result = await clearUnprotectedLeavePenalty({
         entries: [existing],
-        protectedEntryIds: protectedLeaveEntryIds,
+        protectedEntryIds,
       });
       deleted += result.deleted;
+      continue;
+    }
+    if (allocatedEntryIds.has(existing.id)) {
+      skipped += 1;
       continue;
     }
     if (existing.reason === NO_SHOW_SIGN_IN_REASON || existing.reason === NO_SHOW_SIGN_IN_WAIVED_REASON) continue;
@@ -739,5 +751,5 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
   inserted += noShowSignInResult.inserted;
   updated += noShowSignInResult.updated;
 
-  return { attendanceUpdated, deleted, inserted, updated };
+  return { attendanceUpdated, deleted, inserted, skipped, updated };
 }

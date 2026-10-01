@@ -21,6 +21,7 @@ interface StaffMember {
   fullName: string;
   active?: boolean | null;
   archived?: boolean | null;
+  onLeave?: boolean;
   department?: string | null;
   email?: string | null;
   isAttendanceOnly?: boolean | null;
@@ -163,7 +164,7 @@ function EntriesPageContent() {
 
       // Fetch all data in parallel
       const [staffResponse, calendarResponse, entriesResponse] = await Promise.all([
-        fetch('/api/staff', { cache: 'no-store' }),
+        fetch(`/api/staff?date=${selectedDateKey}`, { cache: 'no-store' }),
         fetch(`/api/calendar?start=${selectedDateKey}&end=${selectedDateKey}`, { cache: 'no-store' }),
         fetch(`/api/entries?date=${selectedDateKey}`, { cache: 'no-store' }),
       ]);
@@ -574,10 +575,10 @@ function EntriesPageContent() {
 
   const totals = entries.reduce(
     (acc, entry) => ({
-      late: acc.late + (entry.amount > 0 && !entry.reason.includes('SIGN OUT') ? 1 : 0),
-      onTime: acc.onTime + (entry.amount === 0 && !entry.didNotSignOut ? 1 : 0),
-      didNotSignOut: acc.didNotSignOut + (entry.didNotSignOut ? 1 : 0),
-      totalAmount: acc.totalAmount + entry.amount,
+      late: acc.late + (staff.find((member) => member.id === entry.staffId)?.onLeave !== true && entry.amount > 0 && !entry.reason.includes('SIGN OUT') ? 1 : 0),
+      onTime: acc.onTime + (staff.find((member) => member.id === entry.staffId)?.onLeave !== true && entry.amount === 0 && !entry.didNotSignOut ? 1 : 0),
+      didNotSignOut: acc.didNotSignOut + (staff.find((member) => member.id === entry.staffId)?.onLeave !== true && entry.didNotSignOut ? 1 : 0),
+      totalAmount: acc.totalAmount + (staff.find((member) => member.id === entry.staffId)?.onLeave === true ? 0 : entry.amount),
     }),
     { late: 0, onTime: 0, didNotSignOut: 0, totalAmount: 0 }
   );
@@ -783,8 +784,10 @@ function EntriesPageContent() {
                 ) : visibleEntries.map(({ entry, index }) => {
                   const member = staff.find((s) => s.id === entry.staffId);
                   const isMonitoringStaff = member?.isAttendanceOnly === true;
+                  const isOnLeave = member?.onLeave === true;
+                  const rowDisabled = entriesDisabled || isOnLeave;
                   const showNoShowSignInWaiverButton =
-                    !entriesDisabled &&
+                    !rowDisabled &&
                     !entry.arrivalTime &&
                     !entry.isExcusedAbsence &&
                     !isMonitoringStaff &&
@@ -802,6 +805,11 @@ function EntriesPageContent() {
                       <td className="px-4 py-3 text-sm font-medium">
                         <div className="flex items-center gap-2">
                           <span>{member?.fullName}</span>
+                          {isOnLeave && (
+                            <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                              On Leave
+                            </span>
+                          )}
                           {member?.archived && (
                             <span className="rounded-full border border-warning/25 px-2 py-0.5 text-[11px] font-medium text-warning">
                               Former
@@ -814,7 +822,7 @@ function EntriesPageContent() {
                           <TimeSelector
                             value={entry.arrivalTime}
                             onChange={(value) => updateArrivalTime(entry.staffId, value)}
-                            disabled={entriesDisabled}
+                            disabled={rowDisabled}
                             label="Sign-in time"
                           />
                           {showNoShowSignInWaiverButton && (
@@ -822,7 +830,7 @@ function EntriesPageContent() {
                               type="button"
                               size="sm"
                               variant="outline"
-                              disabled={entriesDisabled}
+                              disabled={rowDisabled}
                               onClick={() => toggleNoShowSignInWaiver(entry.staffId)}
                             >
                               {entry.noShowSignInWaived ? (
@@ -844,7 +852,7 @@ function EntriesPageContent() {
                           <TimeSelector
                             value={entry.signOutTime}
                             onChange={(value) => updateSignOutTime(entry.staffId, value)}
-                            disabled={entriesDisabled}
+                            disabled={rowDisabled}
                             label="Sign-out time"
                             max="23:59"
                           />
@@ -858,7 +866,7 @@ function EntriesPageContent() {
                               type="button"
                               size="sm"
                               variant="outline"
-                              disabled={entriesDisabled}
+                              disabled={rowDisabled}
                               onClick={() => toggleNoSignOutWaiver(entry.staffId)}
                             >
                               {entry.noSignOutWaived ? (

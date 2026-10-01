@@ -14,6 +14,7 @@ import {
 import { reconcileAttendanceForPermission } from '@/lib/attendance-permission-reconciliation';
 import { writeAuditEvent } from '@/lib/audit';
 import { publishRealtime } from '@/lib/realtime';
+import { enforceRole } from '@/lib/auth/roles';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,11 @@ function optionalText(value: unknown) {
 }
 
 export async function GET(request: NextRequest) {
+  const authError = await enforceRole(['admin']);
+  if (authError) {
+    return NextResponse.json({ error: authError.error }, { status: authError.status });
+  }
+
   try {
     const date = request.nextUrl.searchParams.get('date');
     const whereClause = date && /^\d{4}-\d{2}-\d{2}$/.test(date)
@@ -62,6 +68,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await enforceRole(['admin']);
+  if (authError) {
+    return NextResponse.json({ error: authError.error }, { status: authError.status });
+  }
+
   try {
     const user = await currentUser();
     if (!user) {
@@ -84,6 +95,7 @@ export async function POST(request: NextRequest) {
       email: staff.email,
       fullName: staff.fullName,
       id: staff.id,
+      isAttendanceOnly: staff.isAttendanceOnly,
       isNssPersonnel: staff.isNssPersonnel,
     })
       .from(staff)
@@ -195,6 +207,7 @@ export async function POST(request: NextRequest) {
         staffMember: {
           fullName: member.fullName,
           id: member.id,
+          isAttendanceOnly: member.isAttendanceOnly,
           isNssPersonnel: member.isNssPersonnel,
         },
       });
@@ -209,6 +222,7 @@ export async function POST(request: NextRequest) {
     publishRealtime('entries', 'invalidate', { reason: 'attendance-permission' });
     publishRealtime('payments', 'invalidate', { reason: 'attendance-permission', staffId });
     publishRealtime('staff-penalty-history', 'invalidate', { reason: 'attendance-permission', staffId });
+    publishRealtime('audit-trail', 'invalidate', { reason: 'attendance-permission' });
 
     const permission = permissions[0];
 

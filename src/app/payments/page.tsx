@@ -41,9 +41,18 @@ interface PaymentStaffRow {
   totalPenalty: string;
 }
 
+interface MonthlyPaymentBalance {
+  month: string;
+  paidAmount: string;
+  pardonedAmount: string;
+  penaltyAmount: string;
+  unpaidAmount: string;
+}
+
 interface PaymentsResponse {
   scope: 'all' | 'week';
   staff: PaymentStaffRow[];
+  monthlyBreakdown: MonthlyPaymentBalance[];
 }
 
 interface OffenceBookStoredItem {
@@ -350,10 +359,10 @@ export default function PenaltyPaymentsPage() {
 
     return rows.reduce(
       (totals, row) => ({
-        paidAmount: totals.paidAmount + moneyNumber(row.paidAmount),
-        unpaidAmount: totals.unpaidAmount + moneyNumber(row.outstandingBalance),
+        liveOutstanding: totals.liveOutstanding + moneyNumber(row.outstandingBalance),
+        paidToDate: totals.paidToDate + moneyNumber(row.paidAmount),
       }),
-      { paidAmount: 0, unpaidAmount: 0 },
+      { liveOutstanding: 0, paidToDate: 0 },
     );
   }, [data?.staff]);
   const paymentRosterSections = useMemo(() => {
@@ -647,8 +656,8 @@ export default function PenaltyPaymentsPage() {
                 ))}
               </div>
               <div className="flex flex-wrap items-center gap-2 lg:justify-center">
-                <PaymentToolbarTotal label="Paid" value={currency(paymentTotals.paidAmount)} tone="paid" />
-                <PaymentToolbarTotal label="Unpaid" value={currency(paymentTotals.unpaidAmount)} tone="unpaid" />
+                <PaymentToolbarTotal label="Live outstanding" value={currency(paymentTotals.liveOutstanding)} tone="live" />
+                <PaymentToolbarTotal label="Paid to date" value={currency(paymentTotals.paidToDate)} tone="paid" />
               </div>
               <div className="relative w-full md:max-w-sm">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -661,6 +670,46 @@ export default function PenaltyPaymentsPage() {
               </div>
             </div>
           </div>
+
+          {!loading && (data?.monthlyBreakdown.length || 0) > 0 && (
+            <div className="border-b border-border">
+              <div className="border-b border-border px-4 py-3">
+                <h2 className="text-sm font-semibold">Monthly lateness balances</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Penalties are grouped by occurrence month. Payments and pardons count only if recorded by that month-end; live outstanding above uses today’s records.
+                </p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[720px] text-sm">
+                  <thead className="bg-muted/20 text-left text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-2.5 font-medium">Penalty month</th>
+                      <th className="px-4 py-2.5 text-right font-medium">Penalties</th>
+                      <th className="px-4 py-2.5 text-right font-medium">Paid by month-end</th>
+                      <th className="px-4 py-2.5 text-right font-medium">Pardoned by month-end</th>
+                      <th className="px-4 py-2.5 text-right font-medium">Unpaid at month-end</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data?.monthlyBreakdown.slice().reverse().map((month) => {
+                      const [year, monthNumber] = month.month.split('-').map(Number);
+                      const monthLabel = new Date(year, monthNumber - 1, 1)
+                        .toLocaleString(undefined, { month: 'long', year: 'numeric' });
+                      return (
+                        <tr key={month.month} className="border-t border-border/70">
+                          <th scope="row" className="px-4 py-2.5 text-left font-medium">{monthLabel}</th>
+                          <td className="px-4 py-2.5 text-right font-mono">{currency(month.penaltyAmount)}</td>
+                          <td className="px-4 py-2.5 text-right font-mono text-success">{currency(month.paidAmount)}</td>
+                          <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{currency(month.pardonedAmount)}</td>
+                          <td className="px-4 py-2.5 text-right font-mono font-semibold text-warning">{currency(month.unpaidAmount)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {loading ? (
             <LoadingBuffer variant="section" label="Loading payments" description="Checking balances." />
@@ -896,17 +945,29 @@ function BalanceStat({ highlight, label, value }: { highlight?: boolean; label: 
   );
 }
 
-function PaymentToolbarTotal({ label, tone, value }: { label: string; tone: 'paid' | 'unpaid'; value: string }) {
+function PaymentToolbarTotal({ label, tone, value }: { label: string; tone: 'paid' | 'unpaid' | 'live' | 'month'; value: string }) {
+  const borderClass = tone === 'paid'
+    ? 'border-success/20'
+    : tone === 'unpaid'
+    ? 'border-warning/25'
+    : tone === 'live'
+    ? 'border-primary/30'
+    : 'border-border';
+  const textClass = tone === 'paid'
+    ? 'text-success'
+    : tone === 'unpaid'
+    ? 'text-warning'
+    : tone === 'live'
+    ? 'text-primary'
+    : 'text-foreground';
+
   return (
     <div className={cn(
       'flex min-w-0 items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm',
-      tone === 'paid' ? 'border-success/20' : 'border-warning/25',
+      borderClass,
     )}>
       <span className="text-xs text-muted-foreground">{label}</span>
-      <span className={cn(
-        'font-mono font-semibold',
-        tone === 'paid' ? 'text-success' : 'text-warning',
-      )}>
+      <span className={cn('font-mono font-semibold', textClass)}>
         {value}
       </span>
     </div>

@@ -7,6 +7,7 @@ require('tsx/cjs');
 const {
   allocateLatenessPayment,
   getLatenessPaymentStatus,
+  summarizeLatenessPaymentsByMonth,
   summarizeLatenessPaymentEntries,
 } = require('../src/lib/lateness-payments.ts');
 const {
@@ -129,6 +130,44 @@ test('pardons waive the snapshotted amount while later penalties remain payable'
     { amount: '2.00', entryId: 'entry-a' },
     { amount: '3.00', entryId: 'entry-b' },
   ]);
+});
+
+test('monthly paid and unpaid totals are calculated as of each penalty month end', () => {
+  const months = summarizeLatenessPaymentsByMonth({
+    currentDate: '2026-04-15',
+    entries: [
+      { id: 'feb-entry', date: '2026-02-10', computedAmount: '100.00' },
+      { id: 'mar-entry', date: '2026-03-10', computedAmount: '50.00', pardonedAmount: '20.00', pardonedAt: '2026-03-20T10:00:00.000Z' },
+    ],
+    allocations: [
+      { entryId: 'feb-entry', allocatedAmount: '10.00', recordedAt: '2026-02-28T23:59:59.000Z' },
+      { entryId: 'feb-entry', allocatedAmount: '20.00', recordedAt: '2026-03-01T00:00:00.000Z' },
+      { entryId: 'mar-entry', allocatedAmount: '10.00', recordedAt: '2026-04-01T00:00:00.000Z' },
+    ],
+  });
+
+  assert.deepEqual(months.map((month) => month.month), ['2026-02', '2026-03', '2026-04']);
+  assert.deepEqual(months[0], {
+    month: '2026-02',
+    paidAmount: '10.00',
+    pardonedAmount: '0.00',
+    penaltyAmount: '100.00',
+    unpaidAmount: '90.00',
+  });
+  assert.deepEqual(months[1], {
+    month: '2026-03',
+    paidAmount: '0.00',
+    pardonedAmount: '20.00',
+    penaltyAmount: '50.00',
+    unpaidAmount: '30.00',
+  });
+  assert.deepEqual(months[2], {
+    month: '2026-04',
+    paidAmount: '0.00',
+    pardonedAmount: '0.00',
+    penaltyAmount: '0.00',
+    unpaidAmount: '0.00',
+  });
 });
 
 test('lateness payment receipt numbers are stable and date-based', () => {

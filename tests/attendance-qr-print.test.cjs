@@ -141,11 +141,18 @@ test('general pardon API bulk applies to active staff and skips existing specifi
 test('general pardon reconciliation clears late records and keeps late-only missing staff unchecked', () => {
   const reconciliationSource = fs.readFileSync(reconciliationPath, 'utf8');
   const attendanceApiSource = fs.readFileSync(attendanceApiPath, 'utf8');
+  const permissionsSource = fs.readFileSync(attendancePermissionsApiPath, 'utf8');
 
   assert.match(reconciliationSource, /permission\.permissionType === 'absence'/);
   assert.match(reconciliationSource, /status: 'excused'/);
   assert.match(reconciliationSource, /publishRealtime\('payments'/);
   assert.match(reconciliationSource, /publishRealtime\('staff-penalty-history'/);
+  assert.match(reconciliationSource, /getFinanciallyAllocatedEntryIds/);
+  assert.match(reconciliationSource, /getPardonedEntryIds/);
+  assert.match(reconciliationSource, /financial_review_required/);
+  assert.match(reconciliationSource, /NO_SHOW_SIGN_IN_REASON/);
+  assert.match(reconciliationSource, /staffMember\.isAttendanceOnly === true/);
+  assert.match(permissionsSource, /isAttendanceOnly: member\.isAttendanceOnly/);
   assert.match(attendanceApiSource, /syncLatenessEntriesFromAttendanceForDate\(date\)/);
   assert.match(attendanceApiSource, /isGeneralPardonReason\(permission\.reason\)/);
   assert.match(attendanceApiSource, /return 'not_checked_in'/);
@@ -157,6 +164,7 @@ test('general pardon invalidates entries and payment balances', () => {
   assert.match(source, /publishRealtime\('entries'/);
   assert.match(source, /publishRealtime\('payments'/);
   assert.match(source, /publishRealtime\('staff-penalty-history'/);
+  assert.match(source, /publishRealtime\('audit-trail'/);
 });
 
 test('attendance permission list falls back to loaded staff names', () => {

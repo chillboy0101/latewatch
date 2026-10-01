@@ -173,8 +173,12 @@ test('payments list uses binary paid or unpaid status with toolbar money totals'
   assert.match(page, /StaffPaymentStatusBadge status=\{staffPaymentStatusForRow\(row\)\}/);
   assert.match(page, /PaymentStatusBadge status=\{entry\.status\}/);
   assert.match(page, /const paymentTotals = useMemo/);
-  assert.match(page, /paymentTotals\.paidAmount/);
-  assert.match(page, /paymentTotals\.unpaidAmount/);
+  assert.match(page, /paymentTotals\.paidToDate/);
+  assert.match(page, /paymentTotals\.liveOutstanding/);
+  assert.match(page, /Monthly lateness balances/);
+  assert.match(page, /Paid by month-end/);
+  assert.match(page, /Unpaid at month-end/);
+  assert.doesNotMatch(page, /label="Unpaid" value=\{currency\(paymentTotals\.liveOutstanding\)\}/);
 });
 
 test('check-in page exposes a penalty history sheet from the overflow menu', () => {

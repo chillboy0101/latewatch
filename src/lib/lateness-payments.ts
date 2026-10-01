@@ -18,6 +18,26 @@ export type LatenessPaymentAllocationLike = {
   entryId: string;
 };
 
+export type MonthlyLatenessPaymentEntryLike = {
+  computedAmount: number | string | null;
+  date: string;
+  id: string;
+  pardonedAmount?: number | string | null;
+  pardonedAt?: string | Date | null;
+};
+
+export type DatedLatenessPaymentAllocationLike = LatenessPaymentAllocationLike & {
+  recordedAt?: string | Date | null;
+};
+
+export type MonthlyLatenessPaymentBalance = {
+  month: string;
+  paidAmount: string;
+  pardonedAmount: string;
+  penaltyAmount: string;
+  unpaidAmount: string;
+};
+
 export type LatenessPaymentEntrySummary = {
   arrivalTime: string | null;
   date: string;
@@ -60,6 +80,97 @@ function parseDateKey(dateKey: string) {
 
 function formatDateKey(date: Date) {
   return date.toISOString().slice(0, 10);
+}
+
+function monthEndTimestamp(month: string) {
+  const [year, monthNumber] = month.split('-').map(Number);
+  return Date.UTC(year, monthNumber, 0, 23, 59, 59, 999);
+}
+
+function timestamp(value: string | Date | null | undefined) {
+  if (!value) return null;
+  const parsed = value instanceof Date ? value.getTime() : Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function monthRange(startMonth: string, endMonth: string) {
+  const [startYear, startMonthNumber] = startMonth.split('-').map(Number);
+  const [endYear, endMonthNumber] = endMonth.split('-').map(Number);
+  const months: string[] = [];
+
+  for (let cursor = new Date(Date.UTC(startYear, startMonthNumber - 1, 1));
+    cursor <= new Date(Date.UTC(endYear, endMonthNumber - 1, 1));
+    cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1))) {
+    months.push(cursor.toISOString().slice(0, 7));
+  }
+
+  return months;
+}
+
+export function summarizeLatenessPaymentsByMonth(input: {
+  allocations: DatedLatenessPaymentAllocationLike[];
+  currentDate: string;
+  entries: MonthlyLatenessPaymentEntryLike[];
+}): MonthlyLatenessPaymentBalance[] {
+  const entriesByMonth = new Map<string, MonthlyLatenessPaymentEntryLike[]>();
+  const allocationsByEntryId = new Map<string, DatedLatenessPaymentAllocationLike[]>();
+
+  for (const entry of input.entries) {
+    if (cents(entry.computedAmount) <= 0) continue;
+    const month = entry.date.slice(0, 7);
+    const rows = entriesByMonth.get(month) || [];
+    rows.push(entry);
+    entriesByMonth.set(month, rows);
+  }
+
+  for (const allocation of input.allocations) {
+    const rows = allocationsByEntryId.get(allocation.entryId) || [];
+    rows.push(allocation);
+    allocationsByEntryId.set(allocation.entryId, rows);
+  }
+
+  const populatedMonths = [...entriesByMonth.keys()].sort();
+  if (populatedMonths.length === 0) return [];
+
+  const throughMonth = input.currentDate.slice(0, 7);
+  return monthRange(populatedMonths[0], throughMonth).map((month) => {
+    const asOf = monthEndTimestamp(month);
+    let penaltyCents = 0;
+    let paidCents = 0;
+    let pardonedCents = 0;
+
+    for (const entry of entriesByMonth.get(month) || []) {
+      const entryPenaltyCents = cents(entry.computedAmount);
+      penaltyCents += entryPenaltyCents;
+
+      const entryPaidCents = (allocationsByEntryId.get(entry.id) || [])
+        .reduce((sum, allocation) => {
+          const recordedAt = timestamp(allocation.recordedAt);
+          return recordedAt !== null && recordedAt <= asOf
+            ? sum + cents(allocation.allocatedAmount ?? allocation.amount)
+            : sum;
+        }, 0);
+      const paidForEntryCents = Math.min(entryPenaltyCents, entryPaidCents);
+      paidCents += paidForEntryCents;
+
+      const pardonedAt = timestamp(entry.pardonedAt);
+      if (pardonedAt !== null && pardonedAt <= asOf) {
+        pardonedCents += Math.min(
+          Math.max(0, entryPenaltyCents - paidForEntryCents),
+          cents(entry.pardonedAmount),
+        );
+      }
+    }
+
+    const unpaidCents = Math.max(0, penaltyCents - paidCents - pardonedCents);
+    return {
+      month,
+      paidAmount: money(paidCents),
+      pardonedAmount: money(pardonedCents),
+      penaltyAmount: money(penaltyCents),
+      unpaidAmount: money(unpaidCents),
+    };
+  });
 }
 
 function addDays(date: Date, days: number) {

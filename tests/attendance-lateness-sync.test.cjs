@@ -248,8 +248,14 @@ Module._load = function patchedLoad(request, ...args) {
   }
   if (request === '@/lib/staff-leave-service') {
     return {
+      getFinanciallyAllocatedEntryIds: async (entryIds) => new Set(entryIds.filter((id) => (
+        fixture.latenessPaymentAllocation.some((row) => row.entryId === id)
+      ))),
       getFinanciallyProtectedLeaveEntryIds: async (entryIds) => new Set(entryIds.filter((id) => (
         fixture.latenessPaymentAllocation.some((row) => row.entryId === id) ||
+        fixture.latenessDebtPardonEntry.some((row) => row.entryId === id)
+      ))),
+      getPardonedEntryIds: async (entryIds) => new Set(entryIds.filter((id) => (
         fixture.latenessDebtPardonEntry.some((row) => row.entryId === id)
       ))),
       getStaffLeavePeriodsForRange: async ({ endDate, staffIds, startDate }) => fixture.leavePeriods.filter((period) => (
@@ -337,6 +343,29 @@ test('sync zeros a pardon-linked entry instead of violating its restrictive fore
   assert.equal(fixture.latenessEntry[0].didNotSignOut, false);
   assert.match(fixture.latenessEntry[0].reason, /general pardon/);
   assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
+});
+
+test('sync leaves payment-allocated entries and linked attendance unchanged for review', async () => {
+  resetFixture();
+  fixture.latenessEntry = [
+    {
+      id: 'entry-1',
+      arrivalTime: '09:12:00',
+      computedAmount: '15.00',
+      date: '2026-05-15',
+      didNotSignOut: false,
+      reason: "DIDN'T COME BEFORE 8:30AM",
+      staffId: 'staff-1',
+    },
+  ];
+  fixture.latenessPaymentAllocation = [{ entryId: 'entry-1', allocatedAmount: '5.00' }];
+
+  await syncLatenessEntriesFromAttendanceForDate('2026-05-15');
+
+  assert.equal(fixture.latenessEntry.length, 1);
+  assert.equal(fixture.latenessEntry[0].computedAmount, '15.00');
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '15.00');
+  assert.equal(fixture.latenessPaymentAllocation.length, 1);
 });
 
 test('sync keeps only the no-sign-out amount for a late-only general pardon', async () => {

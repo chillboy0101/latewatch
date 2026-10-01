@@ -1,13 +1,15 @@
 import { auth, currentUser } from '@clerk/nextjs/server';
-import { and, asc, eq, gte, inArray, lte } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte, or } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { latenessDebtPardonEntry, latenessEntry, latenessPayment, latenessPaymentAllocation, staff } from '@/db/schema';
+import { latenessDebtPardon, latenessDebtPardonEntry, latenessEntry, latenessPayment, latenessPaymentAllocation, staff } from '@/db/schema';
 import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 import { sendLatenessPaymentReceiptPush } from '@/lib/lateness-payment-receipt-push';
 import { allocateLatenessPayment, getWeekBoundsForDate, summarizeLatenessPaymentEntries, type LatenessPaymentEntryLike } from '@/lib/lateness-payments';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
+import { getAccraDateKey } from '@/lib/date-key';
+import { summarizeLatenessPaymentsByMonth } from '@/lib/lateness-payments';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,8 +70,13 @@ async function getWeekEntries(input: {
 async function getAllocationsForEntries(entryIds: string[]) {
   if (entryIds.length === 0) return [];
 
-  return db.select()
+  return db.select({
+    allocatedAmount: latenessPaymentAllocation.allocatedAmount,
+    entryId: latenessPaymentAllocation.entryId,
+    recordedAt: latenessPayment.recordedAt,
+  })
     .from(latenessPaymentAllocation)
+    .innerJoin(latenessPayment, eq(latenessPaymentAllocation.paymentId, latenessPayment.id))
     .where(inArray(latenessPaymentAllocation.entryId, entryIds));
 }
 
@@ -89,9 +96,18 @@ export async function GET(request: NextRequest) {
     if (hasDateFilter && (!isDateKey(weekStart) || !isDateKey(weekEnd))) {
       return NextResponse.json({ error: 'Valid start and end dates are required when filtering payments' }, { status: 400 });
     }
+    const historicalStaffRows = await db.select({ staffId: latenessEntry.staffId })
+      .from(latenessEntry);
+    const historicalStaffIds = [...new Set(historicalStaffRows.map((row) => row.staffId))];
+    const currentRoster = and(eq(staff.active, true), eq(staff.archived, false));
     const staffWhere = staffId
-      ? and(eq(staff.id, staffId), eq(staff.active, true), eq(staff.archived, false), eq(staff.isAttendanceOnly, false))
-      : and(eq(staff.active, true), eq(staff.archived, false), eq(staff.isAttendanceOnly, false));
+      ? and(eq(staff.id, staffId), eq(staff.isAttendanceOnly, false))
+      : and(
+        eq(staff.isAttendanceOnly, false),
+        historicalStaffIds.length > 0
+          ? or(currentRoster, inArray(staff.id, historicalStaffIds))
+          : currentRoster,
+      );
 
     const staffRows = await db.select({
       email: staff.email,
@@ -119,29 +135,37 @@ export async function GET(request: NextRequest) {
         .where(entryWhere)
         .orderBy(asc(latenessEntry.date));
 
-    const penaltyEntries = entryRows.filter((entry) => Number(entry.computedAmount || 0) > 0);
-    const entryIds = penaltyEntries.map((entry) => entry.id);
-    const [allocations, pardonRows] = await Promise.all([
-      getAllocationsForEntries(entryIds),
-      penaltyEntries.length === 0
-        ? Promise.resolve([])
-        : db.select({
-          entryId: latenessDebtPardonEntry.entryId,
-          forgivenAmount: latenessDebtPardonEntry.forgivenAmount,
-        })
-          .from(latenessDebtPardonEntry)
-          .where(inArray(latenessDebtPardonEntry.entryId, entryIds)),
-    ]);
-    const pardonsByEntryId = new Map(pardonRows.map((pardon) => [pardon.entryId, pardon.forgivenAmount]));
+    const entryIds = entryRows.map((entry) => entry.id);
+    const pardonRows = entryIds.length === 0
+      ? []
+      : await db.select({
+        entryDate: latenessDebtPardonEntry.entryDate,
+        entryId: latenessDebtPardonEntry.entryId,
+        forgivenAmount: latenessDebtPardonEntry.forgivenAmount,
+        penaltyAmount: latenessDebtPardonEntry.penaltyAmount,
+        pardonedAt: latenessDebtPardon.cutoffAt,
+      })
+        .from(latenessDebtPardonEntry)
+        .innerJoin(latenessDebtPardon, eq(latenessDebtPardonEntry.pardonId, latenessDebtPardon.id))
+        .where(inArray(latenessDebtPardonEntry.entryId, entryIds));
+    const pardonsByEntryId = new Map(pardonRows.map((pardon) => [pardon.entryId, pardon]));
+    const penaltyEntries = entryRows.flatMap((entry) => {
+      const pardon = pardonsByEntryId.get(entry.id);
+      const currentAmount = Number(entry.computedAmount || 0);
+      if (currentAmount > 0) return [entry];
+      return pardon ? [{ ...entry, computedAmount: pardon.penaltyAmount }] : [];
+    });
+    const financialEntryIds = penaltyEntries.map((entry) => entry.id);
+    const allocations = await getAllocationsForEntries(financialEntryIds);
     const allocationsByStaff = new Map<string, typeof allocations>();
     const entriesByStaff = new Map<string, LatenessPaymentEntryLike[]>();
 
     for (const entry of penaltyEntries) {
       const list = entriesByStaff.get(entry.staffId) || [];
-      const forgivenAmount = pardonsByEntryId.get(entry.id);
-      list.push(forgivenAmount == null
+      const pardon = pardonsByEntryId.get(entry.id);
+      list.push(pardon == null
         ? entry
-        : { ...entry, pardonedAmount: forgivenAmount });
+        : { ...entry, pardonedAmount: pardon.forgivenAmount });
       entriesByStaff.set(entry.staffId, list);
     }
 
@@ -175,8 +199,25 @@ export async function GET(request: NextRequest) {
         totalPenalty: amountString(totalPenalty),
       };
     });
+    const monthlyBreakdown = summarizeLatenessPaymentsByMonth({
+      allocations,
+      currentDate: getAccraDateKey(),
+      entries: penaltyEntries.map((entry) => {
+        const pardon = pardonsByEntryId.get(entry.id);
+        return {
+          computedAmount: pardon?.penaltyAmount || entry.computedAmount,
+          date: pardon?.entryDate
+            ? pardon.entryDate.slice(0, 10)
+            : entry.date.slice(0, 10),
+          id: entry.id,
+          pardonedAmount: pardon?.forgivenAmount,
+          pardonedAt: pardon?.pardonedAt,
+        };
+      }),
+    });
 
     return NextResponse.json({
+      monthlyBreakdown,
       staff: rows,
       scope: hasDateFilter ? 'week' : 'all',
       weekEnd: hasDateFilter ? weekEnd : null,

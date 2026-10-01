@@ -21,7 +21,10 @@ const fixture = {
   attendancePermission: [],
   attendanceRecord: [],
   entrySubmission: [],
+  latenessDebtPardonEntry: [],
   latenessEntry: [],
+  latenessPaymentAllocation: [],
+  staffLeavePeriod: [],
   staff: [],
   workCalendar: [],
 };
@@ -49,6 +52,9 @@ function resetFixture() {
     },
   ];
   fixture.entrySubmission = [];
+  fixture.latenessDebtPardonEntry = [];
+  fixture.staffLeavePeriod = [];
+  fixture.latenessPaymentAllocation = [];
   fixture.latenessEntry = [
     {
       id: 'entry-1',
@@ -162,7 +168,10 @@ const schema = {
     'signOutTime',
   ]),
   entrySubmission: createTable('entrySubmission', ['date']),
+  latenessDebtPardonEntry: createTable('latenessDebtPardonEntry', ['entryId']),
   latenessEntry: createTable('latenessEntry', ['id', 'date']),
+  latenessPaymentAllocation: createTable('latenessPaymentAllocation', ['entryId']),
+  staffLeavePeriod: createTable('staffLeavePeriod', ['endDate', 'returnedOn', 'source', 'staffId', 'startDate']),
   staff: createTable('staff', ['id', 'fullName', 'active', 'archived', 'isAttendanceOnly', 'isNssPersonnel']),
   workCalendar: createTable('workCalendar', ['date', 'isHoliday']),
 };
@@ -262,8 +271,13 @@ Module._load = function patchedLoad(request, ...args) {
     return {
       and: (...conditions) => conditions,
       eq: (left, right) => ({ left, op: 'eq', right }),
+      gt: (left, right) => ({ left, op: 'gt', right }),
       gte: (left, right) => ({ left, op: 'gte', right }),
+      inArray: (left, right) => ({ left, op: 'inArray', right }),
+      isNull: (left) => ({ left, op: 'isNull' }),
       lte: (left, right) => ({ left, op: 'lte', right }),
+      ne: (left, right) => ({ left, op: 'ne', right }),
+      or: (...conditions) => conditions,
     };
   }
 
@@ -276,6 +290,98 @@ const { GET, POST } = require('../src/app/api/entries/route.ts');
 
 test.after(() => {
   Module._load = originalLoad;
+});
+
+test('Entries API rejects impossible dates and reversed ranges before sync', async () => {
+  resetFixture();
+
+  const invalidGet = await GET(new Request('http://localhost/api/entries?date=2026-02-30'));
+  const reversedRange = await GET(new Request('http://localhost/api/entries?start=2026-05-07&end=2026-05-06'));
+  const invalidPost = await POST(new Request('http://localhost/api/entries', {
+    body: JSON.stringify({ date: '2026-02-30', entries: [] }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  }));
+
+  assert.equal(invalidGet.status, 400);
+  assert.equal(reversedRange.status, 400);
+  assert.equal(invalidPost.status, 400);
+  assert.deepEqual(fixture.latenessEntry.map((entry) => entry.id), ['entry-1']);
+});
+
+test('Entries POST rejects edits during approved leave without changing stored records', async () => {
+  resetFixture();
+  fixture.staffLeavePeriod = [{
+    endDate: '2026-05-10',
+    returnedOn: null,
+    source: 'approved_leave',
+    staffId: 'staff-1',
+    startDate: '2026-05-01',
+  }];
+
+  const response = await POST(new Request('http://localhost/api/entries', {
+    body: JSON.stringify({
+      date: '2026-05-06',
+      entries: [{ arrivalTime: '08:05', didNotSignOut: false, staffId: 'staff-1' }],
+    }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  }));
+
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), { error: 'Entries cannot be edited for staff on approved leave' });
+  assert.equal(fixture.latenessEntry[0].computedAmount, '10.00');
+  assert.equal(fixture.attendanceRecord[0].checkInTime, '09:12:00');
+});
+
+test('Entries POST preserves rows with payment allocations for financial review', async () => {
+  resetFixture();
+  fixture.latenessPaymentAllocation = [{ entryId: 'entry-1' }];
+
+  const response = await POST(new Request('http://localhost/api/entries', {
+    body: JSON.stringify({
+      date: '2026-05-06',
+      entries: [{ arrivalTime: '08:05', didNotSignOut: false, staffId: 'staff-1' }],
+    }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  }));
+
+  assert.equal(response.status, 409);
+  assert.match((await response.json()).error, /payment or pardon history/);
+  assert.equal(fixture.latenessEntry[0].computedAmount, '10.00');
+  assert.equal(fixture.attendanceRecord[0].checkInTime, '09:12:00');
+});
+
+test('Entries POST preflights protected rows before writing other staff in the batch', async () => {
+  resetFixture();
+  fixture.staff.push({
+    id: 'staff-2',
+    fullName: 'SECOND STAFF',
+    active: true,
+    archived: false,
+    isAttendanceOnly: false,
+    isNssPersonnel: false,
+  });
+  fixture.latenessPaymentAllocation = [{ entryId: 'entry-1' }];
+
+  const response = await POST(new Request('http://localhost/api/entries', {
+    body: JSON.stringify({
+      date: '2026-05-06',
+      entries: [
+        { arrivalTime: '08:05', didNotSignOut: false, staffId: 'staff-2' },
+        { arrivalTime: '08:05', didNotSignOut: false, staffId: 'staff-1' },
+      ],
+    }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  }));
+
+  assert.equal(response.status, 409);
+  assert.equal(fixture.attendanceRecord.length, 1);
+  assert.equal(fixture.latenessEntry.length, 1);
+  assert.equal(fixture.latenessEntry[0].computedAmount, '10.00');
+  assert.equal(fixture.entrySubmission.length, 0);
 });
 
 test('saving a corrected lateness entry also updates the linked attendance record', async () => {

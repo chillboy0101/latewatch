@@ -170,6 +170,7 @@ export async function POST(request: NextRequest) {
     publishRealtime('entries', 'invalidate', { reason: 'attendance-general-pardon' });
     publishRealtime('payments', 'invalidate', { date, reason: 'attendance-general-pardon' });
     publishRealtime('staff-penalty-history', 'invalidate', { date, reason: 'attendance-general-pardon' });
+    publishRealtime('audit-trail', 'invalidate', { reason: 'attendance-general-pardon' });
 
     return NextResponse.json({
       affectedCount: permissions.length,

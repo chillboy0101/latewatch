@@ -29,7 +29,7 @@ function previousDateKey(value: string) {
 
 export function isStaffLeaveDate(periods: StaffLeavePeriodLike[], staffId: string, date: string) {
   return periods.some((period) => {
-    if (period.staffId !== staffId || period.source === 'staff_status') return false;
+    if (!period || period.staffId !== staffId || period.source === 'staff_status') return false;
 
     const startDate = dateKey(period.startDate);
     const plannedEndDate = dateKey(period.endDate);

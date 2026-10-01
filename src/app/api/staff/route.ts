@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url);
     const active = url.searchParams.get('active');
+    const requestedDate = url.searchParams.get('date');
     const whereClause = active === 'true'
       ? and(eq(staff.active, true), eq(staff.archived, false))
       : active === 'false'
@@ -50,7 +51,9 @@ export async function GET(request: NextRequest) {
     .where(whereClause)
     .orderBy(asc(staff.displayOrder), asc(staff.fullName));
 
-    const currentDate = getAccraDateKey();
+    const currentDate = requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)
+      ? requestedDate
+      : getAccraDateKey();
     const leavePeriods = staffList.length > 0
       ? await db.select({ staffId: staffLeavePeriod.staffId })
         .from(staffLeavePeriod)
