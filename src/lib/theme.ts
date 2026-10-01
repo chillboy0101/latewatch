@@ -1,6 +1,8 @@
 export type ThemePreference = 'light' | 'dark' | 'system';
+export type ThemeAccent = 'blue' | 'pink' | 'red' | 'green' | 'violet';
 
 const THEME_EVENT = 'latewatch-theme-change';
+const THEME_ACCENT_KEY = 'theme-accent';
 
 export function getThemePreference(): ThemePreference {
   if (typeof window === 'undefined') return 'dark';
@@ -9,6 +11,13 @@ export function getThemePreference(): ThemePreference {
   if (saved === 'light' || saved === 'dark') return saved;
 
   return 'system';
+}
+
+export function getThemeAccent(): ThemeAccent {
+  if (typeof window === 'undefined') return 'blue';
+
+  const saved = localStorage.getItem(THEME_ACCENT_KEY);
+  return saved === 'pink' || saved === 'red' || saved === 'green' || saved === 'violet' ? saved : 'blue';
 }
 
 export function getIsDarkTheme() {
@@ -37,6 +46,14 @@ export function subscribeThemeChange(callback: () => void) {
   };
 }
 
+export function applyThemeAccent(accent: ThemeAccent) {
+  if (typeof window === 'undefined') return;
+
+  localStorage.setItem(THEME_ACCENT_KEY, accent);
+  document.documentElement.dataset.accent = accent;
+  window.dispatchEvent(new Event(THEME_EVENT));
+}
+
 export function applyThemePreference(theme: ThemePreference) {
   if (typeof window === 'undefined') return;
 
@@ -47,5 +64,10 @@ export function applyThemePreference(theme: ThemePreference) {
   }
 
   document.documentElement.classList.toggle('dark', getIsDarkTheme());
+  document.documentElement.dataset.accent = getThemeAccent();
   window.dispatchEvent(new Event(THEME_EVENT));
+}
+
+if (typeof window !== 'undefined') {
+  document.documentElement.dataset.accent = getThemeAccent();
 }

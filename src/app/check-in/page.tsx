@@ -4,7 +4,7 @@ import { UserButton, useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, ChevronRight, History, Loader2, LogOut, MapPin, Moon, MoreHorizontal, Printer, ReceiptText, ShieldCheck, Sun, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, ChevronRight, History, Loader2, LogOut, MapPin, Moon, MoreHorizontal, Palette, Printer, ReceiptText, ShieldCheck, Sun, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerNested, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
@@ -20,7 +20,7 @@ import {
   type ReminderToggleConfirmation,
 } from '@/lib/push-reminder-toggle-confirmation';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
-import { applyThemePreference, getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
+import { applyThemeAccent, applyThemePreference, getIsDarkTheme, getThemeAccent, subscribeThemeChange, type ThemeAccent } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 
 interface CheckInStatus {
@@ -543,6 +543,7 @@ export default function CheckInPage() {
   const { signOut } = useClerk();
   const router = useRouter();
   const isDark = useSyncExternalStore(subscribeThemeChange, getIsDarkTheme, () => true);
+  const accent = useSyncExternalStore(subscribeThemeChange, getThemeAccent, () => 'blue');
   const [status, setStatus] = useState<CheckInStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [checkingIn, setCheckingIn] = useState(false);
@@ -556,6 +557,7 @@ export default function CheckInPage() {
   const [receiptHistory, setReceiptHistory] = useState<LatenessPaymentReceiptNotification[]>([]);
   const [hiddenToastIds, setHiddenToastIds] = useState<Set<string>>(() => new Set());
   const [menuOpen, setMenuOpen] = useState(false);
+  const [accentMenuOpen, setAccentMenuOpen] = useState(false);
   const [receiptsDialogOpen, setReceiptsDialogOpen] = useState(false);
   const [remindersDialogOpen, setRemindersDialogOpen] = useState(false);
   const [pushReminderStatus, setPushReminderStatus] = useState<PushReminderStatus | null>(null);
@@ -1125,6 +1127,14 @@ export default function CheckInPage() {
     applyThemePreference(isDark ? 'light' : 'dark');
   }
 
+  const accentOptions: Array<{ accent: ThemeAccent; label: string; swatch: string }> = [
+    { accent: 'blue', label: 'Blue', swatch: '#3b82f6' },
+    { accent: 'pink', label: 'Pink', swatch: '#ec4899' },
+    { accent: 'red', label: 'Red', swatch: '#ef4444' },
+    { accent: 'green', label: 'Green', swatch: '#22c55e' },
+    { accent: 'violet', label: 'Violet', swatch: '#8b5cf6' },
+  ];
+
   const canCheckIn = Boolean(
     status?.locationConfigured &&
     status.staff &&
@@ -1170,6 +1180,52 @@ export default function CheckInPage() {
             </Link>
           </Button>
           <div className="flex items-center gap-2">
+            <div className="relative">
+              <Button
+                type="button"
+                variant="glass"
+                size="icon"
+                className="h-10 w-10 rounded-full"
+                onClick={() => setAccentMenuOpen((open) => !open)}
+                aria-label="Choose theme color"
+                title="Choose theme color"
+              >
+                <Palette className="h-5 w-5" />
+              </Button>
+
+              {accentMenuOpen && (
+                <div className="absolute right-0 top-full z-50 mt-2 w-44 rounded-xl border border-border bg-background/95 p-2 shadow-xl backdrop-blur-xl">
+                  <div className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Theme
+                  </div>
+                  <div className="space-y-1.5">
+                    {accentOptions.map(({ accent: option, label, swatch }) => (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => {
+                          applyThemeAccent(option);
+                          setAccentMenuOpen(false);
+                        }}
+                        className={cn(
+                          'flex w-full items-center justify-between rounded-lg border px-2 py-1.5 text-left transition-colors',
+                          accent === option
+                            ? 'border-primary bg-primary/10 text-foreground'
+                            : 'border-transparent bg-transparent text-muted-foreground hover:border-border hover:bg-foreground/5',
+                        )}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className="h-3.5 w-3.5 rounded-full border border-white/60" style={{ backgroundColor: swatch }} />
+                          <span className="text-sm font-medium">{label}</span>
+                        </span>
+                        {accent === option && <CheckCircle2 className="h-4 w-4 text-primary" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <Button
               type="button"
               variant="glass"

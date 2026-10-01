@@ -7,6 +7,7 @@ import {
   Inbox,
   Loader2,
   Moon,
+  Palette,
   Sun,
   Trash2,
   X,
@@ -15,7 +16,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Button } from '@/components/ui/button';
 import { useNotifications, type Notification } from '@/contexts/notification-context';
-import { applyThemePreference, getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
+import { applyThemeAccent, applyThemePreference, getIsDarkTheme, getThemeAccent, subscribeThemeChange, type ThemeAccent } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 
 interface HeaderProps {
@@ -51,7 +52,9 @@ export function Header({ title, userRole }: HeaderProps) {
   const router = useRouter();
   const firstName = user?.firstName || 'User';
   const isDark = useSyncExternalStore(subscribeThemeChange, getIsDarkTheme, () => true);
+  const accent = useSyncExternalStore(subscribeThemeChange, getThemeAccent, () => 'blue');
   const [showNotifications, setShowNotifications] = useState(false);
+  const [accentMenuOpen, setAccentMenuOpen] = useState(false);
   const [clearingAll, setClearingAll] = useState(false);
   const [dismissingId, setDismissingId] = useState<string | null>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -73,6 +76,14 @@ export function Header({ title, userRole }: HeaderProps) {
   const toggleTheme = () => {
     applyThemePreference(isDark ? 'light' : 'dark');
   };
+
+  const accentOptions: Array<{ accent: ThemeAccent; label: string; swatch: string }> = [
+    { accent: 'blue', label: 'Blue', swatch: '#3b82f6' },
+    { accent: 'pink', label: 'Pink', swatch: '#ec4899' },
+    { accent: 'red', label: 'Red', swatch: '#ef4444' },
+    { accent: 'green', label: 'Green', swatch: '#22c55e' },
+    { accent: 'violet', label: 'Violet', swatch: '#8b5cf6' },
+  ];
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -140,6 +151,51 @@ export function Header({ title, userRole }: HeaderProps) {
         {title && <h1 className="text-xl font-semibold">{title}</h1>}
       </div>
       <div className="flex items-center gap-3">
+        <div className="relative">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            onClick={() => setAccentMenuOpen((open) => !open)}
+            title="Choose theme color"
+            aria-label="Choose theme color"
+          >
+            <Palette className="h-4 w-4" />
+          </Button>
+
+          {accentMenuOpen && (
+            <div className="absolute right-0 top-full z-50 mt-2 w-44 rounded-xl border border-border bg-card/95 p-2 shadow-xl backdrop-blur-xl">
+              <div className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Theme
+              </div>
+              <div className="space-y-1.5">
+                {accentOptions.map(({ accent: option, label, swatch }) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => {
+                      applyThemeAccent(option);
+                      setAccentMenuOpen(false);
+                    }}
+                    className={cn(
+                      'flex w-full items-center justify-between rounded-lg border px-2 py-1.5 text-left transition-colors',
+                      accent === option
+                        ? 'border-primary bg-primary/10 text-foreground'
+                        : 'border-transparent bg-transparent text-muted-foreground hover:border-border hover:bg-foreground/5',
+                    )}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="h-3.5 w-3.5 rounded-full border border-white/60" style={{ backgroundColor: swatch }} />
+                      <span className="text-sm font-medium">{label}</span>
+                    </span>
+                    {accent === option && <span className="h-2 w-2 rounded-full bg-primary" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         <Button
           variant="ghost"
           size="icon"
