@@ -132,7 +132,7 @@ test('pardons waive the snapshotted amount while later penalties remain payable'
   ]);
 });
 
-test('monthly paid and unpaid totals are calculated as of each penalty month end', () => {
+test('monthly balances reflect current payments and pardons for each penalty month', () => {
   const months = summarizeLatenessPaymentsByMonth({
     currentDate: '2026-04-15',
     entries: [
@@ -149,17 +149,17 @@ test('monthly paid and unpaid totals are calculated as of each penalty month end
   assert.deepEqual(months.map((month) => month.month), ['2026-02', '2026-03', '2026-04']);
   assert.deepEqual(months[0], {
     month: '2026-02',
-    paidAmount: '10.00',
+    paidAmount: '30.00',
     pardonedAmount: '0.00',
     penaltyAmount: '100.00',
-    unpaidAmount: '90.00',
+    unpaidAmount: '70.00',
   });
   assert.deepEqual(months[1], {
     month: '2026-03',
-    paidAmount: '0.00',
+    paidAmount: '10.00',
     pardonedAmount: '20.00',
     penaltyAmount: '50.00',
-    unpaidAmount: '30.00',
+    unpaidAmount: '20.00',
   });
   assert.deepEqual(months[2], {
     month: '2026-04',

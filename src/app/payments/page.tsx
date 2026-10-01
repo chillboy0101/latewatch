@@ -358,13 +358,14 @@ export default function PenaltyPaymentsPage() {
     const rows = (data?.staff || []).filter((row) => row.isAttendanceOnly !== true);
 
     return rows.reduce(
-      (totals, row) => ({
-        liveOutstanding: totals.liveOutstanding + moneyNumber(row.outstandingBalance),
-        paidToDate: totals.paidToDate + moneyNumber(row.paidAmount),
-      }),
-      { liveOutstanding: 0, paidToDate: 0 },
+      (total, row) => total + moneyNumber(row.outstandingBalance),
+      0,
     );
   }, [data?.staff]);
+  const selectedMonthKey = `${offenceBookYear}-${String(offenceBookMonth + 1).padStart(2, '0')}`;
+  const selectedMonthLabel = new Date(offenceBookYear, offenceBookMonth, 1)
+    .toLocaleString(undefined, { month: 'long', year: 'numeric' });
+  const selectedMonthBalance = data?.monthlyBreakdown.find((month) => month.month === selectedMonthKey);
   const paymentRosterSections = useMemo(() => {
     return [
       {
@@ -656,8 +657,11 @@ export default function PenaltyPaymentsPage() {
                 ))}
               </div>
               <div className="flex flex-wrap items-center gap-2 lg:justify-center">
-                <PaymentToolbarTotal label="Live outstanding" value={currency(paymentTotals.liveOutstanding)} tone="live" />
-                <PaymentToolbarTotal label="Paid to date" value={currency(paymentTotals.paidToDate)} tone="paid" />
+                <PaymentToolbarTotal label="Live outstanding" value={currency(paymentTotals)} tone="live" />
+                <PaymentToolbarTotal label={`${selectedMonthLabel} penalties`} value={currency(selectedMonthBalance?.penaltyAmount)} tone="month" />
+                <PaymentToolbarTotal label={`${selectedMonthLabel} paid`} value={currency(selectedMonthBalance?.paidAmount)} tone="paid" />
+                <PaymentToolbarTotal label={`${selectedMonthLabel} pardoned`} value={currency(selectedMonthBalance?.pardonedAmount)} tone="month" />
+                <PaymentToolbarTotal label={`${selectedMonthLabel} unpaid`} value={currency(selectedMonthBalance?.unpaidAmount)} tone="unpaid" />
               </div>
               <div className="relative w-full md:max-w-sm">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -670,46 +674,6 @@ export default function PenaltyPaymentsPage() {
               </div>
             </div>
           </div>
-
-          {!loading && (data?.monthlyBreakdown.length || 0) > 0 && (
-            <div className="border-b border-border">
-              <div className="border-b border-border px-4 py-3">
-                <h2 className="text-sm font-semibold">Monthly lateness balances</h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Penalties are grouped by occurrence month. Payments and pardons count only if recorded by that month-end; live outstanding above uses today’s records.
-                </p>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[720px] text-sm">
-                  <thead className="bg-muted/20 text-left text-xs uppercase text-muted-foreground">
-                    <tr>
-                      <th className="px-4 py-2.5 font-medium">Penalty month</th>
-                      <th className="px-4 py-2.5 text-right font-medium">Penalties</th>
-                      <th className="px-4 py-2.5 text-right font-medium">Paid by month-end</th>
-                      <th className="px-4 py-2.5 text-right font-medium">Pardoned by month-end</th>
-                      <th className="px-4 py-2.5 text-right font-medium">Unpaid at month-end</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data?.monthlyBreakdown.slice().reverse().map((month) => {
-                      const [year, monthNumber] = month.month.split('-').map(Number);
-                      const monthLabel = new Date(year, monthNumber - 1, 1)
-                        .toLocaleString(undefined, { month: 'long', year: 'numeric' });
-                      return (
-                        <tr key={month.month} className="border-t border-border/70">
-                          <th scope="row" className="px-4 py-2.5 text-left font-medium">{monthLabel}</th>
-                          <td className="px-4 py-2.5 text-right font-mono">{currency(month.penaltyAmount)}</td>
-                          <td className="px-4 py-2.5 text-right font-mono text-success">{currency(month.paidAmount)}</td>
-                          <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{currency(month.pardonedAmount)}</td>
-                          <td className="px-4 py-2.5 text-right font-mono font-semibold text-warning">{currency(month.unpaidAmount)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
 
           {loading ? (
             <LoadingBuffer variant="section" label="Loading payments" description="Checking balances." />

@@ -82,17 +82,6 @@ function formatDateKey(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-function monthEndTimestamp(month: string) {
-  const [year, monthNumber] = month.split('-').map(Number);
-  return Date.UTC(year, monthNumber, 0, 23, 59, 59, 999);
-}
-
-function timestamp(value: string | Date | null | undefined) {
-  if (!value) return null;
-  const parsed = value instanceof Date ? value.getTime() : Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function monthRange(startMonth: string, endMonth: string) {
   const [startYear, startMonthNumber] = startMonth.split('-').map(Number);
   const [endYear, endMonthNumber] = endMonth.split('-').map(Number);
@@ -134,7 +123,6 @@ export function summarizeLatenessPaymentsByMonth(input: {
 
   const throughMonth = input.currentDate.slice(0, 7);
   return monthRange(populatedMonths[0], throughMonth).map((month) => {
-    const asOf = monthEndTimestamp(month);
     let penaltyCents = 0;
     let paidCents = 0;
     let pardonedCents = 0;
@@ -144,22 +132,14 @@ export function summarizeLatenessPaymentsByMonth(input: {
       penaltyCents += entryPenaltyCents;
 
       const entryPaidCents = (allocationsByEntryId.get(entry.id) || [])
-        .reduce((sum, allocation) => {
-          const recordedAt = timestamp(allocation.recordedAt);
-          return recordedAt !== null && recordedAt <= asOf
-            ? sum + cents(allocation.allocatedAmount ?? allocation.amount)
-            : sum;
-        }, 0);
+        .reduce((sum, allocation) => sum + cents(allocation.allocatedAmount ?? allocation.amount), 0);
       const paidForEntryCents = Math.min(entryPenaltyCents, entryPaidCents);
       paidCents += paidForEntryCents;
 
-      const pardonedAt = timestamp(entry.pardonedAt);
-      if (pardonedAt !== null && pardonedAt <= asOf) {
-        pardonedCents += Math.min(
-          Math.max(0, entryPenaltyCents - paidForEntryCents),
-          cents(entry.pardonedAmount),
-        );
-      }
+      pardonedCents += Math.min(
+        Math.max(0, entryPenaltyCents - paidForEntryCents),
+        cents(entry.pardonedAmount),
+      );
     }
 
     const unpaidCents = Math.max(0, penaltyCents - paidCents - pardonedCents);
