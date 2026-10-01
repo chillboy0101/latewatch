@@ -369,7 +369,7 @@ export default function PenaltyPaymentsPage() {
     );
   }, [data?.staff]);
   const selectedMonthKey = `${offenceBookYear}-${String(offenceBookMonth + 1).padStart(2, '0')}`;
-  const selectedMonthBalance = data?.monthlyBreakdown.find((month) => month.month === selectedMonthKey);
+  const selectedMonthBalance = data?.monthlyBreakdown?.find((month) => month.month === selectedMonthKey);
   const paymentRosterSections = useMemo(() => {
     return [
       {

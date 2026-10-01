@@ -178,6 +178,8 @@ NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/dashboard
 
 # Database (Neon)
 DATABASE_URL=
+# Prefer the direct endpoint for the app when Neon supplies both URLs.
+DATABASE_URL_UNPOOLED=
 
 # File storage (Cloudflare R2)
 CF_R2_ACCOUNT_ID=

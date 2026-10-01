@@ -5,6 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const root = path.join(__dirname, '..');
+const dbIndexPath = path.join(root, 'src/db/index.ts');
 const schemaPath = path.join(root, 'src/db/schema.ts');
 const migrationPath = path.join(root, 'drizzle/0019_lateness_payments.sql');
 const paymentsApiPath = path.join(root, 'src/app/api/payments/lateness/route.ts');
@@ -21,6 +22,12 @@ const receiptLibPath = path.join(root, 'src/lib/lateness-payment-receipts.ts');
 const sidebarPath = path.join(root, 'src/components/layout/sidebar.tsx');
 const appShellPath = path.join(root, 'src/components/layout/app-shell.tsx');
 const proxyPath = path.join(root, 'src/proxy.ts');
+
+test('database client prefers the configured unpooled Neon endpoint', () => {
+  const dbIndex = fs.readFileSync(dbIndexPath, 'utf8');
+
+  assert.match(dbIndex, /process\.env\.DATABASE_URL_UNPOOLED \|\| process\.env\.DATABASE_URL/);
+});
 
 test('payment tables and migration are defined separately from lateness entries', () => {
   const schema = fs.readFileSync(schemaPath, 'utf8');
@@ -178,6 +185,7 @@ test('payments list uses binary paid or unpaid status with toolbar money totals'
   assert.match(page, /selectedMonthBalance\?\.paidAmount/);
   assert.match(page, /selectedMonthBalance\?\.pardonedAmount/);
   assert.match(page, /selectedMonthBalance\?\.unpaidAmount/);
+  assert.match(page, /data\?\.monthlyBreakdown\?\.find/);
   assert.match(page, /PaymentToolbarTotal label="Penalties"/);
   assert.match(page, /PaymentToolbarTotal label="Paid"/);
   assert.match(page, /PaymentToolbarTotal label="Pardoned"/);
