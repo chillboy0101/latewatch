@@ -1,4 +1,4 @@
-import { differenceInCalendarDays, parseISO } from 'date-fns';
+import { differenceInCalendarDays, format, parseISO } from 'date-fns';
 
 export const STAFF_LEAVE_TYPES = [
   { label: 'Annual', value: 'annual' },
@@ -89,6 +89,34 @@ export function formatLeaveDuration(
   const dayCount = Math.max(1, differenceInCalendarDays(relevantEndDate, startDate) + 1);
 
   return `${dayCount} day${dayCount === 1 ? '' : 's'}`;
+}
+
+export function formatLeaveSummary(
+  period: {
+    endDate?: string | Date | null;
+    leaveType?: string | null;
+    returnedOn?: string | Date | null;
+    startDate?: string | Date | null;
+  } | null | undefined,
+) {
+  if (!period || !period.startDate) return 'Not on leave';
+
+  const startDate = parseISO(dateKey(period.startDate));
+  const effectiveEndDateValue = getEffectiveLeaveEndDate(period) || period.endDate || period.startDate;
+  const effectiveEndDate = parseISO(dateKey(effectiveEndDateValue));
+  const dateRange = `${format(startDate, 'd MMM yyyy')} to ${format(effectiveEndDate, 'd MMM yyyy')}`;
+  const returnedOn = dateKey(period.returnedOn);
+  const expectedReturnDate = getExpectedReturnDate(period);
+
+  if (returnedOn) {
+    return `${dateRange} • returned ${format(parseISO(returnedOn), 'd MMM yyyy')}`;
+  }
+
+  if (expectedReturnDate) {
+    return `${dateRange} • returns ${format(parseISO(expectedReturnDate), 'd MMM yyyy')}`;
+  }
+
+  return dateRange;
 }
 
 export function isStaffLeaveDate(periods: StaffLeavePeriodLike[], staffId: string, date: string) {

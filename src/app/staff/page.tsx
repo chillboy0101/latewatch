@@ -21,7 +21,7 @@ import {
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { getAccraDateKey } from '@/lib/date-key';
 import { getStaffIdentitySyncCopy, type StaffIdentitySyncTone } from '@/lib/staff-identity-sync-copy';
-import { formatLeaveDuration, getExpectedReturnDate } from '@/lib/staff-leave';
+import { formatLeaveSummary, getExpectedReturnDate } from '@/lib/staff-leave';
 
 interface StaffMember {
   id: string;
@@ -585,7 +585,7 @@ export default function StaffPage() {
                   <p className="font-medium">Current status</p>
                   <p className="mt-1 text-muted-foreground">
                     {leaveDialogStaff.onLeave && leaveDialogStaff.activeLeave
-                      ? `${leaveDialogStaff.fullName} is on leave for ${formatLeaveDuration(leaveDialogStaff.activeLeave, new Date())}. Expected return date: ${getExpectedReturnDate(leaveDialogStaff.activeLeave) ?? 'Not set'}.`
+                      ? `${leaveDialogStaff.fullName} is on leave: ${formatLeaveSummary(leaveDialogStaff.activeLeave)}.`
                       : `${leaveDialogStaff.fullName} is not currently on leave.`}
                   </p>
                 </div>

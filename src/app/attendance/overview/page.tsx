@@ -23,7 +23,7 @@ import { getAccraDateKey } from '@/lib/date-key';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 import { isOnTimeCheckIn } from '@/lib/work-hours';
-import { formatLeaveDuration, getExpectedReturnDate } from '@/lib/staff-leave';
+import { formatLeaveDuration, formatLeaveSummary, getExpectedReturnDate } from '@/lib/staff-leave';
 
 type AttendanceFilter = 'all' | 'on_time' | AttendanceStatus;
 type GeneralPardonType = 'absence' | 'late_arrival';
@@ -946,8 +946,7 @@ export default function AttendancePage() {
                     const selectedMember = data?.rows.find((row) => row.staff.id === leaveManagerStaffId)?.staff;
                     if (!selectedMember) return 'Select a staff member to manage leave.';
                     if (selectedMember.activeLeave) {
-                      const expectedReturnDate = getExpectedReturnDate(selectedMember.activeLeave);
-                      return `${selectedMember.fullName} is on leave for ${formatLeaveDuration(selectedMember.activeLeave, attendanceDate)}. Expected return date: ${expectedReturnDate ?? 'Not set'}.`;
+                      return `${selectedMember.fullName} is on leave: ${formatLeaveSummary(selectedMember.activeLeave)}.`;
                     }
                     return `${selectedMember.fullName} is not currently on leave.`;
                   })()}
@@ -1315,7 +1314,7 @@ export default function AttendancePage() {
                               <span>{row.staff.fullName}</span>
                               {row.staff.activeLeave && (
                                 <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
-                                  Leave {formatLeaveDuration(row.staff.activeLeave, attendanceDate)}
+                                  Leave • {formatLeaveSummary(row.staff.activeLeave)}
                                 </span>
                               )}
                             </div>
