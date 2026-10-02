@@ -15,7 +15,7 @@ import { NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/pen
 import { getAccraDateKey } from '@/lib/date-key';
 import { formatLongDisplayDate } from '@/lib/date-format';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
-import { formatLeaveDuration } from '@/lib/staff-leave';
+import { formatLeaveDuration, getExpectedReturnDate } from '@/lib/staff-leave';
 
 interface StaffMember {
   id: string;
@@ -794,6 +794,7 @@ function EntriesPageContent() {
                   const member = staff.find((s) => s.id === entry.staffId);
                   const isMonitoringStaff = member?.isAttendanceOnly === true;
                   const isOnLeave = member?.onLeave === true;
+                  const expectedReturnDate = getExpectedReturnDate(member?.activeLeave) ?? null;
                   const rowDisabled = entriesDisabled || isOnLeave;
                   const showNoShowSignInWaiverButton =
                     !rowDisabled &&
@@ -816,7 +817,7 @@ function EntriesPageContent() {
                           <span>{member?.fullName}</span>
                           {isOnLeave && (
                             <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
-                              On Leave{member?.activeLeave ? ` • ${formatLeaveDuration(member.activeLeave, selectedDate)}` : ''}
+                              On Leave{member?.activeLeave ? ` • ${formatLeaveDuration(member.activeLeave, selectedDate)}` : ''}{expectedReturnDate ? ` • returns ${expectedReturnDate}` : ''}
                             </span>
                           )}
                           {member?.archived && (
