@@ -44,6 +44,21 @@ export function getEffectiveLeaveEndDate(period: {
   return [plannedEndDate, previousDateKey(returnedOn)].filter(Boolean).sort()[0] || plannedEndDate || null;
 }
 
+export function getExpectedReturnDate(period: {
+  endDate?: string | Date | null;
+  returnedOn?: string | Date | null;
+} | null | undefined) {
+  if (!period) return null;
+
+  const plannedEndDate = dateKey(period.endDate);
+  const actualReturnDate = dateKey(period.returnedOn);
+
+  if (!plannedEndDate) return actualReturnDate || null;
+  if (!actualReturnDate) return plannedEndDate;
+
+  return actualReturnDate > plannedEndDate ? plannedEndDate : actualReturnDate;
+}
+
 export function getActiveLeavePeriod(periods: StaffLeavePeriodLike[], staffId: string, date: string) {
   const matching = periods.filter((period) => {
     if (!period || period.staffId !== staffId || period.source === 'staff_status') return false;

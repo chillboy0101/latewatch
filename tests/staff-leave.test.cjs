@@ -4,7 +4,13 @@ const test = require('node:test');
 
 require('tsx/cjs');
 
-const { formatLeaveDuration, getActiveLeavePeriod, isStaffLeaveDate, leaveRangesOverlap } = require('../src/lib/staff-leave.ts');
+const {
+  formatLeaveDuration,
+  getActiveLeavePeriod,
+  getExpectedReturnDate,
+  isStaffLeaveDate,
+  leaveRangesOverlap,
+} = require('../src/lib/staff-leave.ts');
 
 test('leave coverage includes both approved range boundaries and excludes gaps', () => {
   const periods = [
@@ -56,4 +62,16 @@ test('current leave period and duration are computed using the effective end dat
   assert.deepEqual(currentPeriod, periods[0]);
   assert.equal(formatLeaveDuration(periods[0], '2026-09-18'), '18 days');
   assert.equal(formatLeaveDuration(periods[1], '2026-10-02'), '2 days');
+});
+
+test('expected return date defaults to the planned leave end date', () => {
+  const period = {
+    endDate: '2026-09-30',
+    source: 'approved_leave',
+    staffId: 'staff-1',
+    startDate: '2026-09-01',
+  };
+
+  assert.equal(getExpectedReturnDate(period), '2026-09-30');
+  assert.equal(getExpectedReturnDate({ ...period, returnedOn: '2026-10-05' }), '2026-09-30');
 });

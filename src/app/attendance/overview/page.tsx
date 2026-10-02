@@ -23,7 +23,7 @@ import { getAccraDateKey } from '@/lib/date-key';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 import { isOnTimeCheckIn } from '@/lib/work-hours';
-import { formatLeaveDuration } from '@/lib/staff-leave';
+import { formatLeaveDuration, getExpectedReturnDate } from '@/lib/staff-leave';
 
 type AttendanceFilter = 'all' | 'on_time' | AttendanceStatus;
 type GeneralPardonType = 'absence' | 'late_arrival';
@@ -291,6 +291,8 @@ export default function AttendancePage() {
       if (staffId) {
         const openPeriod = records.find((period) => period.staffId === staffId && !period.returnedOn);
         if (openPeriod) {
+          const expectedReturnDate = getExpectedReturnDate(openPeriod) || '';
+          setLeaveReturnDate(expectedReturnDate);
           setLeaveType(openPeriod.leaveType || 'annual');
           setLeaveStartDate(openPeriod.startDate || todayKey());
           setLeaveEndDate(openPeriod.endDate || openPeriod.startDate || todayKey());
@@ -307,10 +309,11 @@ export default function AttendancePage() {
     setLeaveManagerStaffId(targetStaffId);
     setLeaveDialogOpen(true);
     setLeaveStatusMessage(null);
-    setLeaveReturnDate('');
 
     if (targetStaffId) {
       const selectedMember = data?.rows.find((row) => row.staff.id === targetStaffId)?.staff;
+      const expectedReturnDate = getExpectedReturnDate(selectedMember?.activeLeave) || '';
+      setLeaveReturnDate(expectedReturnDate);
       setLeaveType(selectedMember?.activeLeave?.leaveType || 'annual');
       setLeaveStartDate(selectedMember?.activeLeave?.startDate || todayKey());
       setLeaveEndDate(selectedMember?.activeLeave?.endDate || todayKey());
@@ -943,7 +946,8 @@ export default function AttendancePage() {
                     const selectedMember = data?.rows.find((row) => row.staff.id === leaveManagerStaffId)?.staff;
                     if (!selectedMember) return 'Select a staff member to manage leave.';
                     if (selectedMember.activeLeave) {
-                      return `${selectedMember.fullName} is on leave for ${formatLeaveDuration(selectedMember.activeLeave, attendanceDate)}.`;
+                      const expectedReturnDate = getExpectedReturnDate(selectedMember.activeLeave);
+                      return `${selectedMember.fullName} is on leave for ${formatLeaveDuration(selectedMember.activeLeave, attendanceDate)}. Expected return date: ${expectedReturnDate ?? 'Not set'}.`;
                     }
                     return `${selectedMember.fullName} is not currently on leave.`;
                   })()}
@@ -985,14 +989,17 @@ export default function AttendancePage() {
                 </Button>
                 {data?.rows.some((row) => row.staff.id === leaveManagerStaffId && row.staff.activeLeave) && (
                   <>
-                    <Input
-                      type="date"
-                      value={leaveReturnDate}
-                      min={leaveStartDate}
-                      max={todayKey()}
-                      onChange={(event) => setLeaveReturnDate(event.target.value)}
-                      className="min-w-[10rem]"
-                    />
+                    <div className="min-w-[10rem] flex-1">
+                      <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Expected return date</label>
+                      <Input
+                        type="date"
+                        value={leaveReturnDate}
+                        min={leaveStartDate}
+                        max={todayKey()}
+                        onChange={(event) => setLeaveReturnDate(event.target.value)}
+                        className="min-w-[10rem]"
+                      />
+                    </div>
                     <Button variant="outline" onClick={() => void closeLeavePeriod()} disabled={leaveSubmitting || !leaveReturnDate}>
                       Record return
                     </Button>

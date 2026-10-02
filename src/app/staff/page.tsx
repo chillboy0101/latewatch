@@ -21,7 +21,7 @@ import {
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { getAccraDateKey } from '@/lib/date-key';
 import { getStaffIdentitySyncCopy, type StaffIdentitySyncTone } from '@/lib/staff-identity-sync-copy';
-import { formatLeaveDuration } from '@/lib/staff-leave';
+import { formatLeaveDuration, getExpectedReturnDate } from '@/lib/staff-leave';
 
 interface StaffMember {
   id: string;
@@ -122,7 +122,8 @@ export default function StaffPage() {
       if (staffId) {
         const activeLeave = records.find((period) => period.staffId === staffId && !period.returnedOn);
         if (activeLeave) {
-          setLeaveReturnDate(activeLeave.returnedOn || '');
+          const expectedReturnDate = getExpectedReturnDate(activeLeave) || '';
+          setLeaveReturnDate(expectedReturnDate);
           setLeaveType(activeLeave.leaveType || 'annual');
           setLeaveStartDate(activeLeave.startDate || getAccraDateKey());
           setLeaveEndDate(activeLeave.endDate || activeLeave.startDate || getAccraDateKey());
@@ -299,7 +300,8 @@ export default function StaffPage() {
     setLeaveDialogStaff(member);
     setLeaveDialogOpen(true);
     setLeaveStatusMessage(null);
-    setLeaveReturnDate('');
+    const expectedReturnDate = getExpectedReturnDate(member.activeLeave) || '';
+    setLeaveReturnDate(expectedReturnDate);
     setLeaveType(member.activeLeave?.leaveType || 'annual');
     setLeaveStartDate(member.activeLeave?.startDate || getAccraDateKey());
     setLeaveEndDate(member.activeLeave?.endDate || getAccraDateKey());
@@ -583,7 +585,7 @@ export default function StaffPage() {
                   <p className="font-medium">Current status</p>
                   <p className="mt-1 text-muted-foreground">
                     {leaveDialogStaff.onLeave && leaveDialogStaff.activeLeave
-                      ? `${leaveDialogStaff.fullName} is on leave for ${formatLeaveDuration(leaveDialogStaff.activeLeave, new Date())}.`
+                      ? `${leaveDialogStaff.fullName} is on leave for ${formatLeaveDuration(leaveDialogStaff.activeLeave, new Date())}. Expected return date: ${getExpectedReturnDate(leaveDialogStaff.activeLeave) ?? 'Not set'}.`
                       : `${leaveDialogStaff.fullName} is not currently on leave.`}
                   </p>
                 </div>
@@ -624,16 +626,21 @@ export default function StaffPage() {
                   {leaveDialogStaff.onLeave && (
                     <>
                       <div className="flex min-w-0 flex-1 items-center gap-2">
-                        <Input
-                          id="leave-return-date"
-                          type="date"
-                          value={leaveReturnDate}
-                          min={leaveStartDate}
-                          max={getAccraDateKey()}
-                          onChange={(event) => setLeaveReturnDate(event.target.value)}
-                        />
+                        <div className="flex-1">
+                          <Label htmlFor="leave-return-date" className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">
+                            Expected return date
+                          </Label>
+                          <Input
+                            id="leave-return-date"
+                            type="date"
+                            value={leaveReturnDate}
+                            min={leaveStartDate}
+                            max={getAccraDateKey()}
+                            onChange={(event) => setLeaveReturnDate(event.target.value)}
+                          />
+                        </div>
                       </div>
-                      <Button variant="outline" onClick={() => void closeLeavePeriod()} disabled={leaveSubmitting}>
+                      <Button variant="outline" onClick={() => void closeLeavePeriod()} disabled={leaveSubmitting || !leaveReturnDate}>
                         Record return
                       </Button>
                     </>
