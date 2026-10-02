@@ -24,7 +24,7 @@ export async function PATCH(
     const body = await request.json().catch(() => ({}));
     const returnedOn = typeof body?.returnedOn === 'string' ? body.returnedOn : '';
     if (!isIsoDateKey(returnedOn) || returnedOn > getAccraDateKey()) {
-      return NextResponse.json({ error: 'Select a valid actual return date' }, { status: 400 });
+      return NextResponse.json({ error: 'Select a valid actual return date that is not in the future' }, { status: 400 });
     }
 
     const [before] = await db.select()
@@ -32,8 +32,8 @@ export async function PATCH(
       .where(and(eq(staffLeavePeriod.id, id), eq(staffLeavePeriod.source, 'approved_leave'), isNull(staffLeavePeriod.returnedOn)))
       .limit(1);
     if (!before) return NextResponse.json({ error: 'Approved leave period was not found or is already closed' }, { status: 404 });
-    if (returnedOn < before.startDate || (before.endDate && returnedOn >= before.endDate)) {
-      return NextResponse.json({ error: 'Return date must be within the approved leave dates and before the planned end date' }, { status: 400 });
+    if (returnedOn <= before.startDate) {
+      return NextResponse.json({ error: 'Return date must be after the leave start date' }, { status: 400 });
     }
 
     const actorEmail = user?.primaryEmailAddress?.emailAddress || user?.emailAddresses[0]?.emailAddress || 'system';

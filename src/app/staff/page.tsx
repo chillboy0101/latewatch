@@ -355,6 +355,14 @@ export default function StaffPage() {
       setLeaveStatusMessage('Select the actual return date.');
       return;
     }
+    if (leaveReturnDate <= leaveStartDate) {
+      setLeaveStatusMessage('Return date must be after the leave start date and not in the future.');
+      return;
+    }
+    if (leaveReturnDate > getAccraDateKey()) {
+      setLeaveStatusMessage('Actual return date cannot be in the future.');
+      return;
+    }
 
     setLeaveSubmitting(true);
     setLeaveStatusMessage(null);
@@ -616,7 +624,14 @@ export default function StaffPage() {
                   {leaveDialogStaff.onLeave && (
                     <>
                       <div className="flex min-w-0 flex-1 items-center gap-2">
-                        <Input id="leave-return-date" type="date" value={leaveReturnDate} onChange={(event) => setLeaveReturnDate(event.target.value)} />
+                        <Input
+                          id="leave-return-date"
+                          type="date"
+                          value={leaveReturnDate}
+                          min={leaveStartDate}
+                          max={getAccraDateKey()}
+                          onChange={(event) => setLeaveReturnDate(event.target.value)}
+                        />
                       </div>
                       <Button variant="outline" onClick={() => void closeLeavePeriod()} disabled={leaveSubmitting}>
                         Record return

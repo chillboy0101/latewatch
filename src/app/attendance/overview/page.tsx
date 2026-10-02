@@ -363,6 +363,14 @@ export default function AttendancePage() {
       setLeaveStatusMessage('Select the actual return date.');
       return;
     }
+    if (leaveReturnDate <= leaveStartDate) {
+      setLeaveStatusMessage('Return date must be after the leave start date and not in the future.');
+      return;
+    }
+    if (leaveReturnDate > todayKey()) {
+      setLeaveStatusMessage('Actual return date cannot be in the future.');
+      return;
+    }
 
     setLeaveSubmitting(true);
     setLeaveStatusMessage(null);
@@ -977,7 +985,14 @@ export default function AttendancePage() {
                 </Button>
                 {data?.rows.some((row) => row.staff.id === leaveManagerStaffId && row.staff.activeLeave) && (
                   <>
-                    <Input type="date" value={leaveReturnDate} onChange={(event) => setLeaveReturnDate(event.target.value)} className="min-w-[10rem]" />
+                    <Input
+                      type="date"
+                      value={leaveReturnDate}
+                      min={leaveStartDate}
+                      max={todayKey()}
+                      onChange={(event) => setLeaveReturnDate(event.target.value)}
+                      className="min-w-[10rem]"
+                    />
                     <Button variant="outline" onClick={() => void closeLeavePeriod()} disabled={leaveSubmitting || !leaveReturnDate}>
                       Record return
                     </Button>
