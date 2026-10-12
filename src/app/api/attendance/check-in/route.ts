@@ -19,7 +19,7 @@ import {
   SHARED_ATTENDANCE_DEVICE_MESSAGE,
   SHARED_ATTENDANCE_DEVICE_RESULT,
 } from '@/lib/attendance-device-security';
-import { getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/attendance-permissions';
+import { formatAbsencePermissionReason, getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/attendance-permissions';
 import { getAuditActor, writeAuditEvent } from '@/lib/audit';
 import { computePenalty } from '@/lib/penalty-calculator';
 import { syncStaffEmailIdentity } from '@/lib/clerk-organization';
@@ -841,17 +841,12 @@ export async function POST(request: NextRequest) {
     let resolvedDevice = registeredDevice || null;
 
     const permission = await getApprovedAttendancePermission(staffMember.id, clock.dateKey);
-    if (action === 'check_in' && (
+    // An excused absence does not stop staff from checking in if they come to work anyway;
+    // the day stays excused and penalty-free.
+    const hasAbsencePermission = Boolean(
       permission?.generalPardonType === 'absence' ||
-      (permission?.status === 'approved' && permission.permissionType === 'absence')
-    )) {
-      return block(
-        'PERMISSION_ABSENCE',
-        'You have an approved absence for today. No check-in is required.',
-        400,
-        staffMember.id,
-      );
-    }
+      (permission?.status === 'approved' && permission.permissionType === 'absence'),
+    );
 
     if (isWeekendDate(clock.dateKey)) {
       return block('WEEKEND_CLOSED', 'Attendance check-in is closed on weekends.', 400, staffMember.id);
@@ -1349,13 +1344,20 @@ export async function POST(request: NextRequest) {
     });
     const hasActiveLatePermission = isPermissionWindowActive(permission, checkInTime);
     const permissionWindow = getPermissionWindowBounds(permission);
-    const penalty = hasActiveLatePermission
+    const penalty = hasAbsencePermission
       ? {
           amount: 0,
-          reason: `Approved late arrival (${permissionWindow.label}): ${permission?.reason || ''}`.trim(),
+          reason: permission?.generalPardonType === 'absence'
+            ? 'Excused absence: General pardon'
+            : `Excused absence: ${formatAbsencePermissionReason(permission?.reason || 'approved reason')}`.trim(),
         }
-      : rawPenalty;
-    const status = penalty.amount > 0 ? 'late' : 'present';
+      : hasActiveLatePermission
+        ? {
+            amount: 0,
+            reason: `Approved late arrival (${permissionWindow.label}): ${permission?.reason || ''}`.trim(),
+          }
+        : rawPenalty;
+    const status = hasAbsencePermission ? 'excused' : penalty.amount > 0 ? 'late' : 'present';
     const now = clock.now;
 
     const [createdAttendance] = await db.insert(attendanceRecord).values({

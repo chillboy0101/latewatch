@@ -5,7 +5,7 @@ import { db } from '@/db';
 import { latenessDebtPardon, latenessDebtPardonEntry, latenessEntry, latenessPaymentAllocation, offenceBookItem, staff } from '@/db/schema';
 import { getAccraClock } from '@/lib/attendance';
 import { getAuditActor, tryWriteAuditEvent } from '@/lib/audit';
-import { buildOffenceBookWorkbookFromData, type OffenceBookItemInput } from '@/lib/offence-book-export';
+import { buildOffenceBookWorkbookFromData, currentPardonedAmount, type OffenceBookItemInput } from '@/lib/offence-book-export';
 import { enforceRole } from '@/lib/auth/roles';
 
 export const dynamic = 'force-dynamic';
@@ -111,7 +111,7 @@ export async function buildOffenceBookExportWorkbook(input: {
       pardonDate: pardonsByEntryId.get(entry.id)?.pardonDate
         ? normalizeDateKey(pardonsByEntryId.get(entry.id)!.pardonDate)
         : null,
-      pardonedAmount: pardonsByEntryId.get(entry.id)?.forgivenAmount || '0.00',
+      pardonedAmount: currentPardonedAmount(entry.computedAmount, pardonsByEntryId.get(entry.id)?.forgivenAmount),
     })),
     items: itemRows.map((item) => ({
       ...item,

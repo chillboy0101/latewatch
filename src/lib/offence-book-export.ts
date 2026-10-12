@@ -131,6 +131,15 @@ function moneyText(centsValue: number) {
   return (centsValue / 100).toFixed(2);
 }
 
+// A pardon can never exceed what the entry currently charges. Entries excused after a pardon keep
+// their pardon record but carry no penalty, so they must not count as pardoned money.
+export function currentPardonedAmount(
+  computedAmount: number | string | null | undefined,
+  forgivenAmount: number | string | null | undefined,
+) {
+  return moneyText(Math.min(Math.max(0, cents(computedAmount)), Math.max(0, cents(forgivenAmount))));
+}
+
 function cloneStyle(style: Partial<ExcelJS.Style>) {
   return JSON.parse(JSON.stringify(style)) as Partial<ExcelJS.Style>;
 }

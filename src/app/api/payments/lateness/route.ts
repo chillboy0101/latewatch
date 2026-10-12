@@ -138,22 +138,17 @@ export async function GET(request: NextRequest) {
     const pardonRows = entryIds.length === 0
       ? []
       : await db.select({
-        entryDate: latenessDebtPardonEntry.entryDate,
         entryId: latenessDebtPardonEntry.entryId,
         forgivenAmount: latenessDebtPardonEntry.forgivenAmount,
-        penaltyAmount: latenessDebtPardonEntry.penaltyAmount,
         pardonedAt: latenessDebtPardon.cutoffAt,
       })
         .from(latenessDebtPardonEntry)
         .innerJoin(latenessDebtPardon, eq(latenessDebtPardonEntry.pardonId, latenessDebtPardon.id))
         .where(inArray(latenessDebtPardonEntry.entryId, entryIds));
     const pardonsByEntryId = new Map(pardonRows.map((pardon) => [pardon.entryId, pardon]));
-    const penaltyEntries = entryRows.flatMap((entry) => {
-      const pardon = pardonsByEntryId.get(entry.id);
-      const currentAmount = Number(entry.computedAmount || 0);
-      if (currentAmount > 0) return [entry];
-      return pardon ? [{ ...entry, computedAmount: pardon.penaltyAmount }] : [];
-    });
+    // A pardoned entry whose amount later became zero (for example an excused absence) no longer
+    // carries a penalty, so it must not be reported as penalty or pardoned.
+    const penaltyEntries = entryRows.filter((entry) => Number(entry.computedAmount || 0) > 0);
     const financialEntryIds = penaltyEntries.map((entry) => entry.id);
     const allocations = await getAllocationsForEntries(financialEntryIds);
     const allocationsByStaff = new Map<string, typeof allocations>();
@@ -204,10 +199,8 @@ export async function GET(request: NextRequest) {
       entries: penaltyEntries.map((entry) => {
         const pardon = pardonsByEntryId.get(entry.id);
         return {
-          computedAmount: pardon?.penaltyAmount || entry.computedAmount,
-          date: pardon?.entryDate
-            ? pardon.entryDate.slice(0, 10)
-            : entry.date.slice(0, 10),
+          computedAmount: entry.computedAmount,
+          date: entry.date.slice(0, 10),
           id: entry.id,
           pardonedAmount: pardon?.forgivenAmount,
         };

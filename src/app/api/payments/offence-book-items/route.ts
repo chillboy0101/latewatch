@@ -7,6 +7,7 @@ import { getAccraClock } from '@/lib/attendance';
 import { writeAuditEvent } from '@/lib/audit';
 import {
   calculateOffenceBookFinancialSummary,
+  currentPardonedAmount,
   OFFENCE_BOOK_ITEM_LIMITS,
   type OffenceBookItemInput,
   type OffenceBookItemType,
@@ -229,7 +230,7 @@ async function loadFinancialSummary(input: { month: number; monthKey: string; ye
     pardonDate: pardonsByEntryId.get(entry.id)?.pardonDate
       ? normalizeDateKey(pardonsByEntryId.get(entry.id)!.pardonDate)
       : null,
-    pardonedAmount: pardonsByEntryId.get(entry.id)?.forgivenAmount || '0.00',
+    pardonedAmount: currentPardonedAmount(entry.computedAmount, pardonsByEntryId.get(entry.id)?.forgivenAmount),
   }));
   const items = itemRows.map((item) => ({
     amount: item.amount,

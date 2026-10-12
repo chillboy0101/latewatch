@@ -201,7 +201,7 @@ function statusCopy(status: CheckInStatus | null) {
   if (!status.locationConfigured) return 'Office location not configured';
   if (!status.staff) return 'Profile not matched';
   if (status.device?.registered && !status.device.trusted) return 'Registered device required';
-  if (status.permission?.permissionType === 'absence') return 'Permission recorded';
+  if (status.permission?.permissionType === 'absence' && !status.attendance) return 'Excused today - check-in optional';
   if (status.isHoliday) return status.holidayName || 'Public holiday';
   if (status.isWeekend) return 'Weekend';
   if (status.attendance?.signOutTime) return 'Checked out';
@@ -271,7 +271,7 @@ function attendanceButtonLabel(status: CheckInStatus | null, submitting: boolean
   if (status?.isAfterWorkdayEnd) return 'Closed - After Hours';
   if (status && !status.locationConfigured) return 'Location Not Configured';
   if (status && !status.staff) return 'Profile Not Matched';
-  if (status?.permission?.permissionType === 'absence') return 'Excused - No Check-In';
+  if (status?.permission?.permissionType === 'absence') return 'Check In (Excused)';
   return 'Check In';
 }
 
@@ -1142,7 +1142,6 @@ export default function CheckInPage() {
     !status.isHoliday &&
     !status.isWeekend &&
     !status.isAfterWorkdayEnd &&
-    status.permission?.permissionType !== 'absence' &&
     !status.attendance,
   );
   const canSubmitSignOut = Boolean(

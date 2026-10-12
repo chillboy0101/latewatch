@@ -50,13 +50,6 @@ test('check-in API repairs legacy entries fallback sign-outs', () => {
   assert.match(route, /attendance-sign-out-repair/);
 });
 
-test('approved absence permission only blocks check-in, never sign-out', () => {
-  const route = fs.readFileSync(checkInRoutePath, 'utf8');
-
-  assert.match(route, /if \(action === 'check_in' && \(\s*permission\?\.generalPardonType === 'absence' \|\|\s*\(permission\?\.status === 'approved' && permission\.permissionType === 'absence'\)\s*\)\) \{/);
-  assert.doesNotMatch(route, /if \(permission\?\.permissionType === 'absence'\) \{/);
-});
-
 test('check-in page renders push reminder controls instead of auto actions', () => {
   const source = fs.readFileSync(checkInPagePath, 'utf8');
 
@@ -72,4 +65,12 @@ test('check-in page renders push reminder controls instead of auto actions', () 
   assert.match(source, /getPushReminderPublicKey/);
   assert.match(source, /disabled=\{disabled \|\| notificationPermission === 'unsupported'\}/);
   assert.doesNotMatch(source, /Auto check-in|Auto sign-out|auto_attendance/);
+});
+
+test('excused absence lets staff check in without a penalty', () => {
+  const route = fs.readFileSync(checkInRoutePath, 'utf8');
+
+  assert.doesNotMatch(route, /PERMISSION_ABSENCE/);
+  assert.match(route, /const penalty = hasAbsencePermission\s*\?\s*\{\s*amount: 0,/);
+  assert.match(route, /const status = hasAbsencePermission \? 'excused'/);
 });

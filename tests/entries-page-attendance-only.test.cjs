@@ -199,3 +199,14 @@ test('entries page pardons late arrivals through an approved late-arrival permis
   assert.match(source, /disabled=\{hasUnsavedChanges \|\| pardoningLateArrival\}/);
   assert.match(source, /financialReviewRequired/);
 });
+
+test('payments and offence book ignore pardons on entries that no longer carry a penalty', () => {
+  const payments = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'api', 'payments', 'lateness', 'route.ts'), 'utf8');
+  const exportRoute = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'api', 'export', 'offence-book', 'route.ts'), 'utf8');
+  const itemsRoute = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'api', 'payments', 'offence-book-items', 'route.ts'), 'utf8');
+
+  assert.match(payments, /const penaltyEntries = entryRows\.filter\(\(entry\) => Number\(entry\.computedAmount \|\| 0\) > 0\);/);
+  assert.doesNotMatch(payments, /computedAmount: pardon\.penaltyAmount/);
+  assert.match(exportRoute, /pardonedAmount: currentPardonedAmount\(entry\.computedAmount,/);
+  assert.match(itemsRoute, /pardonedAmount: currentPardonedAmount\(entry\.computedAmount,/);
+});
