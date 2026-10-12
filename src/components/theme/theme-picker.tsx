@@ -9,7 +9,6 @@ import {
   applyThemeAccent,
   getThemeAccent,
   getThemeAccentColor,
-  getThemeCustomColor,
   subscribeThemeChange,
   THEME_ACCENT_PRESETS,
 } from '@/lib/theme';
@@ -17,7 +16,6 @@ import { ColourWheel } from '@/components/theme/colour-wheel';
 import { useDismissable } from '@/components/theme/use-dismissable';
 
 const NEUTRAL_SWATCH = 'linear-gradient(135deg, #fafafa 0 50%, #171717 50% 100%)';
-const CUSTOM_SWATCH = 'conic-gradient(#ef4444, #f59e0b, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444)';
 const PHONE_QUERY = '(max-width: 639px)';
 
 function subscribePhone(callback: () => void) {
@@ -43,13 +41,11 @@ function Swatch({ background, ringColor, selected }: { background: string; ringC
 
 function ColourPanel({ wheelSize }: { wheelSize: number }) {
   const accent = useSyncExternalStore(subscribeThemeChange, getThemeAccent, () => 'blue');
-  const customColor = useSyncExternalStore(subscribeThemeChange, getThemeCustomColor, () => '#2563eb');
-  const customSelected = accent === 'custom';
-  const [wheelOpen, setWheelOpen] = useState(customSelected);
+  const accentColor = useSyncExternalStore(subscribeThemeChange, getThemeAccentColor, () => '#2563eb');
 
   return (
-    <div className="flex flex-col items-center">
-      <div className="grid grid-cols-[repeat(5,2.5rem)] gap-3 sm:grid-cols-[repeat(5,2rem)]">
+    <div className="flex flex-col items-center gap-5">
+      <div className="grid grid-cols-[repeat(6,2.5rem)] gap-2.5 sm:grid-cols-[repeat(6,2rem)] sm:gap-2">
         {THEME_ACCENT_PRESETS.map(({ accent: option, label, swatch }) => (
           <button
             key={option}
@@ -57,10 +53,7 @@ function ColourPanel({ wheelSize }: { wheelSize: number }) {
             title={label}
             aria-label={label}
             aria-pressed={accent === option}
-            onClick={() => {
-              applyThemeAccent(option);
-              setWheelOpen(false);
-            }}
+            onClick={() => applyThemeAccent(option)}
             className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <Swatch
@@ -70,43 +63,14 @@ function ColourPanel({ wheelSize }: { wheelSize: number }) {
             />
           </button>
         ))}
-        <button
-          type="button"
-          title="Custom colour"
-          aria-label="Custom colour"
-          aria-pressed={customSelected}
-          aria-expanded={wheelOpen}
-          onClick={() => {
-            setWheelOpen(true);
-            if (!customSelected) applyThemeAccent('custom', customColor);
-          }}
-          className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          <Swatch
-            background={customSelected ? customColor : CUSTOM_SWATCH}
-            ringColor={customColor}
-            selected={customSelected}
-          />
-        </button>
       </div>
 
-      {/* The wheel slides open below the swatches when "Custom colour" is chosen. */}
-      <div
-        className={cn(
-          'grid w-full transition-[grid-template-rows,opacity] duration-300 ease-out',
-          wheelOpen ? 'mt-5 grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
-        )}
-      >
-        <div className="overflow-hidden">
-          {wheelOpen && (
-            <ColourWheel
-              size={wheelSize}
-              value={customColor}
-              onChange={(hex) => applyThemeAccent('custom', hex)}
-            />
-          )}
-        </div>
-      </div>
+      <ColourWheel
+        size={wheelSize}
+        value={accentColor}
+        selected={accent === 'custom'}
+        onChange={(hex) => applyThemeAccent('custom', hex)}
+      />
     </div>
   );
 }
@@ -155,8 +119,8 @@ export function ThemePicker({
         <Drawer open={open} onOpenChange={setOpen}>
           <DrawerContent aria-describedby={undefined}>
             <DrawerTitle className="sr-only">Theme colour</DrawerTitle>
-            <div className="px-6 pb-8 pt-6">
-              <ColourPanel wheelSize={220} />
+            <div className="max-h-[80dvh] overflow-y-auto overscroll-contain px-5 pb-6 pt-5">
+              <ColourPanel wheelSize={208} />
             </div>
           </DrawerContent>
         </Drawer>
@@ -173,7 +137,7 @@ export function ThemePicker({
           aria-label="Theme colour"
           className="absolute right-0 top-full z-50 mt-2 rounded-xl border border-border bg-card p-4 text-card-foreground shadow-xl"
         >
-          <ColourPanel wheelSize={180} />
+          <ColourPanel wheelSize={176} />
         </div>
       )}
     </div>

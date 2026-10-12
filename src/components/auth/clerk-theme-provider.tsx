@@ -3,6 +3,7 @@
 import { ClerkProvider } from '@clerk/nextjs';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { createClerkAppearance } from '@/lib/clerk-appearance';
+import { ThemeAccountSync } from '@/components/theme/theme-account-sync';
 import { getIsDarkTheme, getThemePrimaryColor, subscribeThemeChange } from '@/lib/theme';
 
 export function ClerkThemeProvider({ children }: { children: React.ReactNode }) {
@@ -18,5 +19,10 @@ export function ClerkThemeProvider({ children }: { children: React.ReactNode }) 
     [isDark, primaryColor],
   );
 
-  return <ClerkProvider appearance={appearance}>{children}</ClerkProvider>;
+  return (
+    <ClerkProvider appearance={appearance}>
+      <ThemeAccountSync />
+      {children}
+    </ClerkProvider>
+  );
 }

@@ -22,6 +22,7 @@ const THEME_EVENT = 'latewatch-theme-change';
 const THEME_ACCENT_KEY = 'theme-accent';
 const THEME_CUSTOM_COLOR_KEY = 'theme-custom-color';
 const THEME_VARIABLES_KEY = 'theme-accent-variables';
+const THEME_OWNER_KEY = 'theme-accent-owner';
 const DEFAULT_ACCENT: ThemeAccentPreset = 'blue';
 const HEX_PATTERN = /^#[0-9a-f]{6}$/i;
 
@@ -121,6 +122,49 @@ export function getThemeAccentColor() {
   return accent === 'custom' ? getThemeCustomColor() : PRESET_SWATCHES[accent];
 }
 
+export type ThemeSelection = { accent: ThemeAccent; customColor: string };
+
+/** The accent selection in the shape saved to the signed-in user's account. */
+export function getThemeSelection(): ThemeSelection {
+  return { accent: getThemeAccent(), customColor: getThemeCustomColor() };
+}
+
+export function parseThemeSelection(value: unknown): ThemeSelection | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const customColor = normalizeHexColor(record.customColor) || PRESET_SWATCHES[DEFAULT_ACCENT];
+  if (record.accent === 'custom') return { accent: 'custom', customColor };
+  if (typeof record.accent === 'string' && record.accent in PRESET_SWATCHES) {
+    return { accent: record.accent as ThemeAccentPreset, customColor };
+  }
+  return null;
+}
+
+export function sameThemeSelection(left: ThemeSelection, right: ThemeSelection) {
+  return left.accent === right.accent && (left.accent !== 'custom' || left.customColor === right.customColor);
+}
+
+export const DEFAULT_THEME_SELECTION: ThemeSelection = { accent: DEFAULT_ACCENT, customColor: PRESET_SWATCHES[DEFAULT_ACCENT] };
+
+/** True when someone on this device has explicitly picked a colour (not just the Blue default). */
+export function hasStoredThemeAccent() {
+  return typeof window !== 'undefined' && readStorage(THEME_ACCENT_KEY) !== null;
+}
+
+/** Which signed-in user the colour on this device belongs to, so a shared device never leaks it. */
+export function getThemeAccentOwner() {
+  return typeof window === 'undefined' ? null : readStorage(THEME_OWNER_KEY);
+}
+
+export function setThemeAccentOwner(userId: string) {
+  writeStorage(THEME_OWNER_KEY, userId);
+}
+
+export function applyThemeSelection(selection: ThemeSelection) {
+  if (sameThemeSelection(selection, getThemeSelection()) && hasStoredThemeAccent()) return;
+  applyThemeAccent(selection.accent, selection.customColor);
+}
+
 /** The primary colour actually shown for the current accent and mode (used outside CSS, e.g. Clerk). */
 export function getThemePrimaryColor(isDark: boolean) {
   if (getThemeAccent() === 'neutral') return isDark ? '#fafafa' : '#171717';
@@ -178,10 +222,10 @@ function applyAccentToDocument() {
 export function applyThemeAccent(accent: ThemeAccent, customColor?: string) {
   if (typeof window === 'undefined') return;
 
-  if (accent === 'custom') {
-    const color = normalizeHexColor(customColor) || getThemeCustomColor();
-    writeStorage(THEME_CUSTOM_COLOR_KEY, color);
-  }
+  // Remember the custom colour even while a preset is active, so it is still there to return to.
+  const color = normalizeHexColor(customColor);
+  if (color) writeStorage(THEME_CUSTOM_COLOR_KEY, color);
+  else if (accent === 'custom') writeStorage(THEME_CUSTOM_COLOR_KEY, getThemeCustomColor());
   writeStorage(THEME_ACCENT_KEY, accent);
   applyAccentToDocument();
   window.dispatchEvent(new Event(THEME_EVENT));

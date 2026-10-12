@@ -83,3 +83,35 @@ test('in-app colour wheel converts hue/tone to valid colours', () => {
   assert.match(home, /<ModePicker /);
   assert.match(home, /<ThemePicker /);
 });
+
+test('theme colour syncs to the account, defaulting to blue for first-time users', () => {
+  const {
+    DEFAULT_THEME_SELECTION,
+    parseThemeSelection,
+    sameThemeSelection,
+  } = require('../src/lib/theme.ts');
+  const sync = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'theme-account-sync.tsx'), 'utf8');
+  const provider = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'auth', 'clerk-theme-provider.tsx'), 'utf8');
+
+  assert.deepEqual(DEFAULT_THEME_SELECTION, { accent: 'blue', customColor: '#2563eb' });
+  assert.deepEqual(parseThemeSelection({ accent: 'custom', customColor: '#ABCDEF' }), { accent: 'custom', customColor: '#abcdef' });
+  assert.equal(parseThemeSelection({ accent: 'role-admin' }), null);
+  assert.equal(parseThemeSelection('red'), null);
+  assert.ok(sameThemeSelection({ accent: 'red', customColor: '#000000' }, { accent: 'red', customColor: '#ffffff' }));
+
+  assert.match(sync, /unsafeMetadata: \{ \.\.\.current\.unsafeMetadata, theme: selection \}/);
+  assert.match(sync, /keepLocal \? getThemeSelection\(\) : DEFAULT_THEME_SELECTION/);
+  assert.doesNotMatch(sync, /role/);
+  assert.match(provider, /<ThemeAccountSync \/>/);
+});
+
+test('colour wheel stays visible, follows the current colour and never uses the native picker', () => {
+  const wheel = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'colour-wheel.tsx'), 'utf8');
+  const picker = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'theme-picker.tsx'), 'utf8');
+
+  assert.match(picker, /<ColourWheel\s+size=\{wheelSize\}\s+value=\{accentColor\}/);
+  assert.doesNotMatch(picker, /wheelOpen/);
+  assert.doesNotMatch(wheel, /type="range"|type="color"/);
+  assert.match(wheel, /aria-label="Colour tone"/);
+  assert.equal((wheel.match(/data-vaul-no-drag/g) || []).length >= 3, true);
+});
