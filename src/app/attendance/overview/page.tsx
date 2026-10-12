@@ -253,6 +253,7 @@ export default function AttendancePage() {
 
   const appliedDate = isIsoDateKey(dateInput) ? dateInput : '';
   const attendanceDate = appliedDate || todayKey();
+  const isWeekendAttendanceDate = [0, 6].includes(new Date(`${attendanceDate}T00:00:00Z`).getUTCDay());
   const isEditingPermission = editingPermissionId !== null;
 
   useEffect(() => {
@@ -859,7 +860,8 @@ export default function AttendancePage() {
                 className="h-10 gap-2"
                 variant="outline"
                 onClick={openNewPermissionDialog}
-                disabled={savingPermission || !data?.rows.length}
+                disabled={savingPermission || !data?.rows.length || isWeekendAttendanceDate}
+                title={isWeekendAttendanceDate ? 'Weekends are not workdays, so no permission is needed' : undefined}
               >
                 <Plus className="h-4 w-4" />
                 New Permission
@@ -868,7 +870,8 @@ export default function AttendancePage() {
                 className="h-10 gap-2"
                 variant="outline"
                 onClick={() => setGeneralPardonOpen(true)}
-                disabled={savingGeneralPardon || !data?.rows.length}
+                disabled={savingGeneralPardon || !data?.rows.length || isWeekendAttendanceDate}
+                title={isWeekendAttendanceDate ? 'Weekends are not workdays, so no pardon is needed' : undefined}
               >
                 <ShieldCheck className="h-4 w-4" />
                 Grant General Pardon

@@ -188,6 +188,13 @@ export function isWeekendDate(dateKey: string) {
   return day === 0 || day === 6;
 }
 
+// Weekends and holidays are not workdays, so no attendance permission or pardon applies to them.
+export async function getNonWorkdayLabel(dateKey: string) {
+  if (isWeekendDate(dateKey)) return 'a weekend';
+  const holiday = await getHolidayForDate(dateKey);
+  return holiday ? `a holiday (${holiday.holidayNote || 'Holiday'})` : null;
+}
+
 export async function recordAttendanceAttempt(input: {
   date: string;
   location?: {

@@ -7,6 +7,7 @@ import { getPermissionWindowBounds } from '@/lib/attendance-permissions';
 import { reconcileAttendanceForPermission } from '@/lib/attendance-permission-reconciliation';
 import { writeAuditEvent } from '@/lib/audit';
 import { publishRealtime } from '@/lib/realtime';
+import { getNonWorkdayLabel } from '@/lib/attendance';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +32,10 @@ export async function POST(request: NextRequest) {
     }
     if (!pardonType || !VALID_PARDON_TYPES.has(pardonType)) {
       return NextResponse.json({ error: 'Invalid pardon type' }, { status: 400 });
+    }
+    const nonWorkdayLabel = await getNonWorkdayLabel(date);
+    if (nonWorkdayLabel) {
+      return NextResponse.json({ error: `${date} is ${nonWorkdayLabel}, so no pardon is needed` }, { status: 400 });
     }
 
     const actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';

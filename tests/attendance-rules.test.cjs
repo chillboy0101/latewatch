@@ -434,3 +434,17 @@ test('default office geofence uses an 80m radius with the existing 75m accuracy 
     office,
   }).result, 'LOCATION_ACCURACY_WEAK');
 });
+
+test('permissions and general pardons are refused on weekends and holidays', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
+  const permissionsRoute = read('src', 'app', 'api', 'attendance', 'permissions', 'route.ts');
+  const pardonRoute = read('src', 'app', 'api', 'attendance', 'permissions', 'general-pardon', 'route.ts');
+  const overview = read('src', 'app', 'attendance', 'overview', 'page.tsx');
+
+  assert.match(permissionsRoute, /getNonWorkdayLabel\(date\)/);
+  assert.match(permissionsRoute, /The selected absence period has no workdays/);
+  assert.match(pardonRoute, /getNonWorkdayLabel\(date\)/);
+  assert.match(overview, /disabled=\{savingGeneralPardon \|\| !data\?\.rows\.length \|\| isWeekendAttendanceDate\}/);
+});

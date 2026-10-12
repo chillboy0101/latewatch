@@ -15,6 +15,7 @@ import { reconcileAttendanceForPermission } from '@/lib/attendance-permission-re
 import { writeAuditEvent } from '@/lib/audit';
 import { publishRealtime } from '@/lib/realtime';
 import { enforceRole } from '@/lib/auth/roles';
+import { getNonWorkdayLabel } from '@/lib/attendance';
 
 export const dynamic = 'force-dynamic';
 
@@ -153,6 +154,19 @@ export async function POST(request: NextRequest) {
       });
       expectedEndTime = windowBounds.endTime;
       expectedStartTime = windowBounds.startTime;
+    }
+
+    if (permissionType === 'absence') {
+      const nonWorkdayLabels = await Promise.all(appliedDates.map((permissionDate) => getNonWorkdayLabel(permissionDate)));
+      appliedDates = appliedDates.filter((_, index) => !nonWorkdayLabels[index]);
+      if (appliedDates.length === 0) {
+        return NextResponse.json({ error: 'The selected absence period has no workdays' }, { status: 400 });
+      }
+    } else {
+      const nonWorkdayLabel = await getNonWorkdayLabel(date);
+      if (nonWorkdayLabel) {
+        return NextResponse.json({ error: `${date} is ${nonWorkdayLabel}, so no permission is needed` }, { status: 400 });
+      }
     }
 
     const permissions = [];
