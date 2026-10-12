@@ -89,7 +89,7 @@ export function ThemePicker({
           aria-label="Theme colour"
           className="absolute right-0 top-full z-50 mt-2 rounded-xl border border-border bg-card p-3 text-card-foreground shadow-xl"
         >
-          <div className="grid grid-cols-5 gap-3">
+          <div className="grid grid-cols-[repeat(5,2rem)] gap-3">
             {THEME_ACCENT_PRESETS.map(({ accent: option, label, swatch }) => (
               <button
                 key={option}
