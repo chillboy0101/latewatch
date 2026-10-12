@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, or } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { attendanceAttempt, attendancePermission, attendanceRecord, deviceTransferRequest, staff, staffDevice } from '@/db/schema';
@@ -75,6 +75,7 @@ export async function GET(request: NextRequest) {
         date: attendancePermission.date,
         expectedEndTime: attendancePermission.expectedEndTime,
         expectedStartTime: attendancePermission.expectedStartTime,
+        generalPardonType: attendancePermission.generalPardonType,
         id: attendancePermission.id,
         permissionType: attendancePermission.permissionType,
         reason: attendancePermission.reason,
@@ -85,7 +86,10 @@ export async function GET(request: NextRequest) {
       })
         .from(attendancePermission)
         .leftJoin(staff, eq(attendancePermission.staffId, staff.id))
-        .where(and(eq(attendancePermission.date, date), eq(attendancePermission.status, 'approved')))),
+        .where(and(
+          eq(attendancePermission.date, date),
+          or(eq(attendancePermission.status, 'approved'), isNotNull(attendancePermission.generalPardonType)),
+        ))),
     ]);
     const leavePeriods = await getStaffLeavePeriodsForRange({
       endDate: date,
@@ -154,13 +158,20 @@ export async function GET(request: NextRequest) {
       const fallbackStatus: AttendanceStatus = (() => {
         if (onLeave) return 'on_leave';
         if (!permission) return 'not_checked_in';
-        if (permission.permissionType === 'absence') return 'excused';
+        if (
+          permission.generalPardonType === 'absence' ||
+          (permission.status === 'approved' && permission.permissionType === 'absence')
+        ) return 'excused';
+        if (permission.generalPardonType === 'late_arrival') return 'not_checked_in';
         if (isGeneralPardonReason(permission.reason)) return 'not_checked_in';
         if (isPermissionWindowOverdue(permission, date, clock.dateKey, clock.timeKey)) return 'permission_overdue';
         return 'expected_late';
       })();
       const statuses = getAttendanceStatusFlags({
-        absencePermission: permission?.permissionType === 'absence',
+        absencePermission: Boolean(
+          permission?.generalPardonType === 'absence' ||
+          (permission?.status === 'approved' && permission.permissionType === 'absence'),
+        ),
         attendanceStatus: attendance?.status,
         fallbackStatus,
         hasAttendance: Boolean(attendance),

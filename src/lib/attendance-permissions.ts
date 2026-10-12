@@ -34,6 +34,7 @@ export type AttendancePermissionLike = {
   arrivalWindow?: string | null;
   expectedEndTime?: string | null;
   expectedStartTime?: string | null;
+  generalPardonType?: string | null;
   permissionType?: string | null;
 };
 
@@ -142,6 +143,22 @@ export function formatTimeLabel(value: string | null | undefined) {
 }
 
 export function getPermissionWindowBounds(permission: AttendancePermissionLike | null | undefined) {
+  if (permission?.generalPardonType === 'absence') {
+    return {
+      endTime: null,
+      label: 'Excused absence',
+      startTime: null,
+    };
+  }
+
+  if (permission?.generalPardonType === 'late_arrival') {
+    return {
+      endTime: '23:59',
+      label: 'Any time today',
+      startTime: WORKDAY_START_TIME,
+    };
+  }
+
   if (!permission || permission.permissionType === 'absence') {
     return {
       endTime: null,
@@ -224,7 +241,9 @@ export function getAbsencePeriodBounds(permission: AttendancePermissionLike | nu
 }
 
 export function isPermissionWindowActive(permission: AttendancePermissionLike | null | undefined, currentTime: string) {
-  if (!permission || permission.permissionType !== 'late_arrival') return false;
+  if (!permission) return false;
+  if (permission.generalPardonType) return permission.generalPardonType === 'late_arrival';
+  if (permission.permissionType !== 'late_arrival') return false;
   const { endTime } = getPermissionWindowBounds(permission);
   const time = normalizeMinuteTime(currentTime);
   return Boolean(endTime && time && time <= endTime);
@@ -236,7 +255,8 @@ export function isPermissionWindowOverdue(
   currentDate: string,
   currentTime: string,
 ) {
-  if (!permission || permission.permissionType !== 'late_arrival') return false;
+  if (!permission || permission.generalPardonType) return false;
+  if (permission.permissionType !== 'late_arrival') return false;
   if (currentDate > permissionDate) return true;
   if (currentDate < permissionDate) return false;
 

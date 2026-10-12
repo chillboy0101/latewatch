@@ -49,11 +49,8 @@ export async function POST(request: NextRequest) {
     const now = new Date();
     const permissions = [];
     const reconciliations = [];
-    const skippedPermissions: Array<{
-      date: string;
-      permissionId: string;
-      permissionType: string;
-      reason: string;
+    const financialReviewRequired: Array<{
+      penaltyAmount: string;
       staffId: string;
       staffName: string;
     }> = [];
@@ -81,24 +78,12 @@ export async function POST(request: NextRequest) {
         .where(and(eq(attendancePermission.staffId, member.id), eq(attendancePermission.date, date)))
         .limit(1);
 
-      const existingReason = (existing?.reason || '').trim().toLowerCase();
-      if (existing && existingReason !== 'general pardon') {
-        skippedPermissions.push({
-          date,
-          permissionId: existing.id,
-          permissionType: existing.permissionType,
-          reason: existing.reason,
-          staffId: member.id,
-          staffName: member.fullName,
-        });
-        continue;
-      }
-
       const values = {
         ...permissionValues,
         approvedByEmail: actorEmail,
         approvedByUserId: user.id,
         date,
+        generalPardonType: pardonType,
         reason: 'general pardon',
         staffId: member.id,
         status: 'approved',
@@ -107,7 +92,10 @@ export async function POST(request: NextRequest) {
 
       const [permission] = existing
         ? await db.update(attendancePermission)
-          .set(values)
+          .set({
+            generalPardonType: pardonType,
+            updatedAt: now,
+          })
           .where(eq(attendancePermission.id, existing.id))
           .returning()
         : await db.insert(attendancePermission)
@@ -122,6 +110,7 @@ export async function POST(request: NextRequest) {
         after: {
           ...permission,
           staffName: member.fullName,
+          generalPardonType: pardonType,
         },
         actor,
         reason: 'attendance-general-pardon',
@@ -142,8 +131,16 @@ export async function POST(request: NextRequest) {
       permissions.push(permission);
       reconciliations.push({
         staffId: member.id,
+        staffName: member.fullName,
         ...reconciliation,
       });
+      if (reconciliation.financialReviewRequired) {
+        financialReviewRequired.push({
+          penaltyAmount: reconciliation.penaltyAmount,
+          staffId: member.id,
+          staffName: member.fullName,
+        });
+      }
     }
 
     await writeAuditEvent({
@@ -156,8 +153,7 @@ export async function POST(request: NextRequest) {
         date,
         pardonType,
         reason: 'general pardon',
-        skippedCount: skippedPermissions.length,
-        skippedPermissions,
+        financialReviewRequiredCount: financialReviewRequired.length,
         staffIds: permissions.map((permission) => permission.staffId),
       },
       actor,
@@ -178,8 +174,10 @@ export async function POST(request: NextRequest) {
       pardonType,
       permissions,
       reconciliations,
-      skippedCount: skippedPermissions.length,
-      skippedPermissions,
+      financialReviewRequired,
+      financialReviewRequiredCount: financialReviewRequired.length,
+      skippedCount: 0,
+      skippedPermissions: [],
     });
   } catch (error) {
     console.error('Failed to apply general attendance pardon:', error);

@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, desc, eq, ilike, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, ilike, isNotNull, isNull, or } from 'drizzle-orm';
 import { db } from '@/db';
 import { attendanceAttempt, attendancePermission, officeLocation, officeNetwork, staff, workCalendar } from '@/db/schema';
 import { getObservedGhanaHolidayForDate, isSuppressedGhanaHolidayDate } from '@/lib/ghana-holidays';
@@ -176,7 +176,7 @@ export async function getApprovedAttendancePermission(staffId: string, dateKey: 
     .where(and(
       eq(attendancePermission.staffId, staffId),
       eq(attendancePermission.date, dateKey),
-      eq(attendancePermission.status, 'approved'),
+      or(eq(attendancePermission.status, 'approved'), isNotNull(attendancePermission.generalPardonType)),
     ))
     .limit(1);
 

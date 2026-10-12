@@ -269,7 +269,9 @@ Module._load = function patchedLoad(request, ...args) {
       and: (...conditions) => ({ conditions, op: 'and' }),
       eq: (left, right) => ({ left, op: 'eq', right }),
       gte: (left, right) => ({ left, op: 'gte', right }),
+      isNotNull: (left) => ({ left, op: 'isNotNull' }),
       lte: (left, right) => ({ left, op: 'lte', right }),
+      or: (...conditions) => ({ conditions, op: 'or' }),
     };
   }
   return originalLoad.call(this, request, ...args);

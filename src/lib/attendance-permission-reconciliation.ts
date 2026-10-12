@@ -53,14 +53,17 @@ function resolveNextAttendanceState(input: {
   const didNotSignOut = input.existingLateness?.didNotSignOut === true;
 
   if (
-    input.permission?.status === 'approved' &&
-    input.permission.permissionType === 'absence'
+    input.permission?.generalPardonType === 'absence' ||
+    (input.permission?.status === 'approved' &&
+      input.permission.permissionType === 'absence')
   ) {
     return {
       amount: 0,
       didNotSignOut: false,
       pardoned: true,
-      reason: approvedAbsenceReason(input.permission),
+      reason: input.permission.generalPardonType === 'absence'
+        ? 'Excused absence: General pardon'
+        : approvedAbsenceReason(input.permission),
       status: 'excused',
     };
   }
@@ -91,8 +94,8 @@ function resolveNextAttendanceState(input: {
   }
 
   const permissionClearsLatePenalty = Boolean(
-    input.permission?.status === 'approved' &&
-    input.permission.permissionType === 'late_arrival' &&
+    (input.permission?.generalPardonType === 'late_arrival' ||
+      (input.permission?.status === 'approved' && input.permission.permissionType === 'late_arrival')) &&
     arrivalTime &&
     isPermissionWindowActive(input.permission, arrivalTime),
   );
@@ -106,7 +109,9 @@ function resolveNextAttendanceState(input: {
           isHoliday: false,
         })
       : { amount: 0, reason: '' };
-    const pardonReason = approvedLateArrivalReason(input.permission);
+    const pardonReason = input.permission.generalPardonType === 'late_arrival'
+      ? 'Approved late arrival (Any time today): general pardon'
+      : approvedLateArrivalReason(input.permission);
 
     return {
       amount: signOutPenalty.amount,

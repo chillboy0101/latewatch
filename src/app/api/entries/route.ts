@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { attendancePermission, attendanceRecord, entrySubmission, latenessDebtPardonEntry, latenessEntry, latenessPaymentAllocation, staff, staffLeavePeriod, workCalendar } from '@/db/schema';
-import { and, eq, gte, gt, inArray, isNull, lte, ne, or } from 'drizzle-orm';
+import { and, eq, gte, gt, inArray, isNotNull, isNull, lte, ne, or } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 import { getAuditActor, writeAuditEvent } from '@/lib/audit';
 import {
@@ -55,6 +55,7 @@ async function getPermissionRowsForEntries(start: string, end: string) {
     arrivalWindow: attendancePermission.arrivalWindow,
     expectedEndTime: attendancePermission.expectedEndTime,
     expectedStartTime: attendancePermission.expectedStartTime,
+    generalPardonType: attendancePermission.generalPardonType,
     id: attendancePermission.id,
     staffId: attendancePermission.staffId,
     date: attendancePermission.date,
@@ -66,14 +67,17 @@ async function getPermissionRowsForEntries(start: string, end: string) {
     .where(and(
       gte(attendancePermission.date, start),
       lte(attendancePermission.date, end),
-      eq(attendancePermission.status, 'approved'),
+      or(eq(attendancePermission.status, 'approved'), isNotNull(attendancePermission.generalPardonType)),
     ));
 }
 
 async function getActivePermissionsForDate(date: string) {
   const permissionRows = await db.select()
     .from(attendancePermission)
-    .where(and(eq(attendancePermission.date, date), eq(attendancePermission.status, 'approved')));
+    .where(and(
+      eq(attendancePermission.date, date),
+      or(eq(attendancePermission.status, 'approved'), isNotNull(attendancePermission.generalPardonType)),
+    ));
 
   return new Map(permissionRows.map((permission) => [permission.staffId, permission]));
 }

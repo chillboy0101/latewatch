@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
       arrivalWindow: attendancePermission.arrivalWindow,
       expectedEndTime: attendancePermission.expectedEndTime,
       expectedStartTime: attendancePermission.expectedStartTime,
+      generalPardonType: attendancePermission.generalPardonType,
       id: attendancePermission.id,
       permissionType: attendancePermission.permissionType,
       reason: attendancePermission.reason,

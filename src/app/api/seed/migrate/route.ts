@@ -263,6 +263,7 @@ export async function POST() {
     await db.execute(sql`ALTER TABLE attendance_permission ADD COLUMN IF NOT EXISTS arrival_window text DEFAULT 'any_time_today' NOT NULL`);
     await db.execute(sql`ALTER TABLE attendance_permission ADD COLUMN IF NOT EXISTS expected_start_time time`);
     await db.execute(sql`ALTER TABLE attendance_permission ADD COLUMN IF NOT EXISTS expected_end_time time`);
+    await db.execute(sql`ALTER TABLE attendance_permission ADD COLUMN IF NOT EXISTS general_pardon_type text`);
     await db.execute(sql`UPDATE attendance_permission SET arrival_window = 'any_time_today' WHERE arrival_window IS NULL`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS attendance_permission_date_idx ON attendance_permission(date)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS attendance_permission_staff_id_idx ON attendance_permission(staff_id)`);

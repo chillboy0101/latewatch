@@ -118,7 +118,7 @@ test('attendance page lets admins change an existing permission from the permiss
   assert.match(source, />\s*Cancel\s*</);
 });
 
-test('general pardon API bulk applies to active staff and skips existing specific permissions', () => {
+test('general pardon API preserves existing permissions while attaching a durable pardon override', () => {
   assert.equal(fs.existsSync(generalPardonApiPath), true);
   const source = fs.readFileSync(generalPardonApiPath, 'utf8');
 
@@ -130,12 +130,32 @@ test('general pardon API bulk applies to active staff and skips existing specifi
   assert.match(source, /isAttendanceOnly: staff\.isAttendanceOnly/);
   assert.match(source, /isNssPersonnel: staff\.isNssPersonnel/);
   assert.match(source, /reason: 'general pardon'/);
-  assert.match(source, /skippedPermissions/);
-  assert.match(source, /existingReason !== 'general pardon'/);
-  assert.match(source, /continue;/);
-  assert.match(source, /skippedCount: skippedPermissions\.length/);
+  assert.match(source, /generalPardonType: pardonType/);
+  assert.match(source, /\.set\(\{\s*generalPardonType: pardonType,\s*updatedAt: now/s);
+  assert.doesNotMatch(source, /existingReason !== 'general pardon'/);
+  assert.match(source, /financialReviewRequiredCount: financialReviewRequired\.length/);
+  assert.match(source, /reconciliation\.financialReviewRequired/);
   assert.match(source, /reconcileAttendanceForPermission/);
   assert.match(source, /entityType: 'attendance_general_pardon'/);
+});
+
+test('general pardon UI reports late amounts held for financial review', () => {
+  const pageSource = fs.readFileSync(attendancePagePath, 'utf8');
+
+  assert.match(pageSource, /financialReviewRequiredCount/);
+  assert.match(pageSource, /allocated payments require financial review/);
+});
+
+test('general pardon override has a database migration and seed fallback', () => {
+  const migration = fs.readFileSync(
+    path.join(__dirname, '../drizzle/0032_attendance_permission_general_pardons.sql'),
+    'utf8',
+  );
+  const seedMigration = fs.readFileSync(path.join(__dirname, '../src/app/api/seed/migrate/route.ts'), 'utf8');
+
+  assert.match(migration, /general_pardon_type text/);
+  assert.match(migration, /IN \('absence', 'late_arrival'\)/);
+  assert.match(seedMigration, /ADD COLUMN IF NOT EXISTS general_pardon_type text/);
 });
 
 test('general pardon reconciliation clears late records and keeps late-only missing staff unchecked', () => {

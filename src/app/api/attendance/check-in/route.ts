@@ -230,6 +230,7 @@ function responsePayload(input: {
     date: string;
     expectedEndTime?: string | null;
     expectedStartTime?: string | null;
+    generalPardonType?: string | null;
     id: string;
     permissionType: string;
     reason: string;
@@ -286,6 +287,7 @@ function serializePermission(permission: {
   date: string;
   expectedEndTime?: string | null;
   expectedStartTime?: string | null;
+  generalPardonType?: string | null;
   id: string;
   permissionType: string;
   reason: string;
@@ -297,6 +299,7 @@ function serializePermission(permission: {
         date: permission.date,
         expectedEndTime: permission.expectedEndTime || null,
         expectedStartTime: permission.expectedStartTime || null,
+        generalPardonType: permission.generalPardonType || null,
         id: permission.id,
         permissionType: permission.permissionType,
         reason: permission.reason,
@@ -838,7 +841,10 @@ export async function POST(request: NextRequest) {
     let resolvedDevice = registeredDevice || null;
 
     const permission = await getApprovedAttendancePermission(staffMember.id, clock.dateKey);
-    if (action === 'check_in' && permission?.permissionType === 'absence') {
+    if (action === 'check_in' && (
+      permission?.generalPardonType === 'absence' ||
+      (permission?.status === 'approved' && permission.permissionType === 'absence')
+    )) {
       return block(
         'PERMISSION_ABSENCE',
         'You have an approved absence for today. No check-in is required.',

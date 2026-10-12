@@ -196,3 +196,31 @@ test('manual attendance correction keeps approved general late pardons at zero p
     status: 'present',
   });
 });
+
+test('date-wide late pardon preserves an existing permission and waives late check-ins outside its window', () => {
+  const correction = resolveManualAttendanceCorrection({
+    activePermission: {
+      arrivalWindow: 'morning',
+      expectedEndTime: '12:00',
+      expectedStartTime: '08:30',
+      generalPardonType: 'late_arrival',
+      permissionType: 'late_arrival',
+      reason: 'official duty',
+      status: 'approved',
+    },
+    attendance: {
+      checkInAt: new Date('2026-05-06T14:10:00.000Z'),
+      checkInTime: '14:10:00',
+      computedAmount: '15.00',
+      reason: "DIDN'T COME BEFORE 8:30AM",
+      status: 'late',
+    },
+    arrivalTime: '14:10',
+    date: '2026-05-06',
+    didNotSignOut: false,
+  });
+
+  assert.equal(correction.computedAmount, '0.00');
+  assert.equal(correction.reason, 'Approved late arrival (Any time today): general pardon');
+  assert.equal(correction.status, 'present');
+});

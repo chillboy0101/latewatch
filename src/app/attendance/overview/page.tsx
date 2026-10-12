@@ -34,6 +34,7 @@ interface AttendancePermission {
   date: string;
   expectedEndTime: string | null;
   expectedStartTime: string | null;
+  generalPardonType: string | null;
   id: string;
   permissionType: string;
   reason: string;
@@ -202,11 +203,13 @@ function statusRankForRow(row: AttendanceRow) {
 }
 
 function permissionSummary(permission: AttendancePermission) {
-  if (permission.permissionType === 'absence') {
-    return `Excused absence / ${formatAbsencePermissionReason(permission.reason)}`;
-  }
+  const summary = permission.permissionType === 'absence'
+    ? `Excused absence / ${formatAbsencePermissionReason(permission.reason)}`
+    : `Late arrival / ${getPermissionWindowBounds(permission).label} / ${formatLateArrivalPermissionReason(permission.reason)}`;
+  if (!permission.generalPardonType) return summary;
 
-  return `Late arrival / ${getPermissionWindowBounds(permission).label} / ${formatLateArrivalPermissionReason(permission.reason)}`;
+  const pardonLabel = permission.generalPardonType === 'absence' ? 'Full-day pardon' : 'Late-arrival pardon';
+  return `${summary} / ${pardonLabel}`;
 }
 
 function isOnTimeAttendanceRow(row: AttendanceRow) {
@@ -595,10 +598,16 @@ export default function AttendancePage() {
       setGeneralPardonOpen(false);
       const affectedCount = typeof body.affectedCount === 'number' ? body.affectedCount : data?.rows.length ?? 0;
       const skippedCount = typeof body.skippedCount === 'number' ? body.skippedCount : 0;
+      const financialReviewRequiredCount = typeof body.financialReviewRequiredCount === 'number'
+        ? body.financialReviewRequiredCount
+        : 0;
       const skippedCopy = skippedCount > 0
         ? ` ${skippedCount} existing permission${skippedCount === 1 ? '' : 's'} skipped.`
         : '';
-      setNotice(`General pardon applied to ${affectedCount} staff for ${formatDisplayDate(attendanceDate)}.${skippedCopy}`);
+      const financialReviewCopy = financialReviewRequiredCount > 0
+        ? ` ${financialReviewRequiredCount} late amount${financialReviewRequiredCount === 1 ? '' : 's'} remain unchanged because allocated payments require financial review.`
+        : '';
+      setNotice(`General pardon permission recorded for ${affectedCount} staff for ${formatDisplayDate(attendanceDate)}.${skippedCopy}${financialReviewCopy}`);
       await fetchAttendance();
     } catch (err) {
       console.error('Failed to apply general pardon:', err);

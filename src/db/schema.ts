@@ -383,6 +383,7 @@ export const attendancePermission = pgTable('attendance_permission', {
   arrivalWindow: text('arrival_window').notNull().default('any_time_today'),
   expectedStartTime: time('expected_start_time'),
   expectedEndTime: time('expected_end_time'),
+  generalPardonType: text('general_pardon_type'),
   reason: text('reason').notNull(),
   status: text('status').notNull().default('approved'),
   approvedByUserId: text('approved_by_user_id'),

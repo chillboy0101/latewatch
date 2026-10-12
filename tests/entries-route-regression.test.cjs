@@ -274,6 +274,7 @@ Module._load = function patchedLoad(request, ...args) {
       gt: (left, right) => ({ left, op: 'gt', right }),
       gte: (left, right) => ({ left, op: 'gte', right }),
       inArray: (left, right) => ({ left, op: 'inArray', right }),
+      isNotNull: (left) => ({ left, op: 'isNotNull' }),
       isNull: (left) => ({ left, op: 'isNull' }),
       lte: (left, right) => ({ left, op: 'lte', right }),
       ne: (left, right) => ({ left, op: 'ne', right }),

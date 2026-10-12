@@ -45,6 +45,7 @@ export type PermissionEntryPresentationRow = {
   date: string;
   expectedEndTime?: string | null;
   expectedStartTime?: string | null;
+  generalPardonType?: string | null;
   id: string;
   permissionType?: string | null;
   reason?: string | null;
@@ -65,12 +66,12 @@ export function isGeneralPardonEntryReason(value: string | null | undefined) {
   return typeof value === 'string' && value.toLowerCase().includes('general pardon');
 }
 
-function isExcusedAbsenceEntry(row: { permissionType?: string | null; reason?: string | null; status?: string | null }) {
-  return row.permissionType === 'absence' || row.status === 'excused' || (row.reason || '').toLowerCase().startsWith('excused absence');
+function isExcusedAbsenceEntry(row: { generalPardonType?: string | null; permissionType?: string | null; reason?: string | null; status?: string | null }) {
+  return row.generalPardonType === 'absence' || row.permissionType === 'absence' || row.status === 'excused' || (row.reason || '').toLowerCase().startsWith('excused absence');
 }
 
 function formatPermissionFallbackReason(row: PermissionEntryPresentationRow) {
-  if (isGeneralPardonEntryReason(row.reason)) return 'General pardon';
+  if (row.generalPardonType || isGeneralPardonEntryReason(row.reason)) return 'General pardon';
   if (row.permissionType === 'absence') {
     return `Excused absence: ${formatAbsencePermissionReason(row.reason)}`.trim();
   }
@@ -145,7 +146,9 @@ export function mergeAttendanceRowsIntoEntryRows(input: {
     ...attendanceFallbackRows.map((row) => `${row.staffId}:${dateKey(row.date)}`),
   ]);
   const permissionFallbackRows = (input.permissionRows || [])
-    .filter((row) => row.status === 'approved' && (row.permissionType === 'absence' || row.permissionType === 'late_arrival'))
+    .filter((row) => (
+      row.status === 'approved' || Boolean(row.generalPardonType)
+    ) && (row.permissionType === 'absence' || row.permissionType === 'late_arrival'))
     .filter((row) => !occupiedKeys.has(`${row.staffId}:${dateKey(row.date)}`))
     .map((row): LatenessEntryPresentationRow => ({
       arrivalTime: null,
@@ -155,7 +158,7 @@ export function mergeAttendanceRowsIntoEntryRows(input: {
       didNotSignOut: false,
       id: `permission:${row.id}`,
       isExcusedAbsence: isExcusedAbsenceEntry(row),
-      isGeneralPardon: isGeneralPardonEntryReason(row.reason),
+      isGeneralPardon: Boolean(row.generalPardonType) || isGeneralPardonEntryReason(row.reason),
       noShowSignInWaived: false,
       noSignOutWaived: false,
       reason: formatPermissionFallbackReason(row),

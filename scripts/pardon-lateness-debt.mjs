@@ -31,6 +31,13 @@ function dateKey(value) {
   return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
 }
 
+function isValidDateKey(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 function amount(value) {
   const parsed = Number(value || 0);
   return Number.isFinite(parsed) ? parsed.toFixed(2) : '0.00';
@@ -51,12 +58,14 @@ function snapshotHash(rows) {
 }
 
 function printUsage() {
-  console.log('Usage: node scripts/pardon-lateness-debt.mjs --reason TEXT --operator-email EMAIL --idempotency-key KEY [--operator-user-id UUID]');
+  console.log('Usage: node scripts/pardon-lateness-debt.mjs --cutoff-date YYYY-MM-DD --reason TEXT --operator-email EMAIL --idempotency-key KEY [--operator-user-id UUID]');
   console.log('Preview is read-only and runs by default. After reviewing its snapshot, apply with:');
   console.log('  --apply --confirm-pardon --expected-snapshot-hash HASH');
+  console.log('The cutoff date defaults to today in Africa/Accra and cannot be in the future.');
   console.log('The caller must reconcile attendance penalties before previewing. This script never runs attendance sync.');
 }
 
+const requestedCutoffDate = argument('--cutoff-date')?.trim();
 const reason = argument('--reason')?.trim();
 const operatorEmail = argument('--operator-email')?.trim().toLowerCase();
 const operatorUserId = argument('--operator-user-id')?.trim() || null;
@@ -96,7 +105,17 @@ if (APPLY && !HASH_PATTERN.test(expectedSnapshotHash || '')) {
 
 const sql = neon(process.env.DATABASE_URL);
 const cutoffAt = new Date();
-const cutoffDate = accraDateKey(cutoffAt);
+const todayDate = accraDateKey(cutoffAt);
+const cutoffDate = requestedCutoffDate || todayDate;
+
+if (!isValidDateKey(cutoffDate)) {
+  console.error('Cutoff date must be a valid date in YYYY-MM-DD format.');
+  process.exit(1);
+}
+if (cutoffDate > todayDate) {
+  console.error('Cutoff date cannot be in the future in Africa/Accra.');
+  process.exit(1);
+}
 
 const CANDIDATES_SQL = `
   WITH allocation_totals AS (
@@ -163,7 +182,8 @@ function printPreview(rows, hash) {
   }), { forgiven: 0, paid: 0, penalty: 0 });
 
   console.log(`Mode: ${APPLY ? 'APPLY' : 'DRY RUN'}`);
-  console.log(`Cutoff: ${cutoffAt.toISOString()} (${cutoffDate} Africa/Accra)`);
+  console.log(`Preview time: ${cutoffAt.toISOString()}`);
+  console.log(`Debt entry cutoff: ${cutoffDate} (Africa/Accra)`);
   console.log(`Reason: ${reason}`);
   console.log(`Operator: ${operatorEmail}`);
   console.log(`Idempotency key: ${idempotencyKey}`);

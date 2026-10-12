@@ -26,6 +26,8 @@ const {
   formatLateArrivalPermissionReason,
   getAbsencePeriodBounds,
   getInclusivePermissionDateRange,
+  isPermissionWindowActive,
+  isPermissionWindowOverdue,
   isGeneralPardonReason,
   isValidAbsencePermissionReason,
   isValidLateArrivalPermissionReason,
@@ -124,6 +126,20 @@ test('on-time attendance is based on actual check-in time', () => {
   assert.equal(isOnTimeCheckIn('08:31'), false);
   assert.equal(isOnTimeCheckIn('09:00'), false);
   assert.equal(isOnTimeCheckIn(null), false);
+});
+
+test('date-wide late-arrival pardons override individual windows and never become overdue', () => {
+  const permission = {
+    arrivalWindow: 'morning',
+    expectedEndTime: '12:00',
+    expectedStartTime: '08:30',
+    generalPardonType: 'late_arrival',
+    permissionType: 'late_arrival',
+  };
+
+  assert.equal(isPermissionWindowActive(permission, '14:10'), true);
+  assert.equal(isPermissionWindowActive(permission, '23:59'), true);
+  assert.equal(isPermissionWindowOverdue(permission, '2026-05-06', '2026-05-06', '14:10'), false);
 });
 
 test('no sign-out alert starts at 8:00 PM', () => {

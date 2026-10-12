@@ -34,6 +34,7 @@ type PermissionLike = {
   date: Date | string;
   expectedEndTime?: string | null;
   expectedStartTime?: string | null;
+  generalPardonType?: string | null;
   permissionType?: string | null;
   reason?: string | null;
   status?: string | null;
@@ -92,6 +93,10 @@ function normalizeAmount(value: string | number | null | undefined) {
 }
 
 function approvedLateArrivalReason(permission: PermissionLike) {
+  if (permission.generalPardonType === 'late_arrival') {
+    return 'Approved late arrival (Any time today): general pardon';
+  }
+
   const window = getPermissionWindowBounds(permission);
   return `Approved late arrival (${window.label}): ${permission.reason || ''}`.trim();
 }
@@ -142,7 +147,10 @@ function resolvePenaltyState(input: {
   noSignIn?: boolean;
   permission: PermissionLike | null;
 }): PenaltyState {
-  if (input.noSignIn && input.permission?.status === 'approved' && input.permission.permissionType === 'absence') {
+  if (
+    input.permission?.generalPardonType === 'absence' ||
+    (input.noSignIn && input.permission?.status === 'approved' && input.permission.permissionType === 'absence')
+  ) {
     return {
       amount: 0,
       amountText: '0.00',
@@ -153,8 +161,8 @@ function resolvePenaltyState(input: {
   }
 
   const permissionClearsLatePenalty = Boolean(
-    input.permission?.status === 'approved' &&
-    input.permission.permissionType === 'late_arrival' &&
+    (input.permission?.generalPardonType === 'late_arrival' ||
+      (input.permission?.status === 'approved' && input.permission.permissionType === 'late_arrival')) &&
     input.arrivalTime &&
     isPermissionWindowActive(input.permission, input.arrivalTime),
   );

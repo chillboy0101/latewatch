@@ -26,6 +26,7 @@ type ManualPermissionLike = {
   arrivalWindow?: string | null;
   expectedEndTime?: string | null;
   expectedStartTime?: string | null;
+  generalPardonType?: string | null;
   permissionType?: string | null;
   reason?: string | null;
   status?: string | null;
@@ -69,6 +70,10 @@ function hasOwn(object: object, property: string) {
 }
 
 function approvedLateArrivalReason(permission: ManualPermissionLike) {
+  if (permission.generalPardonType === 'late_arrival') {
+    return 'Approved late arrival (Any time today): general pardon';
+  }
+
   const window = getPermissionWindowBounds({
     arrivalWindow: permission.arrivalWindow || 'any_time_today',
     expectedEndTime: permission.expectedEndTime || null,
@@ -91,25 +96,30 @@ export function resolveManualPenalty(input: {
   noSignIn?: boolean;
 }) {
   if (
-    input.activePermission?.status === 'approved' &&
-    input.activePermission.permissionType === 'absence'
+    input.activePermission?.generalPardonType === 'absence' ||
+    (input.activePermission?.status === 'approved' &&
+      input.activePermission.permissionType === 'absence')
   ) {
     return {
       amount: 0,
       didNotSignOut: false,
-      reason: approvedAbsenceReason(input.activePermission),
+      reason: input.activePermission.generalPardonType === 'absence'
+        ? 'Excused absence: General pardon'
+        : approvedAbsenceReason(input.activePermission),
       status: 'excused' as const,
     };
   }
 
   const permissionClearsLatePenalty = Boolean(
-    input.activePermission?.status === 'approved' &&
-    input.activePermission.permissionType === 'late_arrival' &&
+    (input.activePermission?.generalPardonType === 'late_arrival' ||
+      (input.activePermission?.status === 'approved' &&
+        input.activePermission.permissionType === 'late_arrival')) &&
     input.arrivalTime &&
     isPermissionWindowActive({
       arrivalWindow: input.activePermission.arrivalWindow || 'any_time_today',
       expectedEndTime: input.activePermission.expectedEndTime || null,
       expectedStartTime: input.activePermission.expectedStartTime || null,
+      generalPardonType: input.activePermission.generalPardonType || null,
       permissionType: 'late_arrival',
     }, input.arrivalTime),
   );

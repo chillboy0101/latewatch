@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, eq, gte, lte } from 'drizzle-orm';
+import { and, eq, gte, isNotNull, lte, or } from 'drizzle-orm';
 import { db } from '@/db';
 import { attendancePermission, attendanceRecord, latenessEntry, staff, workCalendar } from '@/db/schema';
 import { getAccraClock, getHolidayForDate, isWeekendDate } from '@/lib/attendance';
@@ -160,7 +160,10 @@ export async function applyNoShowSignInPenaltiesForDate(dateKey: string) {
   const attendanceByStaffId = new Map(attendanceRows.map((row) => [row.staffId, row]));
   const permissionRows = await db.select()
     .from(attendancePermission)
-    .where(and(eq(attendancePermission.date, dateKey), eq(attendancePermission.status, 'approved')));
+    .where(and(
+      eq(attendancePermission.date, dateKey),
+      or(eq(attendancePermission.status, 'approved'), isNotNull(attendancePermission.generalPardonType)),
+    ));
   const permissionsByStaffId = new Map(permissionRows.map((permission) => [permission.staffId, permission]));
   const existingRows = await db.select()
     .from(latenessEntry)
@@ -341,7 +344,7 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
     .where(and(
       gte(attendancePermission.date, startDate),
       lte(attendancePermission.date, endDate),
-      eq(attendancePermission.status, 'approved'),
+      or(eq(attendancePermission.status, 'approved'), isNotNull(attendancePermission.generalPardonType)),
     ));
   const permissionsByKey = new Map(
     permissionRows.map((row) => [rowKey(row.staffId, normalizeDateKey(row.date)), row]),
@@ -391,7 +394,10 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
       }
 
       const permission = permissionsByKey.get(key);
-      if (permission?.permissionType === 'absence') {
+      if (
+        permission?.generalPardonType === 'absence' ||
+        (permission?.status === 'approved' && permission.permissionType === 'absence')
+      ) {
         skipped += 1;
         continue;
       }
@@ -490,7 +496,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     .where(and(
       gte(attendancePermission.date, startDate),
       lte(attendancePermission.date, endDate),
-      eq(attendancePermission.status, 'approved'),
+      or(eq(attendancePermission.status, 'approved'), isNotNull(attendancePermission.generalPardonType)),
     ));
   const permissionsByStaffDate = new Map(
     permissionRows.map((permission) => [

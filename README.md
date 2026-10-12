@@ -266,6 +266,10 @@ npm run attendance:repair-retroactive-no-show   # ⚠ Backfill no-show sign-in p
 npm run no-show:correct-amount              # ⚠ Correct no-show penalty amounts
 ```
 
+Date-wide attendance pardons now retain existing permission details and store their pardon type
+separately. Apply `drizzle/0032_attendance_permission_general_pardons.sql` through the normal
+database release process before deploying this change.
+
 ### Executive lateness-debt pardon
 
 `drizzle/0030_lateness_debt_pardon.sql` adds an immutable pardon event and per-entry audit
@@ -278,16 +282,18 @@ Before previewing, back up the production database and complete attendance-to-pe
 reconciliation through the intended cutoff using the normal application process. The pardon
 script deliberately does not run sync or recalculation: those paths can update or delete
 historical entries, and deletion can cascade to payment allocations. Schedule a quiet period so
-no attendance, penalty, or payment changes occur between final review and apply.
+no attendance, penalty, or payment changes occur between final review and apply. For a cutoff
+date of `2026-10-06`, all entries dated on or before that date are included.
 
 After the migration is reviewed and applied through the normal database release process, run a
 read-only preview against the intended database:
 
 ```bash
 npm run lateness-debt:pardon -- \
+  --cutoff-date "2026-10-06" \
   --reason "Executive debt pardon, order REFERENCE" \
   --operator-email "operator@example.com" \
-  --idempotency-key "executive-pardon-2026-09-28"
+  --idempotency-key "executive-pardon-2026-10-06"
 ```
 
 Review the full account breakdown, including archived/inactive/attendance-only flags, affected
@@ -299,9 +305,10 @@ Only after that review, re-run with the same metadata and hash:
 
 ```bash
 npm run lateness-debt:pardon -- \
+  --cutoff-date "2026-10-06" \
   --reason "Executive debt pardon, order REFERENCE" \
   --operator-email "operator@example.com" \
-  --idempotency-key "executive-pardon-2026-09-28" \
+  --idempotency-key "executive-pardon-2026-10-06" \
   --expected-snapshot-hash "HASH_FROM_REVIEWED_PREVIEW" \
   --apply --confirm-pardon
 ```

@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import { addDays, endOfMonth, format, startOfMonth } from 'date-fns';
 import path from 'path';
-import { and, asc, eq, gte, isNull, lte, or } from 'drizzle-orm';
+import { and, asc, eq, gte, isNotNull, isNull, lte, or } from 'drizzle-orm';
 import {
   type AttendanceExportGroup,
   type AttendanceExportTemplate,
@@ -37,6 +37,7 @@ type AttendanceRow = {
 
 type PermissionRow = {
   date: string;
+  generalPardonType?: string | null;
   permissionType?: string | null;
   reason?: string | null;
   staffId: string;
@@ -250,7 +251,17 @@ function resolveDayStatus(
   if (member.active === false || hasLeavePeriod(member.id, key, leavePeriodsByStaff)) return { kind: 'leave' };
 
   const permission = permissionsByStaffDate.get(`${member.id}:${key}`);
-  if (permission) {
+  if (permission?.generalPardonType === 'absence') {
+    return { kind: 'approved_absence', reason: 'general pardon' };
+  }
+  if (
+    permission &&
+    permission.generalPardonType !== 'late_arrival' &&
+    permission.status !== 'declined'
+  ) {
+    return { kind: 'approved_absence', reason: permission.reason || null };
+  }
+  if (permission?.generalPardonType === 'late_arrival' && permission.permissionType === 'absence' && permission.status === 'approved') {
     return { kind: 'approved_absence', reason: permission.reason || null };
   }
 
@@ -259,7 +270,11 @@ function resolveDayStatus(
     const checkInTime = normalizeTime(attendance.checkInTime);
     return {
       checkInTime,
-      isLate: Boolean(checkInTime && checkInTime > WORKDAY_START_TIME),
+      isLate: Boolean(
+        permission?.generalPardonType !== 'late_arrival' &&
+        checkInTime &&
+        checkInTime > WORKDAY_START_TIME,
+      ),
       kind: 'present',
     };
   }
@@ -715,6 +730,7 @@ export async function buildAttendanceExportWorkbook({
       .where(and(gte(schema.attendanceRecord.date, monthStart), lte(schema.attendanceRecord.date, monthEnd))),
     db.select({
       date: schema.attendancePermission.date,
+      generalPardonType: schema.attendancePermission.generalPardonType,
       permissionType: schema.attendancePermission.permissionType,
       reason: schema.attendancePermission.reason,
       staffId: schema.attendancePermission.staffId,
@@ -724,7 +740,10 @@ export async function buildAttendanceExportWorkbook({
       .where(and(
         gte(schema.attendancePermission.date, monthStart),
         lte(schema.attendancePermission.date, monthEnd),
-        eq(schema.attendancePermission.status, 'approved'),
+        or(
+          eq(schema.attendancePermission.status, 'approved'),
+          isNotNull(schema.attendancePermission.generalPardonType),
+        ),
       )),
     db.select({
       endDate: schema.staffLeavePeriod.endDate,
