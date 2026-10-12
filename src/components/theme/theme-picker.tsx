@@ -117,7 +117,7 @@ export function ThemePicker({
       <>
         {trigger}
         <Drawer open={open} onOpenChange={setOpen}>
-          <DrawerContent aria-describedby={undefined}>
+          <DrawerContent aria-describedby={undefined} style={{ backgroundColor: 'var(--card)', backdropFilter: 'none' }}>
             <DrawerTitle className="sr-only">Theme colour</DrawerTitle>
             <div className="max-h-[80dvh] overflow-y-auto overscroll-contain px-5 pb-6 pt-5">
               <ColourPanel wheelSize={208} />
