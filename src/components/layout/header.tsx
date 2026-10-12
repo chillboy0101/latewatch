@@ -6,8 +6,6 @@ import {
   Bell,
   Inbox,
   Loader2,
-  Moon,
-  Sun,
   Trash2,
   X,
 } from 'lucide-react';
@@ -15,7 +13,8 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Button } from '@/components/ui/button';
 import { useNotifications, type Notification } from '@/contexts/notification-context';
-import { applyThemePreference, getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
+import { getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
+import { ModePicker } from '@/components/theme/mode-picker';
 import { ThemePicker } from '@/components/theme/theme-picker';
 import { cn } from '@/lib/utils';
 
@@ -70,10 +69,6 @@ export function Header({ title, userRole }: HeaderProps) {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDark);
   }, [isDark]);
-
-  const toggleTheme = () => {
-    applyThemePreference(isDark ? 'light' : 'dark');
-  };
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -143,15 +138,7 @@ export function Header({ title, userRole }: HeaderProps) {
       <div className="flex items-center gap-3">
         <ThemePicker buttonClassName="h-9 w-9" />
 
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9"
-          onClick={toggleTheme}
-          title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-        >
-          {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-        </Button>
+        <ModePicker buttonClassName="h-9 w-9" />
 
         <div className="relative" ref={notifRef}>
           <Button

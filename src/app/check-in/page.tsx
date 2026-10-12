@@ -4,7 +4,7 @@ import { UserButton, useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, ChevronRight, History, Loader2, LogOut, MapPin, Moon, MoreHorizontal, Printer, ReceiptText, ShieldCheck, Sun, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, ChevronRight, History, Loader2, LogOut, MapPin, MoreHorizontal, Printer, ReceiptText, ShieldCheck, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerNested, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
@@ -20,7 +20,8 @@ import {
   type ReminderToggleConfirmation,
 } from '@/lib/push-reminder-toggle-confirmation';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
-import { applyThemePreference, getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
+import { getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
+import { ModePicker } from '@/components/theme/mode-picker';
 import { ThemePicker } from '@/components/theme/theme-picker';
 import { cn } from '@/lib/utils';
 
@@ -1122,10 +1123,6 @@ export default function CheckInPage() {
     }
   }
 
-  function toggleTheme() {
-    applyThemePreference(isDark ? 'light' : 'dark');
-  }
-
   const canCheckIn = Boolean(
     status?.locationConfigured &&
     status.staff &&
@@ -1172,17 +1169,7 @@ export default function CheckInPage() {
           <div className="flex items-center gap-2">
             <ThemePicker buttonVariant="glass" buttonClassName="h-10 w-10 rounded-full" iconClassName="h-5 w-5" />
 
-            <Button
-              type="button"
-              variant="glass"
-              size="icon"
-              className="h-10 w-10 rounded-full"
-              onClick={toggleTheme}
-              aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-            >
-              {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-            </Button>
+            <ModePicker buttonVariant="glass" buttonClassName="h-10 w-10 rounded-full" />
             <Drawer open={menuOpen} onOpenChange={setMenuOpen}>
               <DrawerTrigger asChild>
                 <Button

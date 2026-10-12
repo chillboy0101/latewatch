@@ -1,26 +1,48 @@
 'use client';
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Check, Monitor, Moon, Palette, Sun } from 'lucide-react';
+import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
+import { Check, Palette } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
   applyThemeAccent,
-  applyThemePreference,
   getThemeAccent,
+  getThemeAccentColor,
   getThemeCustomColor,
-  getThemePreference,
   normalizeHexColor,
   subscribeThemeChange,
   THEME_ACCENT_PRESETS,
-  type ThemePreference,
 } from '@/lib/theme';
+import { useDismissable } from '@/components/theme/use-dismissable';
 
-const MODE_OPTIONS: Array<{ icon: typeof Sun; label: string; value: ThemePreference }> = [
-  { icon: Sun, label: 'Light', value: 'light' },
-  { icon: Moon, label: 'Dark', value: 'dark' },
-  { icon: Monitor, label: 'System', value: 'system' },
-];
+const NEUTRAL_SWATCH = 'linear-gradient(135deg, #fafafa 0 50%, #171717 50% 100%)';
+const CUSTOM_SWATCH = 'conic-gradient(#ef4444, #f59e0b, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444)';
+
+function Swatch({
+  background,
+  label,
+  ringColor,
+  selected,
+}: {
+  background: string;
+  label: string;
+  ringColor: string;
+  selected: boolean;
+}) {
+  return (
+    <span
+      aria-hidden
+      title={label}
+      className={cn(
+        'flex h-8 w-8 items-center justify-center rounded-full transition-transform',
+        selected ? 'scale-110 ring-2 ring-offset-2 ring-offset-card' : 'ring-1 ring-black/10 hover:scale-110 dark:ring-white/15',
+      )}
+      style={{ background, ...(selected ? { ['--tw-ring-color' as string]: ringColor } : {}) }}
+    >
+      {selected && <Check className="h-4 w-4 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)]" strokeWidth={3} />}
+    </span>
+  );
+}
 
 export function ThemePicker({
   buttonClassName,
@@ -32,42 +54,14 @@ export function ThemePicker({
   iconClassName?: string;
 }) {
   const accent = useSyncExternalStore(subscribeThemeChange, getThemeAccent, () => 'blue');
+  const accentColor = useSyncExternalStore(subscribeThemeChange, getThemeAccentColor, () => '#2563eb');
   const customColor = useSyncExternalStore(subscribeThemeChange, getThemeCustomColor, () => '#2563eb');
-  const preference = useSyncExternalStore(subscribeThemeChange, getThemePreference, () => 'system');
   const [open, setOpen] = useState(false);
-  const [hexDraft, setHexDraft] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismissable(open, containerRef, close);
 
-  useEffect(() => {
-    if (!open) return;
-
-    // pointerdown covers mouse, touch and pen, so a tap anywhere outside closes the picker.
-    function handlePointerDown(event: PointerEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') setOpen(false);
-    }
-
-    document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [open]);
-
-  function toggleOpen() {
-    setHexDraft(customColor);
-    setOpen((value) => !value);
-  }
-
-  function applyCustom(value: string) {
-    const color = normalizeHexColor(value);
-    if (color) applyThemeAccent('custom', color);
-  }
+  const customSelected = accent === 'custom';
 
   return (
     <div ref={containerRef} className="relative">
@@ -75,114 +69,66 @@ export function ThemePicker({
         type="button"
         variant={buttonVariant}
         size="icon"
-        className={buttonClassName}
-        onClick={toggleOpen}
-        title="Choose theme"
-        aria-label="Choose theme"
+        className={cn('relative', buttonClassName)}
+        onClick={() => setOpen((value) => !value)}
+        title="Theme colour"
+        aria-label="Theme colour"
         aria-expanded={open}
       >
         <Palette className={iconClassName} />
+        <span
+          aria-hidden
+          className="absolute bottom-1 right-1 h-2.5 w-2.5 rounded-full ring-2 ring-card"
+          style={{ background: accent === 'neutral' ? NEUTRAL_SWATCH : accentColor }}
+        />
       </Button>
 
       {open && (
         <div
           role="dialog"
-          aria-label="Theme"
-          className="absolute right-0 top-full z-50 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-card p-3 text-card-foreground shadow-xl"
+          aria-label="Theme colour"
+          className="absolute right-0 top-full z-50 mt-2 rounded-xl border border-border bg-card p-3 text-card-foreground shadow-xl"
         >
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Mode</p>
-          <div className="mb-4 grid grid-cols-3 gap-1 rounded-lg border border-border bg-background p-1">
-            {MODE_OPTIONS.map(({ icon: Icon, label, value }) => (
+          <div className="grid grid-cols-5 gap-3">
+            {THEME_ACCENT_PRESETS.map(({ accent: option, label, swatch }) => (
               <button
-                key={value}
+                key={option}
                 type="button"
-                onClick={() => applyThemePreference(value)}
-                aria-pressed={preference === value}
-                className={cn(
-                  'flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
-                  preference === value
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground',
-                )}
+                aria-label={label}
+                aria-pressed={accent === option}
+                onClick={() => applyThemeAccent(option)}
+                className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
-                <Icon className="h-3.5 w-3.5" />
-                {label}
+                <Swatch
+                  background={option === 'neutral' ? NEUTRAL_SWATCH : swatch}
+                  label={label}
+                  ringColor={option === 'neutral' ? '#737373' : swatch}
+                  selected={accent === option}
+                />
               </button>
             ))}
-          </div>
 
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Colour</p>
-          <div className="grid grid-cols-4 gap-2">
-            {THEME_ACCENT_PRESETS.map(({ accent: option, label, swatch }) => {
-              const selected = accent === option;
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => applyThemeAccent(option)}
-                  aria-pressed={selected}
-                  title={label}
-                  className={cn(
-                    'flex flex-col items-center gap-1 rounded-lg border px-1 py-2 text-[11px] font-medium transition-colors',
-                    selected
-                      ? 'border-primary bg-primary/10 text-foreground'
-                      : 'border-transparent text-muted-foreground hover:border-border hover:bg-foreground/5 hover:text-foreground',
-                  )}
-                >
-                  <span
-                    className="flex h-7 w-7 items-center justify-center rounded-full ring-1 ring-black/10 dark:ring-white/20"
-                    style={{
-                      background: option === 'neutral'
-                        ? 'linear-gradient(135deg, #fafafa 0 50%, #171717 50% 100%)'
-                        : swatch,
-                    }}
-                  >
-                    {selected && (
-                      <Check className={cn('h-4 w-4', option === 'neutral' ? 'text-primary mix-blend-difference' : 'text-white')} />
-                    )}
-                  </span>
-                  {label}
-                </button>
-              );
-            })}
+            <label
+              aria-label="Custom colour"
+              className="relative cursor-pointer rounded-full focus-within:ring-2 focus-within:ring-primary"
+            >
+              <Swatch
+                background={customSelected ? customColor : CUSTOM_SWATCH}
+                label="Custom colour"
+                ringColor={customColor}
+                selected={customSelected}
+              />
+              <input
+                type="color"
+                value={customColor}
+                onChange={(event) => {
+                  const color = normalizeHexColor(event.target.value);
+                  if (color) applyThemeAccent('custom', color);
+                }}
+                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              />
+            </label>
           </div>
-
-          <p className="mb-2 mt-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Custom colour</p>
-          <div
-            className={cn(
-              'flex items-center gap-2 rounded-lg border p-2',
-              accent === 'custom' ? 'border-primary bg-primary/10' : 'border-border',
-            )}
-          >
-            <input
-              type="color"
-              aria-label="Pick a custom colour"
-              value={normalizeHexColor(hexDraft) || customColor}
-              onChange={(event) => {
-                setHexDraft(event.target.value);
-                applyCustom(event.target.value);
-              }}
-              className="h-9 w-12 shrink-0 cursor-pointer rounded-md border border-border bg-transparent p-0.5"
-            />
-            <input
-              type="text"
-              aria-label="Custom colour hex code"
-              value={hexDraft}
-              maxLength={7}
-              spellCheck={false}
-              placeholder="#2563eb"
-              onChange={(event) => {
-                const value = event.target.value.startsWith('#') ? event.target.value : `#${event.target.value}`;
-                setHexDraft(value);
-                applyCustom(value);
-              }}
-              className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-2 font-mono text-sm uppercase outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-            />
-            {accent === 'custom' && <Check className="h-4 w-4 shrink-0 text-primary" />}
-          </div>
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            Applies across every page. Very light or dark picks are adjusted so text stays readable.
-          </p>
         </div>
       )}
     </div>

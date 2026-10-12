@@ -33,7 +33,9 @@ test('payments page offers a previewed, confirmed pardon-all action', () => {
   assert.match(page, /Pardon all/);
   assert.match(page, /\/api\/payments\/debt-pardon\?cutoffDate=/);
   assert.match(page, /expectedSnapshotHash: debtPardonPreview\.snapshotHash/);
-  assert.match(page, /!debtPardonConfirmed/);
+  assert.match(page, /if \(!debtPardonConfirmed\) \{\s*setDebtPardonConfirmed\(true\);\s*return;/);
+  assert.match(page, /Tap again to confirm/);
+  assert.doesNotMatch(page, /I confirm that/);
 });
 
 test('audit trail describes debt pardons', () => {

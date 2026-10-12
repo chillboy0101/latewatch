@@ -59,9 +59,16 @@ test('theme picker closes on outside taps and Escape, and all surfaces derive fr
   const picker = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'theme-picker.tsx'), 'utf8');
   const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'globals.css'), 'utf8');
 
-  assert.match(picker, /addEventListener\('pointerdown', handlePointerDown\)/);
-  assert.match(picker, /event\.key === 'Escape'/);
+  const modePicker = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'mode-picker.tsx'), 'utf8');
+  const dismiss = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'use-dismissable.ts'), 'utf8');
+
+  assert.match(dismiss, /addEventListener\('pointerdown', handlePointerDown\)/);
+  assert.match(dismiss, /event\.key === 'Escape'/);
+  assert.match(picker, /useDismissable\(open, containerRef, close\)/);
+  assert.match(modePicker, /useDismissable\(open, containerRef, close\)/);
+  assert.match(modePicker, /label: 'System', value: 'system'/);
   assert.match(picker, /type="color"/);
+  assert.doesNotMatch(picker, /Applies across every page/);
   assert.match(css, /--background: color-mix\(in oklab, var\(--brand\) 3%, #ffffff\);/);
   assert.match(css, /\.dark\[data-accent='neutral'\]/);
   assert.doesNotMatch(css, /data-accent='(pink|red|green|violet)'/);
