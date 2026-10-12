@@ -18,6 +18,7 @@ import {
   getAttendanceExportTemplatesForGroup,
 } from '@/lib/attendance-export-shared';
 import { formatShortDisplayDate } from '@/lib/date-format';
+import { getThemePrimaryColor } from '@/lib/theme';
 
 interface WeekSummary extends WorkingWeekRange {
   weekLabel: string;
@@ -61,7 +62,7 @@ async function downloadWorkbook(response: Response, fileName: string) {
   window.URL.revokeObjectURL(url);
 }
 
-function buildExportPreviewWatermarkHtml({ isDark }: { isDark: boolean }) {
+function buildExportPreviewWatermarkHtml({ background, isDark, primary }: { background: string; isDark: boolean; primary: string }) {
   return `<!doctype html>
 <html class="${isDark ? 'dark' : ''}" lang="en">
 <head>
@@ -70,13 +71,8 @@ function buildExportPreviewWatermarkHtml({ isDark }: { isDark: boolean }) {
   <title>Export preview</title>
   <style>
     :root {
-      --background: #ffffff;
-      --primary: #2563eb;
-    }
-
-    .dark {
-      --background: #0a0a0a;
-      --primary: #3b82f6;
+      --background: ${background};
+      --primary: ${primary};
     }
 
     * {
@@ -255,8 +251,11 @@ function openPreviewWindow() {
   if (!previewWindow) return null;
 
   previewWindow.document.open();
+  const isDark = document.documentElement.classList.contains('dark');
   previewWindow.document.write(buildExportPreviewWatermarkHtml({
-    isDark: document.documentElement.classList.contains('dark'),
+    background: getComputedStyle(document.body).backgroundColor || (isDark ? '#0a0a0a' : '#ffffff'),
+    isDark,
+    primary: getThemePrimaryColor(isDark),
   }));
   previewWindow.document.close();
 

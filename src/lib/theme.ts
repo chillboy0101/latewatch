@@ -1,23 +1,131 @@
 export type ThemePreference = 'light' | 'dark' | 'system';
-export type ThemeAccent = 'blue' | 'pink' | 'red' | 'green' | 'violet';
+
+export const THEME_ACCENT_PRESETS = [
+  { accent: 'neutral', label: 'Neutral', swatch: '#737373' },
+  { accent: 'blue', label: 'Blue', swatch: '#2563eb' },
+  { accent: 'sky', label: 'Sky', swatch: '#0284c7' },
+  { accent: 'indigo', label: 'Indigo', swatch: '#4f46e5' },
+  { accent: 'violet', label: 'Violet', swatch: '#7c3aed' },
+  { accent: 'pink', label: 'Pink', swatch: '#db2777' },
+  { accent: 'rose', label: 'Rose', swatch: '#e11d48' },
+  { accent: 'red', label: 'Red', swatch: '#dc2626' },
+  { accent: 'orange', label: 'Orange', swatch: '#ea580c' },
+  { accent: 'amber', label: 'Amber', swatch: '#d97706' },
+  { accent: 'green', label: 'Green', swatch: '#16a34a' },
+  { accent: 'teal', label: 'Teal', swatch: '#0d9488' },
+] as const;
+
+export type ThemeAccentPreset = typeof THEME_ACCENT_PRESETS[number]['accent'];
+export type ThemeAccent = ThemeAccentPreset | 'custom';
 
 const THEME_EVENT = 'latewatch-theme-change';
 const THEME_ACCENT_KEY = 'theme-accent';
+const THEME_CUSTOM_COLOR_KEY = 'theme-custom-color';
+const THEME_VARIABLES_KEY = 'theme-accent-variables';
+const DEFAULT_ACCENT: ThemeAccentPreset = 'blue';
+const HEX_PATTERN = /^#[0-9a-f]{6}$/i;
+
+const PRESET_SWATCHES: Record<string, string> = Object.fromEntries(
+  THEME_ACCENT_PRESETS.map(({ accent, swatch }) => [accent, swatch]),
+);
+
+function readStorage(key: string) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(key: string, value: string | null) {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {
+    // Storage can be unavailable (private mode); the theme still applies for this visit.
+  }
+}
+
+export function normalizeHexColor(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  const expanded = /^#[0-9a-f]{3}$/i.test(trimmed)
+    ? `#${trimmed.slice(1).split('').map((character) => character + character).join('')}`
+    : trimmed;
+  return HEX_PATTERN.test(expanded) ? expanded.toLowerCase() : null;
+}
+
+/** Builds the CSS variables for an accent colour: readable primaries for light and dark mode. */
+export function computeAccentVariables(hex: string) {
+  const parse = (value: string) => [1, 3, 5].map((index) => parseInt(value.slice(index, index + 2), 16));
+  const toHex = (rgb: number[]) => `#${rgb.map((channel) => Math.round(Math.min(255, Math.max(0, channel))).toString(16).padStart(2, '0')).join('')}`;
+  const mix = (from: number[], to: number[], amount: number) => from.map((channel, index) => channel + (to[index] - channel) * amount);
+  const luminance = (rgb: number[]) => {
+    const [red, green, blue] = rgb.map((channel) => {
+      const value = channel / 255;
+      return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  };
+  const contrast = (first: number, second: number) => (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+  const readableOn = (rgb: number[]) => {
+    const value = luminance(rgb);
+    return contrast(value, 1) >= contrast(value, luminance([10, 10, 10])) ? '#ffffff' : '#0a0a0a';
+  };
+
+  const base = parse(hex);
+  const white = [255, 255, 255];
+  const black = [0, 0, 0];
+  // Light mode needs a primary dark enough to read on white; dark mode needs one light enough to
+  // read on near-black. Very light or very dark picks are nudged rather than used as-is.
+  let lightPrimary = base;
+  while (contrast(luminance(lightPrimary), 1) < 3 && luminance(lightPrimary) > 0.05) lightPrimary = mix(lightPrimary, black, 0.12);
+  let darkPrimary = mix(base, white, 0.18);
+  while (contrast(luminance(darkPrimary), luminance([10, 10, 10])) < 4.5 && luminance(darkPrimary) < 0.95) darkPrimary = mix(darkPrimary, white, 0.15);
+
+  return {
+    '--brand': toHex(base),
+    '--brand-light': toHex(lightPrimary),
+    '--brand-light-foreground': readableOn(lightPrimary),
+    '--brand-light-hover': toHex(mix(lightPrimary, black, 0.15)),
+    '--brand-dark': toHex(darkPrimary),
+    '--brand-dark-foreground': readableOn(darkPrimary),
+    '--brand-dark-hover': toHex(mix(darkPrimary, white, 0.2)),
+  } as Record<string, string>;
+}
 
 export function getThemePreference(): ThemePreference {
   if (typeof window === 'undefined') return 'dark';
 
-  const saved = localStorage.getItem('theme');
+  const saved = readStorage('theme');
   if (saved === 'light' || saved === 'dark') return saved;
 
   return 'system';
 }
 
 export function getThemeAccent(): ThemeAccent {
-  if (typeof window === 'undefined') return 'blue';
+  if (typeof window === 'undefined') return DEFAULT_ACCENT;
 
-  const saved = localStorage.getItem(THEME_ACCENT_KEY);
-  return saved === 'pink' || saved === 'red' || saved === 'green' || saved === 'violet' ? saved : 'blue';
+  const saved = readStorage(THEME_ACCENT_KEY);
+  if (saved === 'custom' && normalizeHexColor(readStorage(THEME_CUSTOM_COLOR_KEY))) return 'custom';
+  return saved && saved in PRESET_SWATCHES ? saved as ThemeAccentPreset : DEFAULT_ACCENT;
+}
+
+export function getThemeCustomColor() {
+  if (typeof window === 'undefined') return PRESET_SWATCHES[DEFAULT_ACCENT];
+  return normalizeHexColor(readStorage(THEME_CUSTOM_COLOR_KEY)) || PRESET_SWATCHES[DEFAULT_ACCENT];
+}
+
+export function getThemeAccentColor() {
+  const accent = getThemeAccent();
+  return accent === 'custom' ? getThemeCustomColor() : PRESET_SWATCHES[accent];
+}
+
+/** The primary colour actually shown for the current accent and mode (used outside CSS, e.g. Clerk). */
+export function getThemePrimaryColor(isDark: boolean) {
+  if (getThemeAccent() === 'neutral') return isDark ? '#fafafa' : '#171717';
+  const variables = computeAccentVariables(getThemeAccentColor());
+  return isDark ? variables['--brand-dark'] : variables['--brand-light'];
 }
 
 export function getIsDarkTheme() {
@@ -46,28 +154,71 @@ export function subscribeThemeChange(callback: () => void) {
   };
 }
 
-export function applyThemeAccent(accent: ThemeAccent) {
+function applyAccentToDocument() {
+  const root = document.documentElement;
+  const accent = getThemeAccent();
+  root.dataset.accent = accent === 'neutral' ? 'neutral' : 'brand';
+  const variables = computeAccentVariables(getThemeAccentColor());
+  for (const [name, value] of Object.entries(variables)) {
+    root.style.setProperty(name, value);
+  }
+  // Saved so the pre-paint boot script can restore the exact colours without recomputing them.
+  writeStorage(THEME_VARIABLES_KEY, JSON.stringify({ accent: root.dataset.accent, variables }));
+
+  // Keep the mobile browser/status bar colour in step with the themed page background.
+  requestAnimationFrame(() => {
+    const background = getComputedStyle(document.body || root).backgroundColor;
+    if (!background) return;
+    document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+      meta.setAttribute('content', background);
+    });
+  });
+}
+
+export function applyThemeAccent(accent: ThemeAccent, customColor?: string) {
   if (typeof window === 'undefined') return;
 
-  localStorage.setItem(THEME_ACCENT_KEY, accent);
-  document.documentElement.dataset.accent = accent;
+  if (accent === 'custom') {
+    const color = normalizeHexColor(customColor) || getThemeCustomColor();
+    writeStorage(THEME_CUSTOM_COLOR_KEY, color);
+  }
+  writeStorage(THEME_ACCENT_KEY, accent);
+  applyAccentToDocument();
   window.dispatchEvent(new Event(THEME_EVENT));
 }
 
 export function applyThemePreference(theme: ThemePreference) {
   if (typeof window === 'undefined') return;
 
-  if (theme === 'system') {
-    localStorage.removeItem('theme');
-  } else {
-    localStorage.setItem('theme', theme);
-  }
+  writeStorage('theme', theme === 'system' ? null : theme);
 
   document.documentElement.classList.toggle('dark', getIsDarkTheme());
-  document.documentElement.dataset.accent = getThemeAccent();
+  applyAccentToDocument();
   window.dispatchEvent(new Event(THEME_EVENT));
 }
 
+/** Inline script for the root layout: applies mode and accent before first paint (no colour flash). */
+export function buildThemeBootScript() {
+  return `(function() {
+  var root = document.documentElement;
+  try {
+    var theme = localStorage.getItem('theme');
+    if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      root.classList.add('dark');
+    }
+    var saved = JSON.parse(localStorage.getItem('${THEME_VARIABLES_KEY}') || 'null');
+    if (saved && saved.variables) {
+      root.dataset.accent = saved.accent === 'neutral' ? 'neutral' : 'brand';
+      for (var name in saved.variables) {
+        if (/^--brand/.test(name) && /^#[0-9a-f]{6}$/i.test(saved.variables[name])) {
+          root.style.setProperty(name, saved.variables[name]);
+        }
+      }
+    }
+  } catch (error) {}
+})();`;
+}
+
 if (typeof window !== 'undefined') {
-  document.documentElement.dataset.accent = getThemeAccent();
+  applyAccentToDocument();
 }

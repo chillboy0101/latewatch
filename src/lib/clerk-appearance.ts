@@ -2,7 +2,7 @@ import { dark } from '@clerk/themes';
 
 type ClerkThemeMode = 'light' | 'dark';
 
-export function createClerkAppearance(mode: ClerkThemeMode = 'light') {
+export function createClerkAppearance(mode: ClerkThemeMode = 'light', primaryColor?: string) {
   const appearance = {
     layout: {
       logoImageUrl: '/latewatch-logo.png',
@@ -12,6 +12,7 @@ export function createClerkAppearance(mode: ClerkThemeMode = 'light') {
     },
     variables: {
       borderRadius: '0.5rem',
+      ...(primaryColor ? { colorPrimary: primaryColor } : {}),
       fontFamily: 'var(--font-inter), Arial, Helvetica, sans-serif',
     },
     elements: {

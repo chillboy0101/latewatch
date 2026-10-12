@@ -1,0 +1,68 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const test = require('node:test');
+
+require('tsx/cjs');
+
+const {
+  buildThemeBootScript,
+  computeAccentVariables,
+  normalizeHexColor,
+  THEME_ACCENT_PRESETS,
+} = require('../src/lib/theme.ts');
+
+function luminance(hex) {
+  const [red, green, blue] = [1, 3, 5].map((index) => {
+    const value = parseInt(hex.slice(index, index + 2), 16) / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function contrast(first, second) {
+  const [high, low] = [luminance(first), luminance(second)].sort((a, b) => b - a);
+  return (high + 0.05) / (low + 0.05);
+}
+
+test('theme offers neutral plus a variety of preset colours', () => {
+  const accents = THEME_ACCENT_PRESETS.map((preset) => preset.accent);
+  assert.equal(accents[0], 'neutral');
+  assert.ok(accents.length >= 10);
+  for (const legacy of ['blue', 'pink', 'red', 'green', 'violet']) assert.ok(accents.includes(legacy));
+});
+
+test('every accent, including extreme custom picks, keeps primary buttons readable', () => {
+  const colours = [...THEME_ACCENT_PRESETS.map((preset) => preset.swatch), '#ffffff', '#000000', '#f5e663', '#00ff00'];
+  for (const colour of colours) {
+    const variables = computeAccentVariables(colour);
+    assert.ok(contrast(variables['--brand-light'], '#ffffff') >= 2.9, `${colour} light primary vs page`);
+    assert.ok(contrast(variables['--brand-dark'], '#0a0a0a') >= 4.4, `${colour} dark primary vs page`);
+    assert.ok(contrast(variables['--brand-light'], variables['--brand-light-foreground']) >= 4.4, `${colour} light button text`);
+    assert.ok(contrast(variables['--brand-dark'], variables['--brand-dark-foreground']) >= 4.4, `${colour} dark button text`);
+  }
+});
+
+test('custom colours are validated and the boot script restores saved colours safely', () => {
+  assert.equal(normalizeHexColor('#ABC'), '#aabbcc');
+  assert.equal(normalizeHexColor('#12345g'), null);
+  assert.equal(normalizeHexColor('red'), null);
+
+  const script = buildThemeBootScript();
+  assert.doesNotMatch(script, /__name|require\(/);
+  assert.match(script, /\/\^--brand\/\.test\(name\)/);
+  assert.doesNotThrow(() => new Function(script));
+});
+
+test('theme picker closes on outside taps and Escape, and all surfaces derive from the accent', () => {
+  const picker = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'theme-picker.tsx'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'globals.css'), 'utf8');
+
+  assert.match(picker, /addEventListener\('pointerdown', handlePointerDown\)/);
+  assert.match(picker, /event\.key === 'Escape'/);
+  assert.match(picker, /type="color"/);
+  assert.match(css, /--background: color-mix\(in oklab, var\(--brand\) 3%, #ffffff\);/);
+  assert.match(css, /\.dark\[data-accent='neutral'\]/);
+  assert.doesNotMatch(css, /data-accent='(pink|red|green|violet)'/);
+});

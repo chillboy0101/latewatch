@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { ClerkThemeProvider } from "@/components/auth/clerk-theme-provider";
+import { buildThemeBootScript } from "@/lib/theme";
 import { AppShell } from "@/components/layout/app-shell";
 import { NotificationProvider } from "@/contexts/notification-context";
 import { PushReminderToast } from "@/components/notifications/push-reminder-toast";
@@ -76,14 +77,7 @@ export const viewport: Viewport = {
   ],
 };
 
-const themeScript = `
-  (function() {
-    var theme = localStorage.getItem('theme');
-    if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-      document.documentElement.classList.add('dark');
-    }
-  })();
-`;
+const themeScript = buildThemeBootScript();
 
 export default function RootLayout({
   children,
