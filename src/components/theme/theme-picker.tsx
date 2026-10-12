@@ -3,44 +3,111 @@
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { Check, Palette } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Drawer, DrawerContent, DrawerTitle } from '@/components/ui/drawer';
 import { cn } from '@/lib/utils';
 import {
   applyThemeAccent,
   getThemeAccent,
   getThemeAccentColor,
   getThemeCustomColor,
-  normalizeHexColor,
   subscribeThemeChange,
   THEME_ACCENT_PRESETS,
 } from '@/lib/theme';
+import { ColourWheel } from '@/components/theme/colour-wheel';
 import { useDismissable } from '@/components/theme/use-dismissable';
 
 const NEUTRAL_SWATCH = 'linear-gradient(135deg, #fafafa 0 50%, #171717 50% 100%)';
 const CUSTOM_SWATCH = 'conic-gradient(#ef4444, #f59e0b, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444)';
+const PHONE_QUERY = '(max-width: 639px)';
 
-function Swatch({
-  background,
-  label,
-  ringColor,
-  selected,
-}: {
-  background: string;
-  label: string;
-  ringColor: string;
-  selected: boolean;
-}) {
+function subscribePhone(callback: () => void) {
+  const media = window.matchMedia(PHONE_QUERY);
+  media.addEventListener('change', callback);
+  return () => media.removeEventListener('change', callback);
+}
+
+function Swatch({ background, ringColor, selected }: { background: string; ringColor: string; selected: boolean }) {
   return (
     <span
       aria-hidden
-      title={label}
       className={cn(
-        'flex h-8 w-8 items-center justify-center rounded-full transition-transform',
-        selected ? 'scale-110 ring-2 ring-offset-2 ring-offset-card' : 'ring-1 ring-black/10 hover:scale-110 dark:ring-white/15',
+        'flex h-10 w-10 items-center justify-center rounded-full transition-transform duration-200 sm:h-8 sm:w-8',
+        selected ? 'scale-110 ring-2 ring-offset-2 ring-offset-card' : 'ring-1 ring-black/10 hover:scale-110 active:scale-95 dark:ring-white/15',
       )}
       style={{ background, ...(selected ? { ['--tw-ring-color' as string]: ringColor } : {}) }}
     >
       {selected && <Check className="h-4 w-4 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)]" strokeWidth={3} />}
     </span>
+  );
+}
+
+function ColourPanel({ wheelSize }: { wheelSize: number }) {
+  const accent = useSyncExternalStore(subscribeThemeChange, getThemeAccent, () => 'blue');
+  const customColor = useSyncExternalStore(subscribeThemeChange, getThemeCustomColor, () => '#2563eb');
+  const customSelected = accent === 'custom';
+  const [wheelOpen, setWheelOpen] = useState(customSelected);
+
+  return (
+    <div className="flex flex-col items-center">
+      <div className="grid grid-cols-[repeat(5,2.5rem)] gap-3 sm:grid-cols-[repeat(5,2rem)]">
+        {THEME_ACCENT_PRESETS.map(({ accent: option, label, swatch }) => (
+          <button
+            key={option}
+            type="button"
+            title={label}
+            aria-label={label}
+            aria-pressed={accent === option}
+            onClick={() => {
+              applyThemeAccent(option);
+              setWheelOpen(false);
+            }}
+            className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <Swatch
+              background={option === 'neutral' ? NEUTRAL_SWATCH : swatch}
+              ringColor={option === 'neutral' ? '#737373' : swatch}
+              selected={accent === option}
+            />
+          </button>
+        ))}
+        <button
+          type="button"
+          title="Custom colour"
+          aria-label="Custom colour"
+          aria-pressed={customSelected}
+          aria-expanded={wheelOpen}
+          onClick={() => {
+            setWheelOpen(true);
+            if (!customSelected) applyThemeAccent('custom', customColor);
+          }}
+          className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <Swatch
+            background={customSelected ? customColor : CUSTOM_SWATCH}
+            ringColor={customColor}
+            selected={customSelected}
+          />
+        </button>
+      </div>
+
+      {/* The wheel slides open below the swatches when "Custom colour" is chosen. */}
+      <div
+        className={cn(
+          'grid w-full transition-[grid-template-rows,opacity] duration-300 ease-out',
+          wheelOpen ? 'mt-5 grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
+        )}
+      >
+        <div className="overflow-hidden">
+          {wheelOpen && (
+            <ColourWheel
+              size={wheelSize}
+              value={customColor}
+              onChange={(hex) => applyThemeAccent('custom', hex)}
+            />
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -55,80 +122,58 @@ export function ThemePicker({
 }) {
   const accent = useSyncExternalStore(subscribeThemeChange, getThemeAccent, () => 'blue');
   const accentColor = useSyncExternalStore(subscribeThemeChange, getThemeAccentColor, () => '#2563eb');
-  const customColor = useSyncExternalStore(subscribeThemeChange, getThemeCustomColor, () => '#2563eb');
+  const isPhone = useSyncExternalStore(subscribePhone, () => window.matchMedia(PHONE_QUERY).matches, () => false);
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
-  useDismissable(open, containerRef, close);
+  useDismissable(open && !isPhone, containerRef, close);
 
-  const customSelected = accent === 'custom';
+  const trigger = (
+    <Button
+      type="button"
+      variant={buttonVariant}
+      size="icon"
+      className={cn('relative', buttonClassName)}
+      onClick={() => setOpen((value) => !value)}
+      title="Theme colour"
+      aria-label="Theme colour"
+      aria-expanded={open}
+    >
+      <Palette className={iconClassName} />
+      <span
+        aria-hidden
+        className="absolute bottom-1 right-1 h-2.5 w-2.5 rounded-full ring-2 ring-card transition-colors duration-300"
+        style={{ background: accent === 'neutral' ? NEUTRAL_SWATCH : accentColor }}
+      />
+    </Button>
+  );
+
+  if (isPhone) {
+    return (
+      <>
+        {trigger}
+        <Drawer open={open} onOpenChange={setOpen}>
+          <DrawerContent aria-describedby={undefined}>
+            <DrawerTitle className="sr-only">Theme colour</DrawerTitle>
+            <div className="px-6 pb-8 pt-6">
+              <ColourPanel wheelSize={220} />
+            </div>
+          </DrawerContent>
+        </Drawer>
+      </>
+    );
+  }
 
   return (
     <div ref={containerRef} className="relative">
-      <Button
-        type="button"
-        variant={buttonVariant}
-        size="icon"
-        className={cn('relative', buttonClassName)}
-        onClick={() => setOpen((value) => !value)}
-        title="Theme colour"
-        aria-label="Theme colour"
-        aria-expanded={open}
-      >
-        <Palette className={iconClassName} />
-        <span
-          aria-hidden
-          className="absolute bottom-1 right-1 h-2.5 w-2.5 rounded-full ring-2 ring-card"
-          style={{ background: accent === 'neutral' ? NEUTRAL_SWATCH : accentColor }}
-        />
-      </Button>
-
+      {trigger}
       {open && (
         <div
           role="dialog"
           aria-label="Theme colour"
-          className="absolute right-0 top-full z-50 mt-2 rounded-xl border border-border bg-card p-3 text-card-foreground shadow-xl"
+          className="absolute right-0 top-full z-50 mt-2 rounded-xl border border-border bg-card p-4 text-card-foreground shadow-xl"
         >
-          <div className="grid grid-cols-[repeat(5,2rem)] gap-3">
-            {THEME_ACCENT_PRESETS.map(({ accent: option, label, swatch }) => (
-              <button
-                key={option}
-                type="button"
-                aria-label={label}
-                aria-pressed={accent === option}
-                onClick={() => applyThemeAccent(option)}
-                className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                <Swatch
-                  background={option === 'neutral' ? NEUTRAL_SWATCH : swatch}
-                  label={label}
-                  ringColor={option === 'neutral' ? '#737373' : swatch}
-                  selected={accent === option}
-                />
-              </button>
-            ))}
-
-            <label
-              aria-label="Custom colour"
-              className="relative cursor-pointer rounded-full focus-within:ring-2 focus-within:ring-primary"
-            >
-              <Swatch
-                background={customSelected ? customColor : CUSTOM_SWATCH}
-                label="Custom colour"
-                ringColor={customColor}
-                selected={customSelected}
-              />
-              <input
-                type="color"
-                value={customColor}
-                onChange={(event) => {
-                  const color = normalizeHexColor(event.target.value);
-                  if (color) applyThemeAccent('custom', color);
-                }}
-                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-              />
-            </label>
-          </div>
+          <ColourPanel wheelSize={180} />
         </div>
       )}
     </div>

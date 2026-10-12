@@ -64,12 +64,22 @@ test('theme picker closes on outside taps and Escape, and all surfaces derive fr
 
   assert.match(dismiss, /addEventListener\('pointerdown', handlePointerDown\)/);
   assert.match(dismiss, /event\.key === 'Escape'/);
-  assert.match(picker, /useDismissable\(open, containerRef, close\)/);
+  assert.match(picker, /useDismissable\(open && !isPhone, containerRef, close\)/);
   assert.match(modePicker, /useDismissable\(open, containerRef, close\)/);
   assert.match(modePicker, /label: 'System', value: 'system'/);
-  assert.match(picker, /type="color"/);
+  const wheel = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'colour-wheel.tsx'), 'utf8');
+  assert.doesNotMatch(picker, /type="color"/);
+  assert.match(picker, /<Drawer open=\{open\} onOpenChange=\{setOpen\}>/);
+  assert.match(wheel, /setPointerCapture/);
+  assert.match(wheel, /touch-none/);
   assert.doesNotMatch(picker, /Applies across every page/);
   assert.match(css, /--background: color-mix\(in oklab, var\(--brand\) 3%, #ffffff\);/);
   assert.match(css, /\.dark\[data-accent='neutral'\]/);
   assert.doesNotMatch(css, /data-accent='(pink|red|green|violet)'/);
+});
+
+test('in-app colour wheel converts hue/tone to valid colours', () => {
+  const home = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'page.tsx'), 'utf8');
+  assert.match(home, /<ModePicker /);
+  assert.match(home, /<ThemePicker /);
 });

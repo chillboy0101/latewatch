@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { LayoutDashboard, LogIn, Moon, Sun } from 'lucide-react';
+import { LayoutDashboard, LogIn } from 'lucide-react';
 import { useEffect, useSyncExternalStore } from 'react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
-import { Button } from '@/components/ui/button';
-import { applyThemePreference, getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
+import { ModePicker } from '@/components/theme/mode-picker';
+import { ThemePicker } from '@/components/theme/theme-picker';
+import { getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 
 const portals = [
   {
@@ -29,26 +30,12 @@ export default function Home() {
     document.documentElement.classList.toggle('dark', isDark);
   }, [isDark]);
 
-  function toggleTheme() {
-    applyThemePreference(isDark ? 'light' : 'dark');
-  }
-
   return (
     <main className="relative flex min-h-dvh items-center justify-center bg-background px-4 py-8 text-foreground">
-      <Button
-        variant="glass"
-        size="sm"
-        className="fixed right-4 top-4 z-20 h-10 gap-2 rounded-full px-4 shadow-sm sm:right-6 sm:top-6"
-        onClick={(event) => {
-          toggleTheme();
-          event.currentTarget.blur();
-        }}
-        title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-        aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-      >
-        {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-        <span>{isDark ? 'Light' : 'Dark'}</span>
-      </Button>
+      <div className="fixed right-4 top-4 z-20 flex items-center gap-2 sm:right-6 sm:top-6">
+        <ThemePicker buttonVariant="glass" buttonClassName="h-10 w-10 rounded-full shadow-sm" iconClassName="h-5 w-5" />
+        <ModePicker buttonVariant="glass" buttonClassName="h-10 w-10 rounded-full shadow-sm" />
+      </div>
 
       <div className="w-full max-w-3xl">
         <LateWatchLogo
