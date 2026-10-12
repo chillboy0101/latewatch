@@ -96,6 +96,8 @@ export function ColourWheel({
         aria-valuemax={359}
         aria-valuenow={hue}
         tabIndex={0}
+        // Dragging the wheel must not drag the mobile bottom sheet closed.
+        data-vaul-no-drag
         className="relative shrink-0 cursor-grab touch-none select-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card active:cursor-grabbing"
         style={{ width: size, height: size }}
         onPointerDown={(event) => {
@@ -162,8 +164,9 @@ export function ColourWheel({
           emit(hslToHex(hue, SATURATION, nextTone));
         }}
         className="colour-tone-slider w-full"
+        data-vaul-no-drag
         style={{
-          background: `linear-gradient(90deg, ${hslToHex(hue, SATURATION, MIN_TONE)}, ${hslToHex(hue, SATURATION, MAX_TONE)})`,
+          backgroundImage: `linear-gradient(90deg, ${hslToHex(hue, SATURATION, MIN_TONE)}, ${hslToHex(hue, SATURATION, MAX_TONE)})`,
           maxWidth: size + 24,
         }}
       />

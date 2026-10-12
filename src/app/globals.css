@@ -470,10 +470,14 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 .colour-tone-slider {
   -webkit-appearance: none;
   appearance: none;
-  height: 14px;
+  height: 28px;
   border-radius: 999px;
   outline: none;
   touch-action: none;
+  background-color: transparent;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 100% 14px;
 }
 
 .colour-tone-slider::-webkit-slider-thumb {
