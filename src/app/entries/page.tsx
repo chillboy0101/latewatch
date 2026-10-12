@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { DateField } from '@/components/ui/date-field';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { addDays, format, isValid, parseISO } from 'date-fns';
 import { ArrowLeft, Save, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Clock, RefreshCw, Search } from 'lucide-react';
@@ -16,6 +17,7 @@ import { getAccraDateKey } from '@/lib/date-key';
 import { formatLongDisplayDate } from '@/lib/date-format';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { formatLeaveSummary } from '@/lib/staff-leave';
+import { LATE_ARRIVAL_PERMISSION_REASONS } from '@/lib/attendance-permissions';
 
 interface StaffMember {
   id: string;
@@ -71,6 +73,9 @@ interface ExistingEntry {
   noSignOutWaived?: boolean | null;
   reason: string | null;
 }
+
+const LATE_ARRIVAL_PENALTY_REASON = "DIDN'T COME BEFORE 8:30AM";
+const LATE_ARRIVAL_PARDON_REASON_PREFIX = 'Approved late arrival';
 
 type EntrySnapshot = Pick<Entry, 'arrivalTime' | 'didNotSignOut' | 'signOutTime' | 'noShowSignInWaived' | 'noSignOutWaived'>;
 type SearchableValue = string | number | null | undefined;
@@ -165,6 +170,9 @@ function EntriesPageContent() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState(() => queryParam || '');
   const [showBackToPayments, setShowBackToPayments] = useState(() => Boolean(dateParam || queryParam));
+  const [lateArrivalPardonTarget, setLateArrivalPardonTarget] = useState<{ staffId: string; staffName: string } | null>(null);
+  const [lateArrivalPardonReason, setLateArrivalPardonReason] = useState<string>('personal excuse');
+  const [pardoningLateArrival, setPardoningLateArrival] = useState(false);
 
   const fetchStaffAndEntries = useCallback(async () => {
     try {
@@ -563,6 +571,45 @@ function EntriesPageContent() {
     }
   }
 
+  async function pardonLateArrival() {
+    if (!lateArrivalPardonTarget) return;
+    const { staffId, staffName } = lateArrivalPardonTarget;
+
+    setPardoningLateArrival(true);
+    try {
+      const response = await fetch('/api/attendance/permissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          arrivalWindow: 'any_time_today',
+          date: format(selectedDate, 'yyyy-MM-dd'),
+          permissionType: 'late_arrival',
+          reason: lateArrivalPardonReason,
+          staffId,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body?.error || 'Failed to pardon late arrival');
+      }
+
+      setLateArrivalPardonTarget(null);
+      setMessage(body?.reconciliation?.financialReviewRequired
+        ? {
+            type: 'error',
+            text: `Late arrival permission recorded for ${staffName}, but the amount was not changed because a payment is already allocated to this entry. Review it on Payments.`,
+          }
+        : { type: 'success', text: `Late arrival pardoned for ${staffName}.` });
+      await fetchStaffAndEntries();
+    } catch (error) {
+      console.error('Failed to pardon late arrival:', error);
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Failed to pardon late arrival' });
+    } finally {
+      setPardoningLateArrival(false);
+      setTimeout(() => setMessage(null), 5000);
+    }
+  }
+
   function changeSelectedDate(nextDate: Date) {
     setSelectedDate(nextDate);
     setMessage(null);
@@ -807,6 +854,15 @@ function EntriesPageContent() {
                       entry.reason === NO_SHOW_SIGN_IN_WAIVED_REASON ||
                       entry.noShowSignInWaived
                     );
+                  const hasUnsavedChanges = !entryMatchesSnapshot(entry, originalEntrySnapshots[entry.staffId]);
+                  const showLateArrivalPardonButton =
+                    !rowDisabled &&
+                    !isMonitoringStaff &&
+                    isSelectedDateInPastOrToday &&
+                    Boolean(entry.arrivalTime) &&
+                    entry.amount > 0 &&
+                    entry.reason.includes(LATE_ARRIVAL_PENALTY_REASON);
+                  const isLateArrivalPardoned = entry.amount === 0 && entry.reason.includes(LATE_ARRIVAL_PARDON_REASON_PREFIX);
                   return (
                     <tr key={entry.staffId} className="hover:bg-card/50 transition-colors">
                       <td className="px-4 py-3 text-sm text-muted-foreground">
@@ -895,11 +951,31 @@ function EntriesPageContent() {
                       </td>
                       <td className="px-4 py-3 text-sm font-mono">
                         {entry.amount > 0 ? (
-                          <span className="text-danger">GHC {entry.amount}</span>
+                          <div className="flex flex-col items-start gap-1">
+                            <span className="text-danger">GHC {entry.amount}</span>
+                            {showLateArrivalPardonButton && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="font-sans"
+                                disabled={hasUnsavedChanges || pardoningLateArrival}
+                                title={hasUnsavedChanges ? 'Save entries before pardoning this late arrival' : undefined}
+                                onClick={() => {
+                                  setLateArrivalPardonReason('personal excuse');
+                                  setLateArrivalPardonTarget({ staffId: entry.staffId, staffName: member?.fullName || 'staff member' });
+                                }}
+                              >
+                                Pardon late
+                              </Button>
+                            )}
+                          </div>
                         ) : entry.isGeneralPardon ? (
                           <span className="rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">General pardon</span>
                         ) : entry.isExcusedAbsence ? (
                           <span className="rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">Excused</span>
+                        ) : isLateArrivalPardoned ? (
+                          <span className="rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">Pardoned</span>
                         ) : entry.noSignOutWaived || entry.noShowSignInWaived ? (
                           <span className="rounded-full border border-warning/30 bg-warning/10 px-2 py-1 text-xs font-semibold text-warning">Waived</span>
                         ) : (
@@ -943,6 +1019,49 @@ function EntriesPageContent() {
         </Card>
 
       </div>
+
+      <Dialog
+        open={Boolean(lateArrivalPardonTarget)}
+        onOpenChange={(open) => {
+          if (!open && !pardoningLateArrival) setLateArrivalPardonTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Pardon Late Arrival</DialogTitle>
+            <DialogDescription>
+              {lateArrivalPardonTarget?.staffName} / {formatLongDisplayDate(selectedDateKey)}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <label htmlFor="late-arrival-pardon-reason" className="text-sm font-medium">Reason</label>
+            <select
+              id="late-arrival-pardon-reason"
+              value={lateArrivalPardonReason}
+              onChange={(event) => setLateArrivalPardonReason(event.target.value)}
+              disabled={pardoningLateArrival}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              {LATE_ARRIVAL_PERMISSION_REASONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Records an approved late arrival permission for this day. Any no sign-out penalty still applies.
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLateArrivalPardonTarget(null)} disabled={pardoningLateArrival}>
+              Cancel
+            </Button>
+            <Button onClick={() => void pardonLateArrival()} disabled={pardoningLateArrival}>
+              {pardoningLateArrival ? 'Pardoning...' : 'Pardon Late Arrival'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

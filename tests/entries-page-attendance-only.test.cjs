@@ -188,3 +188,14 @@ test('regular staff recalculation apply notifies live pages to refetch entries',
   assert.match(source, /'attendance'/);
   assert.match(source, /'dashboard'/);
 });
+
+test('entries page pardons late arrivals through an approved late-arrival permission', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'entries', 'page.tsx'), 'utf8');
+
+  assert.match(source, /fetch\('\/api\/attendance\/permissions'/);
+  assert.match(source, /permissionType: 'late_arrival'/);
+  assert.match(source, /arrivalWindow: 'any_time_today'/);
+  assert.match(source, /entry\.reason\.includes\(LATE_ARRIVAL_PENALTY_REASON\)/);
+  assert.match(source, /disabled=\{hasUnsavedChanges \|\| pardoningLateArrival\}/);
+  assert.match(source, /financialReviewRequired/);
+});
