@@ -204,6 +204,10 @@ export function getAuditTargetName(record: Pick<AuditDisplayRecord, 'afterJson' 
     return formatAuditValue(payload.operation) || record.entityId;
   }
 
+  if (record.entityType === 'lateness_debt_pardon') {
+    return payload.cutoffDate ? `Debts up to ${formatAuditValue(payload.cutoffDate)}` : record.entityId;
+  }
+
   return record.entityId;
 }
 

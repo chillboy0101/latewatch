@@ -2,16 +2,37 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { CheckCircle2, ExternalLink, Loader2, Plus, ReceiptText, Save, Search, Trash2 } from 'lucide-react';
+import { CheckCircle2, ExternalLink, HandHeart, Loader2, Plus, ReceiptText, Save, Search, Trash2 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { formatDisplayDate } from '@/lib/date-format';
+import { getAccraDateKey } from '@/lib/date-key';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
+
+type DebtPardonPreview = {
+  cutoffDate: string;
+  entryCount: number;
+  originalPenaltyTotal: string;
+  paidTotal: string;
+  pardonedTotal: string;
+  snapshotHash: string;
+  staff: Array<{
+    entryCount: number;
+    firstDate: string;
+    forgivenAmount: string;
+    fullName: string;
+    isAttendanceOnly: boolean;
+    lastDate: string;
+    staffId: string;
+  }>;
+  staffCount: number;
+};
 
 type PaymentStatus = 'paid' | 'partially_paid' | 'unpaid' | 'pardoned' | 'partially_pardoned';
 type StaffPaymentStatus = 'paid' | 'unpaid';
@@ -192,6 +213,14 @@ export default function PenaltyPaymentsPage() {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'error' | 'success' } | null>(null);
+  const [debtPardonOpen, setDebtPardonOpen] = useState(false);
+  const [debtPardonCutoff, setDebtPardonCutoff] = useState(() => getAccraDateKey());
+  const [debtPardonPreview, setDebtPardonPreview] = useState<DebtPardonPreview | null>(null);
+  const [debtPardonLoading, setDebtPardonLoading] = useState(false);
+  const [debtPardonApplying, setDebtPardonApplying] = useState(false);
+  const [debtPardonReason, setDebtPardonReason] = useState('');
+  const [debtPardonConfirmed, setDebtPardonConfirmed] = useState(false);
+  const [debtPardonError, setDebtPardonError] = useState<string | null>(null);
   const [offenceBookMonth, setOffenceBookMonth] = useState(new Date().getMonth());
   const [offenceBookYear, setOffenceBookYear] = useState(new Date().getFullYear());
   const [loadedOffenceBookKey, setLoadedOffenceBookKey] = useState<string | null>(null);
@@ -460,6 +489,68 @@ export default function PenaltyPaymentsPage() {
     }
   }
 
+  const loadDebtPardonPreview = useCallback(async (cutoffDate: string) => {
+    setDebtPardonLoading(true);
+    setDebtPardonError(null);
+    setDebtPardonPreview(null);
+    setDebtPardonConfirmed(false);
+    try {
+      const response = await fetch(`/api/payments/debt-pardon?cutoffDate=${encodeURIComponent(cutoffDate)}`, { cache: 'no-store' });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || `Preview failed (${response.status})`);
+      setDebtPardonPreview(body as DebtPardonPreview);
+    } catch (error) {
+      setDebtPardonError(error instanceof Error ? error.message : 'Could not preview the pardon');
+    } finally {
+      setDebtPardonLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (debtPardonOpen) void loadDebtPardonPreview(debtPardonCutoff);
+  }, [debtPardonCutoff, debtPardonOpen, loadDebtPardonPreview]);
+
+  function openDebtPardonDialog() {
+    const today = getAccraDateKey();
+    setDebtPardonCutoff(today);
+    setDebtPardonReason(`Executive pardon of all lateness debts up to ${formatDisplayDate(today)}`);
+    setDebtPardonConfirmed(false);
+    setDebtPardonError(null);
+    setDebtPardonOpen(true);
+  }
+
+  async function applyDebtPardon() {
+    if (!debtPardonPreview || debtPardonPreview.entryCount === 0) return;
+
+    setDebtPardonApplying(true);
+    setDebtPardonError(null);
+    try {
+      const response = await fetch('/api/payments/debt-pardon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cutoffDate: debtPardonPreview.cutoffDate,
+          expectedSnapshotHash: debtPardonPreview.snapshotHash,
+          reason: debtPardonReason,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || `Pardon failed (${response.status})`);
+
+      setDebtPardonOpen(false);
+      setMessage({
+        type: 'success',
+        text: `Pardoned ${currency(body.pardonedTotal)} across ${body.entryCount} entr${body.entryCount === 1 ? 'y' : 'ies'} for ${body.staffCount} staff (debts up to ${formatDisplayDate(debtPardonPreview.cutoffDate)}).`,
+      });
+      await loadPayments();
+    } catch (error) {
+      setDebtPardonError(error instanceof Error ? error.message : 'Could not apply the pardon');
+      if (debtPardonPreview) void loadDebtPardonPreview(debtPardonPreview.cutoffDate);
+    } finally {
+      setDebtPardonApplying(false);
+    }
+  }
+
   async function recordPayment(input: {
     actionKey: string;
     amount: number;
@@ -667,14 +758,26 @@ export default function PenaltyPaymentsPage() {
                 <PaymentToolbarTotal label="Pardoned" value={currency(selectedMonthBalance?.pardonedAmount)} tone="month" />
                 <PaymentToolbarTotal label="Unpaid" value={currency(selectedMonthBalance?.unpaidAmount)} tone="unpaid" />
               </div>
-              <div className="relative w-full md:max-w-sm">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search staff or email"
-                  className="pl-9"
-                />
+              <div className="flex w-full items-center gap-2 md:max-w-sm">
+                <div className="relative w-full">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search staff or email"
+                    className="pl-9"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 shrink-0 gap-2"
+                  disabled={loading}
+                  onClick={openDebtPardonDialog}
+                >
+                  <HandHeart className="h-4 w-4" />
+                  Pardon all
+                </Button>
               </div>
             </div>
           </div>
@@ -897,6 +1000,129 @@ export default function PenaltyPaymentsPage() {
                 <DialogDescription>Select a staff member from the table.</DialogDescription>
               </DialogHeader>
             )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={debtPardonOpen} onOpenChange={(open) => { if (!debtPardonApplying) setDebtPardonOpen(open); }}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Pardon all lateness debts</DialogTitle>
+              <DialogDescription>
+                Every unpaid lateness amount dated on or before the cutoff date is forgiven. Payments already made stay recorded, and penalties after the cutoff date are still owed.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="debt-pardon-cutoff" className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Pardon debts up to and including</label>
+                <Input
+                  id="debt-pardon-cutoff"
+                  type="date"
+                  value={debtPardonCutoff}
+                  max={getAccraDateKey()}
+                  disabled={debtPardonApplying}
+                  onChange={(event) => {
+                    if (event.target.value) setDebtPardonCutoff(event.target.value);
+                  }}
+                />
+              </div>
+
+              {debtPardonLoading ? (
+                <div className="flex items-center gap-2 rounded-md border border-border p-3 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Checking outstanding debts
+                </div>
+              ) : debtPardonPreview && debtPardonPreview.entryCount === 0 ? (
+                <div className="rounded-md border border-success/30 bg-success/10 p-3 text-sm text-success">
+                  Nobody owes anything up to {formatDisplayDate(debtPardonPreview.cutoffDate)}. There is nothing to pardon.
+                </div>
+              ) : debtPardonPreview ? (
+                <>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <PaymentToolbarTotal label="Staff" value={String(debtPardonPreview.staffCount)} tone="month" />
+                    <PaymentToolbarTotal label="Entries" value={String(debtPardonPreview.entryCount)} tone="month" />
+                    <PaymentToolbarTotal label="Already paid" value={currency(debtPardonPreview.paidTotal)} tone="paid" />
+                    <PaymentToolbarTotal label="To pardon" value={currency(debtPardonPreview.pardonedTotal)} tone="unpaid" />
+                  </div>
+                  <div className="max-h-56 overflow-y-auto rounded-md border border-border">
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 border-b border-border bg-muted/40 text-left text-xs uppercase text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">Staff</th>
+                          <th className="px-3 py-2 font-medium">Dates</th>
+                          <th className="px-3 py-2 text-right font-medium">Pardon</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {debtPardonPreview.staff.map((member) => (
+                          <tr key={member.staffId} className="border-b border-border last:border-0">
+                            <td className="px-3 py-2">
+                              {member.fullName}
+                              <span className="block text-xs text-muted-foreground">
+                                {member.entryCount} entr{member.entryCount === 1 ? 'y' : 'ies'}{member.isAttendanceOnly ? ' / attendance only' : ''}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-xs text-muted-foreground">
+                              {member.firstDate === member.lastDate
+                                ? formatDisplayDate(member.firstDate)
+                                : `${formatDisplayDate(member.firstDate)} to ${formatDisplayDate(member.lastDate)}`}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono">{currency(member.forgivenAmount)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div>
+                    <label htmlFor="debt-pardon-reason" className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Reason (kept in the audit trail)</label>
+                    <Input
+                      id="debt-pardon-reason"
+                      value={debtPardonReason}
+                      maxLength={300}
+                      disabled={debtPardonApplying}
+                      onChange={(event) => setDebtPardonReason(event.target.value)}
+                    />
+                  </div>
+                  <label className="flex items-start gap-3 rounded-md border border-border p-3 text-sm">
+                    <Checkbox
+                      checked={debtPardonConfirmed}
+                      disabled={debtPardonApplying}
+                      onCheckedChange={(checked) => setDebtPardonConfirmed(checked === true)}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      I confirm that {currency(debtPardonPreview.pardonedTotal)} owed by {debtPardonPreview.staffCount} staff up to {formatDisplayDate(debtPardonPreview.cutoffDate)} should be pardoned. This cannot be undone from the app.
+                    </span>
+                  </label>
+                </>
+              ) : null}
+
+              {debtPardonError && (
+                <div className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{debtPardonError}</div>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" disabled={debtPardonApplying} onClick={() => setDebtPardonOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="gap-2"
+                disabled={
+                  debtPardonApplying ||
+                  debtPardonLoading ||
+                  !debtPardonPreview ||
+                  debtPardonPreview.entryCount === 0 ||
+                  !debtPardonConfirmed ||
+                  debtPardonReason.trim().length < 3
+                }
+                onClick={() => void applyDebtPardon()}
+              >
+                {debtPardonApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <HandHeart className="h-4 w-4" />}
+                {debtPardonPreview && debtPardonPreview.entryCount > 0 ? `Pardon ${currency(debtPardonPreview.pardonedTotal)}` : 'Pardon'}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

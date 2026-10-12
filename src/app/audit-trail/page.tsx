@@ -243,6 +243,13 @@ function displayAuditDate(value: unknown, fallback = 'date') {
   return typeof value === 'string' ? formatDisplayDate(value, fallback) : fallback;
 }
 
+function describeDebtPardon(verb: string, data: Record<string, unknown> | null | undefined) {
+  const total = Number(data?.pardonedTotal || 0).toFixed(2);
+  const entries = Number(data?.entryCount || 0);
+  const staffCount = Number(data?.staffCount || 0);
+  return `${verb} GHC ${total} across ${entries} entr${entries === 1 ? 'y' : 'ies'} for ${staffCount} staff (debts up to ${displayAuditDate(data?.cutoffDate)})`;
+}
+
   function getDetails(event: AuditEvent) {
     const afterData = event.afterJson && typeof event.afterJson === 'object' ? event.afterJson : null;
     const beforeData = event.beforeJson && typeof event.beforeJson === 'object' ? event.beforeJson : null;
@@ -279,6 +286,9 @@ function displayAuditDate(value: unknown, fallback = 'date') {
       }
       if (event.entityType === 'calendar') {
         return `Holiday: "${afterData?.holidayNote || 'Unknown'}" on ${displayAuditDate(afterData?.date)}`;
+      }
+      if (event.entityType === 'lateness_debt_pardon') {
+        return describeDebtPardon('Pardoned', afterData);
       }
       return `Created new ${getEntityLabel(event.entityType).toLowerCase()}`;
     }
@@ -321,6 +331,10 @@ function displayAuditDate(value: unknown, fallback = 'date') {
       }
       if (event.entityType === 'office_network') {
         return `Office network updated${afterData?.allowedIp ? ` for ${afterData.allowedIp}` : ''}`;
+      }
+      if (event.entityType === 'lateness_debt_pardon') {
+        const note = typeof afterData?.note === 'string' ? ` - ${afterData.note}` : '';
+        return `${describeDebtPardon('Debt pardon corrected to', afterData)}${note}`;
       }
       return `${getEntityLabel(event.entityType).toLowerCase()} modified`;
     }

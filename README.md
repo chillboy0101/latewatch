@@ -272,6 +272,10 @@ database release process before deploying this change.
 
 ### Executive lateness-debt pardon
 
+Admins can now pardon debts from **Payments → Pardon all**: pick the cutoff date (today by default), review
+the per-staff preview, enter a reason and confirm. It applies the same atomic pardon as the script below,
+records it in the audit trail, and refuses to apply if debts changed after the preview.
+
 `drizzle/0030_lateness_debt_pardon.sql` adds an immutable pardon event and per-entry audit
 snapshot. The pardon applies only to unpaid lateness-related penalties represented by entries
 that exist at apply time. It includes active, inactive, archived, and attendance-only staff.
