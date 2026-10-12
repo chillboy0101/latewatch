@@ -247,6 +247,11 @@ test('excused absence permissions use date ranges and full-day bounds', () => {
     ['2026-05-04', '2026-05-05', '2026-05-06', '2026-05-07', '2026-05-08'],
   );
   assert.deepEqual(
+    getInclusivePermissionDateRange('2026-10-01', '2026-10-06'),
+    ['2026-10-01', '2026-10-02', '2026-10-05', '2026-10-06'],
+  );
+  assert.deepEqual(getInclusivePermissionDateRange('2026-10-03', '2026-10-04'), []);
+  assert.deepEqual(
     getAbsencePeriodBounds({
       permissionType: 'absence',
     }),

@@ -81,7 +81,10 @@ export function getInclusivePermissionDateRange(startDate: string, endDate = sta
 
   const dates: string[] = [];
   for (let timestamp = start.getTime(); timestamp <= end.getTime(); timestamp += DAY_MS) {
-    dates.push(new Date(timestamp).toISOString().slice(0, 10));
+    const day = new Date(timestamp);
+    // Weekends are not workdays, so they never need an attendance permission.
+    if (day.getUTCDay() === 0 || day.getUTCDay() === 6) continue;
+    dates.push(day.toISOString().slice(0, 10));
   }
 
   return dates;

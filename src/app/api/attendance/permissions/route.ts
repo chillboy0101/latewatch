@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
 
       appliedDates = getInclusivePermissionDateRange(date, absenceEndDate);
       if (appliedDates.length === 0) {
-        return NextResponse.json({ error: 'Absence end date must be on or after the start date' }, { status: 400 });
+        return NextResponse.json({ error: 'Absence period must end on or after the start date and include at least one weekday' }, { status: 400 });
       }
       if (appliedDates.length > MAX_ABSENCE_DAYS) {
         return NextResponse.json({ error: `Absence period cannot exceed ${MAX_ABSENCE_DAYS} days` }, { status: 400 });
