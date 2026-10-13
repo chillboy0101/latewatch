@@ -1293,10 +1293,11 @@ export default function CheckInPage() {
                       <AlertTriangle className="h-10 w-10 sm:h-12 sm:w-12" />
                     )}
                   </div>
-                  <h2 className="text-2xl font-bold text-balance leading-tight sm:text-3xl">{statusCopy(status)}</h2>
-                  <div className="flex flex-col items-center gap-2.5">
+                  {/* Status, name and location sit at one even spacing. */}
+                  <div className="flex max-w-full flex-col items-center gap-4 sm:gap-5">
+                    <h2 className="text-2xl font-bold text-balance leading-tight sm:text-3xl">{statusCopy(status)}</h2>
                     {status?.staff?.fullName && (
-                      <p className="max-w-full truncate text-lg font-semibold sm:text-xl">{status.staff.fullName}</p>
+                      <p className="max-w-full truncate text-lg font-semibold leading-tight sm:text-xl">{status.staff.fullName}</p>
                     )}
                     <LocationStatusChip status={status} liveLocation={liveLocation} />
                   </div>
