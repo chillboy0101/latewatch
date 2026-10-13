@@ -902,19 +902,16 @@ export default function AttendancePage() {
                 <>
                   <DateField
                     disabled={isEditingPermission}
-                    label="Absence Start"
+                    label="From"
                     value={permissionAbsenceStartDate}
                     onChange={setPermissionAbsenceStartDate}
                   />
                   <DateField
                     disabled={isEditingPermission}
-                    label="Absence End"
+                    label="To"
                     value={permissionAbsenceEndDate}
                     onChange={setPermissionAbsenceEndDate}
                   />
-                  <p className="sm:col-span-2 text-xs text-muted-foreground">
-                    Excused absence applies to these dates only. Use Manage ongoing leave for an open-ended staff leave period.
-                  </p>
                   <SelectField
                     className="sm:col-span-2"
                     icon={<FileText className="h-3.5 w-3.5" />}

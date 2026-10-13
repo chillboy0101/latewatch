@@ -56,8 +56,8 @@ test('attendance permission form exposes absence date range without period contr
   const source = fs.readFileSync(attendancePagePath, 'utf8');
 
   assert.match(source, /permissionAbsenceEndDate/);
-  assert.match(source, /label="Absence Start"/);
-  assert.match(source, /label="Absence End"/);
+  assert.match(source, /label="From"/);
+  assert.match(source, /label="To"/);
   assert.match(source, /absenceEndDate/);
   assert.doesNotMatch(source, /permissionAbsenceWindow/);
   assert.doesNotMatch(source, /label="Absence Period"/);
@@ -71,8 +71,8 @@ test('attendance permission modal contains the absence fields and actions', () =
   assert.match(source, /open=\{permissionDialogOpen\}/);
   assert.match(source, /New Permission/);
   assert.match(source, /Change Permission/);
-  assert.match(source, /label="Absence Start"/);
-  assert.match(source, /label="Absence End"/);
+  assert.match(source, /label="From"/);
+  assert.match(source, /label="To"/);
   assert.match(source, /disabled=\{isEditingPermission\}/);
   assert.match(source, /Approve Permission/);
   assert.match(source, /Update Permission/);

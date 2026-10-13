@@ -146,7 +146,7 @@ test('attendance permissions distinguish date-based absence from ongoing leave',
   const source = fs.readFileSync(attendanceOverviewPath, 'utf8');
 
   assert.match(source, /Manage ongoing leave/);
-  assert.match(source, /Excused absence applies to these dates only/);
+  assert.doesNotMatch(source, /Excused absence applies to these dates only/);
   assert.match(source, /<StaffLeaveDialog/);
 });
 
