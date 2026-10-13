@@ -482,6 +482,58 @@ function ghc(value: string | number | null | undefined) {
   return `GHC ${Number(value || 0).toFixed(2)}`;
 }
 
+/** Every week with penalties, newest first; the current week is also listed in history.weeks. */
+function penaltyWeeks(history: PenaltyHistoryResponse | null) {
+  return [history?.currentWeek, ...(history?.weeks || [])]
+    .filter((week): week is PenaltyHistoryWeek => Boolean(week))
+    .filter((week, index, list) => list.findIndex((other) => other.startDate === week.startDate) === index)
+    .filter((week) => week.entries.length > 0)
+    .sort((left, right) => right.startDate.localeCompare(left.startDate));
+}
+
+/** What the person still owes across every week (same figure in the menu and the sheet). */
+function penaltyOwed(history: PenaltyHistoryResponse | null) {
+  return penaltyWeeks(history).reduce((sum, week) => sum + Number(week.outstandingBalance || 0), 0);
+}
+
+function reminderSummary(signIn: boolean, signOut: boolean) {
+  if (signIn && signOut) return 'On · 8:15 AM & 4:30 PM';
+  if (signIn) return 'Sign-in only · 8:15 AM';
+  if (signOut) return 'Sign-out only · 4:30 PM';
+  return 'Off';
+}
+
+function MenuRow({
+  icon,
+  onClick,
+  status,
+  statusClassName,
+  title,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  onClick: () => void;
+  status: string;
+  statusClassName?: string;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex w-full items-center gap-3.5 px-3.5 py-3 text-left transition-colors hover:bg-foreground/5 active:bg-foreground/10"
+      >
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{icon}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-semibold text-foreground">{title}</span>
+          <span className={cn('block min-h-4 truncate text-xs text-muted-foreground', statusClassName)}>{status}</span>
+        </span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+      </button>
+    </li>
+  );
+}
+
 function validateLiveLocation(locationPolicy: CheckInStatus['locationPolicy'], evidence: LocationEvidence): LiveLocation {
   if (!locationPolicy) {
     return { blocking: false, message: 'Office location is not set yet.', state: 'idle' };
@@ -1162,6 +1214,7 @@ export default function CheckInPage() {
   const locationBlocksAction = Boolean(status?.locationConfigured && liveLocation.blocking);
   const signInReminderEnabled = Boolean(pushReminderStatus?.subscription?.signInEnabled && !pushReminderStatus.subscription.disabledAt);
   const signOutReminderEnabled = Boolean(pushReminderStatus?.subscription?.signOutEnabled && !pushReminderStatus.subscription.disabledAt);
+  const owedNow = penaltyOwed(penaltyHistory);
   const reminderControlsLocked = Boolean(!status?.device?.registered || !status.device.trusted);
   const transferRequestPending = status?.transferRequest?.status === 'pending';
 
@@ -1186,7 +1239,14 @@ export default function CheckInPage() {
             <ThemePicker buttonVariant="glass" buttonClassName="h-10 w-10 rounded-full" iconClassName="h-5 w-5" />
 
             <ModePicker buttonVariant="glass" buttonClassName="h-10 w-10 rounded-full" />
-            <Drawer open={menuOpen} onOpenChange={setMenuOpen}>
+            <Drawer
+              open={menuOpen}
+              onOpenChange={(next) => {
+                setMenuOpen(next);
+                // Fresh numbers for the "You owe" line each time the menu opens.
+                if (next) void fetchPenaltyHistory();
+              }}
+            >
               <DrawerTrigger asChild>
                 <Button
                   type="button"
@@ -1209,40 +1269,29 @@ export default function CheckInPage() {
                 <DrawerDescription className="sr-only">
                   Open payment receipts, penalty history, or reminder settings.
                 </DrawerDescription>
-                <div className="space-y-2 pt-4">
-                  <button
-                    type="button"
+                <ul className="mt-4 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-background">
+                  <MenuRow
+                    icon={<ReceiptText className="h-5 w-5" />}
+                    title="Payment receipts"
                     onClick={() => setReceiptsDialogOpen(true)}
-                    className="flex w-full items-center gap-3.5 rounded-xl border border-border bg-background px-3 py-3 text-left transition-colors hover:border-primary/40 hover:bg-foreground/5 active:bg-foreground/10"
-                  >
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                      <ReceiptText className="h-5 w-5" />
-                    </span>
-                    <span className="flex-1 text-[15px] font-semibold text-foreground">Payment receipts</span>
-                    {receiptNotifications.length > 0 && (
-                      <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-2 text-xs font-semibold text-primary-foreground">
-                        {receiptNotifications.length}
-                      </span>
-                    )}                  </button>
-                  <button
-                    type="button"
+                    status={receiptNotifications.length > 0 ? `${receiptNotifications.length} new` : 'All seen'}
+                    statusClassName={receiptNotifications.length > 0 ? 'font-medium text-primary' : undefined}
+                  />
+                  <MenuRow
+                    icon={<History className="h-5 w-5" />}
+                    title="Penalty history"
                     onClick={openPenaltyHistory}
-                    className="flex w-full items-center gap-3.5 rounded-xl border border-border bg-background px-3 py-3 text-left transition-colors hover:border-primary/40 hover:bg-foreground/5 active:bg-foreground/10"
-                  >
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                      <History className="h-5 w-5" />
-                    </span>
-                    <span className="flex-1 text-[15px] font-semibold text-foreground">Penalty history</span>                  </button>
-                  <button
-                    type="button"
+                    status={penaltyHistory ? (owedNow > 0 ? `You owe ${ghc(owedNow)}` : 'All paid up') : ''}
+                    statusClassName={penaltyHistory ? (owedNow > 0 ? 'text-warning' : 'text-success') : undefined}
+                  />
+                  <MenuRow
+                    icon={<BellRing className="h-5 w-5" />}
+                    title="Reminders"
                     onClick={() => setRemindersDialogOpen(true)}
-                    className="flex w-full items-center gap-3.5 rounded-xl border border-border bg-background px-3 py-3 text-left transition-colors hover:border-primary/40 hover:bg-foreground/5 active:bg-foreground/10"
-                  >
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                      <BellRing className="h-5 w-5" />
-                    </span>
-                    <span className="flex-1 text-[15px] font-semibold text-foreground">Reminders</span>                  </button>
-                </div>
+                    status={reminderSummary(signInReminderEnabled, signOutReminderEnabled)}
+                    statusClassName={!signInReminderEnabled && !signOutReminderEnabled ? 'text-warning' : undefined}
+                  />
+                </ul>
               </DrawerContent>
 
               <PenaltyHistoryDialog
@@ -1439,13 +1488,8 @@ function PenaltyHistoryDialog({
   open: boolean;
 }) {
   const currentWeek = history?.currentWeek || null;
-  // Every week with penalties, newest first (the current week is also in history.weeks).
-  const weeks = [currentWeek, ...(history?.weeks || [])]
-    .filter((week): week is PenaltyHistoryWeek => Boolean(week))
-    .filter((week, index, list) => list.findIndex((other) => other.startDate === week.startDate) === index)
-    .filter((week) => week.entries.length > 0)
-    .sort((left, right) => right.startDate.localeCompare(left.startDate));
-  const owed = weeks.reduce((sum, week) => sum + Number(week.outstandingBalance || 0), 0);
+  const weeks = penaltyWeeks(history);
+  const owed = penaltyOwed(history);
 
   return (
     <DrawerNested open={open} onOpenChange={onOpenChange}>

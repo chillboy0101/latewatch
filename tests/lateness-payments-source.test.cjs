@@ -281,3 +281,13 @@ test('receipt notification helper uses stable ids and one-time push payloads', (
   assert.match(source, /requireInteraction: false/);
   assert.match(source, /renotify: false/);
 });
+
+test('the ⋯ menu shows the status of each sheet at a glance', () => {
+  const source = fs.readFileSync(checkInPagePath, 'utf8');
+  assert.match(source, /function penaltyOwed\(history: PenaltyHistoryResponse \| null\)/);
+  assert.match(source, /const owedNow = penaltyOwed\(penaltyHistory\);/);
+  assert.match(source, /const owed = penaltyOwed\(history\);/);
+  assert.match(source, /owedNow > 0 \? `You owe \$\{ghc\(owedNow\)\}` : 'All paid up'/);
+  assert.match(source, /if \(signIn && signOut\) return 'On · 8:15 AM & 4:30 PM';/);
+  assert.match(source, /if \(next\) void fetchPenaltyHistory\(\);/);
+});
