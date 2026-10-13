@@ -68,9 +68,13 @@ test('theme picker closes on outside taps and Escape, and all surfaces derive fr
   assert.match(modePicker, /useDismissable\(open, containerRef, close\)/);
   assert.match(modePicker, /label: 'System', value: 'system'/);
   const wheel = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'colour-wheel.tsx'), 'utf8');
-  // Hybrid: in-app wheel plus a "More colours" button that opens the device's native picker.
-  assert.match(picker, /function NativeColourButton/);
+  // Hybrid: in-app wheel plus "More colours": the native sheet on touch devices, an in-panel
+  // hex field and screen eyedropper on computers (instead of the browser's boxy popup).
+  assert.match(picker, /function MoreColours/);
+  assert.match(picker, /const COARSE_QUERY = '\(pointer: coarse\)';/);
   assert.match(picker, /type="color"\s+aria-label="More colours"/);
+  assert.match(picker, /aria-label="Hex colour"/);
+  assert.match(picker, /EyeDropper/);
   assert.match(picker, /setTimeout\(\(\) => applyThemeAccent\('custom', hex\), NATIVE_SAVE_DELAY_MS\)/);
   assert.match(picker, /<Drawer open=\{open\} onOpenChange=\{setOpen\}>/);
   assert.match(wheel, /setPointerCapture/);
@@ -216,6 +220,7 @@ test('staff picker opens inside its dialog with search and a capped scroll list'
     ['src', 'app', 'payments', 'page.tsx'],
     ['src', 'components', 'attendance', 'staff-leave-dialog.tsx'],
     ['src', 'app', 'attendance', 'overview', 'page.tsx'],
+    ['src', 'app', 'emergency-contacts', 'page.tsx'],
   ]) {
     const source = read(...file);
     assert.match(source, /<StaffPicker/);

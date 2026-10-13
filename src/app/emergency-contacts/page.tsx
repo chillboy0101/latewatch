@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { StaffPicker } from '@/components/ui/staff-picker';
 import { Label } from '@/components/ui/label';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
@@ -400,22 +401,12 @@ function ContactFormFields({
   return (
     <div className="grid gap-4 pt-2">
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="staff-id">Staff Member *</Label>
-          <select
-            id="staff-id"
-            className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/35"
-            onChange={(event) => onChange({ staffId: event.target.value })}
-            value={form.staffId}
-          >
-            <option value="">Select staff</option>
-            {availableStaff.map((member) => (
-              <option key={member.id} value={member.id}>
-                {member.fullName}
-              </option>
-            ))}
-          </select>
-        </div>
+        <StaffPicker
+          label="Staff Member *"
+          value={form.staffId}
+          options={availableStaff.map((member) => ({ fullName: member.fullName, id: member.id }))}
+          onChange={(staffId) => onChange({ staffId })}
+        />
 
         <div className="space-y-2">
           <Label htmlFor="staff-phone">Staff Phone *</Label>
