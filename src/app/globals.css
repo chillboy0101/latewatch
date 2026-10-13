@@ -22,14 +22,14 @@
   --muted-foreground: #9ca3af;
 
   /* Light mode: surfaces carry a faint tint of the accent so every page matches the selection. */
-  --background: color-mix(in oklab, var(--brand) 3%, #ffffff);
-  --foreground: color-mix(in oklab, var(--brand) 8%, #171717);
-  --card: color-mix(in oklab, var(--brand) 6%, #f9fafb);
+  --background: color-mix(in oklab, var(--brand) 9%, #ffffff);
+  --foreground: color-mix(in oklab, var(--brand) 10%, #171717);
+  --card: color-mix(in oklab, var(--brand) 3%, #ffffff);
   --card-foreground: var(--foreground);
-  --border: color-mix(in oklab, var(--brand) 16%, #e5e7eb);
+  --border: color-mix(in oklab, var(--brand) 22%, #e5e7eb);
   --primary: var(--brand-light);
   --primary-foreground: var(--brand-light-foreground);
-  --scrollbar-track: color-mix(in oklab, var(--brand) 6%, #f3f4f6);
+  --scrollbar-track: color-mix(in oklab, var(--brand) 10%, #f3f4f6);
   --scrollbar-thumb: var(--brand-light);
   --scrollbar-thumb-hover: var(--brand-light-hover);
 }
@@ -69,11 +69,11 @@
 
 .dark {
   color-scheme: dark;
-  --background: color-mix(in oklab, var(--brand) 7%, #0a0a0a);
+  --background: color-mix(in oklab, var(--brand) 14%, #0a0a0a);
   --foreground: color-mix(in oklab, var(--brand) 6%, #fafafa);
-  --card: color-mix(in oklab, var(--brand) 10%, #161616);
+  --card: color-mix(in oklab, var(--brand) 15%, #161616);
   --card-foreground: var(--foreground);
-  --border: color-mix(in oklab, var(--brand) 24%, #262626);
+  --border: color-mix(in oklab, var(--brand) 32%, #262626);
   --primary: var(--brand-dark);
   --primary-foreground: var(--brand-dark-foreground);
   --success: #10b981;
@@ -81,7 +81,7 @@
   --danger: #ef4444;
   --muted: #6b7280;
   --muted-foreground: #9ca3af;
-  --scrollbar-track: color-mix(in oklab, var(--brand) 8%, #18181b);
+  --scrollbar-track: color-mix(in oklab, var(--brand) 14%, #18181b);
   --scrollbar-thumb: var(--brand-dark);
   --scrollbar-thumb-hover: var(--brand-dark-hover);
 }
@@ -466,3 +466,52 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   }
 }
 
+
+/* App-like selection behaviour.
+   Controls (buttons, menus, navigation, the colour picker) are never selectable, so a long-press or a
+   drag never highlights them. On touch devices — including the installed PWA — nothing outside form
+   fields is selectable. On desktops, ordinary text (emails, amounts, audit details) stays copyable. */
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a,
+nav,
+label,
+summary,
+img,
+svg,
+[role="button"],
+[role="slider"],
+[role="menu"],
+[role="menuitemradio"],
+[role="tab"],
+[data-vaul-drawer] {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+img {
+  -webkit-user-drag: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  body {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+}
+
+input,
+textarea,
+select,
+[contenteditable="true"],
+.select-text,
+.select-text * {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}

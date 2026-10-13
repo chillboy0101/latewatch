@@ -40,7 +40,7 @@ function hexToHueTone(hex: string) {
   return { hue: Math.round(hue), tone };
 }
 
-function useFrameEmitter(onChange: (hex: string) => void) {
+function useFrameEmitter(onPreview: (hex: string) => void) {
   const frameRef = useRef<number | null>(null);
   const pendingRef = useRef<string | null>(null);
 
@@ -54,22 +54,26 @@ function useFrameEmitter(onChange: (hex: string) => void) {
     if (frameRef.current !== null) return;
     frameRef.current = requestAnimationFrame(() => {
       frameRef.current = null;
-      if (pendingRef.current) onChange(pendingRef.current);
+      if (pendingRef.current) onPreview(pendingRef.current);
     });
-  }, [onChange]);
+  }, [onPreview]);
 }
 
 export function ColourWheel({
   value,
   selected,
   onChange,
+  onPreview,
   size = 200,
 }: {
   /** The colour currently applied to the app. */
   value: string;
   /** Whether the current theme is a wheel (custom) colour rather than a preset. */
   selected: boolean;
+  /** Saves the colour (called once when a drag ends, or on a key press). */
   onChange: (hex: string) => void;
+  /** Recolours the page live while dragging, without saving. */
+  onPreview: (hex: string) => void;
   size?: number;
 }) {
   const [hue, setHue] = useState(() => hexToHueTone(value).hue);
@@ -79,7 +83,18 @@ export function ColourWheel({
   const [followedValue, setFollowedValue] = useState(value);
   const wheelRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
-  const emitFrame = useFrameEmitter(onChange);
+  const emitFrame = useFrameEmitter(onPreview);
+  const dragColourRef = useRef<string | null>(null);
+  const onChangeRef = useRef(onChange);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  // If the sheet closes mid-drag, keep the colour that was showing instead of snapping back.
+  useEffect(() => () => {
+    if (dragColourRef.current) onChangeRef.current(dragColourRef.current);
+  }, []);
 
   // Follow colour changes made elsewhere (a preset tap, another device) without fighting a drag.
   if (!dragging && value !== followedValue) {
@@ -91,10 +106,17 @@ export function ColourWheel({
     }
   }
 
-  const emit = (nextHue: number, nextTone: number) => {
+  // While dragging only preview; the colour is saved once when the drag ends.
+  const emit = (nextHue: number, nextTone: number, commit = false) => {
     const hex = hslToHex(nextHue, SATURATION, nextTone);
     setLastEmitted(hex);
-    emitFrame(hex);
+    if (commit) {
+      dragColourRef.current = null;
+      onChange(hex);
+    } else {
+      dragColourRef.current = hex;
+      emitFrame(hex);
+    }
   };
 
   const ring = Math.round(size * 0.15);
@@ -132,11 +154,11 @@ export function ColourWheel({
     if (kind === 'hue') {
       const nextHue = (hue + (forward ? 1 : -1) * (event.shiftKey ? 15 : 5) + 360) % 360;
       setHue(nextHue);
-      emit(nextHue, tone);
+      emit(nextHue, tone, true);
     } else {
       const nextTone = Math.min(MAX_TONE, Math.max(MIN_TONE, tone + (forward ? 2 : -2)));
       setTone(nextTone);
-      emit(hue, nextTone);
+      emit(hue, nextTone, true);
     }
   }
 
@@ -148,7 +170,12 @@ export function ColourWheel({
     else toneFromPointer(event);
   }
 
-  const stopDrag = () => setDragging(null);
+  const stopDrag = () => {
+    setDragging(null);
+    const finalColour = dragColourRef.current;
+    dragColourRef.current = null;
+    if (finalColour) onChange(finalColour);
+  };
 
   return (
     <div className="flex w-full flex-col items-center gap-4" data-vaul-no-drag>
@@ -185,7 +212,7 @@ export function ColourWheel({
         <span
           aria-hidden
           className="absolute flex items-center justify-center rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)] transition-[background-color,transform] duration-200"
-          style={{ inset: KNOB_GAP + ring + 12, background: value, transform: dragging ? 'scale(1.04)' : undefined }}
+          style={{ inset: KNOB_GAP + ring + 12, background: dragging ? hslToHex(hue, SATURATION, tone) : value, transform: dragging ? 'scale(1.04)' : undefined }}
         >
           {selected && <Check className="h-7 w-7 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]" strokeWidth={3} />}
         </span>

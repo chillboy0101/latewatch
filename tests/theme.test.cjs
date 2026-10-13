@@ -73,7 +73,7 @@ test('theme picker closes on outside taps and Escape, and all surfaces derive fr
   assert.match(wheel, /setPointerCapture/);
   assert.match(wheel, /touch-none/);
   assert.doesNotMatch(picker, /Applies across every page/);
-  assert.match(css, /--background: color-mix\(in oklab, var\(--brand\) 3%, #ffffff\);/);
+  assert.match(css, /--background: color-mix\(in oklab, var\(--brand\) 9%, #ffffff\);/);
   assert.match(css, /\.dark\[data-accent='neutral'\]/);
   assert.doesNotMatch(css, /data-accent='(pink|red|green|violet)'/);
 });
@@ -94,13 +94,18 @@ test('theme colour syncs to the account, defaulting to blue for first-time users
   const provider = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'auth', 'clerk-theme-provider.tsx'), 'utf8');
 
   assert.deepEqual(DEFAULT_THEME_SELECTION, { accent: 'blue', customColor: '#2563eb' });
-  assert.deepEqual(parseThemeSelection({ accent: 'custom', customColor: '#ABCDEF' }), { accent: 'custom', customColor: '#abcdef' });
+  assert.deepEqual(parseThemeSelection({ accent: 'custom', customColor: '#ABCDEF', updatedAt: 5 }), { accent: 'custom', customColor: '#abcdef', updatedAt: 5 });
   assert.equal(parseThemeSelection({ accent: 'role-admin' }), null);
   assert.equal(parseThemeSelection('red'), null);
   assert.ok(sameThemeSelection({ accent: 'red', customColor: '#000000' }, { accent: 'red', customColor: '#ffffff' }));
 
-  assert.match(sync, /unsafeMetadata: \{ \.\.\.current\.unsafeMetadata, theme: selection \}/);
-  assert.match(sync, /keepLocal \? getThemeSelection\(\) : DEFAULT_THEME_SELECTION/);
+  const route = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'api', 'account', 'theme', 'route.ts'), 'utf8');
+  assert.match(route, /updateUserMetadata\(userId, \{ unsafeMetadata: \{ theme \} \}\)/);
+  assert.match(route, /current\.updatedAt > theme\.updatedAt/);
+  assert.match(route, /publishRealtime\(themeChannelForUser\(userId\), 'theme'/);
+  assert.match(sync, /channel\.subscribe\('theme', handler\)/);
+  assert.match(sync, /applyThemeSelection\(\{ \.\.\.DEFAULT_THEME_SELECTION, updatedAt: Date\.now\(\) \}\)/);
+  assert.match(sync, /\(remote\.updatedAt \|\| 0\) > getThemeUpdatedAt\(\)/);
   assert.doesNotMatch(sync, /role/);
   assert.match(provider, /<ThemeAccountSync \/>/);
 });

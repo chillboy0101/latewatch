@@ -9,6 +9,7 @@ import {
   applyThemeAccent,
   getThemeAccent,
   getThemeAccentColor,
+  previewThemeAccentColor,
   subscribeThemeChange,
   THEME_ACCENT_PRESETS,
 } from '@/lib/theme';
@@ -70,6 +71,7 @@ function ColourPanel({ wheelSize }: { wheelSize: number }) {
         value={accentColor}
         selected={accent === 'custom'}
         onChange={(hex) => applyThemeAccent('custom', hex)}
+        onPreview={previewThemeAccentColor}
       />
     </div>
   );

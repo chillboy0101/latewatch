@@ -23,6 +23,7 @@ const THEME_ACCENT_KEY = 'theme-accent';
 const THEME_CUSTOM_COLOR_KEY = 'theme-custom-color';
 const THEME_VARIABLES_KEY = 'theme-accent-variables';
 const THEME_OWNER_KEY = 'theme-accent-owner';
+const THEME_UPDATED_AT_KEY = 'theme-accent-updated-at';
 const DEFAULT_ACCENT: ThemeAccentPreset = 'blue';
 const HEX_PATTERN = /^#[0-9a-f]{6}$/i;
 
@@ -122,26 +123,41 @@ export function getThemeAccentColor() {
   return accent === 'custom' ? getThemeCustomColor() : PRESET_SWATCHES[accent];
 }
 
-export type ThemeSelection = { accent: ThemeAccent; customColor: string };
+export type ThemeSelection = { accent: ThemeAccent; customColor: string; updatedAt?: number };
 
 /** The accent selection in the shape saved to the signed-in user's account. */
 export function getThemeSelection(): ThemeSelection {
-  return { accent: getThemeAccent(), customColor: getThemeCustomColor() };
+  return { accent: getThemeAccent(), customColor: getThemeCustomColor(), updatedAt: getThemeUpdatedAt() };
+}
+
+/** When the colour on this device was last chosen (ms). 0 when it has never been chosen here. */
+export function getThemeUpdatedAt() {
+  if (typeof window === 'undefined') return 0;
+  const value = Number(readStorage(THEME_UPDATED_AT_KEY));
+  return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
 export function parseThemeSelection(value: unknown): ThemeSelection | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   const customColor = normalizeHexColor(record.customColor) || PRESET_SWATCHES[DEFAULT_ACCENT];
-  if (record.accent === 'custom') return { accent: 'custom', customColor };
+  const updatedAt = typeof record.updatedAt === 'number' && Number.isFinite(record.updatedAt) && record.updatedAt > 0
+    ? record.updatedAt
+    : 0;
+  if (record.accent === 'custom') return { accent: 'custom', customColor, updatedAt };
   if (typeof record.accent === 'string' && record.accent in PRESET_SWATCHES) {
-    return { accent: record.accent as ThemeAccentPreset, customColor };
+    return { accent: record.accent as ThemeAccentPreset, customColor, updatedAt };
   }
   return null;
 }
 
 export function sameThemeSelection(left: ThemeSelection, right: ThemeSelection) {
   return left.accent === right.accent && (left.accent !== 'custom' || left.customColor === right.customColor);
+}
+
+/** Live-update channel carrying one person's theme colour to their other open devices. */
+export function themeChannelForUser(userId: string) {
+  return `user-theme:${userId}`;
 }
 
 export const DEFAULT_THEME_SELECTION: ThemeSelection = { accent: DEFAULT_ACCENT, customColor: PRESET_SWATCHES[DEFAULT_ACCENT] };
@@ -160,9 +176,28 @@ export function setThemeAccentOwner(userId: string) {
   writeStorage(THEME_OWNER_KEY, userId);
 }
 
+/** Applies a selection that came from the account, keeping its timestamp. */
 export function applyThemeSelection(selection: ThemeSelection) {
-  if (sameThemeSelection(selection, getThemeSelection()) && hasStoredThemeAccent()) return;
-  applyThemeAccent(selection.accent, selection.customColor);
+  if (sameThemeSelection(selection, getThemeSelection()) && hasStoredThemeAccent()) {
+    if (selection.updatedAt && selection.updatedAt > getThemeUpdatedAt()) writeStorage(THEME_UPDATED_AT_KEY, String(selection.updatedAt));
+    return;
+  }
+  applyThemeAccent(selection.accent, selection.customColor, selection.updatedAt || Date.now());
+}
+
+/**
+ * Recolours the page for a colour being dragged on the wheel, without saving or notifying anyone.
+ * The final colour is saved once with applyThemeAccent when the drag ends.
+ */
+export function previewThemeAccentColor(hex: string) {
+  if (typeof window === 'undefined') return;
+  const color = normalizeHexColor(hex);
+  if (!color) return;
+  const root = document.documentElement;
+  root.dataset.accent = 'brand';
+  for (const [name, value] of Object.entries(computeAccentVariables(color))) {
+    root.style.setProperty(name, value);
+  }
 }
 
 /** The primary colour actually shown for the current accent and mode (used outside CSS, e.g. Clerk). */
@@ -219,7 +254,7 @@ function applyAccentToDocument() {
   });
 }
 
-export function applyThemeAccent(accent: ThemeAccent, customColor?: string) {
+export function applyThemeAccent(accent: ThemeAccent, customColor?: string, updatedAt = Date.now()) {
   if (typeof window === 'undefined') return;
 
   // Remember the custom colour even while a preset is active, so it is still there to return to.
@@ -227,6 +262,7 @@ export function applyThemeAccent(accent: ThemeAccent, customColor?: string) {
   if (color) writeStorage(THEME_CUSTOM_COLOR_KEY, color);
   else if (accent === 'custom') writeStorage(THEME_CUSTOM_COLOR_KEY, getThemeCustomColor());
   writeStorage(THEME_ACCENT_KEY, accent);
+  writeStorage(THEME_UPDATED_AT_KEY, String(updatedAt));
   applyAccentToDocument();
   window.dispatchEvent(new Event(THEME_EVENT));
 }
@@ -265,4 +301,9 @@ export function buildThemeBootScript() {
 
 if (typeof window !== 'undefined') {
   applyAccentToDocument();
+  // Another tab or portal on this device changed the colour: recolour this one too.
+  window.addEventListener('storage', (event) => {
+    if (event.key === THEME_ACCENT_KEY || event.key === THEME_CUSTOM_COLOR_KEY) applyAccentToDocument();
+    if (event.key === 'theme') document.documentElement.classList.toggle('dark', getIsDarkTheme());
+  });
 }
