@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { cn } from '@/lib/utils';
 import { addDays, format, isValid, parseISO } from 'date-fns';
-import { AlarmClock, ArrowLeft, Save, CheckCircle, AlertCircle, CalendarOff, ChevronLeft, ChevronRight, Clock, RefreshCw, Search, ShieldCheck, X } from 'lucide-react';
+import { ArrowLeft, ClockAlert, Save, CheckCircle, AlertCircle, CalendarOff, ChevronLeft, ChevronRight, Clock, RefreshCw, Search, ShieldCheck, X } from 'lucide-react';
 import { computePenalty } from '@/lib/penalty-calculator';
 import { NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/penalty-calculator';
 import { getAccraDateKey } from '@/lib/date-key';
@@ -141,6 +141,29 @@ function entryMatchesSnapshot(entry: Entry, snapshot: EntrySnapshot | undefined)
     entry.noSignOutWaived === snapshot.noSignOutWaived &&
     normalizeTimeValue(entry.signOutTime) === normalizeTimeValue(snapshot.signOutTime)
   );
+}
+
+const STATUS_TAG_CLASS = 'whitespace-nowrap rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary';
+
+/**
+ * The one status tag shown under a staff member's name: on leave, general pardon, excused absence
+ * or late-arrival permission (in that order, so a row never shows two tags for the same reason).
+ * coversReason: the Reason column would only repeat the tag, so it shows "-" instead.
+ */
+function getEntryStatusTag(entry: Entry, leaveSummary?: string | null): { coversReason: boolean; detail?: string; label: string } | null {
+  const reason = entry.reason || '';
+  const detailAfter = (text: string) => text.slice(text.indexOf(':') + 1).trim() || undefined;
+
+  if (leaveSummary !== undefined) return { coversReason: false, detail: leaveSummary || undefined, label: 'On leave' };
+  if (entry.isGeneralPardon) return { coversReason: entry.amount === 0, label: 'General pardon' };
+  if (entry.isExcusedAbsence) {
+    const isExcuseText = reason.toLowerCase().startsWith('excused absence');
+    return { coversReason: isExcuseText || !reason, detail: isExcuseText ? detailAfter(reason) : undefined, label: 'Excused' };
+  }
+  if (reason.startsWith(LATE_ARRIVAL_PARDON_REASON_PREFIX)) {
+    return { coversReason: entry.amount === 0, detail: reason.includes(':') ? detailAfter(reason) : undefined, label: 'Late permission' };
+  }
+  return null;
 }
 
 // The fields an admin edits in the grid; everything else (amount, reason, flags) comes from the server.
@@ -999,7 +1022,7 @@ function EntriesPageContent() {
                       ? { state: 'excused', text: 'Excused' }
                       : entry.arrivalTime
                         ? entry.amount === 0 && entry.reason.includes(LATE_ARRIVAL_PARDON_REASON_PREFIX)
-                          ? { state: 'waived', title: 'Late fee waived' }
+                          ? { state: 'waived', title: 'Late permission' }
                           : entry.amount > 0 && entry.reason.includes(LATE_ARRIVAL_PENALTY_REASON)
                             ? { state: 'late', title: 'Late arrival' }
                             : { state: 'ok' }
@@ -1019,21 +1042,26 @@ function EntriesPageContent() {
                           : entry.didNotSignOut
                             ? { state: 'missing', text: 'No sign-out', title: 'No sign-out: charged' }
                             : { state: 'empty' };
+                  const statusTag = getEntryStatusTag(entry, isOnLeave ? leaveSummary : undefined);
                   // Two charges on the row (late + no sign-out): offer one action for both.
                   const showWaiveAllButton =
                     showLateArrivalPardonButton &&
                     entry.didNotSignOut &&
                     !entry.noSignOutWaived &&
                     !entry.signOutTime;
-                  const isLateArrivalPardoned = entry.amount === 0 && entry.reason.includes(LATE_ARRIVAL_PARDON_REASON_PREFIX);
                   return (
                     <tr key={entry.staffId} className="hover:bg-card/50 transition-colors">
                       <td className="px-4 py-3 text-sm text-muted-foreground">
                         {String(index + 1).padStart(2, '0')}
                       </td>
                       <td className="px-4 py-3 text-sm font-medium">
-                        <div className="flex items-center gap-2">
-                          <span>{member?.fullName}</span>
+                        <div>{member?.fullName}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 empty:hidden">
+                          {statusTag && (
+                            <span className={STATUS_TAG_CLASS}>
+                              {statusTag.label}{statusTag.detail ? ` · ${statusTag.detail}` : ''}
+                            </span>
+                          )}
                           {hasUnsavedChanges && conflictStaffIds.has(entry.staffId) && (
                             <span
                               className="shrink-0 whitespace-nowrap rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning"
@@ -1042,13 +1070,8 @@ function EntriesPageContent() {
                               Changed by another admin
                             </span>
                           )}
-                          {isOnLeave && (
-                            <span className="shrink-0 whitespace-nowrap rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
-                              On leave{leaveSummary ? ` · ${leaveSummary}` : ''}
-                            </span>
-                          )}
                           {member?.archived && (
-                            <span className="rounded-full border border-warning/25 px-2 py-0.5 text-[11px] font-medium text-warning">
+                            <span className="whitespace-nowrap rounded-full border border-warning/25 px-2 py-0.5 text-[11px] font-medium text-warning">
                               Former
                             </span>
                           )}
@@ -1148,20 +1171,14 @@ function EntriesPageContent() {
                               </Button>
                             )}
                           </div>
-                        ) : entry.isGeneralPardon ? (
-                          <span className="rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">General pardon</span>
-                        ) : entry.isExcusedAbsence ? (
-                          <span className="rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">Excused</span>
-                        ) : isLateArrivalPardoned ? (
-                          <span className="rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">Pardoned</span>
-                        ) : entry.noSignOutWaived || entry.noShowSignInWaived ? (
-                          <span className="rounded-full border border-warning/30 bg-warning/10 px-2 py-1 text-xs font-semibold text-warning">Waived</span>
                         ) : (
+                          // Money only: excuses, pardons and waivers show as name tags and field states.
                           <span className="text-muted-foreground">-</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {entry.reason || '-'}
+                        {/* A permission or excuse is already shown as a tag; only charges and notes stay here. */}
+                        {statusTag?.coversReason ? '-' : entry.reason || '-'}
                       </td>
                     </tr>
                   );
@@ -1268,7 +1285,7 @@ type TimeFieldState = 'ok' | 'late' | 'missing' | 'waived' | 'excused' | 'leave'
 // so the sign-in and sign-out columns read the same way without notes underneath.
 const TIME_FIELD_STATE: Record<TimeFieldState, { field: string; icon: string; Icon: typeof Clock | null; text: string }> = {
   ok: { field: '', icon: 'text-muted-foreground', Icon: CheckCircle, text: '' },
-  late: { field: 'border-warning/60 bg-warning/5', icon: 'text-warning', Icon: AlarmClock, text: '' },
+  late: { field: 'border-warning/60 bg-warning/5', icon: 'text-warning', Icon: ClockAlert, text: '' },
   missing: { field: 'border-danger/60 bg-danger/5', icon: 'text-danger', Icon: AlertCircle, text: 'text-danger' },
   waived: { field: 'border-dashed', icon: 'text-muted-foreground', Icon: ShieldCheck, text: 'text-muted-foreground' },
   excused: { field: 'opacity-70', icon: 'text-muted-foreground', Icon: CalendarOff, text: 'text-muted-foreground' },

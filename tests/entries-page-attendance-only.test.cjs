@@ -109,18 +109,19 @@ test('entries page omits removed manual message queue controls', () => {
   assert.doesNotMatch(source, new RegExp(queueSymbol));
 });
 
-test('entries page shows general pardon in the amount column for pardoned rows', () => {
+test('entries page tags general pardons under the name and keeps the amount column for money', () => {
   const source = fs.readFileSync(entriesPagePath, 'utf8');
 
-  assert.match(source, /isGeneralPardon/);
-  assert.match(source, />General pardon</);
+  assert.match(source, /if \(entry\.isGeneralPardon\) return \{ coversReason: entry\.amount === 0, label: 'General pardon' \};/);
+  assert.doesNotMatch(source, />General pardon<\/span>/);
+  assert.doesNotMatch(source, /bg-success\/10 px-2 py-1 text-xs font-semibold text-success">(Excused|Pardoned|General pardon)/);
 });
 
 test('entries page shows waived no-sign-out rows without a charge', () => {
   const source = fs.readFileSync(entriesPagePath, 'utf8');
 
   assert.match(source, /noSignOutWaived/);
-  assert.match(source, />Waived</);
+  assert.match(source, /\{ state: 'waived', text: 'Waived', title: 'No sign-out waived' \}/);
 });
 
 test('entries page tracks changed rows and submits only precise updates', () => {
@@ -175,7 +176,7 @@ test('entries page renders excused absence permissions without missing sign-out 
   const source = fs.readFileSync(entriesPagePath, 'utf8');
 
   assert.match(source, /isExcusedAbsence/);
-  assert.match(source, />Excused</);
+  assert.match(source, /label: 'Excused'/);
   assert.match(source, /!entry\.isExcusedAbsence/);
   assert.match(source, /entry\.isExcusedAbsence\s+\? \{ state: 'excused', text: 'Excused' \}/);
 });
@@ -253,4 +254,14 @@ test('entries page puts each waiver beside its charge and offers Waive all for t
   // Waive all applies the late-fee permission, then saves the no-sign-out waiver for that row.
   assert.match(source, /if \(mode === 'all'\) \{/);
   assert.match(source, /noSignOutWaived: true,\s+noSignOutWaivedChanged:/);
+});
+
+test('entries status tags sit under the name in the theme colour, with a clear late icon', () => {
+  const source = fs.readFileSync(entriesPagePath, 'utf8');
+  assert.match(source, /Icon: ClockAlert/);
+  assert.doesNotMatch(source, /AlarmClock/);
+  assert.match(source, /const STATUS_TAG_CLASS = 'whitespace-nowrap rounded-full border border-primary\/25 bg-primary\/10/);
+  assert.match(source, /function getEntryStatusTag\(/);
+  assert.match(source, /label: 'Late permission'/);
+  assert.match(source, /\{statusTag\?\.coversReason \? '-' : entry\.reason \|\| '-'\}/);
 });
