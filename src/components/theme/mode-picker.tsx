@@ -13,6 +13,8 @@ const MODES: Array<{ icon: typeof Sun; label: string; value: ThemePreference }> 
   { icon: Monitor, label: 'System', value: 'system' },
 ];
 
+const SECTION_LABEL = 'px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground';
+
 export function ModePicker({
   buttonClassName,
   buttonVariant = 'ghost',
@@ -25,6 +27,7 @@ export function ModePicker({
   const preference = useSyncExternalStore(subscribeThemeChange, getThemePreference, () => 'system');
   const isDark = useSyncExternalStore(subscribeThemeChange, getIsDarkTheme, () => true);
   const accent = useSyncExternalStore(subscribeThemeChange, getThemeAccent, () => 'blue');
+  const showColourReset = accent !== 'blue';
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -48,7 +51,8 @@ export function ModePicker({
       </Button>
 
       {open && (
-        <div role="menu" aria-label="Appearance" className="absolute right-0 top-full z-50 mt-2 w-44 rounded-xl border border-border bg-card p-1 text-card-foreground shadow-xl">
+        <div role="menu" aria-label="Appearance" className="absolute right-0 top-full z-50 mt-2 w-48 rounded-xl border border-border bg-card p-1 text-card-foreground shadow-xl">
+          {showColourReset && <p className={SECTION_LABEL}>Mode</p>}
           {MODES.map(({ icon: Icon, label, value }) => (
             <button
               key={value}
@@ -70,9 +74,10 @@ export function ModePicker({
             </button>
           ))}
           {/* Back to the standard blue after picking a colour with the theme colour button. */}
-          {accent !== 'blue' && (
+          {showColourReset && (
             <>
               <div className="my-1 h-px bg-border" />
+              <p className={SECTION_LABEL}>Colour</p>
               <button
                 type="button"
                 role="menuitem"
@@ -83,7 +88,8 @@ export function ModePicker({
                 className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
               >
                 <RotateCcw className="h-4 w-4" />
-                <span className="flex-1 text-left">Default colour</span>
+                <span className="flex-1 whitespace-nowrap text-left">Reset to blue</span>
+                <span aria-hidden className="h-3 w-3 rounded-full bg-[#2563eb]" />
               </button>
             </>
           )}

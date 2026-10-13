@@ -125,7 +125,8 @@ test('theme colour button opens the native colour picker on each device directly
   assert.match(picker, /defaultValue=\{accentColor\}/);
   // A way back to the standard blue.
   assert.match(modePicker, /applyThemeAccent\('blue'\)/);
-  assert.match(modePicker, /Default colour/);
+  assert.match(modePicker, />Reset to blue</);
+  assert.match(modePicker, /<p className=\{SECTION_LABEL\}>Colour<\/p>/);
 });
 
 test('rate limiter falls back to Postgres when the configured Redis is unreachable', () => {

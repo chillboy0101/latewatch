@@ -18,7 +18,7 @@ const LIVE_SHARE_INTERVAL_MS = 250;
 /**
  * The theme colour button opens the device's own colour picker directly (phone sheet, Mac colour
  * panel, browser picker on Windows). Any colour works: the theme keeps text readable whatever is
- * picked. "Default colour" in the appearance menu goes back to the standard blue.
+ * picked. "Reset to blue" in the appearance menu goes back to the standard blue.
  */
 export function ThemePicker({
   buttonClassName,
@@ -65,7 +65,7 @@ export function ThemePicker({
   }, []);
 
   // The input is uncontrolled so the picker is never reset mid-choice; it follows colour changes
-  // made elsewhere (another device, Default colour). React's onChange fires on every movement, so
+  // made elsewhere (another device, Reset to blue). React's onChange fires on every movement, so
   // the final colour is saved from the browser's own "change" event, sent when the picker closes.
   useEffect(() => {
     const input = inputRef.current;
