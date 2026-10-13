@@ -3,7 +3,7 @@
 import { UserButton, useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, ChevronRight, History, Loader2, LogOut, MapPin, MoreHorizontal, Printer, ReceiptText, ShieldCheck, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -101,6 +101,8 @@ interface PushReminderStatus {
     endpoint: string;
     signInEnabled: boolean;
     signOutEnabled: boolean;
+    /** Reminders are switched on but the last one sent to this phone was rejected. */
+    failing?: boolean;
   } | null;
 }
 
@@ -973,7 +975,7 @@ export default function CheckInPage() {
   const updatePushReminderSettings = useCallback(async (next: {
     signInEnabled: boolean;
     signOutEnabled: boolean;
-  }, source: 'signIn' | 'signOut' | 'all' = 'all') => {
+  }, source: 'signIn' | 'signOut' | 'all' = 'all', options?: { refresh?: boolean }) => {
     setSavingPushReminder(true);
     setSavingReminderKey(source);
     setMessage(null);
@@ -1027,7 +1029,12 @@ export default function CheckInPage() {
 
       await navigator.serviceWorker.register('/sw.js');
       const registration = await navigator.serviceWorker.ready;
-      const existingSubscription = await registration.pushManager.getSubscription();
+      let existingSubscription = await registration.pushManager.getSubscription();
+      // A rejected registration is replaced with a fresh one so reminders start arriving again.
+      if (options?.refresh && existingSubscription) {
+        await existingSubscription.unsubscribe().catch(() => false);
+        existingSubscription = null;
+      }
       const browserSubscription = existingSubscription || await registration.pushManager.subscribe({
         applicationServerKey: vapidPublicKeyToUint8Array(publicKey),
         userVisibleOnly: true,
@@ -1330,6 +1337,24 @@ export default function CheckInPage() {
                     </div>
                   )}
                 </div>
+
+                <ReminderCheckPrompt
+                  eligible={
+                    Boolean(deviceToken)
+                    && Boolean(status?.staff?.id)
+                    && pushReminderStatus !== null
+                    && notificationPermission !== 'unsupported'
+                    && !reminderControlsLocked
+                    && (!signInReminderEnabled || !signOutReminderEnabled || pushReminderStatus.subscription?.failing === true)
+                  }
+                  failing={pushReminderStatus?.subscription?.failing === true}
+                  saving={savingPushReminder}
+                  staffId={status?.staff?.id || null}
+                  today={status?.date || null}
+                  onTurnOn={(refresh) => {
+                    void updatePushReminderSettings({ signInEnabled: true, signOutEnabled: true }, 'all', { refresh });
+                  }}
+                />
 
                 <NotificationNudge
                   eligible={Boolean(deviceToken) && pushReminderStatus !== null && !reminderNudgeSuppressed && notificationPermission !== 'unsupported' && !signInReminderEnabled && !signOutReminderEnabled && !reminderControlsLocked}
@@ -1937,6 +1962,94 @@ function RemindersDialog({
         </div>
       </DrawerContent>
     </DrawerNested>
+  );
+}
+
+// One-time reminders check (October 2026): everyone whose reminders are off, partly off, or not
+// arriving sees this once, then never again. New interns setting up now are left out.
+const REMINDER_CHECK_KEY = 'latewatch.reminder-check.2026-10';
+const REMINDER_CHECK_EXPIRES = '2026-10-31';
+const REMINDER_CHECK_EXCLUDED_STAFF = new Set([
+  'adcf818d-223e-4746-98b6-7b915fc429ca', // Cobblah Stephanie Omanye (new intern)
+  '3ca24381-2e5f-4e8f-b4f2-f9d0ce15c826', // Nyarko Christabel Dede (new intern)
+]);
+
+function ReminderCheckPrompt({
+  eligible,
+  failing,
+  onTurnOn,
+  saving,
+  staffId,
+  today,
+}: {
+  eligible: boolean;
+  failing: boolean;
+  onTurnOn: (refresh: boolean) => void;
+  saving: boolean;
+  staffId: string | null;
+  today: string | null;
+}) {
+  const [closed, setClosed] = useState(false);
+  const storageKey = staffId ? `${REMINDER_CHECK_KEY}:${staffId}` : null;
+  const show = eligible
+    && Boolean(storageKey)
+    && Boolean(today && today <= REMINDER_CHECK_EXPIRES)
+    && !REMINDER_CHECK_EXCLUDED_STAFF.has(staffId || '');
+  // Whether this person already saw it on this device, read once when it would first appear.
+  const seenBefore = useMemo(() => {
+    if (!show || !storageKey) return true;
+    try {
+      return Boolean(localStorage.getItem(storageKey));
+    } catch {
+      return true;
+    }
+  }, [show, storageKey]);
+  const open = show && !seenBefore && !closed;
+
+  // Mark it seen as soon as it appears, so it never shows again.
+  useEffect(() => {
+    if (!open || !storageKey) return;
+    try {
+      localStorage.setItem(storageKey, new Date().toISOString());
+    } catch {
+      // Storage blocked: it may show again next visit, which is harmless.
+    }
+  }, [open, storageKey]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[96] flex items-end justify-center bg-black/40 p-4 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="reminder-check-title">
+      <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-xl animate-in fade-in-0 slide-in-from-bottom-4 duration-300">
+        <div className="flex h-11 w-11 items-center justify-center rounded-full border border-primary/30 bg-primary/15 text-primary">
+          <BellRing className="h-5 w-5" />
+        </div>
+        <h3 id="reminder-check-title" className="mt-4 text-base font-semibold">
+          {failing ? 'Your reminders stopped working' : 'Turn on your reminders'}
+        </h3>
+        <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+          {failing
+            ? 'Reminders can’t reach this phone any more. Turn them back on to get a nudge at 8:15 AM to sign in and 4:30 PM to sign out.'
+            : 'Get a nudge at 8:15 AM to sign in and 4:30 PM to sign out, even when the app is closed.'}
+        </p>
+        <div className="mt-5 grid gap-2">
+          <Button
+            className="h-11 gap-2"
+            disabled={saving}
+            onClick={() => {
+              onTurnOn(failing);
+              setClosed(true);
+            }}
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <BellRing className="h-4 w-4" />}
+            Turn on reminders
+          </Button>
+          <Button variant="ghost" className="h-11" onClick={() => setClosed(true)}>
+            Not now
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 

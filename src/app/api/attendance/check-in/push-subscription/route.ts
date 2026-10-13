@@ -2,7 +2,7 @@ import { currentUser } from '@clerk/nextjs/server';
 import { and, desc, eq, isNull, ne } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { pushSubscription, staffDevice } from '@/db/schema';
+import { pushReminderDelivery, pushSubscription, staffDevice } from '@/db/schema';
 import { getOrAutoLinkStaffByEmail } from '@/lib/attendance';
 import { getDeviceTokenFromRequest } from '@/lib/device-binding';
 import { resolveDeviceHash } from '@/lib/device-rekey';
@@ -29,7 +29,7 @@ function getUserEmailAddresses(user: NonNullable<Awaited<ReturnType<typeof curre
   return Array.from(new Set(emails));
 }
 
-function publicPayload(subscription: typeof pushSubscription.$inferSelect | null) {
+function publicPayload(subscription: typeof pushSubscription.$inferSelect | null, failing = false) {
   return {
     configured: hasVapidConfig(),
     publicKey: getVapidPublicKey(),
@@ -39,9 +39,21 @@ function publicPayload(subscription: typeof pushSubscription.$inferSelect | null
           endpoint: subscription.endpoint,
           signInEnabled: subscription.signInEnabled,
           signOutEnabled: subscription.signOutEnabled,
+          // The last reminder sent to this phone was rejected (e.g. an expired notification
+          // registration), so reminders are switched on but not actually arriving.
+          failing,
         }
       : null,
   };
+}
+
+async function isPushSubscriptionFailing(subscriptionId: string) {
+  const [latest] = await db.select({ status: pushReminderDelivery.status })
+    .from(pushReminderDelivery)
+    .where(eq(pushReminderDelivery.subscriptionId, subscriptionId))
+    .orderBy(desc(pushReminderDelivery.createdAt))
+    .limit(1);
+  return latest?.status === 'failed';
 }
 
 async function getActivePushSubscription(staffId: string, userId: string) {
@@ -136,8 +148,9 @@ export async function GET() {
   if (resolved.error) return resolved.error;
 
   const subscription = await getActivePushSubscription(resolved.staffMember.id, resolved.user.id);
+  const failing = subscription ? await isPushSubscriptionFailing(subscription.id) : false;
 
-  return NextResponse.json(publicPayload(subscription || null), {
+  return NextResponse.json(publicPayload(subscription || null, failing), {
     headers: { 'Cache-Control': 'no-store' },
   });
 }

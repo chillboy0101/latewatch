@@ -254,3 +254,17 @@ test('dialogs with a staff picker scroll normally and only overflow while the pi
   // The pardon staff list scrolls on its own however many people it holds.
   assert.match(read('src', 'app', 'payments', 'page.tsx'), /<ul className="absolute inset-x-0 bottom-full z-50 mb-1\.5 max-h-48 divide-y divide-border overflow-y-auto/);
 });
+
+test('one-time reminders check prompts staff whose reminders are off or failing, except new interns', () => {
+  const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
+  const page = read('src', 'app', 'check-in', 'page.tsx');
+  const route = read('src', 'app', 'api', 'attendance', 'check-in', 'push-subscription', 'route.ts');
+  assert.match(page, /const REMINDER_CHECK_KEY = 'latewatch\.reminder-check\.2026-10';/);
+  assert.match(page, /const REMINDER_CHECK_EXPIRES = '2026-10-31';/);
+  assert.match(page, /'adcf818d-223e-4746-98b6-7b915fc429ca', \/\/ Cobblah Stephanie Omanye/);
+  assert.match(page, /'3ca24381-2e5f-4e8f-b4f2-f9d0ce15c826', \/\/ Nyarko Christabel Dede/);
+  assert.match(page, /!signInReminderEnabled \|\| !signOutReminderEnabled \|\| pushReminderStatus\.subscription\?\.failing === true/);
+  assert.match(page, /localStorage\.setItem\(storageKey, new Date\(\)\.toISOString\(\)\)/);
+  assert.match(page, /if \(options\?\.refresh && existingSubscription\)/);
+  assert.match(route, /return latest\?\.status === 'failed';/);
+});
