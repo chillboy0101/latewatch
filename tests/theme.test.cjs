@@ -64,28 +64,16 @@ test('theme picker closes on outside taps and Escape, and all surfaces derive fr
 
   assert.match(dismiss, /addEventListener\('pointerdown', handlePointerDown\)/);
   assert.match(dismiss, /event\.key === 'Escape'/);
-  assert.match(picker, /useDismissable\(open && !isPhone, containerRef, close\)/);
   assert.match(modePicker, /useDismissable\(open, containerRef, close\)/);
   assert.match(modePicker, /label: 'System', value: 'system'/);
-  const wheel = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'colour-wheel.tsx'), 'utf8');
-  // Hybrid: in-app wheel plus "More colours": the native sheet on touch devices, an in-panel
-  // hex field and screen eyedropper on computers (instead of the browser's boxy popup).
-  assert.match(picker, /function MoreColours/);
-  assert.match(picker, /const COARSE_QUERY = '\(pointer: coarse\)';/);
-  assert.match(picker, /type="color"\s+aria-label="More colours"/);
-  assert.match(picker, /aria-label="Hex colour"/);
-  assert.match(picker, /EyeDropper/);
-  assert.match(picker, /setTimeout\(\(\) => applyThemeAccent\('custom', hex\), NATIVE_SAVE_DELAY_MS\)/);
-  assert.match(picker, /<Drawer open=\{open\} onOpenChange=\{setOpen\}>/);
-  assert.match(wheel, /setPointerCapture/);
-  assert.match(wheel, /touch-none/);
+  assert.match(picker, /type="color"\s+aria-label="Theme colour"/);
   assert.doesNotMatch(picker, /Applies across every page/);
   assert.match(css, /--background: color-mix\(in oklab, var\(--brand\) 14%, #ffffff\);/);
   assert.match(css, /\.dark\[data-accent='neutral'\]/);
   assert.doesNotMatch(css, /data-accent='(pink|red|green|violet)'/);
 });
 
-test('in-app colour wheel converts hue/tone to valid colours', () => {
+test('home page shows the appearance and theme colour buttons', () => {
   const home = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'page.tsx'), 'utf8');
   assert.match(home, /<ModePicker /);
   assert.match(home, /<ThemePicker /);
@@ -125,44 +113,25 @@ test('theme colour syncs to the account, defaulting to blue for first-time users
   assert.match(provider, /<ThemeAccountSync \/>/);
 });
 
-test('colour wheel stays visible, follows the current colour and never uses the native picker', () => {
-  const wheel = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'colour-wheel.tsx'), 'utf8');
+test('theme colour button opens the native colour picker on each device directly', () => {
   const picker = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'theme-picker.tsx'), 'utf8');
+  const modePicker = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'mode-picker.tsx'), 'utf8');
 
-  assert.match(picker, /<ColourWheel\s+size=\{wheelSize\}\s+value=\{accentColor\}/);
-  assert.doesNotMatch(picker, /wheelOpen/);
-  assert.doesNotMatch(wheel, /type="range"|type="color"/);
-  assert.match(wheel, /aria-label="Colour tone"/);
-  assert.equal((wheel.match(/data-vaul-no-drag/g) || []).length >= 3, true);
+  assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'colour-wheel.tsx')), false);
+  assert.doesNotMatch(picker, /ColourWheel|THEME_ACCENT_PRESETS|Drawer|EyeDropper/);
+  // Live recolour while picking; saved once from the native change event when the picker closes.
+  assert.match(picker, /onChange=\{\(event\) => previewLive\(event\.target\.value\)\}/);
+  assert.match(picker, /input\.addEventListener\('change', handleChange\)/);
+  assert.match(picker, /defaultValue=\{accentColor\}/);
+  // A way back to the standard blue.
+  assert.match(modePicker, /applyThemeAccent\('blue'\)/);
+  assert.match(modePicker, /Default colour/);
 });
 
 test('rate limiter falls back to Postgres when the configured Redis is unreachable', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'lib', 'rate-limit.ts'), 'utf8');
   assert.match(source, /rate-limit Redis unavailable, using Postgres/);
   assert.match(source, /return await allowRequestViaPostgres\(key, limit, windowSeconds\);/);
-});
-
-test('colour wheel drags without re-rendering and recolours the app on pause', () => {
-  const wheel = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'colour-wheel.tsx'), 'utf8');
-  // Visuals move by direct transforms during a drag; the wheel is measured once per drag.
-  assert.match(wheel, /orbitRef\.current\.style\.transform = orbitTransform\(live\.current\.turn\)/);
-  assert.match(wheel, /live\.current\.rect = rect;/);
-  assert.doesNotMatch(wheel, /function moveDrag[\s\S]{0,300}getBoundingClientRect/);
-  // Whole-app recolour runs live once per frame, spacing out only if a device cannot keep up.
-  assert.match(wheel, /state\.previewFrame = requestAnimationFrame\(run\)/);
-  assert.match(wheel, /cost > FRAME_BUDGET_MS/);
-  // Colours snap during a drag: transitions are suspended for the drag and restored after commit.
-  assert.match(wheel, /live\.current\.resumeTransitions = suspendThemeTransitions\(\)/);
-  // Ring drawn from the same formula as the picked colour; centre taps ignored.
-  assert.match(wheel, /hslToHex\(index \* 15, SATURATION, RING_LIGHTNESS\)/);
-  assert.match(wheel, /if \(distance < innerRadius - 6\) return;/);
-});
-
-test('preset changes move the wheel knob around its ring, the short way', () => {
-  const wheel = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'colour-wheel.tsx'), 'utf8');
-  assert.match(wheel, /function unwrapTurn\(previousTurn: number, hue: number\)/);
-  assert.match(wheel, /setCommitted\(\{ \.\.\.next, turn: unwrapTurn\(committed\.turn, next\.hue\) \}\)/);
-  assert.match(wheel, /const orbitTransform = \(turn: number\) => `rotate\(/);
 });
 
 test('light/dark/system mode is remembered explicitly and synced with the colour', () => {
@@ -187,7 +156,7 @@ test('theme changes snap instantly and are shared live while dragging', () => {
   assert.match(themeLib, /\*:not\(\[data-keep-transition\]\),\*::before,\*::after\{transition:none!important\}/);
   assert.match(themeLib, /function applyAccentToDocument\(\) \{\n  const resume = suspendThemeTransitions\(\);/);
   assert.match(picker, /const LIVE_SHARE_INTERVAL_MS = 250;/);
-  assert.match(picker, /onPreview=\{previewLive\}/);
+  assert.match(picker, /previewLive\(event\.target\.value\)/);
   // First save goes out immediately, then at most one per interval.
   assert.match(sync, /const wait = Math\.max\(0, SAVE_INTERVAL_MS - \(Date\.now\(\) - lastSentAt\)\);/);
 });
@@ -200,14 +169,6 @@ test('check-in status card and location chip follow the theme colour in every st
   const chip = page.slice(page.indexOf('function LocationStatusChip('));
   assert.match(chip, /border-primary\/30 bg-primary\/10 px-3\.5 text-sm font-semibold text-primary/);
   assert.doesNotMatch(chip.slice(0, chip.indexOf('\n}\n')), /success|warning|danger/);
-});
-
-test('colour wheel tone thumb stays whole at both ends of the track', () => {
-  const wheel = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'colour-wheel.tsx'), 'utf8');
-  assert.match(wheel, /const THUMB_INSET = 16;/);
-  assert.match(wheel, /style=\{\{ left: THUMB_INSET, right: THUMB_INSET \}\}/);
-  assert.match(wheel, /\(clientX - rect\.left - THUMB_INSET\) \/ \(rect\.width - THUMB_INSET \* 2\)/);
-  assert.match(wheel, /relative h-9 cursor-pointer touch-none select-none outline-none \[contain:layout\] /);
 });
 
 test('staff picker opens inside its dialog with search and a capped scroll list', () => {

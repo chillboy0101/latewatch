@@ -206,8 +206,8 @@ export function subscribeThemeUserChange(callback: () => void) {
 }
 
 /**
- * Recolours the page for a colour being dragged on the wheel, without saving or notifying anyone.
- * The final colour is saved once with applyThemeAccent when the drag ends.
+ * Recolours the page for a colour being picked, without saving or notifying anyone.
+ * The final colour is saved once with applyThemeAccent when the picker closes.
  */
 export function previewThemeAccentColor(hex: string) {
   if (typeof window === 'undefined') return;
@@ -256,7 +256,7 @@ export function subscribeThemeChange(callback: () => void) {
 }
 
 // Colour changes should snap, not fade: while suspended, no element animates colour transitions.
-// This also removes transition bookkeeping for every element during live wheel drags.
+// This also removes transition bookkeeping for every element during live colour previews.
 const NO_TRANSITIONS_ID = 'latewatch-theme-no-transitions';
 let suspendCount = 0;
 
@@ -267,7 +267,7 @@ export function suspendThemeTransitions() {
   if (!document.getElementById(NO_TRANSITIONS_ID)) {
     const style = document.createElement('style');
     style.id = NO_TRANSITIONS_ID;
-    // Elements marked data-keep-transition (the colour wheel's knob and previews) keep animating.
+    // Elements marked data-keep-transition keep animating.
     style.textContent = '*:not([data-keep-transition]),*::before,*::after{transition:none!important}';
     document.head.appendChild(style);
   }
