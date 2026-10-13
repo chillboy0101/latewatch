@@ -1,12 +1,16 @@
 // app/api/dashboard/route.ts
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { auditEvent, latenessEntry, staff, workCalendar } from '@/db/schema';
 import { gte, lte, and, desc, count, eq } from 'drizzle-orm';
 import { startOfWeek, addDays, subWeeks, format } from 'date-fns';
 import { getAuditActivityLabel, getAuditSummary, getAuditTargetName } from '@/lib/audit-display';
+import { getMissedReminderRuns, maybeRunMissedReminderBatch } from '@/lib/reminder-fallback';
 
 export async function GET() {
+  // If a reminder cron missed its slot today, send that batch after this response.
+  after(() => maybeRunMissedReminderBatch());
+
   try {
     const today = new Date();
     const weekStart = startOfWeek(today, { weekStartsOn: 1 }); // Monday
@@ -103,7 +107,13 @@ export async function GET() {
       timestamp: event.timestamp,
     }));
 
+    const missedReminders = await getMissedReminderRuns().catch((error) => {
+      console.error('Failed to check reminder runs:', error);
+      return [];
+    });
+
     return NextResponse.json({
+      missedReminders,
       weekTotal,
       weekEntryCount: weekEntriesResult.length,
       staffCount,

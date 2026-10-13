@@ -373,9 +373,11 @@ export async function getReminderDeliveryMonitor(date: string) {
     };
     const alerts: Array<{ message: string; tone: 'danger' | 'warning' }> = [];
 
-    if (scheduledPassed && !lastRunAt) {
+    // No reminder is due on weekends or holidays, so a missing run then is not a problem.
+    const missedRun = !isWeekend && !isHoliday && scheduledPassed && !lastRunAt;
+    if (missedRun) {
       alerts.push({
-        message: `${REMINDER_SCHEDULES[reminderType].label} reminder job has not run today - check Vercel cron logs.`,
+        message: `${REMINDER_SCHEDULES[reminderType].label} reminder job has not run today. LateWatch sends it on the next page visit; check the cron jobs.`,
         tone: 'danger',
       });
     } else if (scheduledPassed && summary.eligible > 0 && summary.sent === 0) {
@@ -417,6 +419,7 @@ export async function getReminderDeliveryMonitor(date: string) {
       alerts,
       label: REMINDER_SCHEDULES[reminderType].label,
       lastRunAt,
+      missedRun,
       reminderType,
       rows,
       scheduledPassed,

@@ -30,12 +30,22 @@ interface ReminderMonitorApiRow {
   status: ReminderMonitorRowStatus;
 }
 
+interface ReminderMonitorApiSection {
+  label: string;
+  lastRunAt: string | null;
+  missedRun?: boolean;
+  rows: ReminderMonitorApiRow[];
+  scheduledPassed: boolean;
+}
+
 interface ReminderMonitorApiResponse {
   sections: {
-    signIn: { rows: ReminderMonitorApiRow[] };
-    signOut: { rows: ReminderMonitorApiRow[] };
+    signIn: ReminderMonitorApiSection;
+    signOut: ReminderMonitorApiSection;
   };
 }
+
+type ReminderRunInfo = Pick<ReminderMonitorApiSection, 'label' | 'lastRunAt' | 'missedRun' | 'scheduledPassed'>;
 
 function reminderStatusLabel(status: ReminderMonitorRowStatus) {
   if (status === 'sent') return 'Sent';
@@ -269,6 +279,7 @@ const EMPTY_REMINDER_MAPS: ReminderStatusMaps = { signIn: new Map(), signOut: ne
 export default function DeviceSessionHealthPage() {
   const [data, setData] = useState<DeviceHealthResponse | null>(null);
   const [reminderMaps, setReminderMaps] = useState<ReminderStatusMaps>(EMPTY_REMINDER_MAPS);
+  const [reminderRuns, setReminderRuns] = useState<ReminderRunInfo[]>([]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
@@ -291,10 +302,17 @@ export default function DeviceSessionHealthPage() {
       for (const row of payload.sections?.signIn?.rows ?? []) signIn.set(row.staff.id, row.status);
       for (const row of payload.sections?.signOut?.rows ?? []) signOut.set(row.staff.id, row.status);
       setReminderMaps({ signIn, signOut });
+      setReminderRuns([payload.sections?.signIn, payload.sections?.signOut].filter(Boolean).map((section) => ({
+        label: section.label,
+        lastRunAt: section.lastRunAt,
+        missedRun: section.missedRun,
+        scheduledPassed: section.scheduledPassed,
+      })));
     } catch (reminderError) {
       if ((reminderError as Error).name === 'AbortError') return;
       // Non-blocking: keep device rows rendering, chips fall back to '—'.
       setReminderMaps(EMPTY_REMINDER_MAPS);
+      setReminderRuns([]);
     }
   }, []);
 
@@ -440,6 +458,33 @@ export default function DeviceSessionHealthPage() {
             </Button>
           </div>
         </Card>
+
+        {reminderRuns.length > 0 && (
+          <div className="flex flex-wrap gap-2" aria-label="Reminder runs today">
+            {reminderRuns.map((run) => (
+              <span
+                key={run.label}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium',
+                  run.missedRun
+                    ? 'border-danger/30 bg-danger/10 text-danger'
+                    : run.lastRunAt
+                      ? 'border-success/25 bg-success/10 text-success'
+                      : 'border-border bg-card text-muted-foreground',
+                )}
+              >
+                {run.missedRun ? <AlertTriangle className="h-3.5 w-3.5" /> : run.lastRunAt ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Clock3 className="h-3.5 w-3.5" />}
+                {run.label}
+                {' · '}
+                {run.missedRun
+                  ? 'did not run today'
+                  : run.lastRunAt
+                    ? `last ran ${new Date(run.lastRunAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Accra' })}`
+                    : run.scheduledPassed ? 'not due today' : 'not yet'}
+              </span>
+            ))}
+          </div>
+        )}
 
         {error && (
           <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">

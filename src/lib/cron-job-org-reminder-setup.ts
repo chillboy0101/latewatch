@@ -123,6 +123,19 @@ export const cronJobOrgReminderJobs: CronJobOrgSetupJob[] = [
       wdays: [1, 2, 3, 4, 5],
     },
   },
+  {
+    title: 'LateWatch no sign-in fee 4PM catch-up',
+    path: '/api/attendance/no-show-sign-in/apply',
+    schedule: {
+      expiresAt: 0,
+      hours: [16],
+      mdays: [-1],
+      minutes: [35, 45, 55],
+      months: [-1],
+      timezone: 'UTC',
+      wdays: [1, 2, 3, 4, 5],
+    },
+  },
 ];
 
 function escapeHtml(value: string) {

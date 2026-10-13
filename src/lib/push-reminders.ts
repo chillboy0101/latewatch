@@ -8,6 +8,9 @@ import { getAccraClock, getHolidayForDate, isWeekendDate } from '@/lib/attendanc
 import { publishRealtime } from '@/lib/realtime';
 
 export type PushReminderType = 'sign_in' | 'sign_out' | 'holiday';
+// Who started a batch: the Vercel cron, the cron-job.org catch-ups, or the app itself when it
+// noticed a scheduled run never happened (see reminder-fallback.ts).
+export type ReminderBatchSource = 'vercel' | 'external' | 'app';
 
 type ReminderEligibilityInput = {
   attendance?: {
@@ -287,7 +290,7 @@ async function reservePushReminderDelivery(input: {
   return retryDelivery || null;
 }
 
-async function recordReminderCronHeartbeat(summary: PushReminderSummary, source: 'vercel' | 'external') {
+async function recordReminderCronHeartbeat(summary: PushReminderSummary, source: ReminderBatchSource) {
   await db.insert(reminderCronRun).values({
     date: summary.date,
     disabledCount: summary.disabled,
@@ -305,12 +308,9 @@ const ADMIN_REMINDER_ALERT_LABEL: Record<PushReminderType, string> = {
   sign_out: 'sign-out',
 };
 
-// Push a one-per-day alert to admin devices when reminder deliveries actually fail,
-// so a broken reminder pipeline surfaces within hours instead of going unnoticed.
-// Note: if push itself is fully down (e.g. VAPID unconfigured), this cannot fire —
-// that total-outage case is covered by cron-job.org's own failure emails.
-async function alertAdminsOfReminderFailures(summary: PushReminderSummary) {
-  if (summary.failed <= 0) return;
+// Push an alert to every admin device, at most once per device per day for each alert type
+// (deduped through the push_reminder_delivery unique index).
+export async function pushAdminAlert(input: { alertType: string; body: string; date: string }) {
   if (!ensureVapidConfig()) return;
 
   const adminEmails = new Set(
@@ -340,22 +340,20 @@ async function alertAdminsOfReminderFailures(summary: PushReminderSummary) {
 
   if (adminSubscriptions.length === 0) return;
 
-  const label = ADMIN_REMINDER_ALERT_LABEL[summary.reminderType];
-  const alertReminderType = `admin_alert_${summary.reminderType}`;
+  const alertReminderType = `admin_alert_${input.alertType}`;
   const payload = JSON.stringify({
-    body: `${summary.failed} ${label} reminder${summary.failed === 1 ? '' : 's'} failed to deliver today. Open the Devices page to review.`,
+    body: input.body,
     data: { reminderType: 'admin_alert', url: '/attendance/devices' },
     icon: '/latewatch-logo.png',
     requireInteraction: true,
-    tag: `latewatch-admin-alert-${summary.reminderType}-${summary.date}`,
+    tag: `latewatch-admin-alert-${input.alertType}-${input.date}`,
     title: 'LateWatch reminder issue',
   });
 
   for (const subscription of adminSubscriptions) {
-    // Reserve one alert per admin device per day per reminder type (dedup via the unique index).
     const [reserved] = await db.insert(pushReminderDelivery)
       .values({
-        date: summary.date,
+        date: input.date,
         reminderType: alertReminderType,
         staffId: subscription.staffId,
         status: 'pending',
@@ -385,7 +383,21 @@ async function alertAdminsOfReminderFailures(summary: PushReminderSummary) {
   }
 }
 
-async function finishReminderBatch(summary: PushReminderSummary, source: 'vercel' | 'external') {
+// Push a one-per-day alert to admin devices when reminder deliveries actually fail,
+// so a broken reminder pipeline surfaces within hours instead of going unnoticed.
+// Note: if push itself is fully down (e.g. VAPID unconfigured), this cannot fire —
+// that total-outage case is covered by cron-job.org's own failure emails.
+async function alertAdminsOfReminderFailures(summary: PushReminderSummary) {
+  if (summary.failed <= 0) return;
+  const label = ADMIN_REMINDER_ALERT_LABEL[summary.reminderType];
+  await pushAdminAlert({
+    alertType: summary.reminderType,
+    body: `${summary.failed} ${label} reminder${summary.failed === 1 ? '' : 's'} failed to deliver today. Open the Devices page to review.`,
+    date: summary.date,
+  });
+}
+
+async function finishReminderBatch(summary: PushReminderSummary, source: ReminderBatchSource) {
   publishRealtime('attendance', 'invalidate', {
     date: summary.date,
     reason: 'push-reminder-batch',
@@ -401,7 +413,7 @@ async function finishReminderBatch(summary: PushReminderSummary, source: 'vercel
   await alertAdminsOfReminderFailures(summary);
 }
 
-export async function sendAttendanceReminderBatch(reminderType: PushReminderType, source: 'vercel' | 'external' = 'vercel') {
+export async function sendAttendanceReminderBatch(reminderType: PushReminderType, source: ReminderBatchSource = 'vercel') {
   const clock = getAccraClock();
   const date = clock.dateKey;
   const isWeekend = isWeekendDate(date);

@@ -1,6 +1,6 @@
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import { NextRequest, NextResponse } from 'next/server';
+import { after, NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { attendanceRecord, deviceTransferRequest, latenessEntry, officeLocation as officeLocationTable, staffDevice } from '@/db/schema';
 import {
@@ -28,6 +28,7 @@ import { getDeviceTokenFromRequest } from '@/lib/device-binding';
 import { resolveDeviceHash } from '@/lib/device-rekey';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
 import { allowRequest } from '@/lib/rate-limit';
+import { maybeRunMissedReminderBatch } from '@/lib/reminder-fallback';
 import { publishRealtime } from '@/lib/realtime';
 import {
   canSignOutNow,
@@ -548,6 +549,9 @@ export async function GET(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    // If a reminder cron missed its slot today, send that batch after this response.
+    after(() => maybeRunMissedReminderBatch());
 
     const clerkSessionId = session.sessionId || null;
     const actorEmails = getUserEmailAddresses(user);

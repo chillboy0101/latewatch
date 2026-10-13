@@ -53,8 +53,10 @@ const isStaffCheckInRoute = createRouteMatcher([
   '/api/attendance/check-in(.*)',
 ]);
 
+// Cron endpoints carry no login session; each one checks CRON_SECRET and the caller itself.
 const isCronReminderRoute = createRouteMatcher([
   '/api/attendance/reminders(.*)',
+  '/api/attendance/no-show-sign-in/apply',
 ]);
 
 const isAdminRoute = createRouteMatcher([

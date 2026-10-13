@@ -30,6 +30,7 @@ interface WeekDayData {
 }
 
 interface DashboardStats {
+  missedReminders?: { label: string; reminderType: string; sentByApp: boolean }[];
   weekTotal: number;
   weekEntryCount: number;
   staffCount: number;
@@ -144,6 +145,21 @@ export default function DashboardPage() {
   return (
     <DashboardLayout title="Dashboard">
       <div className="space-y-6">
+        {(stats.missedReminders || []).map((missed) => (
+          <Link
+            key={missed.reminderType}
+            href="/attendance/devices"
+            role="alert"
+            className="flex items-start gap-3 rounded-md border border-danger/30 bg-danger/10 p-4 text-sm text-danger transition-colors hover:bg-danger/15"
+          >
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              <span className="font-medium">The {missed.label} reminder job didn&apos;t run today.</span>{' '}
+              {missed.sentByApp ? 'LateWatch sent the reminders from the app instead.' : 'LateWatch will send them on the next page visit.'}{' '}
+              Check the cron jobs.
+            </span>
+          </Link>
+        ))}
         {loadError && (
           <div role="alert" className="flex items-center gap-3 rounded-md border border-warning/30 bg-warning/10 p-4 text-sm text-warning">
             <AlertCircle className="h-4 w-4 shrink-0" />
