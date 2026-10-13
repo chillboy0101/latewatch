@@ -181,7 +181,7 @@ src/
 │   ├── check-in/            Attendance portal (PWA)
 │   ├── attendance/          Admin: overview, permissions, devices
 │   ├── dashboard/  staff/  entries/  payments/  contributions/  exports/
-│   ├── calendar/  emergency-contacts/  audit-trail/  location/  settings/
+│   ├── calendar/  emergency-contacts/  audit-trail/  location/
 │   └── (auth)/              Sign-in and sign-up
 ├── actions/                 Server Actions
 ├── components/
@@ -347,7 +347,7 @@ breaks its tests**: update those assertions alongside the change rather than del
   until the crons run again.
 - **Backups:** every Sunday at 02:00 UTC, the business tables are copied to Cloudflare R2
   (`backups/`, one gzipped JSON file per backup, 12 weeks kept). Admins can back up now and
-  download any backup from **Settings → Backups**.
+  download any backup from **Exports → Backups**.
 - **Throttling:** write endpoints that trigger outbound work are rate limited per user, in Redis
   when configured and in Postgres otherwise. The check fails open, so unavailable storage can
   never stop a staff member from checking in.
@@ -359,7 +359,7 @@ breaks its tests**: update those assertions alongside the change rather than del
 There is deliberately no one-click restore. Restoring overwrites live records, so it is done by
 hand, in a quiet period:
 
-1. Download the backup from **Settings → Backups** and unzip it (`gunzip latewatch-DATE.json.gz`).
+1. Download the backup from **Exports → Backups** and unzip it (`gunzip latewatch-DATE.json.gz`).
    The file holds `tables.<table_name>` arrays of rows, using the database's column names
    as Drizzle returns them (camelCase).
 2. Create a Neon branch from the current database, and restore into that branch first.

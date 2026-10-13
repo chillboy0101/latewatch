@@ -67,7 +67,3 @@ export function SignIn() {
 export function SignUp() {
   return <Placeholder label="Sign up" />;
 }
-
-export function UserProfile() {
-  return <Placeholder label="Account" />;
-}

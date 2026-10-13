@@ -74,19 +74,26 @@ export function BackupsCard() {
   }
 
   return (
-    <Card>
-      <div className="p-6">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold">Backups</h2>
-            <p className="text-sm text-muted-foreground">Every Sunday · last 12 weeks kept</p>
+    <Card className="overflow-hidden">
+      <div className="border-b border-border px-6 py-5">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-background text-primary">
+              <DatabaseBackup className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold leading-none">Backups</h2>
+              <p className="mt-1.5 text-sm text-muted-foreground">Every Sunday · last 12 weeks kept</p>
+            </div>
           </div>
-          <Button onClick={() => void backUpNow()} disabled={busy !== null} className="gap-2">
+          <Button className="h-10 gap-2 sm:w-auto" onClick={() => void backUpNow()} disabled={busy !== null} aria-busy={busy === 'now'}>
             {busy === 'now' ? <Loader2 className="h-4 w-4 animate-spin" /> : <DatabaseBackup className="h-4 w-4" />}
-            Back up now
+            {busy === 'now' ? 'Backing Up' : 'Back Up Now'}
           </Button>
         </div>
+      </div>
 
+      <div className="px-6 py-4">
         {message && (
           <p className={cn('mb-3 text-sm font-medium', message.error ? 'text-danger' : 'text-primary')}>{message.text}</p>
         )}

@@ -14,7 +14,6 @@ const WORKSPACE_TITLES: Record<string, string> = {
   exports: 'Exports',
   location: 'Office Location',
   payments: 'Payments',
-  settings: 'Settings',
   staff: 'Staff',
 };
 

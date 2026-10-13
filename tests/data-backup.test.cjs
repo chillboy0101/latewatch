@@ -51,5 +51,5 @@ test('the weekly backup runs from a guarded cron and the admin API is admin-only
   assert.equal((adminRoute.match(/await enforceRole\(\['admin'\]\)/g) || []).length, 2);
   assert.match(read('src', 'proxy.ts'), /'\/api\/backups\/weekly',/);
   assert.ok(vercel.crons.some((cron) => cron.path === '/api/backups/weekly' && cron.schedule === '0 2 * * 0'));
-  assert.match(read('src', 'app', 'settings', 'page.tsx'), /<BackupsCard \/>/);
+  assert.match(read('src', 'app', 'exports', 'page.tsx'), /<BackupsCard \/>/);
 });

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { BackupsCard } from '@/components/exports/backups-card';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -988,6 +989,8 @@ export default function ExportsPage() {
             </div>
           </div>
         </Card>
+
+        <BackupsCard />
       </div>
       <WorkbookPreviewDialog
         open={previewOpen}

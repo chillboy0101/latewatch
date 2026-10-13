@@ -10,6 +10,16 @@ const uiHarness =
 
 const nextConfig: NextConfig = {
   ...(uiHarness ? { devIndicators: false as const } : {}),
+  // The old Settings and Account pages were removed: Clerk's profile menu (top right) manages
+  // the account, and Backups now live on Exports. Old bookmarks land somewhere useful.
+  async redirects() {
+    return [
+      { destination: "/exports", permanent: false, source: "/settings" },
+      { destination: "/dashboard", permanent: false, source: "/settings/:path*" },
+      { destination: "/", permanent: false, source: "/account/:path*" },
+      { destination: "/", permanent: false, source: "/account" },
+    ];
+  },
   turbopack: {
     root: process.cwd(),
     ...(uiHarness ? { resolveAlias: { "@clerk/nextjs": "./tests/ui/clerk-mock.tsx" } } : {}),

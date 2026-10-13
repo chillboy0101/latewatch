@@ -24,8 +24,6 @@ const isProtectedRoute = createRouteMatcher([
   '/calendar(.*)',
   '/audit-trail(.*)',
   '/check-in(.*)',
-  '/account(.*)',
-  '/settings(.*)',
   '/api/(.*)',
 ]);
 
@@ -44,7 +42,6 @@ const isStaffRequiredRoute = createRouteMatcher([
   '/calendar(.*)',
   '/audit-trail(.*)',
   '/check-in(.*)',
-  '/settings(.*)',
   '/api/(.*)',
 ]);
 
@@ -73,7 +70,6 @@ const isAdminRoute = createRouteMatcher([
   '/contributions(.*)',
   '/calendar(.*)',
   '/audit-trail(.*)',
-  '/settings(.*)',
   '/api/attendance(.*)',
   '/api/audit-trail(.*)',
   '/api/calendar(.*)',
@@ -223,8 +219,6 @@ export const config = {
     '/calendar(.*)',
     '/audit-trail(.*)',
     '/check-in(.*)',
-    '/account(.*)',
-    '/settings(.*)',
     '/api/(.*)',
     '/trpc/(.*)',
   ],

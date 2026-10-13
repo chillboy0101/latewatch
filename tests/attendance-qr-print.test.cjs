@@ -475,16 +475,13 @@ test('the removed security-alerts dashboard has not crept back in', () => {
   assert.doesNotMatch(sidebar, /security-alerts/);
 });
 
-test('security settings page documents MFA and passkey handoff through Clerk', () => {
-  assert.equal(fs.existsSync(settingsSecurityPagePath), true);
-  const page = fs.readFileSync(settingsSecurityPagePath, 'utf8');
-  const settingsPage = fs.readFileSync(settingsPagePath, 'utf8');
-
-  assert.match(page, /Security Hardening/);
-  assert.match(page, /Clerk multi-factor authentication/);
-  assert.match(page, /Enable passkeys where available/);
-  assert.match(page, /Open Clerk Dashboard/);
-  assert.match(settingsPage, /\/settings\/security/);
+test('the old Settings, Security and Account pages are gone; old links redirect', () => {
+  const nextConfig = fs.readFileSync(path.join(__dirname, '../next.config.ts'), 'utf8');
+  assert.equal(fs.existsSync(settingsSecurityPagePath), false);
+  assert.equal(fs.existsSync(settingsPagePath), false);
+  assert.equal(fs.existsSync(path.join(__dirname, '../src/app/account')), false);
+  assert.match(nextConfig, /source: "\/settings"/);
+  assert.match(nextConfig, /source: "\/account\/:path\*"/);
 });
 
 test('Clerk session cleanup script is dry-run first and preserves trusted attendance sessions', () => {

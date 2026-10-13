@@ -11,7 +11,6 @@ const privateRoutes = [
   "/exports/",
   "/audit-trail/",
   "/emergency-contacts/",
-  "/settings/",
 ];
 
 export default function robots(): MetadataRoute.Robots {

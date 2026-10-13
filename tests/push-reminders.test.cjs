@@ -89,10 +89,10 @@ test('cron-job.org setup script creates reminder catch-up jobs with protected he
 test('admin cron-job.org setup API uses Vercel cron secret without exposing it', () => {
   assert.equal(fs.existsSync(cronJobOrgSetupApiPath), true);
   assert.equal(fs.existsSync(cronJobOrgSetupLibPath), true);
-  assert.equal(fs.existsSync(cronJobOrgSetupSettingsPath), true);
+  // The duplicate /settings/reminder-scheduler page was removed; the admin API is the one setup page.
+  assert.equal(fs.existsSync(cronJobOrgSetupSettingsPath), false);
   const apiSource = fs.readFileSync(cronJobOrgSetupApiPath, 'utf8');
   const helperSource = fs.readFileSync(cronJobOrgSetupLibPath, 'utf8');
-  const settingsSource = fs.readFileSync(cronJobOrgSetupSettingsPath, 'utf8');
 
   assert.match(apiSource, /enforceRole\(\['admin'\]\)/);
   assert.match(apiSource, /export async function GET/);
@@ -100,12 +100,8 @@ test('admin cron-job.org setup API uses Vercel cron secret without exposing it',
   assert.match(apiSource, /process\.env\.CRON_SECRET/);
   assert.match(apiSource, /setupCronJobOrgReminderJobs/);
   assert.match(apiSource, /schedulerRequestFromSetupRequest/);
-  assert.match(settingsSource, /\/settings\/reminder-scheduler/);
-  assert.match(settingsSource, /enforceRole\(\['admin'\]\)/);
-  assert.match(settingsSource, /setupResultHtml/);
-  assert.match(settingsSource, /setupCronJobOrgReminderJobs/);
-  assert.match(settingsSource, /scheduleCronJobOrgProofTest/);
-  assert.match(settingsSource, /schedulerRequest\.action === 'proof-test'/);
+  assert.match(apiSource, /scheduleCronJobOrgProofTest/);
+  assert.match(apiSource, /schedulerRequest\.action === 'proof-test'/);
   assert.match(helperSource, /method="post"/);
   assert.match(helperSource, /name="apiKey"/);
   assert.match(helperSource, /name="proofTestTime"/);
