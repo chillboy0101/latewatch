@@ -57,6 +57,7 @@ const isStaffCheckInRoute = createRouteMatcher([
 const isCronReminderRoute = createRouteMatcher([
   '/api/attendance/reminders(.*)',
   '/api/attendance/no-show-sign-in/apply',
+  '/api/backups/weekly',
 ]);
 
 const isAdminRoute = createRouteMatcher([

@@ -3,6 +3,7 @@
 import { UserButton, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
+import { BackupsCard } from '@/components/settings/backups-card';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Moon, Sun, Monitor, Check } from 'lucide-react';
@@ -61,6 +62,8 @@ export default function SettingsPage() {
             </div>
           </div>
         </Card>
+
+        <BackupsCard />
 
         {/* Quick Links */}
         <Card>

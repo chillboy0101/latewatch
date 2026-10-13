@@ -299,6 +299,7 @@ npm start                # Serve a production build
 npm run lint             # ESLint
 npm test                 # Test suite
 npm run load:test        # API load test
+npm run ui:shots         # Local screenshots of signed-in pages (mock sign-in, made-up data)
 ```
 
 Operational scripts. **Those marked ⚠ modify live records. Read them before running.**
@@ -339,14 +340,34 @@ breaks its tests**: update those assertions alongside the change rather than del
 
 - **Deployment:** pushing to `main` deploys production on Vercel. Other branches and pull
   requests get preview deployments.
-- **Scheduled reminders:** an external cron service calls endpoints guarded by `CRON_SECRET`.
-  Delivery is recorded per staff member per day, and a unique constraint turns a duplicate run
-  into a no-op.
+- **Scheduled reminders:** Vercel Cron and cron-job.org call endpoints guarded by `CRON_SECRET`.
+  Delivery is recorded per device per day, and a unique constraint turns a duplicate run into a
+  no-op. If no job has run a few minutes after 8:15 AM or 4:30 PM on a workday, the next check-in
+  or dashboard load sends the batch itself and alerts admins. The dashboard shows a red banner
+  until the crons run again.
+- **Backups:** every Sunday at 02:00 UTC, the business tables are copied to Cloudflare R2
+  (`backups/`, one gzipped JSON file per backup, 12 weeks kept). Admins can back up now and
+  download any backup from **Settings → Backups**.
 - **Throttling:** write endpoints that trigger outbound work are rate limited per user, in Redis
   when configured and in Postgres otherwise. The check fails open, so unavailable storage can
   never stop a staff member from checking in.
 - **Database changes** ship as reviewed migrations applied through the normal release process
   before the code that depends on them.
+
+### Runbook: restoring from a backup
+
+There is deliberately no one-click restore. Restoring overwrites live records, so it is done by
+hand, in a quiet period:
+
+1. Download the backup from **Settings → Backups** and unzip it (`gunzip latewatch-DATE.json.gz`).
+   The file holds `tables.<table_name>` arrays of rows, using the database's column names
+   as Drizzle returns them (camelCase).
+2. Create a Neon branch from the current database, and restore into that branch first.
+3. Insert the needed rows, table by table, parents before children: `staff`, then attendance,
+   lateness entries, payments, allocations and pardons. Check the totals against the backup's
+   manifest.
+4. When the branch checks out, either copy the rows into the main branch or point
+   `DATABASE_URL` at the restored branch.
 
 ### Runbook: pardoning debts
 

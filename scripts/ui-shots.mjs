@@ -103,7 +103,7 @@ async function desktopShots(browser) {
   const context = await browser.newContext(DESKTOP);
   await mockApi(context);
   const page = await context.newPage();
-  for (const route of ['dashboard', 'entries', 'payments']) {
+  for (const route of ['dashboard', 'entries', 'payments', 'settings']) {
     await page.goto(`${baseUrl}/${route}`, { waitUntil: 'load' });
     // Let the page fetch its (mocked) data and finish its loading state.
     await page.waitForTimeout(4000);

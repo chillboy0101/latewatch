@@ -16,6 +16,10 @@
     {
       "path": "/api/attendance/no-show-sign-in/apply",
       "schedule": "30 16 * * 1-5"
+    },
+    {
+      "path": "/api/backups/weekly",
+      "schedule": "0 2 * * 0"
     }
   ]
 }

@@ -315,7 +315,7 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.match(proxy, /isCronReminderRoute/);
   assert.match(proxy, /\/api\/attendance\/reminders\(\.\*\)/);
   assert.match(proxy, /if \(isCronReminderRoute\(req\)\) \{\s*return NextResponse\.next\(\);\s*\}/);
-  assert.equal(vercelConfig.crons.length, 3);
+  assert.equal(vercelConfig.crons.length, 4);
   assert.match(vercel, /"path": "\/api\/attendance\/reminders\/morning"[\s\S]*"schedule": "15 8 \* \* \*"/);
   assert.match(vercel, /"path": "\/api\/attendance\/reminders\/sign-out"[\s\S]*"schedule": "30 16 \* \* 1-5"/);
   assert.match(vercel, /"path": "\/api\/attendance\/no-show-sign-in\/apply"[\s\S]*"schedule": "30 16 \* \* 1-5"/);

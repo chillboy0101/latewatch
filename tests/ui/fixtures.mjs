@@ -128,6 +128,15 @@ export function buildFixtures(now = new Date()) {
 
   return {
     '/api/account/theme': {},
+    '/api/admin/backups': {
+      backups: [0, 7, 14].map((offset) => ({
+        createdAt: new Date(now.getTime() - offset * 86400000).toISOString(),
+        createdBy: offset ? 'cron:vercel' : 'test.admin@latewatch.test',
+        date: daysAgo(offset),
+        sizeBytes: 812_000 - offset * 9000,
+        totalRows: 14_230 - offset * 120,
+      })),
+    },
     '/api/attendance/check-in': checkInStatus,
     '/api/attendance/check-in/penalty-history': {
       currentWeek: week(0, historyEntries.slice(0, 4)),
