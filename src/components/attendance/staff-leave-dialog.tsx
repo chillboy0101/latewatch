@@ -157,7 +157,7 @@ export function StaffLeaveDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !submitting && onOpenChange(next)}>
-      <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto">
+      <DialogContent className="max-w-lg overflow-visible">
         <DialogHeader>
           <DialogTitle>Staff leave</DialogTitle>
           <DialogDescription>

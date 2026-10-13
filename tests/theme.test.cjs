@@ -214,7 +214,8 @@ test('staff picker opens inside its dialog with search and a capped scroll list'
   const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
   const picker = read('src', 'components', 'ui', 'staff-picker.tsx');
   assert.match(picker, /placeholder="Search name"/);
-  assert.match(picker, /max-h-56 overflow-y-auto/);
+  assert.match(picker, /max-h-60 overflow-y-auto/);
+  assert.match(picker, /absolute inset-x-0 top-full z-50/);
   assert.doesNotMatch(picker, /<select/);
   for (const file of [
     ['src', 'app', 'payments', 'page.tsx'],

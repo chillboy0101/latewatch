@@ -93,7 +93,7 @@ export function StaffPicker({
   }
 
   return (
-    <div ref={rootRef} className={cn('min-w-0', className)}>
+    <div ref={rootRef} className={cn('relative min-w-0', className)}>
       <span className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">{label}</span>
       <button
         type="button"
@@ -114,7 +114,8 @@ export function StaffPicker({
       </button>
 
       {open && (
-        <div className="mt-1.5 overflow-hidden rounded-md border border-border bg-card" onKeyDown={onKeyDown}>
+        // Floats over the fields below (like a dropdown) so the dialog never grows a second scrollbar.
+        <div className="absolute inset-x-0 top-full z-50 mt-1.5 overflow-hidden rounded-md border border-border bg-card shadow-xl" onKeyDown={onKeyDown}>
           <div className="flex items-center gap-2 border-b border-border px-3">
             <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
             <input
@@ -129,7 +130,7 @@ export function StaffPicker({
               className="h-10 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
           </div>
-          <ul ref={listRef} id={listId} role="listbox" aria-label={label} className="max-h-56 overflow-y-auto overscroll-contain py-1">
+          <ul ref={listRef} id={listId} role="listbox" aria-label={label} className="max-h-60 overflow-y-auto overscroll-contain py-1">
             {rows.map((row, index) => (
               <li
                 key={row.id || 'all'}
