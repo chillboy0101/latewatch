@@ -22,8 +22,9 @@ test('entries page shows leave for the selected date and excludes it from totals
   assert.match(source, /const isOnLeave = member\?\.onLeave === true/);
   assert.match(source, /On leave/);
   assert.match(source, /const rowDisabled = entriesDisabled \|\| isOnLeave/);
-  assert.match(source, /staff\.find\(\(member\) => member\.id === entry\.staffId\)\?\.onLeave !== true && entry\.amount > 0/);
-  assert.match(source, /staff\.find\(\(member\) => member\.id === entry\.staffId\)\?\.onLeave === true \? 0 : entry\.amount/);
+  // People on leave are counted under Excused / Leave and add nothing to the day's total.
+  assert.match(source, /if \(onLeave\) return \{ \.\.\.acc, excused: acc\.excused \+ 1 \};/);
+  assert.match(source, /const next = \{ \.\.\.acc, totalAmount: acc\.totalAmount \+ entry\.amount \};/);
 });
 
 test('entries page exposes an icon-only refresh button beside save entries', () => {
@@ -273,4 +274,13 @@ test('a missing sign-out is only charged once the day is over (not when cleared 
   assert.match(route, /submittedSignOutTime \|\| requestedNoSignOutWaived \|\| !noSignOutChargeDue/);
   assert.match(source, /didNotSignOut: signOutTime \? false : !entry\.isExcusedAbsence && noSignOutDue/);
   assert.match(source, /didNotSignOut: nextWaived \? false : !normalizeTimeValue\(entry\.signOutTime\) && noSignOutDue/);
+});
+
+test('Day Summary counts no sign-in separately from late arrivals', () => {
+  const source = fs.readFileSync(entriesPagePath, 'utf8');
+  assert.match(source, /if \(isOnTimeCheckIn\(entry\.arrivalTime\)\) next\.onTime \+= 1;/);
+  assert.match(source, /else if \(entry\.reason === NO_SHOW_SIGN_IN_REASON\) next\.noSignIn \+= 1;/);
+  assert.match(source, />No Sign In</);
+  assert.match(source, />Excused \/ Leave</);
+  assert.doesNotMatch(source, /entry\.amount > 0 && !entry\.reason\.includes\('SIGN OUT'\)/);
 });

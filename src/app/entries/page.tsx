@@ -15,7 +15,7 @@ import { ArrowLeft, ClockAlert, Save, CheckCircle, AlertCircle, CalendarOff, Che
 import { computePenalty } from '@/lib/penalty-calculator';
 import { NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/penalty-calculator';
 import { getAccraDateKey, getAccraTimeKey } from '@/lib/date-key';
-import { isNoSignOutChargeDue } from '@/lib/work-hours';
+import { isNoSignOutChargeDue, isOnTimeCheckIn } from '@/lib/work-hours';
 import { formatLongDisplayDate } from '@/lib/date-format';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { formatLeaveSummary } from '@/lib/staff-leave';
@@ -787,14 +787,26 @@ function EntriesPageContent() {
   const isSelectedDateInPastOrToday = selectedDateKey <= todayDateKey;
   const noShowSignInWaiveAvailable = isSelectedDateInPastOrToday;
 
+  // Day Summary, counted from each row's sign-in and sign-out:
+  // on time = signed in by 8:30; late = signed in after 8:30 without a late permission;
+  // no sign-in = charged for not signing in; excused = on leave, excused absence, late
+  // permission or a waived no sign-in. People not in yet (before 4:30 PM) are in none of these.
   const totals = entries.reduce(
-    (acc, entry) => ({
-      late: acc.late + (staff.find((member) => member.id === entry.staffId)?.onLeave !== true && entry.amount > 0 && !entry.reason.includes('SIGN OUT') ? 1 : 0),
-      onTime: acc.onTime + (staff.find((member) => member.id === entry.staffId)?.onLeave !== true && entry.amount === 0 && !entry.didNotSignOut ? 1 : 0),
-      didNotSignOut: acc.didNotSignOut + (staff.find((member) => member.id === entry.staffId)?.onLeave !== true && entry.didNotSignOut ? 1 : 0),
-      totalAmount: acc.totalAmount + (staff.find((member) => member.id === entry.staffId)?.onLeave === true ? 0 : entry.amount),
-    }),
-    { late: 0, onTime: 0, didNotSignOut: 0, totalAmount: 0 }
+    (acc, entry) => {
+      const onLeave = staff.find((member) => member.id === entry.staffId)?.onLeave === true;
+      if (onLeave) return { ...acc, excused: acc.excused + 1 };
+      const next = { ...acc, totalAmount: acc.totalAmount + entry.amount };
+      if (entry.isExcusedAbsence) next.excused += 1;
+      else if (entry.arrivalTime) {
+        if (isOnTimeCheckIn(entry.arrivalTime)) next.onTime += 1;
+        else if (entry.reason.includes(LATE_ARRIVAL_PARDON_REASON_PREFIX)) next.excused += 1;
+        else next.late += 1;
+      } else if (entry.noShowSignInWaived) next.excused += 1;
+      else if (entry.reason === NO_SHOW_SIGN_IN_REASON) next.noSignIn += 1;
+      if (entry.didNotSignOut && !entry.noSignOutWaived) next.didNotSignOut += 1;
+      return next;
+    },
+    { didNotSignOut: 0, excused: 0, late: 0, noSignIn: 0, onTime: 0, totalAmount: 0 },
   );
 
   if (loading) {
@@ -1196,18 +1208,26 @@ function EntriesPageContent() {
         <Card>
           <div className="p-4">
             <h3 className="mb-3 font-semibold">Day Summary</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div className="rounded-lg border border-border p-3 text-center">
-                <p className="text-2xl font-bold font-mono text-danger">{totals.late}</p>
-                <p className="text-xs text-muted-foreground mt-1">Late</p>
-              </div>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
               <div className="rounded-lg border border-border p-3 text-center">
                 <p className="text-2xl font-bold font-mono text-success">{totals.onTime}</p>
                 <p className="text-xs text-muted-foreground mt-1">On Time</p>
               </div>
               <div className="rounded-lg border border-border p-3 text-center">
+                <p className="text-2xl font-bold font-mono text-danger">{totals.late}</p>
+                <p className="text-xs text-muted-foreground mt-1">Late</p>
+              </div>
+              <div className="rounded-lg border border-border p-3 text-center">
+                <p className="text-2xl font-bold font-mono text-danger">{totals.noSignIn}</p>
+                <p className="text-xs text-muted-foreground mt-1">No Sign In</p>
+              </div>
+              <div className="rounded-lg border border-border p-3 text-center">
                 <p className="text-2xl font-bold font-mono text-warning">{totals.didNotSignOut}</p>
                 <p className="text-xs text-muted-foreground mt-1">No Sign Out</p>
+              </div>
+              <div className="rounded-lg border border-border p-3 text-center">
+                <p className="text-2xl font-bold font-mono text-muted-foreground">{totals.excused}</p>
+                <p className="text-xs text-muted-foreground mt-1">Excused / Leave</p>
               </div>
               <div className="rounded-lg border border-border p-3 text-center">
                 <p className="text-2xl font-bold font-mono">GHC {totals.totalAmount}</p>
