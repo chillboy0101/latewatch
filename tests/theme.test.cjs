@@ -100,13 +100,20 @@ test('theme colour syncs to the account, defaulting to blue for first-time users
   assert.ok(sameThemeSelection({ accent: 'red', customColor: '#000000' }, { accent: 'red', customColor: '#ffffff' }));
 
   const route = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'api', 'account', 'theme', 'route.ts'), 'utf8');
-  assert.match(route, /updateUserMetadata\(userId, \{ unsafeMetadata: \{ theme \} \}\)/);
-  assert.match(route, /current\.updatedAt > theme\.updatedAt/);
+  const themeLib = fs.readFileSync(path.join(__dirname, '..', 'src', 'lib', 'theme.ts'), 'utf8');
+  // Stored in Redis (no sign-in provider API calls per change, so no rate limits).
+  assert.match(route, /await redis\.set\(themeKey\(userId\), theme\)/);
+  assert.doesNotMatch(route, /clerkClient|updateUserMetadata/);
+  assert.match(route, /current\.updatedAt > \(theme\.updatedAt \|\| 0\)/);
   assert.match(route, /await ablyPublish\(`latewatch:\$\{themeChannelForUser\(userId\)\}`, 'theme'/);
+  // Only the person's own picks are saved; colours applied by sync never trigger a save (no loops).
+  assert.match(sync, /subscribeThemeUserChange\(/);
+  assert.doesNotMatch(sync, /subscribeThemeChange\(/);
+  assert.match(themeLib, /if \(source === 'user'\) window\.dispatchEvent\(new Event\(THEME_USER_EVENT\)\)/);
+  assert.match(themeLib, /applyThemeAccent\(selection\.accent, selection\.customColor, selection\.updatedAt \|\| Date\.now\(\), 'sync'\)/);
   assert.match(sync, /channel\.subscribe\('theme', handler\)/);
-  assert.match(sync, /applyThemeSelection\(\{ \.\.\.DEFAULT_THEME_SELECTION, updatedAt: Date\.now\(\) \}\)/);
+  assert.match(sync, /\{ \.\.\.DEFAULT_THEME_SELECTION, updatedAt: Date\.now\(\) \}/);
   assert.match(sync, /localUpdatedAt === 0 \|\| \(remote\.updatedAt \|\| 0\) > localUpdatedAt/);
-  assert.match(sync, /if \(!local\.updatedAt\) return;/);
   assert.doesNotMatch(sync, /role/);
   assert.match(provider, /<ThemeAccountSync \/>/);
 });

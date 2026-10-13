@@ -19,6 +19,8 @@ export type ThemeAccentPreset = typeof THEME_ACCENT_PRESETS[number]['accent'];
 export type ThemeAccent = ThemeAccentPreset | 'custom';
 
 const THEME_EVENT = 'latewatch-theme-change';
+// Fired only when the person on this device picks a colour (not when sync applies one).
+const THEME_USER_EVENT = 'latewatch-theme-user-change';
 const THEME_ACCENT_KEY = 'theme-accent';
 const THEME_CUSTOM_COLOR_KEY = 'theme-custom-color';
 const THEME_VARIABLES_KEY = 'theme-accent-variables';
@@ -182,7 +184,14 @@ export function applyThemeSelection(selection: ThemeSelection) {
     if (selection.updatedAt && selection.updatedAt > getThemeUpdatedAt()) writeStorage(THEME_UPDATED_AT_KEY, String(selection.updatedAt));
     return;
   }
-  applyThemeAccent(selection.accent, selection.customColor, selection.updatedAt || Date.now());
+  applyThemeAccent(selection.accent, selection.customColor, selection.updatedAt || Date.now(), 'sync');
+}
+
+/** Subscribes to colour choices made by the person on this device (used to save them). */
+export function subscribeThemeUserChange(callback: () => void) {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener(THEME_USER_EVENT, callback);
+  return () => window.removeEventListener(THEME_USER_EVENT, callback);
 }
 
 /**
@@ -254,7 +263,12 @@ function applyAccentToDocument() {
   });
 }
 
-export function applyThemeAccent(accent: ThemeAccent, customColor?: string, updatedAt = Date.now()) {
+export function applyThemeAccent(
+  accent: ThemeAccent,
+  customColor?: string,
+  updatedAt = Date.now(),
+  source: 'user' | 'sync' = 'user',
+) {
   if (typeof window === 'undefined') return;
 
   // Remember the custom colour even while a preset is active, so it is still there to return to.
@@ -265,6 +279,7 @@ export function applyThemeAccent(accent: ThemeAccent, customColor?: string, upda
   writeStorage(THEME_UPDATED_AT_KEY, String(updatedAt));
   applyAccentToDocument();
   window.dispatchEvent(new Event(THEME_EVENT));
+  if (source === 'user') window.dispatchEvent(new Event(THEME_USER_EVENT));
 }
 
 export function applyThemePreference(theme: ThemePreference) {
