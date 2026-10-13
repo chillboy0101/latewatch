@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
-import { Check, Palette } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Check, Palette, Pipette } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerContent, DrawerTitle } from '@/components/ui/drawer';
 import { cn } from '@/lib/utils';
@@ -40,6 +40,42 @@ function Swatch({ background, ringColor, selected }: { background: string; ringC
   );
 }
 
+const NATIVE_SAVE_DELAY_MS = 400;
+
+/**
+ * Opens the device's own colour picker (iPhone colour sheet, Android dialog, desktop colour panel)
+ * for anyone who wants an exact colour. Picks preview live and are saved once the person settles.
+ */
+function NativeColourButton({ value }: { value: string }) {
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+  }, []);
+
+  return (
+    <label
+      data-vaul-no-drag
+      className="relative inline-flex h-9 cursor-pointer items-center gap-2 rounded-full border border-border px-4 text-sm font-medium text-muted-foreground transition-colors focus-within:ring-2 focus-within:ring-primary hover:bg-foreground/5 hover:text-foreground"
+    >
+      <Pipette className="h-4 w-4" />
+      More colours
+      <input
+        type="color"
+        aria-label="More colours"
+        value={value}
+        onChange={(event) => {
+          const hex = event.target.value;
+          previewThemeAccentColor(hex);
+          if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+          saveTimerRef.current = setTimeout(() => applyThemeAccent('custom', hex), NATIVE_SAVE_DELAY_MS);
+        }}
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+      />
+    </label>
+  );
+}
+
 function ColourPanel({ wheelSize }: { wheelSize: number }) {
   const accent = useSyncExternalStore(subscribeThemeChange, getThemeAccent, () => 'blue');
   const accentColor = useSyncExternalStore(subscribeThemeChange, getThemeAccentColor, () => '#2563eb');
@@ -73,6 +109,8 @@ function ColourPanel({ wheelSize }: { wheelSize: number }) {
         onChange={(hex) => applyThemeAccent('custom', hex)}
         onPreview={previewThemeAccentColor}
       />
+
+      <NativeColourButton value={accentColor} />
     </div>
   );
 }

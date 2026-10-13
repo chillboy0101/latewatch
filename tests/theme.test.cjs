@@ -68,7 +68,10 @@ test('theme picker closes on outside taps and Escape, and all surfaces derive fr
   assert.match(modePicker, /useDismissable\(open, containerRef, close\)/);
   assert.match(modePicker, /label: 'System', value: 'system'/);
   const wheel = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'colour-wheel.tsx'), 'utf8');
-  assert.doesNotMatch(picker, /type="color"/);
+  // Hybrid: in-app wheel plus a "More colours" button that opens the device's native picker.
+  assert.match(picker, /function NativeColourButton/);
+  assert.match(picker, /type="color"\s+aria-label="More colours"/);
+  assert.match(picker, /setTimeout\(\(\) => applyThemeAccent\('custom', hex\), NATIVE_SAVE_DELAY_MS\)/);
   assert.match(picker, /<Drawer open=\{open\} onOpenChange=\{setOpen\}>/);
   assert.match(wheel, /setPointerCapture/);
   assert.match(wheel, /touch-none/);
