@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { CheckCircle2, ChevronDown, ExternalLink, HandHeart, Loader2, Plus, ReceiptText, Save, Search, Trash2 } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ExternalLink, HandHeart, Loader2, Plus, ReceiptText, Save, Search, Trash2, Users } from 'lucide-react';
 import { DateField } from '@/components/ui/date-field';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
@@ -1038,17 +1038,6 @@ export default function PenaltyPaymentsPage() {
                         {currency(debtPardonPreview?.pardonedTotal ?? 0)}
                       </span>
                     )}
-                    {!debtPardonLoading && debtPardonPreview && debtPardonPreview.entryCount > 0 && (
-                      <button
-                        type="button"
-                        aria-expanded={debtPardonShowStaff}
-                        className="inline-flex shrink-0 items-center gap-0.5 text-xs font-medium hover:underline"
-                        onClick={() => setDebtPardonShowStaff((value) => !value)}
-                      >
-                        {debtPardonPreview.staffCount} staff
-                        <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', debtPardonShowStaff && 'rotate-180')} />
-                      </button>
-                    )}
                   </div>
                 </div>
               </div>
@@ -1059,16 +1048,30 @@ export default function PenaltyPaymentsPage() {
 
               {!debtPardonLoading && debtPardonPreview && debtPardonPreview.entryCount > 0 && (
                 <>
-                  {debtPardonShowStaff && (
-                    <ul className="max-h-48 divide-y divide-border overflow-y-auto rounded-md border border-border text-sm">
-                      {debtPardonPreview.staff.map((member) => (
-                        <li key={member.staffId} className="flex items-center justify-between gap-3 px-3 py-2">
-                          <span className="truncate">{member.fullName}</span>
-                          <span className="font-mono tabular-nums">{currency(member.forgivenAmount)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  {/* Staff list: a full-width row that opens into the list, like an accordion. */}
+                  <div className="overflow-hidden rounded-md border border-border">
+                    <button
+                      type="button"
+                      aria-expanded={debtPardonShowStaff}
+                      className="flex h-10 w-full items-center gap-2 px-3 text-sm font-medium transition-colors hover:bg-foreground/5"
+                      onClick={() => setDebtPardonShowStaff((value) => !value)}
+                    >
+                      <Users className="h-4 w-4 text-muted-foreground" />
+                      <span className="flex-1 text-left">{debtPardonPreview.staffCount} staff</span>
+                      <span className="text-xs text-muted-foreground">{debtPardonShowStaff ? 'Hide' : 'View'}</span>
+                      <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', debtPardonShowStaff && 'rotate-180')} />
+                    </button>
+                    {debtPardonShowStaff && (
+                      <ul className="max-h-48 divide-y divide-border overflow-y-auto border-t border-border text-sm">
+                        {debtPardonPreview.staff.map((member) => (
+                          <li key={member.staffId} className="flex items-center justify-between gap-3 px-3 py-2">
+                            <span className="truncate">{member.fullName}</span>
+                            <span className="font-mono tabular-nums">{currency(member.forgivenAmount)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
 
                   <Input
                     aria-label="Reason"
