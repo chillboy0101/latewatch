@@ -48,3 +48,6 @@ next-env.d.ts
 
 # dev server logs
 .next-dev*.log
+
+# Local UI harness screenshots (npm run ui:shots)
+/output/ui-shots/
