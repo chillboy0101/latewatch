@@ -54,8 +54,9 @@ test('check-in page renders push reminder controls instead of auto actions', () 
   const source = fs.readFileSync(checkInPagePath, 'utf8');
 
   assert.match(source, /ReminderNotificationPanel/);
-  assert.match(source, /Enable sign-in reminder/);
-  assert.match(source, /Enable sign-out reminder/);
+  assert.match(source, /label="Sign-in reminder"/);
+  assert.match(source, /label="Sign-out reminder"/);
+  assert.match(source, /role="switch"/);
   assert.match(source, /\/api\/attendance\/check-in\/push-subscription/);
   assert.match(source, /navigator\.serviceWorker\.register\('\/sw\.js'\)/);
   assert.doesNotMatch(source, /Reminder notifications are not configured/);

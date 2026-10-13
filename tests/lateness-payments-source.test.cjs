@@ -205,22 +205,22 @@ test('check-in page exposes a penalty history sheet from the overflow menu', () 
   assert.match(source, /Penalty history/);
   assert.match(source, /onClick=\{openPenaltyHistory\}/);
   assert.match(source, /\/api\/attendance\/check-in\/penalty-history/);
-  assert.match(source, /Current week totals/);
-  assert.match(source, /Current week penalty/);
-  assert.match(source, /Current week paid/);
-  assert.match(source, /Current week balance/);
+  // Minimal: one headline (what you owe, or all paid up) and one row per penalty day.
+  assert.match(source, /<p className="text-sm text-muted-foreground">You owe<\/p>/);
+  assert.match(source, /All paid up/);
+  assert.match(source, /function penaltyReasonLabel\(entry: PenaltyHistoryEntry\)/);
+  assert.match(source, /if \(reason\.includes\("DIDN'T SIGN IN"\)\) return 'No sign-in';/);
+  assert.doesNotMatch(source, /Current week penalty|PenaltyHistoryStat/);
 });
 
-test('staff penalty history exposes payment receipts', () => {
+test('receipts live in the Payment receipts sheet, not repeated in penalty history', () => {
   const source = fs.readFileSync(checkInPagePath, 'utf8');
 
   assert.match(source, /interface PenaltyReceiptSummary/);
-  assert.match(source, /receipts: PenaltyReceiptSummary\[\]/);
-  assert.match(source, /PenaltyHistoryReceipts/);
-  assert.match(source, /View receipt/);
-  assert.match(source, /\/check-in\/receipts\/\$\{receipt\.paymentId\}/);
-  assert.doesNotMatch(source, /href=\{`\/check-in\/receipts\/\$\{receipt\.paymentId\}`\}\s+target="_blank"/);
-  assert.match(source, /formatDisplayDateTime\(receipt\.recordedAt\)/);
+  assert.doesNotMatch(source, /PenaltyHistoryReceipts/);
+  assert.match(source, /<DrawerTitle>Payment receipts<\/DrawerTitle>/);
+  assert.match(source, /onClick=\{\(\) => selectReceipt\(notification\)\}/);
+  assert.match(source, /formatDisplayDateTime\(notification\.recordedAt\)/);
 });
 
 test('check-in page exposes auto-disappearing receipt notifications', () => {

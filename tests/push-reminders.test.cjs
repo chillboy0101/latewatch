@@ -97,8 +97,9 @@ test('check-in page replaces auto attendance controls with reminder notification
   const attendancePage = fs.readFileSync(attendancePagePath, 'utf8');
 
   assert.match(source, /ReminderNotificationPanel/);
-  assert.match(source, /Enable sign-in reminder/);
-  assert.match(source, /Enable sign-out reminder/);
+  assert.match(source, /label="Sign-in reminder"/);
+  assert.match(source, /label="Sign-out reminder"/);
+  assert.match(source, /role="switch"/);
   assert.match(source, /\/api\/attendance\/check-in\/push-subscription/);
   assert.doesNotMatch(source, /\/api\/attendance\/check-in\/push-subscription\/test/);
   assert.doesNotMatch(source, /Send test reminder/);

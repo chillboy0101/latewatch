@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerNested, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
-import { formatDisplayDate, formatDisplayDateTime } from '@/lib/date-format';
+import { formatDisplayDateTime, formatShortDisplayDate } from '@/lib/date-format';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
 import { RECEIPT_NOTIFICATION_AUTO_DISMISS_MS, type LatenessPaymentReceiptNotification } from '@/lib/lateness-payment-receipt-notifications';
 import { useSwipeToDismiss } from '@/lib/use-swipe-to-dismiss';
@@ -480,14 +480,6 @@ function locationStateFromValidation(validation: LocationValidationResult): Live
 
 function ghc(value: string | number | null | undefined) {
   return `GHC ${Number(value || 0).toFixed(2)}`;
-}
-
-function paymentStatusLabel(status: PenaltyPaymentStatus) {
-  if (status === 'paid') return 'Paid';
-  if (status === 'partially_paid') return 'Partially paid';
-  if (status === 'pardoned') return 'Pardoned';
-  if (status === 'partially_pardoned') return 'Partially pardoned';
-  return 'Unpaid';
 }
 
 function validateLiveLocation(locationPolicy: CheckInStatus['locationPolicy'], evidence: LocationEvidence): LiveLocation {
@@ -1221,7 +1213,7 @@ export default function CheckInPage() {
                   <button
                     type="button"
                     onClick={() => setReceiptsDialogOpen(true)}
-                    className="flex w-full items-center gap-3.5 rounded-xl border border-border bg-background/60 px-3 py-3 text-left transition-colors hover:border-primary/40 hover:bg-foreground/5 active:bg-foreground/10"
+                    className="flex w-full items-center gap-3.5 rounded-xl border border-border bg-background px-3 py-3 text-left transition-colors hover:border-primary/40 hover:bg-foreground/5 active:bg-foreground/10"
                   >
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                       <ReceiptText className="h-5 w-5" />
@@ -1235,7 +1227,7 @@ export default function CheckInPage() {
                   <button
                     type="button"
                     onClick={openPenaltyHistory}
-                    className="flex w-full items-center gap-3.5 rounded-xl border border-border bg-background/60 px-3 py-3 text-left transition-colors hover:border-primary/40 hover:bg-foreground/5 active:bg-foreground/10"
+                    className="flex w-full items-center gap-3.5 rounded-xl border border-border bg-background px-3 py-3 text-left transition-colors hover:border-primary/40 hover:bg-foreground/5 active:bg-foreground/10"
                   >
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                       <History className="h-5 w-5" />
@@ -1244,7 +1236,7 @@ export default function CheckInPage() {
                   <button
                     type="button"
                     onClick={() => setRemindersDialogOpen(true)}
-                    className="flex w-full items-center gap-3.5 rounded-xl border border-border bg-background/60 px-3 py-3 text-left transition-colors hover:border-primary/40 hover:bg-foreground/5 active:bg-foreground/10"
+                    className="flex w-full items-center gap-3.5 rounded-xl border border-border bg-background px-3 py-3 text-left transition-colors hover:border-primary/40 hover:bg-foreground/5 active:bg-foreground/10"
                   >
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                       <BellRing className="h-5 w-5" />
@@ -1257,7 +1249,6 @@ export default function CheckInPage() {
                 history={penaltyHistory}
                 loading={penaltyHistoryLoading}
                 error={penaltyHistoryError}
-                onRefresh={fetchPenaltyHistory}
                 onOpenChange={setPenaltyHistoryOpen}
                 open={penaltyHistoryOpen}
               />
@@ -1439,87 +1430,76 @@ function PenaltyHistoryDialog({
   history,
   loading,
   onOpenChange,
-  onRefresh,
   open,
 }: {
   error: string | null;
   history: PenaltyHistoryResponse | null;
   loading: boolean;
   onOpenChange: (open: boolean) => void;
-  onRefresh: () => void;
   open: boolean;
 }) {
   const currentWeek = history?.currentWeek || null;
-  const olderWeeks = (history?.weeks || []).filter((week) => week.startDate !== currentWeek?.startDate);
+  // Every week with penalties, newest first (the current week is also in history.weeks).
+  const weeks = [currentWeek, ...(history?.weeks || [])]
+    .filter((week): week is PenaltyHistoryWeek => Boolean(week))
+    .filter((week, index, list) => list.findIndex((other) => other.startDate === week.startDate) === index)
+    .filter((week) => week.entries.length > 0)
+    .sort((left, right) => right.startDate.localeCompare(left.startDate));
+  const owed = weeks.reduce((sum, week) => sum + Number(week.outstandingBalance || 0), 0);
 
   return (
     <DrawerNested open={open} onOpenChange={onOpenChange}>
       <DrawerContent className="h-[calc(100dvh-env(safe-area-inset-top)-1rem)] sm:h-[85dvh]">
         <DrawerHeader>
           <DrawerTitle>Penalty history</DrawerTitle>
-          <DrawerDescription>
-            Review late days, paid amounts, and outstanding balance.
-          </DrawerDescription>
+          <DrawerDescription className="sr-only">What you owe and each penalty day.</DrawerDescription>
         </DrawerHeader>
 
-        {loading ? (
+        {loading && !history ? (
           <div className="flex min-h-0 flex-1 items-center justify-center px-4 pb-6">
-            <LoadingBuffer variant="section" label="Loading penalty history" description="Checking your weekly balance." />
+            <LoadingBuffer variant="section" label="Loading penalty history" />
           </div>
-        ) : error ? (
+        ) : error && !history ? (
           <div className="flex min-h-0 flex-1 items-center justify-center px-6 pb-6">
             <div className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
               {error}
             </div>
           </div>
-        ) : currentWeek ? (
-          <div data-vaul-no-drag className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-6">
-            <div>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-semibold">Current week totals</h3>
-                  <p className="text-xs text-muted-foreground">{formatDisplayDate(currentWeek.startDate)} to {formatDisplayDate(currentWeek.endDate)}</p>
-                </div>
-                <Button type="button" variant="outline" size="sm" onClick={onRefresh}>
-                  Refresh
-                </Button>
-              </div>
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <PenaltyHistoryStat label="Current week penalty" value={ghc(currentWeek.totalPenalty)} />
-                <PenaltyHistoryStat label="Current week paid" value={ghc(currentWeek.paidAmount)} />
-                <PenaltyHistoryStat label="Current week balance" value={ghc(currentWeek.outstandingBalance)} highlight />
-              </div>
+        ) : weeks.length > 0 ? (
+          <div data-vaul-no-drag className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-6">
+            <div className="rounded-2xl border border-border bg-background px-4 py-4">
+              {owed > 0 ? (
+                <>
+                  <p className="text-sm text-muted-foreground">You owe</p>
+                  <p className="mt-0.5 font-mono text-3xl font-semibold tabular-nums text-warning">{ghc(owed)}</p>
+                </>
+              ) : (
+                <p className="flex items-center gap-2 text-lg font-semibold text-success">
+                  <CheckCircle2 className="h-5 w-5" />
+                  All paid up
+                </p>
+              )}
+              {currentWeek && (
+                <p className="mt-1.5 text-xs text-muted-foreground">This week {ghc(currentWeek.totalPenalty)}</p>
+              )}
             </div>
 
-            <PenaltyHistoryEntries entries={currentWeek.entries} emptyLabel="No late penalty days this week." />
-            <PenaltyHistoryReceipts receipts={currentWeek.receipts} emptyLabel="No receipts for this week yet." />
-
-            {olderWeeks.length > 0 && (
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold">Older weekly history</h3>
-                {olderWeeks.map((week) => (
-                  <details key={`${week.startDate}-${week.endDate}`} className="rounded-md border border-border bg-background">
-                    <summary className="cursor-pointer px-3 py-2 text-sm font-medium">
-                      {formatDisplayDate(week.startDate)} to {formatDisplayDate(week.endDate)} - {ghc(week.outstandingBalance)} outstanding
-                    </summary>
-                    <div className="border-t border-border p-3">
-                      <PenaltyHistoryEntries entries={week.entries} emptyLabel="No penalty days for this week." />
-                      <div className="mt-3">
-                        <PenaltyHistoryReceipts receipts={week.receipts} emptyLabel="No receipts for this week." />
-                      </div>
-                    </div>
-                  </details>
-                ))}
-              </div>
-            )}
+            {weeks.map((week) => (
+              <section key={week.startDate}>
+                <div className="mb-1.5 flex items-baseline justify-between px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <span>{week.startDate === currentWeek?.startDate ? 'This week' : `${formatShortDisplayDate(week.startDate)} – ${formatShortDisplayDate(week.endDate)}`}</span>
+                  <span className="font-mono normal-case tracking-normal">{ghc(week.totalPenalty)}</span>
+                </div>
+                <PenaltyHistoryEntries entries={week.entries} />
+              </section>
+            ))}
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 pb-6 text-center">
             <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
               <History className="h-6 w-6" />
             </span>
-            <p className="mt-3 text-base font-semibold text-foreground">No penalty history yet</p>
-            <p className="mt-1 text-sm text-muted-foreground">Late-day penalties and payments will show here.</p>
+            <p className="mt-3 text-base font-semibold text-foreground">No penalties yet</p>
           </div>
         )}
       </DrawerContent>
@@ -1540,91 +1520,52 @@ function locationIcon(liveLocation: LiveLocation) {
   return <MapPin className="h-4 w-4" />;
 }
 
-function PenaltyHistoryStat({ highlight, label, value }: { highlight?: boolean; label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-border bg-background p-2">
-      <div className="text-[11px] uppercase leading-tight text-muted-foreground">{label}</div>
-      <div className={cn('mt-1 font-mono text-sm font-semibold', highlight && 'text-warning')}>{value}</div>
-    </div>
-  );
+function penaltyDayLabel(dateKey: string) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', weekday: 'short' }).format(new Date(year, month - 1, day));
 }
 
-function PenaltyHistoryReceipts({ emptyLabel, receipts }: { emptyLabel: string; receipts: PenaltyReceiptSummary[] }) {
-  return (
-    <div className="rounded-md border border-border bg-background">
-      <div className="flex items-center justify-between border-b border-border px-3 py-2">
-        <h3 className="text-sm font-semibold">Receipts</h3>
-        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-          {receipts.length}
-        </span>
-      </div>
-      {receipts.length === 0 ? (
-        <div className="px-3 py-4 text-center text-sm text-muted-foreground">
-          {emptyLabel}
-        </div>
-      ) : (
-        <div className="divide-y divide-border">
-          {receipts.map((receipt) => (
-            <div key={receipt.paymentId} className="flex items-center justify-between gap-3 px-3 py-2.5">
-              <div className="min-w-0">
-                <div className="truncate text-sm font-medium">{receipt.receiptNumber}</div>
-                <div className="mt-0.5 text-xs text-muted-foreground">
-                  {formatDisplayDateTime(receipt.recordedAt)} - {ghc(receipt.amount)}
-                </div>
-              </div>
-              <Button asChild size="sm" variant="outline" className="h-8 shrink-0">
-                <Link href={`/check-in/receipts/${receipt.paymentId}`}>
-                  View receipt
-                </Link>
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+// Penalty reasons are stored in the lateness book's wording ("DIDN'T COME BEFORE 8:30AM ...");
+// show them short and plain.
+function penaltyReasonLabel(entry: PenaltyHistoryEntry) {
+  const reason = (entry.reason || '').toUpperCase();
+  const time = entry.arrivalTime?.slice(0, 5);
+  const late = time ? `Late · ${time}` : 'Late';
+  if (reason.includes("DIDN'T SIGN IN")) return 'No sign-in';
+  if (reason.includes("DIDN'T COME BEFORE") && reason.includes('DID NOT SIGN OUT')) return `${late} + no sign-out`;
+  if (reason.includes("DIDN'T COME BEFORE")) return late;
+  if (reason.includes('DID NOT SIGN OUT')) return 'No sign-out';
+  if (reason.startsWith('LATE')) return late;
+  if (!entry.reason) return time ? late : 'Penalty';
+  return entry.reason.charAt(0).toUpperCase() + entry.reason.slice(1).toLowerCase();
 }
 
-function PenaltyHistoryEntries({ emptyLabel, entries }: { emptyLabel: string; entries: PenaltyHistoryEntry[] }) {
-  if (entries.length === 0) {
-    return (
-      <div className="rounded-md border border-border px-3 py-5 text-center text-sm text-muted-foreground">
-        {emptyLabel}
-      </div>
-    );
-  }
+function penaltyStatus(entry: PenaltyHistoryEntry) {
+  if (entry.status === 'paid') return { className: 'text-success', label: 'Paid' };
+  if (entry.status === 'pardoned') return { className: 'text-success', label: 'Pardoned' };
+  if (entry.status === 'unpaid') return { className: 'text-danger', label: 'Unpaid' };
+  return { className: 'text-warning', label: `${ghc(entry.outstandingAmount)} left` };
+}
 
+function PenaltyHistoryEntries({ entries }: { entries: PenaltyHistoryEntry[] }) {
   return (
-    <div className="space-y-2">
-      {entries.map((entry) => (
-        <div key={entry.entryId} className="rounded-md border border-border bg-background p-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-sm font-semibold">{formatDisplayDate(entry.date)}</div>
-              <div className="mt-0.5 text-xs text-muted-foreground">
-                {entry.arrivalTime?.slice(0, 5) || '-'} - {entry.reason || 'Late arrival'}
-              </div>
+    <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-background">
+      {entries.map((entry) => {
+        const status = penaltyStatus(entry);
+        return (
+          <li key={entry.entryId} className="flex items-center justify-between gap-3 px-3.5 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">{penaltyDayLabel(entry.date)}</p>
+              <p className="truncate text-xs text-muted-foreground">{penaltyReasonLabel(entry)}</p>
             </div>
-            <span className={cn(
-              'inline-flex h-7 shrink-0 items-center rounded-full border px-2.5 text-xs font-medium',
-              entry.status === 'paid' && 'border-success/25 bg-success/10 text-success',
-              entry.status === 'partially_paid' && 'border-warning/25 bg-warning/10 text-warning',
-              entry.status === 'unpaid' && 'border-danger/25 bg-danger/10 text-danger',
-              entry.status === 'pardoned' && 'border-success/25 bg-success/10 text-success',
-              entry.status === 'partially_pardoned' && 'border-warning/25 bg-warning/10 text-warning',
-            )}>
-              {paymentStatusLabel(entry.status)}
-            </span>
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-            <PenaltyHistoryStat label="Penalty" value={ghc(entry.penaltyAmount)} />
-            <PenaltyHistoryStat label="Paid" value={ghc(entry.paidAmount)} />
-            <PenaltyHistoryStat label="Pardoned" value={ghc(entry.pardonedAmount)} />
-            <PenaltyHistoryStat label="Balance" value={ghc(entry.outstandingAmount)} highlight />
-          </div>
-        </div>
-      ))}
-    </div>
+            <div className="shrink-0 text-right">
+              <p className="font-mono text-sm font-semibold tabular-nums">{ghc(entry.penaltyAmount)}</p>
+              <p className={cn('text-xs font-medium', status.className)}>{status.label}</p>
+            </div>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -1886,49 +1827,43 @@ function ReceiptsDialog({
           <>
             <DrawerHeader>
               <DrawerTitle>Payment receipts</DrawerTitle>
-              <DrawerDescription>Receipts for payments recorded on your account.</DrawerDescription>
+              <DrawerDescription className="sr-only">Receipts for payments recorded on your account.</DrawerDescription>
             </DrawerHeader>
             {notifications.length === 0 ? (
               <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 pb-6 text-center">
                 <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <ReceiptText className="h-6 w-6" />
                 </span>
-                <p className="mt-3 text-base font-semibold text-foreground">No payment receipts yet</p>
-                <p className="mt-1 text-sm text-muted-foreground">Receipts for recorded payments will show here.</p>
+                <p className="mt-3 text-base font-semibold text-foreground">No receipts yet</p>
               </div>
             ) : (
-              <div data-vaul-no-drag className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 pb-6">
-                {notifications.map((notification) => (
-                  <button
-                    key={notification.id}
-                    type="button"
-                    onClick={() => selectReceipt(notification)}
-                    className="flex w-full items-start gap-3 rounded-lg border border-border bg-card p-3 text-left transition-colors hover:border-primary/40 hover:bg-foreground/5 active:bg-foreground/10"
-                  >
-                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <ReceiptText className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold text-foreground">
-                          GHC {Number(notification.amount || 0).toFixed(2)}
-                        </p>
-                        {!notification.read && (
-                          <span className="flex h-5 items-center rounded-full bg-primary px-2 text-[10px] font-semibold uppercase tracking-wide text-primary-foreground">
-                            New
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {formatDisplayDateTime(notification.recordedAt)}
-                      </p>
-                      <span className="mt-1 block truncate font-mono text-[11px] font-semibold text-muted-foreground">
-                        {notification.receiptNumber}
-                      </span>
-                    </div>
-                    <ChevronRight className="mt-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                  </button>
-                ))}
+              <div data-vaul-no-drag className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
+                <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-background">
+                  {notifications.map((notification) => (
+                    <li key={notification.id}>
+                      <button
+                        type="button"
+                        onClick={() => selectReceipt(notification)}
+                        className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-foreground/5 active:bg-foreground/10"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-mono text-sm font-semibold tabular-nums text-foreground">{ghc(notification.amount)}</p>
+                            {!notification.read && (
+                              <span className="flex h-5 items-center rounded-full bg-primary px-2 text-[10px] font-semibold uppercase tracking-wide text-primary-foreground">
+                                New
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                            {formatDisplayDateTime(notification.recordedAt)} · <span className="font-mono">{notification.receiptNumber}</span>
+                          </p>
+                        </div>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </>
@@ -1966,9 +1901,7 @@ function RemindersDialog({
       <DrawerContent className="max-h-[85dvh]">
         <DrawerHeader>
           <DrawerTitle>Reminders</DrawerTitle>
-          <DrawerDescription>
-            Get a heads-up to sign in before 8:30 AM, and to sign out at 4:30 PM — even if the app is closed.
-          </DrawerDescription>
+          <DrawerDescription>Works even when LateWatch is closed.</DrawerDescription>
         </DrawerHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
           <ReminderNotificationPanel
@@ -2117,23 +2050,23 @@ function ReminderNotificationPanel({
   signOutEnabled: boolean;
 }) {
   return (
-    <div className="rounded-md border border-border bg-card p-3">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <ReminderNotificationToggle
-          disabled={disabled || notificationPermission === 'unsupported'}
-          enabled={signInEnabled}
-          label="Enable sign-in reminder"
-          loading={signInLoading}
-          onToggle={onToggleCheckIn}
-        />
-        <ReminderNotificationToggle
-          disabled={disabled || notificationPermission === 'unsupported'}
-          enabled={signOutEnabled}
-          label="Enable sign-out reminder"
-          loading={signOutLoading}
-          onToggle={onToggleSignOut}
-        />
-      </div>
+    <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-background">
+      <ReminderNotificationToggle
+        disabled={disabled || notificationPermission === 'unsupported'}
+        enabled={signInEnabled}
+        label="Sign-in reminder"
+        loading={signInLoading}
+        onToggle={onToggleCheckIn}
+        time="8:15 AM"
+      />
+      <ReminderNotificationToggle
+        disabled={disabled || notificationPermission === 'unsupported'}
+        enabled={signOutEnabled}
+        label="Sign-out reminder"
+        loading={signOutLoading}
+        onToggle={onToggleSignOut}
+        time="4:30 PM"
+      />
     </div>
   );
 }
@@ -2144,34 +2077,46 @@ function ReminderNotificationToggle({
   label,
   loading,
   onToggle,
+  time,
 }: {
   disabled: boolean;
   enabled: boolean;
   label: string;
   loading: boolean;
   onToggle: () => void;
+  time: string;
 }) {
   return (
     <button
-      aria-pressed={enabled}
-      className={cn(
-        'flex h-11 items-center justify-between gap-2 rounded-md border px-3 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-55',
-        enabled
-          ? 'border-primary/40 bg-primary/10 text-primary'
-          : 'border-border bg-background text-foreground',
-      )}
-      disabled={disabled}
-      onClick={onToggle}
       type="button"
+      role="switch"
+      aria-checked={enabled}
+      aria-label={label}
+      disabled={disabled || loading}
+      onClick={onToggle}
+      className="flex w-full items-center justify-between gap-3 px-3.5 py-3 text-left transition-colors hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-55"
     >
-      <span className="truncate">{label}</span>
+      <span className="min-w-0">
+        <span className="block text-sm font-medium">{label}</span>
+        <span className="block text-xs text-muted-foreground">{time}</span>
+      </span>
       {loading ? (
-        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+        <Loader2 className="h-5 w-5 shrink-0 animate-spin text-muted-foreground" />
       ) : (
-        <span className={cn(
-          'h-2.5 w-2.5 shrink-0 rounded-full',
-          enabled ? 'bg-primary' : 'bg-muted-foreground/40',
-        )} />
+        <span
+          aria-hidden
+          className={cn(
+            'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors',
+            enabled ? 'bg-primary' : 'bg-muted-foreground/30',
+          )}
+        >
+          <span
+            className={cn(
+              'absolute h-5 w-5 rounded-full bg-white shadow-sm transition-transform',
+              enabled ? 'translate-x-[22px]' : 'translate-x-0.5',
+            )}
+          />
+        </span>
       )}
     </button>
   );
