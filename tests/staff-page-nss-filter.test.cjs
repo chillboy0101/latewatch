@@ -135,7 +135,7 @@ test('staff page keeps leave management separate from employment status', () => 
   const pageSource = fs.readFileSync(staffPagePath, 'utf8');
 
   assert.match(pageSource, /label: 'On Leave'/);
-  assert.match(pageSource, /window\.location\.assign\('\/attendance\/overview'\)/);
+  assert.match(pageSource, /<StaffLeaveDialog/);
   assert.match(pageSource, /member\.active \? 'Deactivate' : 'Activate'/);
   assert.doesNotMatch(pageSource, /Put on leave/);
   assert.doesNotMatch(pageSource, /Return from leave/);
@@ -147,7 +147,7 @@ test('attendance permissions distinguish date-based absence from ongoing leave',
 
   assert.match(source, /Manage ongoing leave/);
   assert.match(source, /Excused absence applies to these dates only/);
-  assert.match(source, /href="\/staff"/);
+  assert.match(source, /<StaffLeaveDialog/);
 });
 
 test('staff API flags current leave periods separately from staff active status', () => {
@@ -156,5 +156,20 @@ test('staff API flags current leave periods separately from staff active status'
   assert.match(source, /from\(staffLeavePeriod\)/);
   assert.match(source, /lte\(staffLeavePeriod\.startDate, currentDate\)/);
   assert.match(source, /gte\(staffLeavePeriod\.endDate, currentDate\)/);
-  assert.match(source, /onLeave: member\.archived !== true && staffOnLeave\.has\(member\.id\)/);
+  assert.match(source, /onLeave: member\.archived !== true && Boolean\(activeLeave\)/);
+});
+
+test('one shared leave dialog approves, extends and closes any open leave', () => {
+  const dialog = fs.readFileSync(path.join(__dirname, '../src/components/attendance/staff-leave-dialog.tsx'), 'utf8');
+  const patchRoute = fs.readFileSync(path.join(__dirname, '../src/app/api/attendance/leave/[id]/route.ts'), 'utf8');
+
+  assert.match(dialog, /Approve leave/);
+  assert.match(dialog, /Change end date/);
+  assert.match(dialog, /Record return/);
+  assert.match(dialog, /<DateField label="Returned on"/);
+  assert.doesNotMatch(dialog, /type="date"/);
+  // Leave recorded any way (backfill, permission, approved) can be closed or extended.
+  assert.match(patchRoute, /ne\(staffLeavePeriod\.source, 'staff_status'\), isNull\(staffLeavePeriod\.returnedOn\)/);
+  assert.doesNotMatch(patchRoute, /eq\(staffLeavePeriod\.source, 'approved_leave'\)/);
+  assert.match(patchRoute, /excludeId: id/);
 });

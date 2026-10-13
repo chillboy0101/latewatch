@@ -102,6 +102,8 @@ export function formatLeaveSummary(
   if (!period || !period.startDate) return 'Not on leave';
 
   const startDate = parseISO(dateKey(period.startDate));
+  // Open-ended leave has no end yet; never show it as a one-day leave.
+  if (!getEffectiveLeaveEndDate(period)) return `Since ${format(startDate, 'd MMM yyyy')} • no end date`;
   const effectiveEndDateValue = getEffectiveLeaveEndDate(period) || period.endDate || period.startDate;
   const effectiveEndDate = parseISO(dateKey(effectiveEndDateValue));
   const dateRange = `${format(startDate, 'd MMM yyyy')} to ${format(effectiveEndDate, 'd MMM yyyy')}`;

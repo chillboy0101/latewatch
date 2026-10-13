@@ -36,6 +36,7 @@ export async function getStaffLeavePeriodsForRange(input: {
 
 export async function findOverlappingStaffLeavePeriod(input: {
   endDate: string;
+  excludeId?: string;
   staffId: string;
   startDate: string;
 }) {
@@ -51,6 +52,7 @@ export async function findOverlappingStaffLeavePeriod(input: {
     .where(and(
       eq(staffLeavePeriod.staffId, input.staffId),
       ne(staffLeavePeriod.source, 'staff_status'),
+      ...(input.excludeId ? [ne(staffLeavePeriod.id, input.excludeId)] : []),
       lte(staffLeavePeriod.startDate, input.endDate),
       sql`COALESCE(${staffLeavePeriod.returnedOn} - 1, ${staffLeavePeriod.endDate}, 'infinity'::date) >= ${input.startDate}::date`,
     ))

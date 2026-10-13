@@ -6,6 +6,7 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { DateField } from '@/components/ui/date-field';
+import { StaffLeaveDialog } from '@/components/attendance/staff-leave-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
@@ -23,7 +24,7 @@ import { getAccraDateKey } from '@/lib/date-key';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 import { isOnTimeCheckIn } from '@/lib/work-hours';
-import { formatLeaveDuration, formatLeaveSummary, getExpectedReturnDate } from '@/lib/staff-leave';
+import { formatLeaveSummary } from '@/lib/staff-leave';
 
 type AttendanceFilter = 'all' | 'on_time' | AttendanceStatus;
 type GeneralPardonType = 'absence' | 'late_arrival';
@@ -243,13 +244,6 @@ export default function AttendancePage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
   const [leaveManagerStaffId, setLeaveManagerStaffId] = useState('');
-  const [leaveType, setLeaveType] = useState('annual');
-  const [leaveStartDate, setLeaveStartDate] = useState(todayKey());
-  const [leaveEndDate, setLeaveEndDate] = useState(todayKey());
-  const [leaveReturnDate, setLeaveReturnDate] = useState('');
-  const [leaveStatusMessage, setLeaveStatusMessage] = useState<string | null>(null);
-  const [leaveSubmitting, setLeaveSubmitting] = useState(false);
-  const [leavePeriods, setLeavePeriods] = useState<Array<{ id: string; staffId: string; staffName?: string | null; startDate: string; endDate: string | null; returnedOn: string | null; leaveType: string; source: string }>>([]);
 
   const appliedDate = isIsoDateKey(dateInput) ? dateInput : '';
   const attendanceDate = appliedDate || todayKey();
@@ -285,125 +279,10 @@ export default function AttendancePage() {
     }
   }, [attendanceDate]);
 
-  const refreshLeavePeriods = useCallback(async (staffId?: string) => {
-    try {
-      const response = await fetch('/api/attendance/leave', { cache: 'no-store' });
-      const payload = await response.json();
-      const records = Array.isArray(payload) ? payload : [];
-      setLeavePeriods(records);
-
-      if (staffId) {
-        const openPeriod = records.find((period) => period.staffId === staffId && !period.returnedOn);
-        if (openPeriod) {
-          const expectedReturnDate = getExpectedReturnDate(openPeriod) || '';
-          setLeaveReturnDate(expectedReturnDate);
-          setLeaveType(openPeriod.leaveType || 'annual');
-          setLeaveStartDate(openPeriod.startDate || todayKey());
-          setLeaveEndDate(openPeriod.endDate || openPeriod.startDate || todayKey());
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load leave periods:', error);
-      setLeavePeriods([]);
-    }
-  }, []);
-
-  const openLeaveDialog = useCallback(async (staffId?: string) => {
-    const targetStaffId = staffId || data?.rows[0]?.staff.id || '';
-    setLeaveManagerStaffId(targetStaffId);
+  const openLeaveDialog = useCallback((staffId?: string) => {
+    setLeaveManagerStaffId(staffId || '');
     setLeaveDialogOpen(true);
-    setLeaveStatusMessage(null);
-
-    if (targetStaffId) {
-      const selectedMember = data?.rows.find((row) => row.staff.id === targetStaffId)?.staff;
-      const expectedReturnDate = getExpectedReturnDate(selectedMember?.activeLeave) || '';
-      setLeaveReturnDate(expectedReturnDate);
-      setLeaveType(selectedMember?.activeLeave?.leaveType || 'annual');
-      setLeaveStartDate(selectedMember?.activeLeave?.startDate || todayKey());
-      setLeaveEndDate(selectedMember?.activeLeave?.endDate || todayKey());
-      await refreshLeavePeriods(targetStaffId);
-    }
-  }, [data?.rows, refreshLeavePeriods]);
-
-  const saveLeave = useCallback(async () => {
-    if (!leaveManagerStaffId) return;
-    setLeaveSubmitting(true);
-    setLeaveStatusMessage(null);
-
-    try {
-      const response = await fetch('/api/attendance/leave', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          endDate: leaveEndDate,
-          leaveType,
-          staffId: leaveManagerStaffId,
-          startDate: leaveStartDate,
-        }),
-      });
-
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(result.error || 'Could not create leave period.');
-      }
-
-      setLeaveStatusMessage('Leave approved successfully.');
-      await fetchAttendance();
-      await refreshLeavePeriods(leaveManagerStaffId);
-    } catch (error) {
-      console.error('Failed to approve leave:', error);
-      setLeaveStatusMessage(error instanceof Error ? error.message : 'Could not create leave period.');
-    } finally {
-      setLeaveSubmitting(false);
-    }
-  }, [fetchAttendance, leaveEndDate, leaveManagerStaffId, leaveStartDate, leaveType, refreshLeavePeriods]);
-
-  const closeLeavePeriod = useCallback(async () => {
-    if (!leaveManagerStaffId) return;
-    const currentPeriod = leavePeriods.find((period) => period.staffId === leaveManagerStaffId && !period.returnedOn);
-    if (!currentPeriod) {
-      setLeaveStatusMessage('No active leave period is available to close.');
-      return;
-    }
-
-    if (!leaveReturnDate) {
-      setLeaveStatusMessage('Select the actual return date.');
-      return;
-    }
-    if (leaveReturnDate <= leaveStartDate) {
-      setLeaveStatusMessage('Return date must be after the leave start date and not in the future.');
-      return;
-    }
-    if (leaveReturnDate > todayKey()) {
-      setLeaveStatusMessage('Actual return date cannot be in the future.');
-      return;
-    }
-
-    setLeaveSubmitting(true);
-    setLeaveStatusMessage(null);
-
-    try {
-      const response = await fetch(`/api/attendance/leave/${currentPeriod.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ returnedOn: leaveReturnDate }),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(result.error || 'Could not record the return from leave.');
-      }
-
-      setLeaveStatusMessage('Return recorded successfully.');
-      setLeaveReturnDate('');
-      await fetchAttendance();
-      await refreshLeavePeriods(leaveManagerStaffId);
-    } catch (error) {
-      console.error('Failed to close leave period:', error);
-      setLeaveStatusMessage(error instanceof Error ? error.message : 'Could not record return.');
-    } finally {
-      setLeaveSubmitting(false);
-    }
-  }, [fetchAttendance, leaveManagerStaffId, leavePeriods, leaveReturnDate, refreshLeavePeriods]);
+  }, []);
 
   useEffect(() => {
     fetchAttendance();
@@ -851,7 +730,7 @@ export default function AttendancePage() {
               <p className="mt-1 text-xs text-muted-foreground">{formatDisplayDate(attendanceDate)}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button className="h-10 gap-2" variant="outline" onClick={() => void openLeaveDialog(data?.rows[0]?.staff.id)}>
+              <Button className="h-10 gap-2" variant="outline" onClick={() => openLeaveDialog()}>
                 <CalendarDays className="h-4 w-4" />
                 Manage ongoing leave
               </Button>
@@ -922,103 +801,13 @@ export default function AttendancePage() {
           )}
         </Card>
 
-        <Dialog open={leaveDialogOpen} onOpenChange={(open) => {
-          setLeaveDialogOpen(open);
-          if (!open) {
-            setLeaveStatusMessage(null);
-            setLeaveReturnDate('');
-          }
-        }}>
-          <DialogContent className="max-w-xl">
-            <DialogHeader>
-              <DialogTitle>Manage staff leave</DialogTitle>
-              <DialogDescription>
-                {data?.rows.find((row) => row.staff.id === leaveManagerStaffId)?.staff.fullName || 'Select a staff member'}
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-4 pt-2">
-              <SelectField
-                icon={<UserRound className="h-3.5 w-3.5" />}
-                label="Staff"
-                value={leaveManagerStaffId}
-                onChange={setLeaveManagerStaffId}
-              >
-                <option value="">Select staff</option>
-                {(data?.rows || []).map((row) => (
-                  <option key={row.staff.id} value={row.staff.id}>{row.staff.fullName}</option>
-                ))}
-              </SelectField>
-
-              <div className="rounded-md border border-border bg-muted/20 p-3 text-sm">
-                <p className="font-medium">Current status</p>
-                <p className="mt-1 text-muted-foreground">
-                  {(() => {
-                    const selectedMember = data?.rows.find((row) => row.staff.id === leaveManagerStaffId)?.staff;
-                    if (!selectedMember) return 'Select a staff member to manage leave.';
-                    if (selectedMember.activeLeave) {
-                      return `${selectedMember.fullName} is on leave: ${formatLeaveSummary(selectedMember.activeLeave)}.`;
-                    }
-                    return `${selectedMember.fullName} is not currently on leave.`;
-                  })()}
-                </p>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Start date</label>
-                  <Input type="date" value={leaveStartDate} onChange={(event) => setLeaveStartDate(event.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Planned end date</label>
-                  <Input type="date" value={leaveEndDate} onChange={(event) => setLeaveEndDate(event.target.value)} />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Leave type</label>
-                <select value={leaveType} onChange={(event) => setLeaveType(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-primary">
-                  <option value="annual">Annual</option>
-                  <option value="sick">Sick</option>
-                  <option value="maternity_paternity">Maternity/Paternity</option>
-                  <option value="study">Study</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-
-              {leaveStatusMessage && (
-                <p className={cn('text-sm font-medium', leaveStatusMessage.includes('successfully') || leaveStatusMessage.includes('recorded') ? 'text-success' : 'text-danger')}>
-                  {leaveStatusMessage}
-                </p>
-              )}
-
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={() => void saveLeave()} disabled={leaveSubmitting || !leaveManagerStaffId}>
-                  {leaveSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarDays className="mr-2 h-4 w-4" />}
-                  Approve leave
-                </Button>
-                {data?.rows.some((row) => row.staff.id === leaveManagerStaffId && row.staff.activeLeave) && (
-                  <>
-                    <div className="min-w-[10rem] flex-1">
-                      <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Expected return date</label>
-                      <Input
-                        type="date"
-                        value={leaveReturnDate}
-                        min={leaveStartDate}
-                        max={todayKey()}
-                        onChange={(event) => setLeaveReturnDate(event.target.value)}
-                        className="min-w-[10rem]"
-                      />
-                    </div>
-                    <Button variant="outline" onClick={() => void closeLeavePeriod()} disabled={leaveSubmitting || !leaveReturnDate}>
-                      Record return
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <StaffLeaveDialog
+          open={leaveDialogOpen}
+          onOpenChange={setLeaveDialogOpen}
+          initialStaffId={leaveManagerStaffId}
+          staffOptions={(data?.rows || []).map((row) => ({ fullName: row.staff.fullName, id: row.staff.id }))}
+          onChanged={fetchAttendance}
+        />
 
         <Dialog
           open={permissionDialogOpen}

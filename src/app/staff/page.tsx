@@ -19,9 +19,8 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
-import { getAccraDateKey } from '@/lib/date-key';
 import { getStaffIdentitySyncCopy, type StaffIdentitySyncTone } from '@/lib/staff-identity-sync-copy';
-import { formatLeaveSummary, getExpectedReturnDate } from '@/lib/staff-leave';
+import { StaffLeaveDialog } from '@/components/attendance/staff-leave-dialog';
 
 interface StaffMember {
   id: string;
@@ -67,14 +66,7 @@ export default function StaffPage() {
   const [deleteError, setDeleteError] = useState('');
   const [deleteRecords, setDeleteRecords] = useState(false);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
-  const [leaveDialogStaff, setLeaveDialogStaff] = useState<StaffMember | null>(null);
-  const [leaveType, setLeaveType] = useState('annual');
-  const [leaveStartDate, setLeaveStartDate] = useState(getAccraDateKey());
-  const [leaveEndDate, setLeaveEndDate] = useState(getAccraDateKey());
-  const [leaveReturnDate, setLeaveReturnDate] = useState('');
-  const [leaveStatusMessage, setLeaveStatusMessage] = useState<string | null>(null);
-  const [leaveSubmitting, setLeaveSubmitting] = useState(false);
-  const [leavePeriods, setLeavePeriods] = useState<Array<{ id: string; staffId: string; staffName?: string | null; startDate: string; endDate: string | null; returnedOn: string | null; leaveType: string; source: string }>>([]);
+  const [leaveDialogStaffId, setLeaveDialogStaffId] = useState('');
 
   // Add form state
   const [newName, setNewName] = useState('');
@@ -113,27 +105,6 @@ export default function StaffPage() {
     }
   }, []);
 
-  const refreshLeavePeriods = useCallback(async (staffId?: string) => {
-    try {
-      const response = await fetch('/api/attendance/leave', { cache: 'no-store' });
-      const data = await response.json();
-      const records = Array.isArray(data) ? data : [];
-      setLeavePeriods(records);
-      if (staffId) {
-        const activeLeave = records.find((period) => period.staffId === staffId && !period.returnedOn);
-        if (activeLeave) {
-          const expectedReturnDate = getExpectedReturnDate(activeLeave) || '';
-          setLeaveReturnDate(expectedReturnDate);
-          setLeaveType(activeLeave.leaveType || 'annual');
-          setLeaveStartDate(activeLeave.startDate || getAccraDateKey());
-          setLeaveEndDate(activeLeave.endDate || activeLeave.startDate || getAccraDateKey());
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load leave periods:', error);
-      setLeavePeriods([]);
-    }
-  }, []);
 
   useEffect(() => {
     fetchStaff();
@@ -296,99 +267,9 @@ export default function StaffPage() {
     }
   };
 
-  const openLeaveDialog = async (member: StaffMember) => {
-    setLeaveDialogStaff(member);
+  const openLeaveDialog = (member: StaffMember) => {
+    setLeaveDialogStaffId(member.id);
     setLeaveDialogOpen(true);
-    setLeaveStatusMessage(null);
-    const expectedReturnDate = getExpectedReturnDate(member.activeLeave) || '';
-    setLeaveReturnDate(expectedReturnDate);
-    setLeaveType(member.activeLeave?.leaveType || 'annual');
-    setLeaveStartDate(member.activeLeave?.startDate || getAccraDateKey());
-    setLeaveEndDate(member.activeLeave?.endDate || getAccraDateKey());
-    await refreshLeavePeriods(member.id);
-  };
-
-  const saveLeave = async () => {
-    if (!leaveDialogStaff) return;
-    setLeaveSubmitting(true);
-    setLeaveStatusMessage(null);
-
-    try {
-      const response = await fetch('/api/attendance/leave', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          endDate: leaveEndDate,
-          leaveType,
-          staffId: leaveDialogStaff.id,
-          startDate: leaveStartDate,
-        }),
-      });
-
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(result.error || 'Could not create the leave period.');
-      }
-
-      setLeaveStatusMessage('Leave approved successfully.');
-      await fetchStaff();
-      await refreshLeavePeriods(leaveDialogStaff.id);
-      setLeaveReturnDate('');
-      setLeaveType('annual');
-      setLeaveStartDate(getAccraDateKey());
-      setLeaveEndDate(getAccraDateKey());
-    } catch (error) {
-      console.error('Failed to approve leave:', error);
-      setLeaveStatusMessage(error instanceof Error ? error.message : 'Could not create leave period.');
-    } finally {
-      setLeaveSubmitting(false);
-    }
-  };
-
-  const closeLeavePeriod = async () => {
-    if (!leaveDialogStaff) return;
-    const period = leavePeriods.find((item) => item.staffId === leaveDialogStaff.id && !item.returnedOn);
-    if (!period) {
-      setLeaveStatusMessage('No active leave period is available to close.');
-      return;
-    }
-
-    if (!leaveReturnDate) {
-      setLeaveStatusMessage('Select the actual return date.');
-      return;
-    }
-    if (leaveReturnDate <= leaveStartDate) {
-      setLeaveStatusMessage('Return date must be after the leave start date and not in the future.');
-      return;
-    }
-    if (leaveReturnDate > getAccraDateKey()) {
-      setLeaveStatusMessage('Actual return date cannot be in the future.');
-      return;
-    }
-
-    setLeaveSubmitting(true);
-    setLeaveStatusMessage(null);
-
-    try {
-      const response = await fetch(`/api/attendance/leave/${period.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ returnedOn: leaveReturnDate }),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(result.error || 'Could not record the return from leave.');
-      }
-      setLeaveStatusMessage('Return recorded successfully.');
-      setLeaveReturnDate('');
-      await fetchStaff();
-      await refreshLeavePeriods(leaveDialogStaff.id);
-    } catch (error) {
-      console.error('Failed to close leave period:', error);
-      setLeaveStatusMessage(error instanceof Error ? error.message : 'Could not record return.');
-    } finally {
-      setLeaveSubmitting(false);
-    }
   };
 
   const handleEdit = async () => {
@@ -563,93 +444,13 @@ export default function StaffPage() {
   return (
     <DashboardLayout title="Staff">
       <div className="space-y-6">
-        <Dialog open={leaveDialogOpen} onOpenChange={(open) => {
-          setLeaveDialogOpen(open);
-          if (!open) {
-            setLeaveDialogStaff(null);
-            setLeaveStatusMessage(null);
-            setLeaveReturnDate('');
-          }
-        }}>
-          <DialogContent className="max-w-xl">
-            <DialogHeader>
-              <DialogTitle>Manage staff leave</DialogTitle>
-              <DialogDescription>
-                {leaveDialogStaff ? `Leave administration for ${leaveDialogStaff.fullName}` : 'Leave administration'}
-              </DialogDescription>
-            </DialogHeader>
-
-            {leaveDialogStaff && (
-              <div className="space-y-4 pt-2">
-                <div className="rounded-md border border-border bg-muted/20 p-3 text-sm">
-                  <p className="font-medium">Current status</p>
-                  <p className="mt-1 text-muted-foreground">
-                    {leaveDialogStaff.onLeave && leaveDialogStaff.activeLeave
-                      ? `${leaveDialogStaff.fullName} is on leave: ${formatLeaveSummary(leaveDialogStaff.activeLeave)}.`
-                      : `${leaveDialogStaff.fullName} is not currently on leave.`}
-                  </p>
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="leave-start-date">Start date</Label>
-                    <Input id="leave-start-date" type="date" value={leaveStartDate} onChange={(event) => setLeaveStartDate(event.target.value)} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="leave-end-date">Planned end date</Label>
-                    <Input id="leave-end-date" type="date" value={leaveEndDate} onChange={(event) => setLeaveEndDate(event.target.value)} />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="leave-type">Leave type</Label>
-                  <select id="leave-type" value={leaveType} onChange={(event) => setLeaveType(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-primary">
-                    <option value="annual">Annual</option>
-                    <option value="sick">Sick</option>
-                    <option value="maternity_paternity">Maternity/Paternity</option>
-                    <option value="study">Study</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-
-                {leaveStatusMessage && (
-                  <p className={cn('text-sm font-medium', leaveStatusMessage.includes('successfully') || leaveStatusMessage.includes('recorded') ? 'text-success' : 'text-danger')}>
-                    {leaveStatusMessage}
-                  </p>
-                )}
-
-                <div className="flex flex-wrap gap-2">
-                  <Button onClick={() => void saveLeave()} disabled={leaveSubmitting}>
-                    {leaveSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarDays className="mr-2 h-4 w-4" />}
-                    Approve leave
-                  </Button>
-                  {leaveDialogStaff.onLeave && (
-                    <>
-                      <div className="flex min-w-0 flex-1 items-center gap-2">
-                        <div className="flex-1">
-                          <Label htmlFor="leave-return-date" className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">
-                            Expected return date
-                          </Label>
-                          <Input
-                            id="leave-return-date"
-                            type="date"
-                            value={leaveReturnDate}
-                            min={leaveStartDate}
-                            max={getAccraDateKey()}
-                            onChange={(event) => setLeaveReturnDate(event.target.value)}
-                          />
-                        </div>
-                      </div>
-                      <Button variant="outline" onClick={() => void closeLeavePeriod()} disabled={leaveSubmitting || !leaveReturnDate}>
-                        Record return
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
+        <StaffLeaveDialog
+          open={leaveDialogOpen}
+          onOpenChange={setLeaveDialogOpen}
+          initialStaffId={leaveDialogStaffId}
+          staffOptions={staff.filter((member) => !member.archived).map((member) => ({ fullName: member.fullName, id: member.id }))}
+          onChanged={fetchStaff}
+        />
         {/* Stats Bar */}
         <div className="grid auto-cols-[minmax(10.5rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-7 xl:overflow-visible xl:pb-0">
           {staffFilterCards.map((card) => {
@@ -1067,7 +868,7 @@ export default function StaffPage() {
                                 variant="outline"
                                 size="sm"
                                 className="h-8 gap-2"
-                                onClick={() => void openLeaveDialog(member)}
+                                onClick={() => openLeaveDialog(member)}
                               >
                                 <CalendarDays className="h-3.5 w-3.5" />
                                 Manage leave

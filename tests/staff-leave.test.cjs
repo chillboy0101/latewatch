@@ -91,3 +91,10 @@ test('leave summary clearly shows the date range and expected return', () => {
     '1 Sep 2026 to 19 Sep 2026 • returned 20 Sep 2026',
   );
 });
+
+test('open-ended leave is summarised as ongoing, not as a one-day leave', () => {
+  assert.equal(
+    formatLeaveSummary({ endDate: null, returnedOn: null, staffId: 's', startDate: '2026-05-01' }),
+    'Since 1 May 2026 • no end date',
+  );
+});
