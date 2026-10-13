@@ -188,9 +188,12 @@ test('theme changes snap instantly and are shared live while dragging', () => {
   assert.match(sync, /const wait = Math\.max\(0, SAVE_INTERVAL_MS - \(Date\.now\(\) - lastSentAt\)\);/);
 });
 
-test('check-in location chip follows the theme colour for normal states', () => {
+test('check-in status card and location chip follow the theme colour in every state', () => {
   const page = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'check-in', 'page.tsx'), 'utf8');
-  assert.match(page, /tone === 'theme' && 'border-primary\/30 bg-primary\/10 text-primary'/);
-  assert.doesNotMatch(page, /tone === 'success' && 'border-success\/25 bg-success\/10 text-success'/);
-  assert.match(page, /tone === 'danger' && 'border-danger\/25 bg-danger\/10 text-danger'/);
+  const statusTone = page.slice(page.indexOf('function statusTone('), page.indexOf('function getOrCreateDeviceToken'));
+  assert.match(statusTone, /return 'border-primary\/25 bg-primary\/10 text-primary';/);
+  assert.doesNotMatch(statusTone, /success|warning|danger/);
+  const chip = page.slice(page.indexOf('function LocationStatusChip('));
+  assert.match(chip, /border-primary\/30 bg-primary\/10 px-3\.5 text-sm font-semibold text-primary/);
+  assert.doesNotMatch(chip.slice(0, chip.indexOf('\n}\n')), /success|warning|danger/);
 });

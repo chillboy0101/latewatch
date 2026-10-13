@@ -251,13 +251,6 @@ function locationValue(status: CheckInStatus | null, liveLocation: LiveLocation)
   );
 }
 
-// Normal location states follow the theme colour; only problems keep their warning colours.
-function locationTone(liveLocation: LiveLocation) {
-  if (liveLocation.state === 'outside' || liveLocation.state === 'error') return 'danger';
-  if (liveLocation.state === 'weak') return 'warning';
-  return 'theme';
-}
-
 function attendanceButtonLabel(status: CheckInStatus | null, submitting: boolean, liveLocation: LiveLocation) {
   if (submitting) return status?.attendance && !status.attendance.signOutTime ? 'Checking out' : 'Checking in';
   if (status?.attendance?.signOutTime) return 'Already Checked Out';
@@ -277,16 +270,9 @@ function attendanceButtonLabel(status: CheckInStatus | null, submitting: boolean
   return 'Check In';
 }
 
+// Every status follows the theme colour.
 function statusTone(status: CheckInStatus | null) {
   if (!status) return 'border-border bg-card text-muted-foreground';
-  if (status.attendance?.signOutTime) return 'border-success/25 bg-success/10 text-success';
-  if (hasNoSignOutPenalty(status) || hasLateCheckInPenalty(status)) return 'border-warning/25 bg-warning/10 text-warning';
-  if (status.attendance?.status === 'present') return 'border-success/25 bg-success/10 text-success';
-  if (status.permission?.permissionType === 'absence') return 'border-primary/25 bg-primary/10 text-primary';
-  if (!status.locationConfigured || !status.staff || (status.device?.registered && !status.device.trusted) || status.isHoliday || status.isWeekend) {
-    return 'border-warning/25 bg-warning/10 text-warning';
-  }
-  if (status.isAfterWorkdayEnd) return 'border-warning/25 bg-warning/10 text-warning';
   return 'border-primary/25 bg-primary/10 text-primary';
 }
 
@@ -2128,15 +2114,9 @@ function LocationStatusChip({
   liveLocation: LiveLocation;
   status: CheckInStatus | null;
 }) {
-  const tone = locationTone(liveLocation);
-
+  // Every location state follows the theme colour.
   return (
-    <div className={cn(
-      'inline-flex h-9 min-w-0 items-center gap-2 rounded-full border px-3.5 text-sm font-semibold',
-      tone === 'theme' && 'border-primary/30 bg-primary/10 text-primary',
-      tone === 'warning' && 'border-warning/25 bg-warning/10 text-warning',
-      tone === 'danger' && 'border-danger/25 bg-danger/10 text-danger',
-    )}>
+    <div className="inline-flex h-9 min-w-0 items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3.5 text-sm font-semibold text-primary">
       <span className="shrink-0">{locationIcon(liveLocation)}</span>
       <span className="flex min-w-0 items-center truncate">{locationValue(status, liveLocation)}</span>
     </div>
