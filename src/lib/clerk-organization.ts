@@ -12,7 +12,6 @@ import { getSiteUrl } from '@/lib/site-metadata';
 
 type ClerkClient = ReturnType<typeof createClerkClient>;
 type ClerkUser = Awaited<ReturnType<ClerkClient['users']['getUser']>>;
-type OrganizationMembershipRole = Parameters<ClerkClient['organizations']['createOrganizationMembership']>[0]['role'];
 
 type SyncStaffIdentityInput = {
   actorUserId?: string | null;
@@ -40,9 +39,6 @@ function getClerkClient() {
   return createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 }
 
-function getMemberRole() {
-  return (process.env.CLERK_ORGANIZATION_MEMBER_ROLE || 'org:member') as OrganizationMembershipRole;
-}
 
 function getInvitationRedirectUrl() {
   const searchParams = new URLSearchParams({
@@ -122,28 +118,6 @@ async function updateUserStaffMetadata(client: ClerkClient, user: ClerkUser, inp
       ...clerkStaffPublicMetadata(input),
     },
   });
-}
-
-async function ensureMembership(client: ClerkClient, organizationId: string, userId: string) {
-  const memberships = await client.organizations.getOrganizationMembershipList({
-    organizationId,
-    userId: [userId],
-    limit: 1,
-  });
-
-  if (memberships.data.length > 0) return 'already_member';
-
-  try {
-    await client.organizations.createOrganizationMembership({
-      organizationId,
-      role: getMemberRole(),
-      userId,
-    });
-    return 'member_added';
-  } catch (error) {
-    if (isConflict(error)) return 'already_member';
-    throw error;
-  }
 }
 
 // New staff are invited to the LateWatch app itself (sign-up stays invite-only). Unlike an
@@ -258,35 +232,18 @@ export async function syncStaffEmailIdentity(input: SyncStaffIdentityInput) {
   if (!client) return { status: 'clerk_not_configured' };
 
   try {
-    const [organizationId, user] = await Promise.all([
-      resolveOrganizationId(client),
-      findUserByEmail(client, email),
-    ]);
+    const user = await findUserByEmail(client, email);
 
+    // Existing account: link it to the staff record. Access itself comes from the Staff list,
+    // so no Clerk organisation is involved.
     if (user) {
       await updateUserStaffMetadata(client, user, { ...input, email });
-      // Organisation membership is a convenience only (access comes from the Staff list), so a
-      // full organisation never blocks anyone.
-      const membershipStatus = organizationId
-        ? await ensureMembership(client, organizationId, user.id).catch((error) => {
-          console.warn('Organisation seat unavailable; access continues via the Staff list:', error);
-          return 'membership_unavailable';
-        })
-        : 'organization_not_configured';
-
-      return {
-        organizationId,
-        status: membershipStatus,
-        userId: user.id,
-      };
+      return { status: 'linked', userId: user.id };
     }
 
-    return {
-      organizationId,
-      status: await ensureAppInvitation(client, { ...input, email }),
-    };
+    return { status: await ensureAppInvitation(client, { ...input, email }) };
   } catch (error) {
-    console.warn('Failed to sync staff email with Clerk organization:', error);
+    console.warn('Failed to sync staff email with Clerk:', error);
     return { status: 'sync_failed' };
   }
 }
@@ -299,23 +256,20 @@ export async function unlinkStaffEmailIdentity(input: UnlinkStaffIdentityInput) 
   if (!client) return { status: 'clerk_not_configured' };
 
   try {
-    const [organizationId, user] = await Promise.all([
-      resolveOrganizationId(client),
-      findUserByEmail(client, email),
-    ]);
-
-    const releaseSeat = input.releaseSeat === true;
-    if (organizationId) {
-      await removeOwnedPendingInvitations(client, organizationId, email, input.staffId, releaseSeat);
-    }
+    const user = await findUserByEmail(client, email);
     await revokePendingAppInvitations(client, email);
 
+    // Leftovers from the old organisation setup: clean up quietly if it still exists.
     let seatReleased = false;
-    if (user) {
-      if (organizationId) {
-        seatReleased = await removeOwnedMembership(client, organizationId, user, input.staffId, releaseSeat);
+    const organizationId = await resolveOrganizationId(client).catch(() => null);
+    if (organizationId) {
+      await removeOwnedPendingInvitations(client, organizationId, email, input.staffId, input.releaseSeat === true).catch(() => undefined);
+      if (user) {
+        seatReleased = await removeOwnedMembership(client, organizationId, user, input.staffId, input.releaseSeat === true).catch(() => false);
       }
+    }
 
+    if (user) {
       await removeOwnedMetadata(client, user, input.staffId);
     }
 

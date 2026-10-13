@@ -150,9 +150,8 @@ test('staff sync keeps a pending app invitation instead of sending a duplicate',
   assert.equal(calls.createdAppInvitations.length, 0);
 });
 
-test('a full organisation never blocks existing users: access comes from the Staff list', async () => {
+test('existing accounts are linked without any organisation membership', async () => {
   resetClerkFixture();
-  membershipFull = true;
   existingUsers = [{ emailAddress: 'late.joiner@example.com', id: 'user_late', privateMetadata: {}, publicMetadata: {} }];
 
   const result = await syncStaffEmailIdentity({
@@ -164,8 +163,9 @@ test('a full organisation never blocks existing users: access comes from the Sta
     staffName: 'Late Joiner',
   });
 
-  assert.equal(result.status, 'membership_unavailable');
-  assert.equal(calls.updatedMetadata.length, 1, 'staff metadata is still linked');
+  assert.equal(result.status, 'linked');
+  assert.equal(calls.updatedMetadata.length, 1, 'staff metadata is linked');
+  assert.equal(calls.createdInvitations.length, 0);
 });
 
 test('archiving revokes pending app invitations for that email', async () => {
@@ -196,7 +196,7 @@ test('staff sync stores NSS staff type metadata on existing Clerk users', async 
     staffName: 'NSS Staff',
   });
 
-  assert.equal(result.status, 'already_member');
+  assert.equal(result.status, 'linked');
   assert.equal(calls.updatedMetadata.length, 1);
   assert.deepEqual(calls.updatedMetadata[0].metadata.privateMetadata, {
     role: 'staff',

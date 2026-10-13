@@ -9,13 +9,12 @@ const proxyPath = path.join(root, 'src/proxy.ts');
 const authCardPath = path.join(root, 'src/components/auth/clerk-auth-card.tsx');
 const signUpPagePath = path.join(root, 'src/app/(auth)/sign-up/[[...sign-up]]/page.tsx');
 
-test('protected app routes require the configured LateWatch Clerk organization', () => {
+test('protected app routes require an active staff record (or admin), not a Clerk organisation', () => {
   const proxy = fs.readFileSync(proxyPath, 'utf8');
 
-  assert.match(proxy, /process\.env\.CLERK_ORGANIZATION_ID \|\| process\.env\.CLERK_ORG_ID/);
-  assert.match(proxy, /CLERK_ORGANIZATION_ID is required for LateWatch organization-gated routes/);
-  assert.match(proxy, /return activeOrgId === requiredOrgId/);
-  assert.doesNotMatch(proxy, /return !requiredOrgId \|\| activeOrgId === requiredOrgId/);
+  assert.doesNotMatch(proxy, /hasRequiredOrganization|CLERK_ORGANIZATION_ID/);
+  assert.match(proxy, /isStaffRequiredRoute\(req\)\s+&& !\(await hasActiveStaffAccess\(session\.userId\)\)\s+&& !\(await isAdminSession\(session\.userId, session\.sessionClaims\)\)/);
+  assert.match(proxy, /return staffAccessRequiredResponse\(req\);/);
 });
 
 test('organization admins are accepted by middleware and server route guards', () => {
@@ -48,14 +47,14 @@ test('sign-up page only renders Clerk sign-up when an invitation token is presen
   assert.match(signUpPage, /canSignUp \? <ClerkAuthCard mode="sign-up" \/> : <InviteOnlySignUpCard \/>/);
 });
 
-test('access comes from the Staff list (verified email, not archived), not only the 20-seat organisation', () => {
+test('access comes from the Staff list (verified email, not archived)', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const proxy = fs.readFileSync(path.join(__dirname, '..', 'src', 'proxy.ts'), 'utf8');
   const access = fs.readFileSync(path.join(__dirname, '..', 'src', 'lib', 'auth', 'staff-access.ts'), 'utf8');
 
-  // Organisation members keep working; active staff and admins also get in.
-  assert.match(proxy, /&& !hasRequiredOrganization\(session\.sessionClaims\)\s+&& !\(await hasActiveStaffAccess\(session\.userId\)\)\s+&& !\(await isAdminSession\(session\.userId, session\.sessionClaims\)\)/);
+  // Active staff and admins get in; nothing depends on the organisation.
+  assert.match(proxy, /&& !\(await hasActiveStaffAccess\(session\.userId\)\)\s+&& !\(await isAdminSession\(session\.userId, session\.sessionClaims\)\)/);
   // Only verified emails count, archived staff never pass, failed lookups are not cached.
   assert.match(access, /address\.verification\?\.status === 'verified'/);
   assert.match(access, /eq\(staff\.archived, false\)/);

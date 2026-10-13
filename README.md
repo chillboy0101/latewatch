@@ -125,7 +125,7 @@ table is kept in step with it.
 | Language | TypeScript 5 |
 | Styling and components | Tailwind CSS v4, shadcn/ui, vaul |
 | Database | PostgreSQL on Neon, via Drizzle ORM 0.45 |
-| Authentication | Clerk 7 (organisation-gated) |
+| Authentication | Clerk 7 (invite-only sign-up; access from the Staff list) |
 | Validation | Zod 4 |
 | Realtime | Ably 2, with polling fallback |
 | Push notifications | web-push (VAPID) |
@@ -138,9 +138,10 @@ table is kept in step with it.
 
 ### Request path
 
-Every request passes through `src/proxy.ts`, which enforces authentication and organisation
-membership. Route handlers and Server Actions then re-check authorisation themselves rather
-than relying on the proxy alone.
+Every request passes through `src/proxy.ts`, which enforces authentication and checks the account
+against the Staff list (a verified email belonging to a non-archived staff member, or an admin).
+Sign-up is invite-only. Route handlers and Server Actions then re-check authorisation themselves
+rather than relying on the proxy alone.
 
 ### Mutation pattern
 
@@ -277,9 +278,8 @@ UPSTASH_REDIS_REST_TOKEN=
 GOOGLE_CALENDAR_API_KEY=
 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=
 
-# Clerk organisation sync
+# Legacy Clerk organisation (no longer used for access; only for cleaning up old memberships)
 CLERK_ORGANIZATION_ID=
-CLERK_ORGANIZATION_MEMBER_ROLE=
 
 # Only needed to run `npm run cronjob-org:reminders`
 CRONJOB_ORG_API_KEY=
@@ -399,7 +399,7 @@ with an explicit review step:
 ## Security
 
 - Authentication on every route, enforced at the proxy and re-checked in each handler
-- Role checks (`admin`, `hr`, `viewer`) on every mutation; organisation membership required
+- Role checks (`admin`, `hr`, `viewer`) on every mutation; only active (non-archived) staff with a verified email get in
 - Validated input and parameterised database access throughout
 - Attendance bound to one verified device per staff member, with an approval workflow for
   transfers

@@ -29,7 +29,8 @@ const isProtectedRoute = createRouteMatcher([
   '/api/(.*)',
 ]);
 
-const isOrgRequiredRoute = createRouteMatcher([
+// Routes only active staff (or admins) may use.
+const isStaffRequiredRoute = createRouteMatcher([
   '/dashboard(.*)',
   '/staff(.*)',
   '/emergency-contacts(.*)',
@@ -87,12 +88,6 @@ const isAdminRoute = createRouteMatcher([
 const clerkConfigured =
   !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && !!process.env.CLERK_SECRET_KEY;
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
 function roleFromSessionClaims(sessionClaims: Record<string, unknown> | null | undefined) {
   if (!sessionClaims) return null;
 
@@ -104,37 +99,11 @@ function roleFromSessionClaims(sessionClaims: Record<string, unknown> | null | u
     || roleFromMetadata(sessionClaims.privateMetadata);
 }
 
-function orgIdFromSessionClaims(sessionClaims: Record<string, unknown> | null | undefined) {
-  if (!sessionClaims) return null;
-
-  const org = asRecord(sessionClaims.o);
-  const orgId = org?.id || sessionClaims.org_id || sessionClaims.orgId;
-
-  return typeof orgId === 'string' && orgId.trim() ? orgId : null;
-}
-
-function requiredOrganizationId() {
-  return (process.env.CLERK_ORGANIZATION_ID || process.env.CLERK_ORG_ID || '').trim() || null;
-}
-
-function hasRequiredOrganization(sessionClaims: Record<string, unknown> | null | undefined) {
-  const activeOrgId = orgIdFromSessionClaims(sessionClaims);
-  if (!activeOrgId) return false;
-
-  const requiredOrgId = requiredOrganizationId();
-  if (!requiredOrgId) {
-    console.error('CLERK_ORGANIZATION_ID is required for LateWatch organization-gated routes.');
-    return false;
-  }
-
-  return activeOrgId === requiredOrgId;
-}
-
-function organizationRequiredResponse(req: Request) {
+function staffAccessRequiredResponse(req: Request) {
   const url = new URL(req.url);
   if (url.pathname.startsWith('/api/')) {
     return NextResponse.json(
-      { error: 'LateWatch organization access required. Ask an admin to invite this account.' },
+      { error: 'LateWatch staff access required. Ask an admin to add this account\'s email as staff.' },
       { status: 403 },
     );
   }
@@ -207,16 +176,14 @@ const handler = clerkConfigured
 
       if (isProtectedRoute(req)) {
         const session = await auth.protect();
-        // Access: a seat in the LateWatch organisation, OR an active (non-archived) staff record
-        // for one of the account's verified emails, OR an admin. The Staff list is the real
-        // gate, so the organisation's 20-seat cap no longer limits who can use LateWatch.
+        // Access comes from the Staff list: an active (non-archived) staff record for one of the
+        // account's verified emails, or an admin. No Clerk organisation is involved.
         if (
-          isOrgRequiredRoute(req)
-          && !hasRequiredOrganization(session.sessionClaims)
+          isStaffRequiredRoute(req)
           && !(await hasActiveStaffAccess(session.userId))
           && !(await isAdminSession(session.userId, session.sessionClaims))
         ) {
-          return organizationRequiredResponse(req);
+          return staffAccessRequiredResponse(req);
         }
         if (!isStaffCheckInRoute(req) && isAdminRoute(req)) {
           if (!(await isAdminSession(session.userId, session.sessionClaims))) {

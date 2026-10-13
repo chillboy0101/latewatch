@@ -25,6 +25,7 @@ export function getStaffIdentitySyncCopy(input: {
         title: `${input.staffName}: Existing account linked`,
         tone: 'success',
       };
+    case 'linked':
     case 'already_member':
       return {
         detail: `${email} already has access to LateWatch. Ask them to sign in instead of waiting for a new invitation email.`,
