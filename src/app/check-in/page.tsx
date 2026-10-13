@@ -1310,9 +1310,7 @@ export default function CheckInPage() {
                   <h2 className="text-2xl font-bold text-balance leading-tight sm:text-3xl">{statusCopy(status)}</h2>
                   <div className="flex flex-col items-center gap-2.5">
                     {status?.staff?.fullName && (
-                      <div className="inline-flex h-10 max-w-full items-center rounded-full border border-border/70 bg-background/60 px-4 text-sm font-semibold text-foreground">
-                        <span className="truncate">{status.staff.fullName}</span>
-                      </div>
+                      <p className="max-w-full truncate text-lg font-semibold sm:text-xl">{status.staff.fullName}</p>
                     )}
                     <LocationStatusChip status={status} liveLocation={liveLocation} />
                   </div>
