@@ -1479,9 +1479,6 @@ function PenaltyHistoryDialog({
                   All paid up
                 </p>
               )}
-              {currentWeek && (
-                <p className="mt-1.5 text-xs text-muted-foreground">This week {ghc(currentWeek.totalPenalty)}</p>
-              )}
             </div>
 
             {weeks.map((week) => (
