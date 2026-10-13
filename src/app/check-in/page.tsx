@@ -1338,30 +1338,21 @@ export default function CheckInPage() {
                   )}
                 </div>
 
-                <ReminderCheckPrompt
+                <ReminderPrompt
                   eligible={
                     Boolean(deviceToken)
-                    && Boolean(status?.staff?.id)
                     && pushReminderStatus !== null
+                    && !reminderNudgeSuppressed
                     && notificationPermission !== 'unsupported'
                     && !reminderControlsLocked
-                    && (!signInReminderEnabled || !signOutReminderEnabled || pushReminderStatus.subscription?.failing === true)
                   }
+                  remindersOff={!signInReminderEnabled && !signOutReminderEnabled}
                   failing={pushReminderStatus?.subscription?.failing === true}
                   saving={savingPushReminder}
-                  staffId={status?.staff?.id || null}
                   today={status?.date || null}
+                  onCustomize={() => { setMenuOpen(true); setRemindersDialogOpen(true); }}
                   onTurnOn={(refresh) => {
                     void updatePushReminderSettings({ signInEnabled: true, signOutEnabled: true }, 'all', { refresh });
-                  }}
-                />
-
-                <NotificationNudge
-                  eligible={Boolean(deviceToken) && pushReminderStatus !== null && !reminderNudgeSuppressed && notificationPermission !== 'unsupported' && !signInReminderEnabled && !signOutReminderEnabled && !reminderControlsLocked}
-                  saving={savingPushReminder}
-                  onCustomize={() => { setMenuOpen(true); setRemindersDialogOpen(true); }}
-                  onUpdate={(next) => {
-                    void updatePushReminderSettings(next, 'all');
                   }}
                 />
 
@@ -1965,66 +1956,72 @@ function RemindersDialog({
   );
 }
 
-// One-time reminders check (October 2026): everyone whose reminders are off, partly off, or not
-// arriving sees this once, then never again. New interns setting up now are left out.
-const REMINDER_CHECK_KEY = 'latewatch.reminder-check.2026-10';
-const REMINDER_CHECK_EXPIRES = '2026-10-31';
-const REMINDER_CHECK_EXCLUDED_STAFF = new Set([
-  'adcf818d-223e-4746-98b6-7b915fc429ca', // Cobblah Stephanie Omanye (new intern)
-  '3ca24381-2e5f-4e8f-b4f2-f9d0ce15c826', // Nyarko Christabel Dede (new intern)
-]);
+const REMINDER_NUDGE_OPTOUT_KEY = 'latewatch-reminder-nudge-optout';
+const REMINDER_PROMPT_SEEN_KEY = 'latewatch-reminder-prompt-seen';
 
-function ReminderCheckPrompt({
+// The one reminders pop-up. It appears when both reminders are off, or when they are on but
+// can no longer reach this phone, and at most once a day on a device. "Don't remind me" stops
+// the "turn on" prompt for good on this device; a failing subscription still gets the daily
+// "stopped working" prompt because that person wants reminders.
+function ReminderPrompt({
   eligible,
   failing,
+  onCustomize,
   onTurnOn,
+  remindersOff,
   saving,
-  staffId,
   today,
 }: {
   eligible: boolean;
   failing: boolean;
+  onCustomize: () => void;
   onTurnOn: (refresh: boolean) => void;
+  remindersOff: boolean;
   saving: boolean;
-  staffId: string | null;
   today: string | null;
 }) {
   const [closed, setClosed] = useState(false);
-  const storageKey = staffId ? `${REMINDER_CHECK_KEY}:${staffId}` : null;
-  const show = eligible
-    && Boolean(storageKey)
-    && Boolean(today && today <= REMINDER_CHECK_EXPIRES)
-    && !REMINDER_CHECK_EXCLUDED_STAFF.has(staffId || '');
-  // Whether this person already saw it on this device, read once when it would first appear.
-  const seenBefore = useMemo(() => {
-    if (!show || !storageKey) return true;
+  const show = eligible && Boolean(today) && (failing || remindersOff);
+  // Read once when it would first appear: already seen today, or opted out of the "turn on" prompt.
+  const hidden = useMemo(() => {
+    if (!show) return true;
     try {
-      return Boolean(localStorage.getItem(storageKey));
+      if (localStorage.getItem(REMINDER_PROMPT_SEEN_KEY) === today) return true;
+      return !failing && localStorage.getItem(REMINDER_NUDGE_OPTOUT_KEY) === '1';
     } catch {
-      return true;
+      return false;
     }
-  }, [show, storageKey]);
-  const open = show && !seenBefore && !closed;
+  }, [failing, show, today]);
+  const open = show && !hidden && !closed;
 
-  // Mark it seen as soon as it appears, so it never shows again.
+  // Mark today as seen as soon as it appears, so it shows at most once a day.
   useEffect(() => {
-    if (!open || !storageKey) return;
+    if (!open || !today) return;
     try {
-      localStorage.setItem(storageKey, new Date().toISOString());
+      localStorage.setItem(REMINDER_PROMPT_SEEN_KEY, today);
     } catch {
       // Storage blocked: it may show again next visit, which is harmless.
     }
-  }, [open, storageKey]);
+  }, [open, today]);
+
+  const optOut = useCallback(() => {
+    try {
+      localStorage.setItem(REMINDER_NUDGE_OPTOUT_KEY, '1');
+    } catch {
+      // Ignore storage failures; closing below still hides it for this visit.
+    }
+    setClosed(true);
+  }, []);
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[96] flex items-end justify-center bg-black/40 p-4 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="reminder-check-title">
+    <div className="fixed inset-0 z-[96] flex items-end justify-center bg-black/40 p-4 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="reminder-prompt-title">
       <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-xl animate-in fade-in-0 slide-in-from-bottom-4 duration-300">
         <div className="flex h-11 w-11 items-center justify-center rounded-full border border-primary/30 bg-primary/15 text-primary">
           <BellRing className="h-5 w-5" />
         </div>
-        <h3 id="reminder-check-title" className="mt-4 text-base font-semibold">
+        <h3 id="reminder-prompt-title" className="mt-4 text-base font-semibold">
           {failing ? 'Your reminders stopped working' : 'Turn on your reminders'}
         </h3>
         <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
@@ -2044,97 +2041,25 @@ function ReminderCheckPrompt({
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <BellRing className="h-4 w-4" />}
             Turn on reminders
           </Button>
+          <Button
+            variant="outline"
+            className="h-11 border-primary/50 text-primary hover:bg-primary/10 hover:text-primary"
+            onClick={() => { onCustomize(); setClosed(true); }}
+          >
+            Choose reminders
+          </Button>
           <Button variant="ghost" className="h-11" onClick={() => setClosed(true)}>
             Not now
           </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const REMINDER_NUDGE_OPTOUT_KEY = 'latewatch-reminder-nudge-optout';
-
-// Top banner shown to staff with a trusted device who have NOT enabled
-// reminders. "Turn on all" enables both; "Choose reminders" opens the Reminders
-// drawer to pick. Swipe (sideways or up) hides for this visit; "Don't remind me" opts out
-// permanently on this device.
-function NotificationNudge({
-  eligible,
-  onCustomize,
-  onUpdate,
-  saving,
-}: {
-  eligible: boolean;
-  onCustomize: () => void;
-  onUpdate: (next: { signInEnabled: boolean; signOutEnabled: boolean }) => void;
-  saving: boolean;
-}) {
-  const [dismissed, setDismissed] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    try {
-      return localStorage.getItem(REMINDER_NUDGE_OPTOUT_KEY) === '1';
-    } catch {
-      return false;
-    }
-  });
-
-  const { swipeHandlers, swipeStyle } = useSwipeToDismiss(() => setDismissed(true));
-
-  const optOut = useCallback(() => {
-    try {
-      localStorage.setItem(REMINDER_NUDGE_OPTOUT_KEY, '1');
-    } catch {
-      // Ignore storage failures; the visit-level dismiss below still applies.
-    }
-    setDismissed(true);
-  }, []);
-
-  if (dismissed || !eligible) return null;
-
-  return (
-    <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+0.75rem)] z-[95] flex justify-center px-4 sm:inset-x-auto sm:right-4 sm:justify-end">
-      <div
-        {...swipeHandlers}
-        style={swipeStyle}
-        className="pointer-events-auto relative w-full max-w-sm cursor-grab select-none overflow-hidden rounded-xl border border-border bg-card/90 bg-gradient-to-br from-primary/10 via-transparent to-transparent p-4 shadow-lg ring-1 ring-border/60 backdrop-blur-md active:cursor-grabbing animate-in fade-in-0 slide-in-from-top-2 duration-300 ease-out">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-primary/15 text-primary">
-            <BellRing className="h-5 w-5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h3 className="text-sm font-semibold text-foreground">Turn on attendance reminders</h3>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Get a heads-up to sign in before 8:30 AM, and to sign out at 4:30 PM — even if the app is closed.
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Button
-                className="h-9 gap-2"
-                size="sm"
-                onClick={() => onUpdate({ signInEnabled: true, signOutEnabled: true })}
-                disabled={saving}
-              >
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <BellRing className="h-4 w-4" />}
-                Turn on all
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-9 border-primary/50 text-primary hover:bg-primary/10 hover:text-primary"
-                onClick={() => { onCustomize(); setDismissed(true); }}
-              >
-                Choose reminders
-              </Button>
-            </div>
+          {!failing && (
             <button
               type="button"
               onClick={optOut}
-              className="mt-3 inline-flex h-9 items-center rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
+              className="mx-auto inline-flex h-9 items-center rounded-md px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
             >
-              Don&apos;t remind me
+              Don&apos;t remind me again
             </button>
-          </div>
+          )}
         </div>
       </div>
     </div>
