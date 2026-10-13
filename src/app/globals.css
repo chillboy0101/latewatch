@@ -12,14 +12,16 @@
   --brand-dark: #4b7def;
   --brand-dark-foreground: #0a0a0a;
   --brand-dark-hover: #6f97f2;
-  --success: #10b981;
+  /* Light mode text colours are a shade darker than in dark mode so they stay readable on the
+     light, tinted surfaces (secondary text, labels, placeholders, amounts). */
+  --success: #047857;
   --success-foreground: #ffffff;
-  --warning: #f59e0b;
+  --warning: #b45309;
   --warning-foreground: #ffffff;
-  --danger: #ef4444;
+  --danger: #dc2626;
   --danger-foreground: #ffffff;
-  --muted: #6b7280;
-  --muted-foreground: #9ca3af;
+  --muted: color-mix(in oklab, var(--brand) 10%, #4b5563);
+  --muted-foreground: color-mix(in oklab, var(--brand) 10%, #4b5563);
 
   /* Light mode: surfaces carry a faint tint of the accent so every page matches the selection. */
   --background: color-mix(in oklab, var(--brand) 14%, #ffffff);
@@ -40,6 +42,8 @@
   --foreground: #171717;
   --card: #f9fafb;
   --border: #e5e7eb;
+  --muted: #525252;
+  --muted-foreground: #525252;
   --primary: #171717;
   --primary-foreground: #ffffff;
   --scrollbar-track: #f3f4f6;
@@ -87,6 +91,8 @@
 }
 
 .dark[data-accent='neutral'] {
+  --muted: #6b7280;
+  --muted-foreground: #9ca3af;
   --background: #0a0a0a;
   --foreground: #fafafa;
   --card: #171717;
