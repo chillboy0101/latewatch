@@ -44,7 +44,9 @@ export function ThemeAccountSync() {
   // Applies a colour from the account only if it is newer than what this device already shows.
   const adoptRemote = useRef((remote: ThemeSelection, force: boolean) => {
     if (!savedRef.current || (remote.updatedAt || 0) >= (savedRef.current.updatedAt || 0)) savedRef.current = remote;
-    if (force || (remote.updatedAt || 0) > getThemeUpdatedAt()) applyThemeSelection(remote);
+    // The account wins over a device colour with no timestamp (saved before timestamps existed).
+    const localUpdatedAt = getThemeUpdatedAt();
+    if (force || localUpdatedAt === 0 || (remote.updatedAt || 0) > localUpdatedAt) applyThemeSelection(remote);
   });
 
   // Saves this device's colour to the account when it differs from what the account has.
@@ -55,6 +57,7 @@ export function ThemeAccountSync() {
       const saved = savedRef.current;
       if (saved && sameThemeSelection(local, saved)) return;
       if (saved && (saved.updatedAt || 0) > (local.updatedAt || 0)) return;
+      if (!local.updatedAt) return; // never push a colour this device never actually chose
 
       savedRef.current = local;
       try {

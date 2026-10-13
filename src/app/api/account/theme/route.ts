@@ -1,6 +1,6 @@
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { publishRealtime } from '@/lib/realtime';
+import { ablyPublish } from '@/lib/ably-channel';
 import { parseThemeSelection, themeChannelForUser } from '@/lib/theme';
 
 export const dynamic = 'force-dynamic';
@@ -37,10 +37,15 @@ export async function POST(request: NextRequest) {
     }
 
     await client.users.updateUserMetadata(userId, { unsafeMetadata: { theme } });
-    publishRealtime(themeChannelForUser(userId), 'theme', {
-      sourceId: typeof body?.sourceId === 'string' ? body.sourceId.slice(0, 64) : null,
-      theme,
-    });
+    // Awaited: a serverless function can be frozen once the response is sent, which would drop it.
+    try {
+      await ablyPublish(`latewatch:${themeChannelForUser(userId)}`, 'theme', {
+        sourceId: typeof body?.sourceId === 'string' ? body.sourceId.slice(0, 64) : null,
+        theme,
+      });
+    } catch (error) {
+      console.error('Failed to push theme colour to other devices:', error);
+    }
 
     return NextResponse.json({ theme });
   } catch (error) {

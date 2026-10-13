@@ -102,10 +102,11 @@ test('theme colour syncs to the account, defaulting to blue for first-time users
   const route = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'api', 'account', 'theme', 'route.ts'), 'utf8');
   assert.match(route, /updateUserMetadata\(userId, \{ unsafeMetadata: \{ theme \} \}\)/);
   assert.match(route, /current\.updatedAt > theme\.updatedAt/);
-  assert.match(route, /publishRealtime\(themeChannelForUser\(userId\), 'theme'/);
+  assert.match(route, /await ablyPublish\(`latewatch:\$\{themeChannelForUser\(userId\)\}`, 'theme'/);
   assert.match(sync, /channel\.subscribe\('theme', handler\)/);
   assert.match(sync, /applyThemeSelection\(\{ \.\.\.DEFAULT_THEME_SELECTION, updatedAt: Date\.now\(\) \}\)/);
-  assert.match(sync, /\(remote\.updatedAt \|\| 0\) > getThemeUpdatedAt\(\)/);
+  assert.match(sync, /localUpdatedAt === 0 \|\| \(remote\.updatedAt \|\| 0\) > localUpdatedAt/);
+  assert.match(sync, /if \(!local\.updatedAt\) return;/);
   assert.doesNotMatch(sync, /role/);
   assert.match(provider, /<ThemeAccountSync \/>/);
 });
