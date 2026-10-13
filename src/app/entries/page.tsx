@@ -872,7 +872,7 @@ function EntriesPageContent() {
                         <div className="flex items-center gap-2">
                           <span>{member?.fullName}</span>
                           {isOnLeave && (
-                            <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                            <span className="shrink-0 whitespace-nowrap rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
                               On leave{leaveSummary ? ` · ${leaveSummary}` : ''}
                             </span>
                           )}
