@@ -86,48 +86,10 @@ test('cron-job.org setup script creates reminder catch-up jobs with protected he
   assert.match(source, /method: 'PATCH'/);
 });
 
-test('admin cron-job.org setup API uses Vercel cron secret without exposing it', () => {
-  assert.equal(fs.existsSync(cronJobOrgSetupApiPath), true);
-  assert.equal(fs.existsSync(cronJobOrgSetupLibPath), true);
-  // The duplicate /settings/reminder-scheduler page was removed; the admin API is the one setup page.
+test('cron-job.org jobs are managed from the setup script only, with no setup page in the app', () => {
+  assert.equal(fs.existsSync(cronJobOrgSetupApiPath), false);
+  assert.equal(fs.existsSync(cronJobOrgSetupLibPath), false);
   assert.equal(fs.existsSync(cronJobOrgSetupSettingsPath), false);
-  const apiSource = fs.readFileSync(cronJobOrgSetupApiPath, 'utf8');
-  const helperSource = fs.readFileSync(cronJobOrgSetupLibPath, 'utf8');
-
-  assert.match(apiSource, /enforceRole\(\['admin'\]\)/);
-  assert.match(apiSource, /export async function GET/);
-  assert.match(apiSource, /export async function POST/);
-  assert.match(apiSource, /process\.env\.CRON_SECRET/);
-  assert.match(apiSource, /setupCronJobOrgReminderJobs/);
-  assert.match(apiSource, /schedulerRequestFromSetupRequest/);
-  assert.match(apiSource, /scheduleCronJobOrgProofTest/);
-  assert.match(apiSource, /schedulerRequest\.action === 'proof-test'/);
-  assert.match(helperSource, /method="post"/);
-  assert.match(helperSource, /name="apiKey"/);
-  assert.match(helperSource, /name="proofTestTime"/);
-  assert.match(helperSource, /Schedule proof test/);
-  assert.match(helperSource, /PROOF_TEST_JOB_TITLE = 'LateWatch scheduled proof test'/);
-  assert.match(helperSource, /proofTestScheduleForAccraTime/);
-  assert.match(helperSource, /expiresAt: formatCronJobOrgExpiresAt/);
-  assert.match(helperSource, /\/api\/attendance\/reminders\/proof-test\?testId=/);
-  assert.match(helperSource, /request\.formData\(\)/);
-  assert.match(helperSource, /body\?\.apiKey/);
-  assert.match(helperSource, /process\.env\.CRONJOB_ORG_API_KEY/);
-  assert.match(helperSource, /CRON_JOB_ORG_WRITE_DELAY_MS = 750/);
-  assert.match(helperSource, /await wait\(CRON_JOB_ORG_WRITE_DELAY_MS\)/);
-  assert.match(helperSource, /Authorization: `Bearer \$\{input\.cronSecret\}`/);
-  assert.match(helperSource, /'x-latewatch-cron': 'external'/);
-  assert.match(helperSource, /https:\/\/api\.cron-job\.org/);
-  assert.match(helperSource, /method: 'PUT'/);
-  assert.match(helperSource, /method: 'PATCH'/);
-  assert.match(helperSource, /LateWatch morning reminder 8AM catch-up/);
-  assert.match(helperSource, /LateWatch morning reminder daytime catch-up/);
-  assert.match(helperSource, /LateWatch sign-out reminder 4PM catch-up/);
-  assert.match(helperSource, /LateWatch sign-out reminder evening catch-up/);
-  assert.doesNotMatch(apiSource, /console\.log\(.*apiKey/);
-  assert.doesNotMatch(apiSource, /console\.log\(.*cronSecret/);
-  assert.doesNotMatch(helperSource, /console\.log\(.*apiKey/);
-  assert.doesNotMatch(helperSource, /console\.log\(.*cronSecret/);
 });
 
 test('check-in page replaces auto attendance controls with reminder notification controls', () => {
