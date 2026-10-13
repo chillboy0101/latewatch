@@ -14,6 +14,7 @@ import {
   resolveClientIpInfo,
 } from '@/lib/attendance';
 import { syncLatenessEntriesFromAttendanceForDate } from '@/lib/attendance-lateness-sync';
+import { endLeaveOnCheckIn } from '@/lib/staff-leave-return';
 import {
   findSharedAttendanceDeviceOwner,
   SHARED_ATTENDANCE_DEVICE_MESSAGE,
@@ -1449,6 +1450,18 @@ export async function POST(request: NextRequest) {
       userEmail: actorEmail,
       userId,
     });
+
+    // Checking in while on leave means they are back: close the leave from today.
+    try {
+      await endLeaveOnCheckIn({
+        actor: { email: actor.actorEmail, id: actor.actorUserId },
+        date: clock.dateKey,
+        staffId: staffMember.id,
+        staffName: staffMember.fullName,
+      });
+    } catch (error) {
+      console.error('Failed to end leave on check-in:', error);
+    }
 
     await writeAuditEvent({
       entityType: 'attendance',

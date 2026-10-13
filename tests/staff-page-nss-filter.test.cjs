@@ -174,3 +174,18 @@ test('one shared leave dialog approves, extends and closes any open leave', () =
   assert.doesNotMatch(patchRoute, /eq\(staffLeavePeriod\.source, 'approved_leave'\)/);
   assert.match(patchRoute, /excludeId: id/);
 });
+
+test('checking in while on leave ends the leave, and back-dated changes recalculate past days', () => {
+  const checkIn = fs.readFileSync(path.join(__dirname, '../src/app/api/attendance/check-in/route.ts'), 'utf8');
+  const helper = fs.readFileSync(path.join(__dirname, '../src/lib/staff-leave-return.ts'), 'utf8');
+  const patchRoute = fs.readFileSync(path.join(__dirname, '../src/app/api/attendance/leave/[id]/route.ts'), 'utf8');
+
+  assert.match(checkIn, /await endLeaveOnCheckIn\(\{/);
+  assert.ok(checkIn.indexOf('await endLeaveOnCheckIn({') < checkIn.indexOf('entityId: createdAttendance.id'));
+  assert.match(helper, /returnedOn: input\.date/);
+  assert.match(helper, /reason: 'staff-leave-ended-by-check-in'/);
+  assert.match(helper, /await syncLatenessEntriesFromAttendanceForRange\(startDate, lastDate\)/);
+  assert.match(helper, /await applyNoShowSignInPenaltiesForRange\(startDate, lastDate\)/);
+  assert.match(patchRoute, /await recalculateDaysAfterLeaveChange\(returnedOn, today\)/);
+  assert.match(patchRoute, /await recalculateDaysAfterLeaveChange\(nextDateKey\(earlier\), later\)/);
+});

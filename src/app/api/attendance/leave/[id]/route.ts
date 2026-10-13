@@ -6,9 +6,9 @@ import { staffLeavePeriod } from '@/db/schema';
 import { isIsoDateKey } from '@/lib/date-format';
 import { getAccraDateKey } from '@/lib/date-key';
 import { writeAuditEvent } from '@/lib/audit';
-import { publishRealtime } from '@/lib/realtime';
 import { enforceRole } from '@/lib/auth/roles';
 import { findOverlappingStaffLeavePeriod } from '@/lib/staff-leave-service';
+import { nextDateKey, publishLeaveChange, recalculateDaysAfterLeaveChange } from '@/lib/staff-leave-return';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,9 +71,17 @@ export async function PATCH(
       reason,
     });
 
-    for (const channel of ['attendance', 'dashboard', 'entries', 'notifications', 'payments', 'staff-penalty-history', 'audit-trail']) {
-      publishRealtime(channel, 'invalidate', { reason, staffId: period.staffId });
+    // Past days whose leave status changed get the normal rules re-applied (or cleared).
+    const today = getAccraDateKey();
+    if (returnedOn) {
+      await recalculateDaysAfterLeaveChange(returnedOn, today);
+    } else {
+      const oldEnd = before.endDate;
+      const earlier = oldEnd && oldEnd < endDate ? oldEnd : endDate;
+      const later = oldEnd && oldEnd > endDate ? oldEnd : oldEnd ? endDate : today;
+      await recalculateDaysAfterLeaveChange(nextDateKey(earlier), later);
     }
+    publishLeaveChange(reason, period.staffId);
 
     return NextResponse.json(period);
   } catch (error) {
