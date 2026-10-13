@@ -66,8 +66,10 @@ const DrawerContent = React.forwardRef<
       )}
       {...props}
     >
+      {/* A slim, quiet grabber like the system sheets on iOS and Android. The whole top of the
+          sheet is draggable, so the handle only needs to be seen, not aimed at. */}
       {!hideHandle && (
-        <div className="mx-auto mt-3 h-2 w-32 shrink-0 rounded-full bg-gradient-to-b from-foreground/80 to-foreground/55 shadow-[0_1px_2px_rgba(0,0,0,0.18)] transition-colors hover:from-foreground/90 hover:to-foreground/70 active:from-foreground/95" />
+        <div aria-hidden className="mx-auto mt-2.5 h-1.5 w-10 shrink-0 rounded-full bg-muted-foreground/40" />
       )}
       {children}
     </DrawerPrimitive.Content>
