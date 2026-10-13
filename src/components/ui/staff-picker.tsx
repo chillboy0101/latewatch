@@ -39,7 +39,9 @@ export function StaffPicker({
 
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const matches = options.filter((option) => !needle || option.fullName.toLowerCase().includes(needle));
+    const matches = options
+      .filter((option) => !needle || option.fullName.toLowerCase().includes(needle))
+      .sort((left, right) => left.fullName.localeCompare(right.fullName));
     return allLabel && !needle ? [{ fullName: allLabel, id: '' }, ...matches] : matches;
   }, [allLabel, options, query]);
 
