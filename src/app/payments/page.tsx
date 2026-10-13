@@ -222,6 +222,8 @@ export default function PenaltyPaymentsPage() {
   const [debtPardonConfirmed, setDebtPardonConfirmed] = useState(false);
   const [debtPardonShowStaff, setDebtPardonShowStaff] = useState(false);
   const [debtPardonError, setDebtPardonError] = useState<string | null>(null);
+  // Empty means everyone; otherwise the pardon covers only this staff member.
+  const [debtPardonStaffId, setDebtPardonStaffId] = useState('');
   const [offenceBookMonth, setOffenceBookMonth] = useState(new Date().getMonth());
   const [offenceBookYear, setOffenceBookYear] = useState(new Date().getFullYear());
   const [loadedOffenceBookKey, setLoadedOffenceBookKey] = useState<string | null>(null);
@@ -490,13 +492,15 @@ export default function PenaltyPaymentsPage() {
     }
   }
 
-  const loadDebtPardonPreview = useCallback(async (cutoffDate: string) => {
+  const loadDebtPardonPreview = useCallback(async (cutoffDate: string, staffId: string) => {
     setDebtPardonLoading(true);
     setDebtPardonError(null);
     setDebtPardonPreview(null);
     setDebtPardonConfirmed(false);
     try {
-      const response = await fetch(`/api/payments/debt-pardon?cutoffDate=${encodeURIComponent(cutoffDate)}`, { cache: 'no-store' });
+      const query = new URLSearchParams({ cutoffDate });
+      if (staffId) query.set('staffId', staffId);
+      const response = await fetch(`/api/payments/debt-pardon?${query}`, { cache: 'no-store' });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || `Preview failed (${response.status})`);
       setDebtPardonPreview(body as DebtPardonPreview);
@@ -508,11 +512,20 @@ export default function PenaltyPaymentsPage() {
   }, []);
 
   useEffect(() => {
-    if (debtPardonOpen) void loadDebtPardonPreview(debtPardonCutoff);
-  }, [debtPardonCutoff, debtPardonOpen, loadDebtPardonPreview]);
+    if (debtPardonOpen) void loadDebtPardonPreview(debtPardonCutoff, debtPardonStaffId);
+  }, [debtPardonCutoff, debtPardonOpen, debtPardonStaffId, loadDebtPardonPreview]);
 
-  function openDebtPardonDialog() {
+  const debtPardonStaffOptions = useMemo(() => {
+    return (data?.staff || [])
+      .filter((row) => row.isAttendanceOnly !== true)
+      .map((row) => ({ fullName: row.fullName, id: row.id }))
+      .sort((left, right) => left.fullName.localeCompare(right.fullName));
+  }, [data?.staff]);
+  const debtPardonStaffName = debtPardonStaffOptions.find((option) => option.id === debtPardonStaffId)?.fullName || null;
+
+  function openDebtPardonDialog(staffId = '') {
     const today = getAccraDateKey();
+    setDebtPardonStaffId(staffId);
     setDebtPardonCutoff(today);
     setDebtPardonReason('');
     setDebtPardonShowStaff(false);
@@ -538,7 +551,10 @@ export default function PenaltyPaymentsPage() {
         body: JSON.stringify({
           cutoffDate: debtPardonPreview.cutoffDate,
           expectedSnapshotHash: debtPardonPreview.snapshotHash,
-          reason: debtPardonReason.trim() || `Pardon of debts up to ${formatDisplayDate(debtPardonPreview.cutoffDate)}`,
+          reason: debtPardonReason.trim() || (debtPardonStaffName
+            ? `Pardon of ${debtPardonStaffName}'s debts up to ${formatDisplayDate(debtPardonPreview.cutoffDate)}`
+            : `Pardon of debts up to ${formatDisplayDate(debtPardonPreview.cutoffDate)}`),
+          staffId: debtPardonStaffId || undefined,
         }),
       });
       const body = await response.json().catch(() => ({}));
@@ -547,12 +563,14 @@ export default function PenaltyPaymentsPage() {
       setDebtPardonOpen(false);
       setMessage({
         type: 'success',
-        text: `Pardoned ${currency(body.pardonedTotal)} for ${body.staffCount} staff.`,
+        text: body.staffName
+          ? `Pardoned ${currency(body.pardonedTotal)} for ${body.staffName}.`
+          : `Pardoned ${currency(body.pardonedTotal)} for ${body.staffCount} staff.`,
       });
       await loadPayments();
     } catch (error) {
       setDebtPardonError(error instanceof Error ? error.message : 'Could not apply the pardon');
-      if (debtPardonPreview) void loadDebtPardonPreview(debtPardonPreview.cutoffDate);
+      if (debtPardonPreview) void loadDebtPardonPreview(debtPardonPreview.cutoffDate, debtPardonStaffId);
     } finally {
       setDebtPardonApplying(false);
     }
@@ -780,7 +798,7 @@ export default function PenaltyPaymentsPage() {
                   variant="outline"
                   className="h-10 shrink-0 gap-2"
                   disabled={loading}
-                  onClick={openDebtPardonDialog}
+                  onClick={() => openDebtPardonDialog()}
                 >
                   <HandHeart className="h-4 w-4" />
                   Pardon all
@@ -970,7 +988,23 @@ export default function PenaltyPaymentsPage() {
                       placeholder="Note"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className={cn('grid grid-cols-2 gap-2', moneyNumber(selectedRow.outstandingBalance) > 0 && 'sm:grid-cols-3')}>
+                    {moneyNumber(selectedRow.outstandingBalance) > 0 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="col-span-2 gap-2 sm:col-span-1"
+                        disabled={Boolean(savingAction)}
+                        onClick={() => {
+                          setPaymentDialogOpen(false);
+                          openDebtPardonDialog(selectedRow.id);
+                        }}
+                        title={`Pardon ${selectedRow.fullName}'s unpaid penalties`}
+                      >
+                        <HandHeart className="h-4 w-4" />
+                        Pardon
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       variant="outline"
@@ -1013,11 +1047,33 @@ export default function PenaltyPaymentsPage() {
         <Dialog open={debtPardonOpen} onOpenChange={(open) => { if (!debtPardonApplying) setDebtPardonOpen(open); }}>
           <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Pardon debts</DialogTitle>
+              <DialogTitle>{debtPardonStaffName ? `Pardon ${debtPardonStaffName}` : 'Pardon debts'}</DialogTitle>
               <DialogDescription>Clears unpaid penalties up to the selected date.</DialogDescription>
             </DialogHeader>
 
             <div className="space-y-3">
+              <div>
+                <label htmlFor="debt-pardon-who" className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Who</label>
+                <div className="relative">
+                  <select
+                    id="debt-pardon-who"
+                    value={debtPardonStaffId}
+                    disabled={debtPardonApplying}
+                    onChange={(event) => {
+                      setDebtPardonStaffId(event.target.value);
+                      setDebtPardonShowStaff(false);
+                    }}
+                    className="h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-10 text-sm font-medium text-foreground outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/35 disabled:opacity-60"
+                  >
+                    <option value="">Everyone</option>
+                    {debtPardonStaffOptions.map((option) => (
+                      <option key={option.id} value={option.id}>{option.fullName}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                </div>
+              </div>
+
               {/* Date and total side by side, same height, labels aligned. */}
               <div className="grid grid-cols-2 gap-3">
                 <DateField
@@ -1049,6 +1105,7 @@ export default function PenaltyPaymentsPage() {
               {!debtPardonLoading && debtPardonPreview && debtPardonPreview.entryCount > 0 && (
                 <>
                   {/* Staff list: a full-width row that opens into the list, like an accordion. */}
+                  {!debtPardonStaffId && (
                   <div className="overflow-hidden rounded-md border border-border">
                     <button
                       type="button"
@@ -1072,6 +1129,7 @@ export default function PenaltyPaymentsPage() {
                       </ul>
                     )}
                   </div>
+                  )}
 
                   <Input
                     aria-label="Reason"

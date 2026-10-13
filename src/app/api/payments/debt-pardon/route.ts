@@ -1,5 +1,8 @@
 import { currentUser } from '@clerk/nextjs/server';
+import { eq } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/db';
+import { staff } from '@/db/schema';
 import { enforceRole } from '@/lib/auth/roles';
 import { getAccraDateKey } from '@/lib/date-key';
 import { isIsoDateKey } from '@/lib/date-format';
@@ -10,6 +13,17 @@ export const dynamic = 'force-dynamic';
 
 const HASH_PATTERN = /^[0-9a-f]{32}$/i;
 const MAX_REASON_LENGTH = 300;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Empty means everyone; otherwise the pardon covers only this staff member.
+async function resolveStaff(value: unknown) {
+  const staffId = typeof value === 'string' ? value.trim() : '';
+  if (!staffId) return { staffId: null, staffName: null };
+  if (!UUID_PATTERN.test(staffId)) return { error: 'Select a valid staff member' };
+  const [member] = await db.select({ fullName: staff.fullName, id: staff.id }).from(staff).where(eq(staff.id, staffId)).limit(1);
+  if (!member) return { error: 'Staff member was not found' };
+  return { staffId: member.id, staffName: member.fullName };
+}
 
 function resolveCutoffDate(value: unknown) {
   const today = getAccraDateKey();
@@ -30,8 +44,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: resolved.error }, { status: 400 });
   }
 
+  const target = await resolveStaff(request.nextUrl.searchParams.get('staffId'));
+  if ('error' in target) {
+    return NextResponse.json({ error: target.error }, { status: 400 });
+  }
+
   try {
-    const preview = await previewLatenessDebtPardon(resolved.cutoffDate);
+    const preview = await previewLatenessDebtPardon(resolved.cutoffDate, target.staffId);
     return NextResponse.json(preview, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('Failed to preview debt pardon:', error);
@@ -54,6 +73,11 @@ export async function POST(request: NextRequest) {
   const resolved = resolveCutoffDate(body?.cutoffDate);
   if ('error' in resolved) {
     return NextResponse.json({ error: resolved.error }, { status: 400 });
+  }
+
+  const target = await resolveStaff(body?.staffId);
+  if ('error' in target) {
+    return NextResponse.json({ error: target.error }, { status: 400 });
   }
 
   const expectedSnapshotHash = typeof body?.expectedSnapshotHash === 'string' ? body.expectedSnapshotHash.trim() : '';
@@ -82,6 +106,8 @@ export async function POST(request: NextRequest) {
       expectedSnapshotHash,
       reason,
       source: 'payments-page-pardon',
+      staffId: target.staffId,
+      staffName: target.staffName,
     });
 
     if (!result) {
@@ -95,12 +121,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'The pardon was recorded but failed verification. Check the audit trail.' }, { status: 500 });
     }
 
-    const payload = { reason: 'lateness-debt-pardon', pardonId: result.id };
+    const payload = { reason: 'lateness-debt-pardon', pardonId: result.id, staffId: target.staffId };
     for (const channel of ['payments', 'entries', 'staff-penalty-history', 'dashboard', 'notifications', 'audit-trail']) {
       publishRealtime(channel, 'invalidate', payload);
     }
 
-    return NextResponse.json({ ...result, cutoffDate: resolved.cutoffDate });
+    return NextResponse.json({ ...result, cutoffDate: resolved.cutoffDate, staffName: target.staffName });
   } catch (error) {
     console.error('Failed to apply debt pardon:', error);
     return NextResponse.json({ error: 'Failed to apply debt pardon' }, { status: 500 });

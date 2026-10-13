@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { sql, type SQL } from 'drizzle-orm';
 import { db } from '@/db';
 
-// Debt pardons forgive every unpaid lateness balance dated on or before a cutoff date. Each pardon is
+// Debt pardons forgive every unpaid lateness balance (everyone's, or one person's) dated on or before a cutoff date. Each pardon is
 // recorded as one immutable event with a per-entry ledger, so payments, the offence book and the
 // audit trail can show exactly what was forgiven. Debts dated after the cutoff stay owed.
 
@@ -59,8 +59,10 @@ function dateText(value: unknown) {
   return value instanceof Date ? value.toISOString().slice(0, 10) : String(value ?? '').slice(0, 10);
 }
 
-// Unpaid balances on or before the cutoff that no earlier pardon already covers.
-function candidateCtes(cutoffDate: string): SQL {
+// Unpaid balances on or before the cutoff that no earlier pardon already covers, for everyone or
+// for one staff member.
+function candidateCtes(cutoffDate: string, staffId?: string | null): SQL {
+  const staffFilter = staffId ? sql`AND le.staff_id = ${staffId}::uuid` : sql``;
   return sql`
     allocation_totals AS (
       SELECT entry_id, SUM(GREATEST(allocated_amount, 0)) AS paid_amount
@@ -77,6 +79,7 @@ function candidateCtes(cutoffDate: string): SQL {
       FROM lateness_entry le
       LEFT JOIN allocation_totals at ON at.entry_id = le.id
       WHERE le.date <= ${cutoffDate}::date
+        ${staffFilter}
         AND le.computed_amount > 0
         AND le.computed_amount > LEAST(COALESCE(at.paid_amount, 0), le.computed_amount)
         AND NOT EXISTS (
@@ -99,11 +102,11 @@ function candidateCtes(cutoffDate: string): SQL {
   `;
 }
 
-export async function previewLatenessDebtPardon(cutoffDate: string): Promise<DebtPardonPreview> {
+export async function previewLatenessDebtPardon(cutoffDate: string, staffId?: string | null): Promise<DebtPardonPreview> {
   const [snapshotResult, staffResult] = await Promise.all([
-    db.execute(sql`WITH ${candidateCtes(cutoffDate)} SELECT * FROM snapshot`),
+    db.execute(sql`WITH ${candidateCtes(cutoffDate, staffId)} SELECT * FROM snapshot`),
     db.execute(sql`
-      WITH ${candidateCtes(cutoffDate)}
+      WITH ${candidateCtes(cutoffDate, staffId)}
       SELECT
         c.staff_id::text AS staff_id,
         s.full_name,
@@ -154,13 +157,16 @@ export async function applyLatenessDebtPardon(input: {
   expectedSnapshotHash: string;
   reason: string;
   source: string;
+  staffId?: string | null;
+  staffName?: string | null;
 }): Promise<DebtPardonResult | null> {
   const pardonId = randomUUID();
   const cutoffAt = new Date().toISOString();
-  const idempotencyKey = `${input.source}-${input.cutoffDate}-${input.expectedSnapshotHash}`;
+  const staffId = input.staffId || null;
+  const idempotencyKey = `${input.source}-${staffId || 'all'}-${input.cutoffDate}-${input.expectedSnapshotHash}`;
 
   const result = await db.execute(sql`
-    WITH ${candidateCtes(input.cutoffDate)}, inserted_pardon AS (
+    WITH ${candidateCtes(input.cutoffDate, staffId)}, inserted_pardon AS (
       INSERT INTO lateness_debt_pardon (
         id, cutoff_at, cutoff_date, reason, actor_user_id, actor_email,
         idempotency_key, snapshot_hash, entry_count, staff_count,
@@ -199,7 +205,9 @@ export async function applyLatenessDebtPardon(input: {
           'pardonedTotal', inserted_pardon.pardoned_total,
           'snapshotHash', inserted_pardon.snapshot_hash,
           'reason', ${input.reason}::text,
-          'source', ${input.source}::text
+          'source', ${input.source}::text,
+          'staffId', ${staffId}::text,
+          'staffName', ${input.staffName || null}::text
         ),
         NULL, ${input.actorEmail}::text
       FROM inserted_pardon

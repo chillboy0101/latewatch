@@ -31,7 +31,7 @@ test('payments page offers a previewed, confirmed pardon-all action', () => {
   const page = read('src', 'app', 'payments', 'page.tsx');
 
   assert.match(page, /Pardon all/);
-  assert.match(page, /\/api\/payments\/debt-pardon\?cutoffDate=/);
+  assert.match(page, /\/api\/payments\/debt-pardon\?\$\{query\}/);
   assert.match(page, /expectedSnapshotHash: debtPardonPreview\.snapshotHash/);
   assert.match(page, /if \(!debtPardonConfirmed\) \{\s*setDebtPardonConfirmed\(true\);\s*return;/);
   assert.match(page, /Tap again to confirm/);
@@ -44,4 +44,21 @@ test('audit trail describes debt pardons', () => {
 
   assert.match(taxonomy, /lateness_debt_pardon: 'Lateness Debt Pardon'/);
   assert.match(auditPage, /describeDebtPardon\('Pardoned', afterData\)/);
+});
+
+test('debts can be pardoned for one staff member as well as everyone', () => {
+  const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
+  const engine = read('src', 'lib', 'lateness-debt-pardon.ts');
+  const route = read('src', 'app', 'api', 'payments', 'debt-pardon', 'route.ts');
+  const page = read('src', 'app', 'payments', 'page.tsx');
+
+  assert.match(engine, /const staffFilter = staffId \? sql`AND le\.staff_id = \$\{staffId\}::uuid` : sql``;/);
+  assert.match(engine, /\$\{input\.source\}-\$\{staffId \|\| 'all'\}-\$\{input\.cutoffDate\}/);
+  assert.match(engine, /'staffName', \$\{input\.staffName \|\| null\}::text/);
+  assert.match(route, /async function resolveStaff\(value: unknown\)/);
+  assert.match(route, /previewLatenessDebtPardon\(resolved\.cutoffDate, target\.staffId\)/);
+  assert.match(route, /staffId: target\.staffId,/);
+  assert.match(page, /<option value="">Everyone<\/option>/);
+  assert.match(page, /openDebtPardonDialog\(selectedRow\.id\)/);
+  assert.match(page, /staffId: debtPardonStaffId \|\| undefined/);
 });
