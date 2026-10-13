@@ -8,6 +8,7 @@ import {
   roleFromOrganizationClaims,
   roleFromMetadata,
 } from '@/lib/auth/role-config';
+import { hasActiveStaffAccess } from '@/lib/auth/staff-access';
 
 const isProtectedRoute = createRouteMatcher([
   '/dashboard(.*)',
@@ -206,7 +207,15 @@ const handler = clerkConfigured
 
       if (isProtectedRoute(req)) {
         const session = await auth.protect();
-        if (isOrgRequiredRoute(req) && !hasRequiredOrganization(session.sessionClaims)) {
+        // Access: a seat in the LateWatch organisation, OR an active (non-archived) staff record
+        // for one of the account's verified emails, OR an admin. The Staff list is the real
+        // gate, so the organisation's 20-seat cap no longer limits who can use LateWatch.
+        if (
+          isOrgRequiredRoute(req)
+          && !hasRequiredOrganization(session.sessionClaims)
+          && !(await hasActiveStaffAccess(session.userId))
+          && !(await isAdminSession(session.userId, session.sessionClaims))
+        ) {
           return organizationRequiredResponse(req);
         }
         if (!isStaffCheckInRoute(req) && isAdminRoute(req)) {

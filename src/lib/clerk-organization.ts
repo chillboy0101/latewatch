@@ -12,7 +12,6 @@ import { getSiteUrl } from '@/lib/site-metadata';
 
 type ClerkClient = ReturnType<typeof createClerkClient>;
 type ClerkUser = Awaited<ReturnType<ClerkClient['users']['getUser']>>;
-type OrganizationInvitation = Awaited<ReturnType<ClerkClient['organizations']['getOrganizationInvitationList']>>['data'][number];
 type OrganizationMembershipRole = Parameters<ClerkClient['organizations']['createOrganizationMembership']>[0]['role'];
 
 type SyncStaffIdentityInput = {
@@ -35,7 +34,6 @@ type UnlinkStaffIdentityInput = {
 };
 
 let cachedOrganizationId: string | null | undefined;
-const INVITATION_FLOW_VERSION = 'sign-up-ticket-v1';
 
 function getClerkClient() {
   if (!process.env.CLERK_SECRET_KEY) return null;
@@ -64,27 +62,9 @@ function staffMetadata(input: SyncStaffIdentityInput) {
   return clerkStaffPrivateMetadata(input);
 }
 
-function invitationPrivateMetadata(input: SyncStaffIdentityInput) {
-  return {
-    ...staffMetadata(input),
-    latewatchInvitationFlowVersion: INVITATION_FLOW_VERSION,
-  };
-}
-
 function ownsStaffRecord(user: ClerkUser, staffId: string) {
   return asMetadata(user.privateMetadata).latewatchStaffId === staffId
     || asMetadata(user.publicMetadata).latewatchStaffId === staffId;
-}
-
-function isCurrentInvitationForStaff(invitation: OrganizationInvitation, input: SyncStaffIdentityInput) {
-  const privateMetadata = asMetadata(invitation.privateMetadata);
-  const publicMetadata = asMetadata(invitation.publicMetadata);
-
-  return privateMetadata.latewatchInvitationFlowVersion === INVITATION_FLOW_VERSION
-    && (
-      privateMetadata.latewatchStaffId === input.staffId
-      || publicMetadata.latewatchStaffId === input.staffId
-    );
 }
 
 function isConflict(error: unknown) {
@@ -166,57 +146,39 @@ async function ensureMembership(client: ClerkClient, organizationId: string, use
   }
 }
 
-async function ensureInvitation(client: ClerkClient, organizationId: string, input: SyncStaffIdentityInput) {
+// New staff are invited to the LateWatch app itself (sign-up stays invite-only). Unlike an
+// organisation invitation this needs no organisation seat, so the free plan's 20-seat cap
+// never blocks onboarding. Access is then granted by the Staff list (see auth/staff-access).
+async function ensureAppInvitation(client: ClerkClient, input: SyncStaffIdentityInput) {
   const email = normalizeStaffEmail(input.email);
   if (!email) return 'no_email';
 
-  let existingInvitations: OrganizationInvitation[] = [];
+  const pending = await client.invitations.getInvitationList({ query: email, status: 'pending' })
+    .then((result) => result.data.filter((invitation) => invitation.emailAddress.toLowerCase() === email))
+    .catch(() => []);
+  if (pending.length > 0) return 'invitation_exists';
 
   try {
-    const invitations = await client.organizations.getOrganizationInvitationList({
-      organizationId,
-      status: ['pending'],
-      limit: 100,
-    });
-
-    existingInvitations = invitations.data.filter(
-      (invitation) => invitation.emailAddress.toLowerCase() === email,
-    );
-  } catch (error) {
-    console.warn('Failed to check existing Clerk organization invitations:', error);
-  }
-
-  const currentInvitation = existingInvitations.find(
-    (invitation) => isCurrentInvitationForStaff(invitation, input),
-  );
-
-  if (currentInvitation) return 'invitation_exists';
-
-  await Promise.all(existingInvitations.map((invitation) => (
-    client.organizations.revokeOrganizationInvitation({
-      invitationId: invitation.id,
-      organizationId,
-    }).catch((error) => {
-      if (!isConflict(error)) throw error;
-    })
-  )));
-
-  try {
-    await client.organizations.createOrganizationInvitation({
+    await client.invitations.createInvitation({
       emailAddress: email,
       expiresInDays: 30,
-      inviterUserId: input.actorUserId || undefined,
-      organizationId,
-      privateMetadata: invitationPrivateMetadata(input),
       publicMetadata: clerkStaffPublicMetadata(input),
       redirectUrl: getInvitationRedirectUrl(),
-      role: getMemberRole(),
     });
     return 'invitation_sent';
   } catch (error) {
     if (isConflict(error)) return 'invitation_exists';
     throw error;
   }
+}
+
+async function revokePendingAppInvitations(client: ClerkClient, email: string) {
+  const pending = await client.invitations.getInvitationList({ query: email, status: 'pending' })
+    .then((result) => result.data.filter((invitation) => invitation.emailAddress.toLowerCase() === email))
+    .catch(() => []);
+  await Promise.all(pending.map((invitation) => client.invitations.revokeInvitation(invitation.id).catch((error) => {
+    if (!isConflict(error)) console.warn('Failed to revoke LateWatch app invitation:', error);
+  })));
 }
 
 async function removeOwnedMetadata(client: ClerkClient, user: ClerkUser, staffId: string) {
@@ -303,8 +265,13 @@ export async function syncStaffEmailIdentity(input: SyncStaffIdentityInput) {
 
     if (user) {
       await updateUserStaffMetadata(client, user, { ...input, email });
+      // Organisation membership is a convenience only (access comes from the Staff list), so a
+      // full organisation never blocks anyone.
       const membershipStatus = organizationId
-        ? await ensureMembership(client, organizationId, user.id)
+        ? await ensureMembership(client, organizationId, user.id).catch((error) => {
+          console.warn('Organisation seat unavailable; access continues via the Staff list:', error);
+          return 'membership_unavailable';
+        })
         : 'organization_not_configured';
 
       return {
@@ -314,11 +281,9 @@ export async function syncStaffEmailIdentity(input: SyncStaffIdentityInput) {
       };
     }
 
-    if (!organizationId) return { status: 'organization_not_configured' };
-
     return {
       organizationId,
-      status: await ensureInvitation(client, organizationId, { ...input, email }),
+      status: await ensureAppInvitation(client, { ...input, email }),
     };
   } catch (error) {
     console.warn('Failed to sync staff email with Clerk organization:', error);
@@ -343,6 +308,7 @@ export async function unlinkStaffEmailIdentity(input: UnlinkStaffIdentityInput) 
     if (organizationId) {
       await removeOwnedPendingInvitations(client, organizationId, email, input.staffId, releaseSeat);
     }
+    await revokePendingAppInvitations(client, email);
 
     let seatReleased = false;
     if (user) {

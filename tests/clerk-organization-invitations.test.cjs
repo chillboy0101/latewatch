@@ -6,8 +6,12 @@ const test = require('node:test');
 const originalLoad = Module._load;
 
 let pendingInvitations = [];
+let pendingAppInvitations = [];
 let existingUsers = [];
+let membershipFull = false;
 const calls = {
+  createdAppInvitations: [],
+  revokedAppInvitations: [],
   createdInvitations: [],
   deletedMemberships: [],
   revokedInvitations: [],
@@ -26,17 +30,33 @@ const fakeClient = {
       });
       return pendingInvitations[pendingInvitations.length - 1];
     },
-    createOrganizationMembership: async () => null,
+    createOrganizationMembership: async () => {
+      if (membershipFull) throw Object.assign(new Error('organization membership quota exceeded'), { status: 403 });
+      return null;
+    },
     deleteOrganizationMembership: async (params) => {
       calls.deletedMemberships.push(params);
       return {};
     },
     getOrganizationInvitationList: async () => ({ data: pendingInvitations }),
     getOrganizationList: async () => ({ data: [{ id: 'org_test' }] }),
-    getOrganizationMembershipList: async () => ({ data: [{ id: 'membership_1' }] }),
+    getOrganizationMembershipList: async () => ({ data: membershipFull ? [] : [{ id: 'membership_1' }] }),
     revokeOrganizationInvitation: async (params) => {
       calls.revokedInvitations.push(params);
       pendingInvitations = pendingInvitations.filter((invitation) => invitation.id !== params.invitationId);
+      return {};
+    },
+  },
+  invitations: {
+    createInvitation: async (params) => {
+      calls.createdAppInvitations.push(params);
+      pendingAppInvitations.push({ emailAddress: params.emailAddress, id: `ainv_${calls.createdAppInvitations.length}` });
+      return pendingAppInvitations[pendingAppInvitations.length - 1];
+    },
+    getInvitationList: async () => ({ data: pendingAppInvitations }),
+    revokeInvitation: async (invitationId) => {
+      calls.revokedAppInvitations.push(invitationId);
+      pendingAppInvitations = pendingAppInvitations.filter((invitation) => invitation.id !== invitationId);
       return {};
     },
   },
@@ -74,6 +94,10 @@ require('tsx/cjs');
 const { syncStaffEmailIdentity, unlinkStaffEmailIdentity } = require('../src/lib/clerk-organization.ts');
 
 function resetClerkFixture() {
+  calls.createdAppInvitations = [];
+  calls.revokedAppInvitations = [];
+  pendingAppInvitations = [];
+  membershipFull = false;
   calls.createdInvitations = [];
   calls.deletedMemberships = [];
   calls.revokedInvitations = [];
@@ -85,7 +109,7 @@ function resetClerkFixture() {
   process.env.NEXT_PUBLIC_APP_URL = 'https://latewatch.example';
 }
 
-test('staff sync sends Clerk invitations to the invite-aware sign-up page', async () => {
+test('staff sync invites new staff to the app (no organisation seat needed) via the invite-aware sign-up page', async () => {
   resetClerkFixture();
 
   const result = await syncStaffEmailIdentity({
@@ -98,60 +122,20 @@ test('staff sync sends Clerk invitations to the invite-aware sign-up page', asyn
   });
 
   assert.equal(result.status, 'invitation_sent');
-  assert.equal(calls.createdInvitations.length, 1);
+  assert.equal(calls.createdInvitations.length, 0, 'no organisation invitation (would need a seat)');
+  assert.equal(calls.createdAppInvitations.length, 1);
   assert.equal(
-    calls.createdInvitations[0].redirectUrl,
+    calls.createdAppInvitations[0].redirectUrl,
     'https://latewatch.example/sign-up?redirect_url=https%3A%2F%2Flatewatch.example%2Fcheck-in',
   );
-  assert.equal(calls.createdInvitations[0].privateMetadata.latewatchInvitationFlowVersion, 'sign-up-ticket-v1');
-  assert.equal(calls.createdInvitations[0].privateMetadata.latewatchStaffType, 'main');
-  assert.equal(calls.createdInvitations[0].privateMetadata.latewatchIsAttendanceOnly, false);
-  assert.equal(calls.createdInvitations[0].privateMetadata.latewatchIsNssPersonnel, false);
-  assert.equal(calls.createdInvitations[0].publicMetadata.latewatchStaffId, 'staff_1');
-  assert.equal(calls.createdInvitations[0].publicMetadata.latewatchStaffType, 'main');
+  assert.equal(calls.createdAppInvitations[0].emailAddress, 'new.staff@example.com');
+  assert.equal(calls.createdAppInvitations[0].publicMetadata.latewatchStaffId, 'staff_1');
+  assert.equal(calls.createdAppInvitations[0].publicMetadata.latewatchStaffType, 'main');
 });
 
-test('staff sync resends stale pending invitations created with the old check-in redirect', async () => {
+test('staff sync keeps a pending app invitation instead of sending a duplicate', async () => {
   resetClerkFixture();
-  pendingInvitations = [{
-    emailAddress: 'old.staff@example.com',
-    id: 'inv_old',
-    privateMetadata: {
-      latewatchStaffId: 'staff_2',
-    },
-    publicMetadata: {
-      latewatchStaffId: 'staff_2',
-    },
-  }];
-
-  const result = await syncStaffEmailIdentity({
-    actorUserId: 'user_admin',
-    email: 'old.staff@example.com',
-    isAttendanceOnly: false,
-    isNssPersonnel: false,
-    staffId: 'staff_2',
-    staffName: 'Old Staff',
-  });
-
-  assert.equal(result.status, 'invitation_sent');
-  assert.deepEqual(calls.revokedInvitations, [{ invitationId: 'inv_old', organizationId: 'org_test' }]);
-  assert.equal(calls.createdInvitations.length, 1);
-  assert.equal(calls.createdInvitations[0].privateMetadata.latewatchInvitationFlowVersion, 'sign-up-ticket-v1');
-});
-
-test('staff sync keeps current pending invitations instead of sending duplicates', async () => {
-  resetClerkFixture();
-  pendingInvitations = [{
-    emailAddress: 'current.staff@example.com',
-    id: 'inv_current',
-    privateMetadata: {
-      latewatchInvitationFlowVersion: 'sign-up-ticket-v1',
-      latewatchStaffId: 'staff_3',
-    },
-    publicMetadata: {
-      latewatchStaffId: 'staff_3',
-    },
-  }];
+  pendingAppInvitations = [{ emailAddress: 'current.staff@example.com', id: 'ainv_current' }];
 
   const result = await syncStaffEmailIdentity({
     actorUserId: 'user_admin',
@@ -163,8 +147,35 @@ test('staff sync keeps current pending invitations instead of sending duplicates
   });
 
   assert.equal(result.status, 'invitation_exists');
-  assert.equal(calls.revokedInvitations.length, 0);
-  assert.equal(calls.createdInvitations.length, 0);
+  assert.equal(calls.createdAppInvitations.length, 0);
+});
+
+test('a full organisation never blocks existing users: access comes from the Staff list', async () => {
+  resetClerkFixture();
+  membershipFull = true;
+  existingUsers = [{ emailAddress: 'late.joiner@example.com', id: 'user_late', privateMetadata: {}, publicMetadata: {} }];
+
+  const result = await syncStaffEmailIdentity({
+    actorUserId: 'user_admin',
+    email: 'late.joiner@example.com',
+    isAttendanceOnly: false,
+    isNssPersonnel: false,
+    staffId: 'staff_late',
+    staffName: 'Late Joiner',
+  });
+
+  assert.equal(result.status, 'membership_unavailable');
+  assert.equal(calls.updatedMetadata.length, 1, 'staff metadata is still linked');
+});
+
+test('archiving revokes pending app invitations for that email', async () => {
+  resetClerkFixture();
+  pendingAppInvitations = [{ emailAddress: 'leaver@example.com', id: 'ainv_leaver' }];
+
+  const result = await unlinkStaffEmailIdentity({ email: 'leaver@example.com', releaseSeat: true, staffId: 'staff_leaver' });
+
+  assert.equal(result.status, 'unlinked');
+  assert.deepEqual(calls.revokedAppInvitations, ['ainv_leaver']);
 });
 
 test('staff sync stores NSS staff type metadata on existing Clerk users', async () => {
@@ -213,10 +224,7 @@ test('staff sync stores monitoring-only staff type metadata on invitations', asy
   });
 
   assert.equal(result.status, 'invitation_sent');
-  assert.equal(calls.createdInvitations[0].privateMetadata.latewatchStaffType, 'monitoring_only');
-  assert.equal(calls.createdInvitations[0].privateMetadata.latewatchIsAttendanceOnly, true);
-  assert.equal(calls.createdInvitations[0].privateMetadata.latewatchIsNssPersonnel, false);
-  assert.equal(calls.createdInvitations[0].publicMetadata.latewatchStaffType, 'monitoring_only');
+  assert.equal(calls.createdAppInvitations[0].publicMetadata.latewatchStaffType, 'monitoring_only');
 });
 
 test('staff unlink removes Clerk staff type metadata keys', async () => {

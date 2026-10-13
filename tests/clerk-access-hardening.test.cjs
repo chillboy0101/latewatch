@@ -47,3 +47,17 @@ test('sign-up page only renders Clerk sign-up when an invitation token is presen
   assert.match(signUpPage, /hasInvitationParam\(resolvedSearchParams\)/);
   assert.match(signUpPage, /canSignUp \? <ClerkAuthCard mode="sign-up" \/> : <InviteOnlySignUpCard \/>/);
 });
+
+test('access comes from the Staff list (verified email, not archived), not only the 20-seat organisation', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const proxy = fs.readFileSync(path.join(__dirname, '..', 'src', 'proxy.ts'), 'utf8');
+  const access = fs.readFileSync(path.join(__dirname, '..', 'src', 'lib', 'auth', 'staff-access.ts'), 'utf8');
+
+  // Organisation members keep working; active staff and admins also get in.
+  assert.match(proxy, /&& !hasRequiredOrganization\(session\.sessionClaims\)\s+&& !\(await hasActiveStaffAccess\(session\.userId\)\)\s+&& !\(await isAdminSession\(session\.userId, session\.sessionClaims\)\)/);
+  // Only verified emails count, archived staff never pass, failed lookups are not cached.
+  assert.match(access, /address\.verification\?\.status === 'verified'/);
+  assert.match(access, /eq\(staff\.archived, false\)/);
+  assert.match(access, /Never cache a failed lookup/);
+});

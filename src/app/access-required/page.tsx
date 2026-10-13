@@ -18,7 +18,7 @@ export default function AccessRequiredPage() {
           <div className="space-y-2">
             <h1 className="text-xl font-semibold">Account Access Needed</h1>
             <p className="text-sm leading-6 text-muted-foreground">
-              This account is not active in the LateWatch organization. Ask an administrator to add your staff login email, then sign in again.
+              This account is not on the LateWatch staff list. Ask an administrator to add your login email as staff, then sign in again.
             </p>
           </div>
 
