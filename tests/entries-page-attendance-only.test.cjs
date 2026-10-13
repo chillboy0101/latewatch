@@ -177,7 +177,24 @@ test('entries page renders excused absence permissions without missing sign-out 
   assert.match(source, /isExcusedAbsence/);
   assert.match(source, />Excused</);
   assert.match(source, /!entry\.isExcusedAbsence/);
-  assert.match(source, /entry\.isExcusedAbsence \? 'Excused'/);
+  assert.match(source, /entry\.isExcusedAbsence\s+\? \{ state: 'excused', text: 'Excused' \}/);
+});
+
+test('entries time fields show their state on the field and can be cleared', () => {
+  const source = fs.readFileSync(entriesPagePath, 'utf8');
+  const route = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'api', 'entries', 'route.ts'), 'utf8');
+  assert.match(source, /type TimeFieldState = 'ok' \| 'late' \| 'missing' \| 'waived' \| 'excused' \| 'leave' \| 'empty';/);
+  assert.match(source, /\{ state: 'missing', text: 'No sign-out', title: 'No sign-out: charged' \}/);
+  assert.match(source, /\{ state: 'missing', text: 'No sign-in', title: 'No sign-in: charged' \}/);
+  assert.doesNotMatch(source, /'Missing'\}/);
+  assert.match(source, /aria-label=\{`Clear \$\{label\.toLowerCase\(\)\}`\}/);
+  // Clearing a saved sign-in removes the day's check-in, after confirmation, never touching paid or pardoned days.
+  assert.match(source, /arrivalTimeCleared: !entry\.arrivalTime && Boolean\(originalEntrySnapshots\[entry\.staffId\]\?\.arrivalTime\)/);
+  assert.match(source, /Remove the check-in for/);
+  assert.match(route, /if \(entry\.arrivalTimeCleared === true && !arrivalTime && existingAttendance\?\.checkInTime\)/);
+  assert.match(route, /if \(existing && \(await isEntryPaidOrPardoned\(existing\.id\)\)\)/);
+  assert.match(route, /reason: 'staff-leave-reopened-check-in-removed'/);
+  assert.match(route, /await applyNoShowSignInPenaltiesForDate\(date\)/);
 });
 
 test('regular staff recalculation apply notifies live pages to refetch entries', () => {

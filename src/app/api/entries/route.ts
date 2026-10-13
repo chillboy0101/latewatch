@@ -6,6 +6,7 @@ import { and, eq, gte, gt, inArray, isNotNull, isNull, lte, ne, or } from 'drizz
 import { publishRealtime } from '@/lib/realtime';
 import { getAuditActor, writeAuditEvent } from '@/lib/audit';
 import {
+  applyNoShowSignInPenaltiesForDate,
   syncLatenessEntriesFromAttendanceForDate,
   syncLatenessEntriesFromAttendanceForRange,
 } from '@/lib/attendance-lateness-sync';
@@ -25,6 +26,16 @@ import {
 import { enforceRole } from '@/lib/auth/roles';
 
 const MANUAL_SIGN_OUT_MARKER = 'manual_entries';
+
+// A day with a payment or pardon against it keeps its records: deleting the entry would cascade
+// to the payment allocation or be refused by the pardon ledger.
+async function isEntryPaidOrPardoned(entryId: string) {
+  const [[allocation], [pardon]] = await Promise.all([
+    db.select({ id: latenessPaymentAllocation.id }).from(latenessPaymentAllocation).where(eq(latenessPaymentAllocation.entryId, entryId)).limit(1),
+    db.select({ id: latenessDebtPardonEntry.id }).from(latenessDebtPardonEntry).where(eq(latenessDebtPardonEntry.entryId, entryId)).limit(1),
+  ]);
+  return Boolean(allocation || pardon);
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -338,6 +349,8 @@ export async function POST(request: NextRequest) {
     const results = [];
     let deletedCount = 0;
     let attendanceChangedCount = 0;
+    let removedCheckInCount = 0;
+    const blockedCheckInRemovals: string[] = [];
     const changedStaff = new Map<string, { fullName: string; staffId: string }>();
     const markStaffChanged = (staffId: string) => {
       changedStaff.set(staffId, {
@@ -357,6 +370,70 @@ export async function POST(request: NextRequest) {
         ? entry.arrivalTime
         : null;
       const existingAttendance = attendanceByStaffId.get(entry.staffId);
+
+      // An admin cleared a saved sign-in (typed by mistake): remove that day's check-in entirely, along
+      // with its penalty. Days with a payment or pardon are never touched, so money records stay intact.
+      if (entry.arrivalTimeCleared === true && !arrivalTime && existingAttendance?.checkInTime) {
+        const staffName = staffMap.get(entry.staffId) || 'Unknown';
+        if (existing && (await isEntryPaidOrPardoned(existing.id))) {
+          blockedCheckInRemovals.push(staffName);
+          continue;
+        }
+
+        if (existing) {
+          await db.delete(latenessEntry).where(eq(latenessEntry.id, existing.id));
+          await writeAuditEvent({
+            entityType: 'entry',
+            entityId: existing.id,
+            action: 'DELETE',
+            before: { ...existing, staff: { fullName: staffName } },
+            after: null,
+            actor: { email: actor.actorEmail, id: actor.actorUserId },
+            reason: 'entries-check-in-removed',
+          });
+          existingByStaffId.delete(entry.staffId);
+          deletedCount += 1;
+        }
+
+        await db.delete(attendanceRecord).where(eq(attendanceRecord.id, existingAttendance.id));
+        await writeAuditEvent({
+          entityType: 'attendance',
+          entityId: existingAttendance.id,
+          action: 'DELETE',
+          before: { ...existingAttendance, staff: { fullName: staffName } },
+          after: null,
+          actor: { email: actor.actorEmail, id: actor.actorUserId },
+          reason: 'entries-check-in-removed',
+        });
+        attendanceByStaffId.delete(entry.staffId);
+
+        // If that check-in had ended the person's leave, the leave was never really over: reopen it.
+        const reopened = await db.update(staffLeavePeriod)
+          .set({ closedAt: null, closedByEmail: null, returnedOn: null, updatedAt: new Date() })
+          .where(and(
+            eq(staffLeavePeriod.staffId, entry.staffId),
+            eq(staffLeavePeriod.returnedOn, date),
+            ne(staffLeavePeriod.source, 'staff_status'),
+          ))
+          .returning();
+        for (const period of reopened) {
+          await writeAuditEvent({
+            entityType: 'staff_leave_period',
+            entityId: period.id,
+            action: 'UPDATE',
+            before: { ...period, returnedOn: date },
+            after: { ...period, staffName },
+            actor: { email: actor.actorEmail, id: actor.actorUserId },
+            reason: 'staff-leave-reopened-check-in-removed',
+          });
+        }
+
+        attendanceChangedCount += 1;
+        removedCheckInCount += 1;
+        markStaffChanged(entry.staffId);
+        continue;
+      }
+
       const existingReason = existing?.reason || (typeof entry.reason === 'string' ? entry.reason : '');
       const isNoShowSignInEntry =
         existingReason === NO_SHOW_SIGN_IN_REASON ||
@@ -779,6 +856,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Days whose check-in was removed now follow the normal no-sign-in rule (after the cut-off,
+    // unless waived, excused or on leave).
+    if (removedCheckInCount > 0) {
+      await applyNoShowSignInPenaltiesForDate(date);
+    }
+
     const [existingSubmission] = await db.select()
       .from(entrySubmission)
       .where(eq(entrySubmission.date, date))
@@ -833,6 +916,8 @@ export async function POST(request: NextRequest) {
       changedStaff: changedStaffList,
       changedStaffCount: changedStaffList.length,
       changedStaffNames: changedStaffList.map((member) => member.fullName),
+      blockedCheckInRemovals,
+      removedCheckInCount,
       deletedCount,
       submittedAt: submission?.submittedAt,
     });

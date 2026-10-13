@@ -9,8 +9,9 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
+import { cn } from '@/lib/utils';
 import { addDays, format, isValid, parseISO } from 'date-fns';
-import { ArrowLeft, Save, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Clock, RefreshCw, Search } from 'lucide-react';
+import { AlarmClock, ArrowLeft, Save, CheckCircle, AlertCircle, CalendarOff, ChevronLeft, ChevronRight, Clock, RefreshCw, Search, ShieldCheck, X } from 'lucide-react';
 import { computePenalty } from '@/lib/penalty-calculator';
 import { NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/penalty-calculator';
 import { getAccraDateKey } from '@/lib/date-key';
@@ -470,6 +471,8 @@ function EntriesPageContent() {
           arrivalTime,
           noShowSignInWaived: false,
           reason: arrivalTime && entry.reason === NO_SHOW_SIGN_IN_REASON ? '' : entry.reason,
+          // No sign-in means no sign-out either: clearing the sign-in clears the whole day.
+          ...(arrivalTime ? {} : { didNotSignOut: false, noSignOutWaived: false, signOutTime: '' }),
         };
         const member = staff.find((s) => s.id === staffId);
         return applyPenaltyDisplay(updated, member);
@@ -581,6 +584,17 @@ function EntriesPageContent() {
       return;
     }
 
+    // Clearing a saved sign-in removes that day's check-in. Confirm first, naming who.
+    const removals = changedEntries.filter((entry) => !entry.arrivalTime && originalEntrySnapshots[entry.staffId]?.arrivalTime);
+    if (removals.length > 0) {
+      const names = removals.map((entry) => staff.find((member) => member.id === entry.staffId)?.fullName || 'staff member');
+      const confirmed = window.confirm(
+        `Remove the check-in for ${names.join(', ')} on ${formatLongDisplayDate(format(selectedDate, 'yyyy-MM-dd'))}?\n\n`
+        + 'Their sign-in and sign-out for this day will be deleted. The no sign-in charge then applies unless waived.',
+      );
+      if (!confirmed) return;
+    }
+
     setSaving(true);
     savingRef.current = true;
     try {
@@ -592,6 +606,7 @@ function EntriesPageContent() {
           date: today,
           entries: changedEntries.map((entry) => ({
             ...entry,
+            arrivalTimeCleared: !entry.arrivalTime && Boolean(originalEntrySnapshots[entry.staffId]?.arrivalTime),
             didNotSignOutChanged: entry.didNotSignOut !== originalEntrySnapshots[entry.staffId]?.didNotSignOut,
             noSignOutWaivedChanged: entry.noSignOutWaived !== originalEntrySnapshots[entry.staffId]?.noSignOutWaived,
             noShowSignInWaivedChanged: entry.noShowSignInWaived !== originalEntrySnapshots[entry.staffId]?.noShowSignInWaived,
@@ -610,10 +625,16 @@ function EntriesPageContent() {
         const totalChanges = savedCount + attendanceCount + deletedCount;
         const changedStaffNames = Array.isArray(data.changedStaffNames) ? data.changedStaffNames as string[] : [];
         const changedStaffCount = Number(data.changedStaffCount ?? changedStaffNames.length ?? totalChanges);
-        setMessage({
-          type: 'success',
-          text: formatChangedEntriesMessage(changedStaffNames, changedStaffCount),
-        });
+        const blocked = Array.isArray(data.blockedCheckInRemovals) ? data.blockedCheckInRemovals as string[] : [];
+        setMessage(blocked.length > 0
+          ? {
+              type: 'error',
+              text: `Not removed for ${blocked.join(', ')}: that day has a payment or pardon. Reverse it on Payments first. Other changes were saved.`,
+            }
+          : {
+              type: 'success',
+              text: formatChangedEntriesMessage(changedStaffNames, changedStaffCount),
+            });
         // What was just saved is now the baseline, so the follow-up refresh replaces these rows
         // with the saved values instead of treating them as still being edited.
         const savedSnapshots = Object.fromEntries(changedEntries.map((entry) => [entry.staffId, snapshotEntry(entry)]));
@@ -972,6 +993,32 @@ function EntriesPageContent() {
                     Boolean(entry.arrivalTime) &&
                     entry.amount > 0 &&
                     entry.reason.includes(LATE_ARRIVAL_PENALTY_REASON);
+                  const signInField: { state: TimeFieldState; text?: string; title?: string } = isOnLeave
+                    ? { state: 'leave', text: 'On leave' }
+                    : entry.isExcusedAbsence
+                      ? { state: 'excused', text: 'Excused' }
+                      : entry.arrivalTime
+                        ? entry.amount === 0 && entry.reason.includes(LATE_ARRIVAL_PARDON_REASON_PREFIX)
+                          ? { state: 'waived', title: 'Late fee waived' }
+                          : entry.amount > 0 && entry.reason.includes(LATE_ARRIVAL_PENALTY_REASON)
+                            ? { state: 'late', title: 'Late arrival' }
+                            : { state: 'ok' }
+                        : entry.noShowSignInWaived
+                          ? { state: 'waived', text: 'Waived', title: 'No sign-in waived' }
+                          : entry.reason === NO_SHOW_SIGN_IN_REASON
+                            ? { state: 'missing', text: 'No sign-in', title: 'No sign-in: charged' }
+                            : { state: 'empty' };
+                  const signOutField: { state: TimeFieldState; text?: string; title?: string } = isOnLeave
+                    ? { state: 'leave', text: 'On leave' }
+                    : entry.isExcusedAbsence
+                      ? { state: 'excused', text: 'Excused' }
+                      : entry.signOutTime
+                        ? { state: 'ok' }
+                        : entry.noSignOutWaived
+                          ? { state: 'waived', text: 'Waived', title: 'No sign-out waived' }
+                          : entry.didNotSignOut
+                            ? { state: 'missing', text: 'No sign-out', title: 'No sign-out: charged' }
+                            : { state: 'empty' };
                   // Two charges on the row (late + no sign-out): offer one action for both.
                   const showWaiveAllButton =
                     showLateArrivalPardonButton &&
@@ -1014,6 +1061,9 @@ function EntriesPageContent() {
                             onChange={(value) => updateArrivalTime(entry.staffId, value)}
                             disabled={rowDisabled}
                             label="Sign-in time"
+                            state={signInField.state}
+                            emptyText={signInField.text}
+                            title={signInField.title}
                           />
                           {showNoShowSignInWaiverButton && (
                             <Button
@@ -1046,11 +1096,6 @@ function EntriesPageContent() {
                             </Button>
                           )}
                         </div>
-                        {!entry.arrivalTime && (entry.reason === NO_SHOW_SIGN_IN_REASON || entry.noShowSignInWaived) && (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {entry.noShowSignInWaived ? 'Waived' : 'No sign-in'}
-                          </p>
-                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
@@ -1060,13 +1105,11 @@ function EntriesPageContent() {
                             disabled={rowDisabled}
                             label="Sign-out time"
                             max="23:59"
+                            state={signOutField.state}
+                            emptyText={signOutField.text}
+                            title={signOutField.title}
                           />
-                          {entry.signOutTime ? (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success">
-                              <CheckCircle className="h-3 w-3" />
-                              Signed out
-                            </span>
-                          ) : !entry.isExcusedAbsence && (
+                          {!entry.signOutTime && !entry.isExcusedAbsence && !isOnLeave && (
                             <Button
                               type="button"
                               size="sm"
@@ -1082,11 +1125,6 @@ function EntriesPageContent() {
                             </Button>
                           )}
                         </div>
-                        {!entry.signOutTime && (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {entry.isExcusedAbsence ? 'Excused' : entry.noSignOutWaived ? 'Waived' : entry.didNotSignOut ? 'No sign-out' : 'Missing'}
-                          </p>
-                        )}
                       </td>
                       <td className="px-4 py-3 text-sm font-mono">
                         {entry.amount > 0 ? (
@@ -1223,22 +1261,48 @@ export default function EntriesPage() {
   );
 }
 
+type TimeFieldState = 'ok' | 'late' | 'missing' | 'waived' | 'excused' | 'leave' | 'empty';
+
+// Each state is shown on the field itself (outline, icon, and the text inside when there is no time),
+// so the sign-in and sign-out columns read the same way without notes underneath.
+const TIME_FIELD_STATE: Record<TimeFieldState, { field: string; icon: string; Icon: typeof Clock | null; text: string }> = {
+  ok: { field: '', icon: 'text-muted-foreground', Icon: CheckCircle, text: '' },
+  late: { field: 'border-warning/60 bg-warning/5', icon: 'text-warning', Icon: AlarmClock, text: '' },
+  missing: { field: 'border-danger/60 bg-danger/5', icon: 'text-danger', Icon: AlertCircle, text: 'text-danger' },
+  waived: { field: 'border-dashed', icon: 'text-muted-foreground', Icon: ShieldCheck, text: 'text-muted-foreground' },
+  excused: { field: 'opacity-70', icon: 'text-muted-foreground', Icon: CalendarOff, text: 'text-muted-foreground' },
+  leave: { field: 'opacity-70', icon: 'text-muted-foreground', Icon: CalendarOff, text: 'text-muted-foreground' },
+  empty: { field: '', icon: 'text-muted-foreground', Icon: null, text: 'text-muted-foreground' },
+};
+
 function TimeSelector({
   disabled,
+  emptyText,
   label = 'Time',
   max = '18:00',
   min = '06:00',
   onChange,
+  state = 'empty',
+  title,
   value,
 }: {
   disabled?: boolean;
+  /** Shown inside the field when there is no time, e.g. "No sign-out" or "Waived". */
+  emptyText?: string;
   label?: string;
   max?: string;
   min?: string;
   onChange: (value: string) => void;
+  state?: TimeFieldState;
+  title?: string;
   value: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [focused, setFocused] = useState(false);
+  const time = normalizeTimeValue(value);
+  const look = TIME_FIELD_STATE[state];
+  const StateIcon = look.Icon;
+  const showText = !time && !focused && Boolean(emptyText);
 
   function openNativePicker() {
     const input = inputRef.current;
@@ -1253,19 +1317,46 @@ function TimeSelector({
   }
 
   return (
-    <div className="relative w-36">
+    <div className="relative w-44" title={title}>
+      {StateIcon && (
+        <StateIcon aria-hidden className={cn('pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2', look.icon)} />
+      )}
       <Input
         ref={inputRef}
-        aria-label={label}
-        className="latewatch-native-time-input h-9 w-full pr-9 font-mono text-sm font-medium [color-scheme:light] dark:[color-scheme:dark]"
+        aria-label={emptyText && !time ? `${label}: ${emptyText}` : label}
+        className={cn(
+          'latewatch-native-time-input h-9 w-full font-mono text-sm font-medium [color-scheme:light] dark:[color-scheme:dark]',
+          StateIcon ? 'pl-8' : 'pl-3',
+          time && !disabled ? 'pr-14' : 'pr-9',
+          look.field,
+          showText && 'text-transparent',
+        )}
         disabled={disabled}
         max={max}
         min={min}
         step={300}
         type="time"
-        value={normalizeTimeValue(value)}
+        value={time}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         onChange={(event) => onChange(event.target.value)}
       />
+      {showText && (
+        <span aria-hidden className={cn('pointer-events-none absolute top-1/2 -translate-y-1/2 truncate text-sm font-medium', StateIcon ? 'left-8' : 'left-3', look.text)}>
+          {emptyText}
+        </span>
+      )}
+      {time && !disabled && (
+        <button
+          aria-label={`Clear ${label.toLowerCase()}`}
+          title={`Clear ${label.toLowerCase()}`}
+          className="absolute right-8 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/35"
+          type="button"
+          onClick={() => onChange('')}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
       <button
         aria-label="Open time picker"
         className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/35 disabled:pointer-events-none disabled:opacity-50"
