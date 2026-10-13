@@ -81,6 +81,7 @@ export async function sendReminderProofTestBatch(testId = `proof-${Date.now()}`)
         title: 'LateWatch scheduled test reminder',
       }), {
         TTL: 15 * 60,
+        urgency: 'high',
       });
 
       if (delivery) {

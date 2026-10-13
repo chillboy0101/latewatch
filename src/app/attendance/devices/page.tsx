@@ -38,7 +38,15 @@ interface ReminderMonitorApiSection {
   scheduledPassed: boolean;
 }
 
+interface CannotReceiveRow {
+  fullName: string;
+  label: string;
+  staffId: string;
+  status: 'failing' | 'no_device' | 'not_registered' | 'partly_off' | 'reminders_off';
+}
+
 interface ReminderMonitorApiResponse {
+  cannotReceive?: CannotReceiveRow[];
   sections: {
     signIn: ReminderMonitorApiSection;
     signOut: ReminderMonitorApiSection;
@@ -280,6 +288,7 @@ export default function DeviceSessionHealthPage() {
   const [data, setData] = useState<DeviceHealthResponse | null>(null);
   const [reminderMaps, setReminderMaps] = useState<ReminderStatusMaps>(EMPTY_REMINDER_MAPS);
   const [reminderRuns, setReminderRuns] = useState<ReminderRunInfo[]>([]);
+  const [cannotReceive, setCannotReceive] = useState<CannotReceiveRow[]>([]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
@@ -308,11 +317,13 @@ export default function DeviceSessionHealthPage() {
         missedRun: section.missedRun,
         scheduledPassed: section.scheduledPassed,
       })));
+      setCannotReceive(Array.isArray(payload.cannotReceive) ? payload.cannotReceive : []);
     } catch (reminderError) {
       if ((reminderError as Error).name === 'AbortError') return;
       // Non-blocking: keep device rows rendering, chips fall back to '—'.
       setReminderMaps(EMPTY_REMINDER_MAPS);
       setReminderRuns([]);
+      setCannotReceive([]);
     }
   }, []);
 
@@ -484,6 +495,35 @@ export default function DeviceSessionHealthPage() {
               </span>
             ))}
           </div>
+        )}
+
+        {cannotReceive.length > 0 && (
+          <Card>
+            <div className="px-5 py-4">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-warning" />
+                <h2 className="text-sm font-semibold">Won&apos;t get reminders · {cannotReceive.length}</h2>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Ask them to open LateWatch on their attendance phone and turn on reminders when the pop-up appears.
+              </p>
+              <ul className="mt-3 grid gap-x-10 gap-y-1.5 lg:grid-cols-2">
+                {cannotReceive.map((row) => (
+                  <li key={row.staffId} className="flex min-w-0 items-center justify-between gap-3 text-sm">
+                    <span className="truncate font-medium">{row.fullName}</span>
+                    <span
+                      className={cn(
+                        'shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium',
+                        row.status === 'failing' ? 'border-danger/25 bg-danger/10 text-danger' : 'border-warning/25 bg-warning/10 text-warning',
+                      )}
+                    >
+                      {row.label}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </Card>
         )}
 
         {error && (

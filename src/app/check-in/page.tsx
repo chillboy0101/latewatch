@@ -3,7 +3,7 @@
 import { UserButton, useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, ChevronRight, History, Loader2, LogOut, MapPin, MoreHorizontal, Printer, ReceiptText, ShieldCheck, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -975,10 +975,14 @@ export default function CheckInPage() {
   const updatePushReminderSettings = useCallback(async (next: {
     signInEnabled: boolean;
     signOutEnabled: boolean;
-  }, source: 'signIn' | 'signOut' | 'all' = 'all', options?: { refresh?: boolean }) => {
-    setSavingPushReminder(true);
-    setSavingReminderKey(source);
-    setMessage(null);
+  }, source: 'signIn' | 'signOut' | 'all' = 'all', options?: { refresh?: boolean; silent?: boolean }) => {
+    // silent: a background repair, so no spinners or messages.
+    const silent = options?.silent === true;
+    if (!silent) {
+      setSavingPushReminder(true);
+      setSavingReminderKey(source);
+      setMessage(null);
+    }
 
     try {
       if (!deviceToken) {
@@ -1056,8 +1060,9 @@ export default function CheckInPage() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Could not update reminders');
 
-      const enabledReminderConfirmation = getEnabledReminderToggleConfirmation(previousReminderState, next);
       setPushReminderStatus(body);
+      if (silent) return;
+      const enabledReminderConfirmation = getEnabledReminderToggleConfirmation(previousReminderState, next);
       if (enabledReminderConfirmation) {
         void showReminderToggleConfirmation(enabledReminderConfirmation);
       }
@@ -1065,13 +1070,39 @@ export default function CheckInPage() {
     } catch (error) {
       const errorMessage = pushSubscriptionErrorMessage(error);
       console.warn('Reminder settings could not update:', errorMessage);
-      setMessage({ type: 'error', text: errorMessage });
+      if (!silent) setMessage({ type: 'error', text: errorMessage });
       await fetchPushReminderStatus({ silent: true });
     } finally {
-      setSavingPushReminder(false);
-      setSavingReminderKey(null);
+      if (!silent) {
+        setSavingPushReminder(false);
+        setSavingReminderKey(null);
+      }
     }
   }, [deviceToken, fetchPushReminderStatus, getPushReminderPublicKey, pushReminderStatus]);
+
+  // Reminders are on but this phone's notification registration has expired, been replaced by
+  // the browser, or was rejected on the last send: re-register it quietly, once per visit, so
+  // reminders keep arriving without the person doing anything.
+  const reminderRepairAttemptedRef = useRef(false);
+  useEffect(() => {
+    const subscription = pushReminderStatus?.subscription;
+    if (reminderRepairAttemptedRef.current || !deviceToken || !subscription || subscription.disabledAt) return;
+    if (!subscription.signInEnabled && !subscription.signOutEnabled) return;
+    if (!('Notification' in window) || Notification.permission !== 'granted' || !('serviceWorker' in navigator)) return;
+    reminderRepairAttemptedRef.current = true;
+
+    void (async () => {
+      const registration = await navigator.serviceWorker.getRegistration('/sw.js').catch(() => undefined);
+      const browserSubscription = await registration?.pushManager.getSubscription().catch(() => null);
+      const failing = subscription.failing === true;
+      if (!failing && browserSubscription?.endpoint === subscription.endpoint) return;
+      await updatePushReminderSettings(
+        { signInEnabled: subscription.signInEnabled, signOutEnabled: subscription.signOutEnabled },
+        'all',
+        { refresh: failing, silent: true },
+      );
+    })();
+  }, [deviceToken, pushReminderStatus, updatePushReminderSettings]);
 
   async function requestDeviceTransfer() {
     if (!deviceToken) {

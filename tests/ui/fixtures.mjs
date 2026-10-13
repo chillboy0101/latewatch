@@ -150,6 +150,23 @@ export function buildFixtures(now = new Date()) {
       subscription: { disabledAt: null, endpoint: 'https://push.example.test/1', signInEnabled: false, signOutEnabled: false },
     },
     '/api/attendance/check-in/receipt-notifications': { notifications: receipts.slice(0, 2), receipts },
+    '/api/attendance/device-health': {
+      generatedAt: now.toISOString(),
+      rows: [],
+      summary: { activeReminderDevices: 11, attention: 0, pendingTransfers: 0, registeredDevices: 17, sessionTrackedDevices: 17, staff: staff.length },
+    },
+    '/api/attendance/reminder-monitor': {
+      cannotReceive: [
+        { fullName: staff[2].fullName, label: 'Phone not accepting reminders', staffId: staff[2].id, status: 'failing' },
+        { fullName: staff[4].fullName, label: 'Reminders switched off', staffId: staff[4].id, status: 'reminders_off' },
+        { fullName: staff[6].fullName, label: 'Reminders never turned on', staffId: staff[6].id, status: 'not_registered' },
+        { fullName: staff[8].fullName, label: 'Sign-out reminder off', staffId: staff[8].id, status: 'partly_off' },
+      ],
+      sections: {
+        signIn: { label: '8:15 AM Sign-In', lastRunAt: `${today}T08:15:20.000Z`, missedRun: false, rows: [], scheduledPassed: true },
+        signOut: { label: '4:30 PM Sign-Out', lastRunAt: `${today}T16:30:52.000Z`, missedRun: false, rows: [], scheduledPassed: true },
+      },
+    },
     '/api/calendar': [],
     '/api/dashboard': {
       missedReminders: [],

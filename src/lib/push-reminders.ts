@@ -370,7 +370,7 @@ export async function pushAdminAlert(input: { alertType: string; body: string; d
       await webpush.sendNotification({
         endpoint: subscription.endpoint,
         keys: { auth: subscription.auth, p256dh: subscription.p256dh },
-      }, payload, { TTL: 6 * 60 * 60 });
+      }, payload, { TTL: 6 * 60 * 60, urgency: 'high' });
 
       await db.update(pushReminderDelivery)
         .set({ sentAt: new Date(), status: 'sent' })
@@ -550,6 +550,8 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
         icon: '/latewatch-logo.png',
       }), {
         TTL: reminderPushTtlSeconds(reminderType, clock.timeKey),
+        // High priority so Android delivers it on time even when the phone is idle (Doze).
+        urgency: 'high',
       });
 
       await db.update(pushReminderDelivery)

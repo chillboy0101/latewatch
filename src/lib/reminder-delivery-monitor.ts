@@ -1,11 +1,13 @@
 import 'server-only';
 
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '@/db';
 import { attendancePermission, attendanceRecord, pushReminderDelivery, pushSubscription, reminderCronRun, staff, staffDevice } from '@/db/schema';
 import { getAccraClock, getHolidayForDate, isWeekendDate } from '@/lib/attendance';
 
 export type ReminderMonitorType = 'sign_in' | 'sign_out';
+// Whether a staff member's phone can get reminders at all, regardless of today's attendance.
+export type ReminderReadiness = 'failing' | 'no_device' | 'not_registered' | 'partly_off' | 'reminders_off';
 export type ReminderMonitorRowStatus =
   | 'failed'
   | 'missing'
@@ -225,6 +227,21 @@ export async function getReminderDeliveryMonitor(date: string) {
       ])
     : [[], [], [], [], []];
 
+  // The last send to each active phone: if it failed, that phone is not accepting reminders.
+  const activeSubscriptionIds = subscriptionRows.map((row) => row.id);
+  const latestDeliveryRows = activeSubscriptionIds.length
+    ? await db.selectDistinctOn([pushReminderDelivery.subscriptionId], {
+        status: pushReminderDelivery.status,
+        subscriptionId: pushReminderDelivery.subscriptionId,
+      })
+        .from(pushReminderDelivery)
+        .where(inArray(pushReminderDelivery.subscriptionId, activeSubscriptionIds))
+        .orderBy(pushReminderDelivery.subscriptionId, desc(pushReminderDelivery.createdAt))
+    : [];
+  const failingSubscriptionIds = new Set(latestDeliveryRows
+    .filter((row) => row.status === 'failed')
+    .map((row) => row.subscriptionId));
+
   const cronRunRows = await db.select({
     ranAt: reminderCronRun.ranAt,
     reminderType: reminderCronRun.reminderType,
@@ -428,7 +445,34 @@ export async function getReminderDeliveryMonitor(date: string) {
     };
   }
 
+  // Staff whose phones won't get reminders, for admins to follow up with in person.
+  const cannotReceive = staffRows.flatMap((member) => {
+    const subscriptions = subscriptionsByStaffId.get(member.id) || [];
+    const signIn = subscriptions.some((subscription) => subscription.signInEnabled);
+    const signOut = subscriptions.some((subscription) => subscription.signOutEnabled);
+    let status: ReminderReadiness | null = null;
+    let label = '';
+    if (!trustedDeviceStaffIds.has(member.id)) {
+      status = 'no_device';
+      label = 'No attendance phone';
+    } else if (subscriptions.length === 0) {
+      status = 'not_registered';
+      label = 'Reminders never turned on';
+    } else if (subscriptions.some((subscription) => failingSubscriptionIds.has(subscription.id))) {
+      status = 'failing';
+      label = 'Phone not accepting reminders';
+    } else if (!signIn && !signOut) {
+      status = 'reminders_off';
+      label = 'Reminders switched off';
+    } else if (!signIn || !signOut) {
+      status = 'partly_off';
+      label = signIn ? 'Sign-out reminder off' : 'Sign-in reminder off';
+    }
+    return status ? [{ fullName: member.fullName, label, staffId: member.id, status }] : [];
+  });
+
   return {
+    cannotReceive,
     date,
     day: {
       holidayName: holiday?.holidayNote || null,

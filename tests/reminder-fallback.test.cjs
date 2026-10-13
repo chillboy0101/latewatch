@@ -136,3 +136,19 @@ test('check-in and dashboard trigger the fallback after responding; cron routes 
   assert.match(monitor, /const missedRun = !isWeekend && !isHoliday && scheduledPassed && !lastRunAt;/);
   assert.match(read('scripts', 'setup-cron-job-org-reminders.mjs'), /LateWatch no sign-in fee 4PM catch-up/);
 });
+
+test('reminders are sent at high priority, phones repair themselves, and admins see who cannot receive', () => {
+  const pushReminders = read('src', 'lib', 'push-reminders.ts');
+  const proofTest = read('src', 'lib', 'push-reminder-proof-test.ts');
+  const checkIn = read('src', 'app', 'check-in', 'page.tsx');
+  const monitor = read('src', 'lib', 'reminder-delivery-monitor.ts');
+  const devices = read('src', 'app', 'attendance', 'devices', 'page.tsx');
+  assert.equal((pushReminders.match(/urgency: 'high'/g) || []).length, 2);
+  assert.match(proofTest, /urgency: 'high'/);
+  assert.match(checkIn, /const reminderRepairAttemptedRef = useRef\(false\);/);
+  assert.match(checkIn, /if \(!failing && browserSubscription\?\.endpoint === subscription\.endpoint\) return;/);
+  assert.match(checkIn, /\{ refresh: failing, silent: true \}/);
+  assert.match(monitor, /selectDistinctOn\(\[pushReminderDelivery\.subscriptionId\]/);
+  assert.match(monitor, /cannotReceive,/);
+  assert.match(devices, /Won&apos;t get reminders · \{cannotReceive\.length\}/);
+});
