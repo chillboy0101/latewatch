@@ -2,7 +2,8 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { CheckCircle2, ExternalLink, HandHeart, Loader2, Plus, ReceiptText, Save, Search, Trash2 } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ExternalLink, HandHeart, Loader2, Plus, ReceiptText, Save, Search, Trash2 } from 'lucide-react';
+import { DateField } from '@/components/ui/date-field';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -1017,43 +1018,53 @@ export default function PenaltyPaymentsPage() {
             </DialogHeader>
 
             <div className="space-y-3">
-              <Input
-                aria-label="Pardon debts up to"
-                type="date"
-                value={debtPardonCutoff}
-                max={getAccraDateKey()}
-                disabled={debtPardonApplying}
-                onChange={(event) => {
-                  if (event.target.value) setDebtPardonCutoff(event.target.value);
-                }}
-              />
-
-              {debtPardonLoading ? (
-                <p className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Checking
-                </p>
-              ) : debtPardonPreview && debtPardonPreview.entryCount === 0 ? (
-                <p className="py-2 text-sm text-muted-foreground">Nothing to pardon.</p>
-              ) : debtPardonPreview ? (
-                <>
-                  <div className="flex items-baseline justify-between gap-3 py-1">
-                    <span className="font-mono text-2xl font-semibold">{currency(debtPardonPreview.pardonedTotal)}</span>
-                    <button
-                      type="button"
-                      className="text-sm text-primary hover:underline"
-                      onClick={() => setDebtPardonShowStaff((value) => !value)}
-                    >
-                      {debtPardonPreview.staffCount} staff{debtPardonShowStaff ? ' ▴' : ' ▾'}
-                    </button>
+              {/* Date and total side by side, same height, labels aligned. */}
+              <div className="grid grid-cols-2 gap-3">
+                <DateField
+                  label="Up to"
+                  value={debtPardonCutoff}
+                  disabled={debtPardonApplying}
+                  onChange={(value) => {
+                    if (value) setDebtPardonCutoff(value > getAccraDateKey() ? getAccraDateKey() : value);
+                  }}
+                />
+                <div className="min-w-0">
+                  <span className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Total</span>
+                  <div className="flex h-10 items-center justify-between gap-2 rounded-md border border-primary/25 bg-primary/10 px-3 text-primary">
+                    {debtPardonLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <span className="truncate font-mono text-base font-semibold tabular-nums">
+                        {currency(debtPardonPreview?.pardonedTotal ?? 0)}
+                      </span>
+                    )}
+                    {!debtPardonLoading && debtPardonPreview && debtPardonPreview.entryCount > 0 && (
+                      <button
+                        type="button"
+                        aria-expanded={debtPardonShowStaff}
+                        className="inline-flex shrink-0 items-center gap-0.5 text-xs font-medium hover:underline"
+                        onClick={() => setDebtPardonShowStaff((value) => !value)}
+                      >
+                        {debtPardonPreview.staffCount} staff
+                        <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', debtPardonShowStaff && 'rotate-180')} />
+                      </button>
+                    )}
                   </div>
+                </div>
+              </div>
 
+              {!debtPardonLoading && debtPardonPreview?.entryCount === 0 && (
+                <p className="text-sm text-muted-foreground">Nothing to pardon.</p>
+              )}
+
+              {!debtPardonLoading && debtPardonPreview && debtPardonPreview.entryCount > 0 && (
+                <>
                   {debtPardonShowStaff && (
                     <ul className="max-h-48 divide-y divide-border overflow-y-auto rounded-md border border-border text-sm">
                       {debtPardonPreview.staff.map((member) => (
                         <li key={member.staffId} className="flex items-center justify-between gap-3 px-3 py-2">
                           <span className="truncate">{member.fullName}</span>
-                          <span className="font-mono">{currency(member.forgivenAmount)}</span>
+                          <span className="font-mono tabular-nums">{currency(member.forgivenAmount)}</span>
                         </li>
                       ))}
                     </ul>
@@ -1068,7 +1079,7 @@ export default function PenaltyPaymentsPage() {
                     onChange={(event) => setDebtPardonReason(event.target.value)}
                   />
                 </>
-              ) : null}
+              )}
 
               {debtPardonError && <p className="text-sm text-danger">{debtPardonError}</p>}
             </div>
