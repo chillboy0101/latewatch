@@ -97,7 +97,7 @@ test('theme colour syncs to the account, defaulting to blue for first-time users
   const provider = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'auth', 'clerk-theme-provider.tsx'), 'utf8');
 
   assert.deepEqual(DEFAULT_THEME_SELECTION, { accent: 'blue', customColor: '#2563eb' });
-  assert.deepEqual(parseThemeSelection({ accent: 'custom', customColor: '#ABCDEF', updatedAt: 5 }), { accent: 'custom', customColor: '#abcdef', updatedAt: 5 });
+  assert.deepEqual(parseThemeSelection({ accent: 'custom', customColor: '#ABCDEF', updatedAt: 5 }), { accent: 'custom', customColor: '#abcdef', mode: undefined, updatedAt: 5 });
   assert.equal(parseThemeSelection({ accent: 'role-admin' }), null);
   assert.equal(parseThemeSelection('red'), null);
   assert.ok(sameThemeSelection({ accent: 'red', customColor: '#000000' }, { accent: 'red', customColor: '#ffffff' }));
@@ -141,8 +141,7 @@ test('rate limiter falls back to Postgres when the configured Redis is unreachab
 test('colour wheel drags without re-rendering and recolours the app on pause', () => {
   const wheel = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'colour-wheel.tsx'), 'utf8');
   // Visuals move by direct transforms during a drag; the wheel is measured once per drag.
-  assert.match(wheel, /knobRef\.current\.style\.transform = knobTransform\(hue\)/);
-  assert.match(wheel, /translate3d\(/);
+  assert.match(wheel, /orbitRef\.current\.style\.transform = orbitTransform\(live\.current\.turn\)/);
   assert.match(wheel, /live\.current\.rect = rect;/);
   assert.doesNotMatch(wheel, /function moveDrag[\s\S]{0,300}getBoundingClientRect/);
   // Whole-app recolour waits for a pause (or a max interval), never every move.
@@ -151,4 +150,25 @@ test('colour wheel drags without re-rendering and recolours the app on pause', (
   // Ring drawn from the same formula as the picked colour; centre taps ignored.
   assert.match(wheel, /hslToHex\(index \* 15, SATURATION, RING_LIGHTNESS\)/);
   assert.match(wheel, /if \(distance < innerRadius - 6\) return;/);
+});
+
+test('preset changes move the wheel knob around its ring, the short way', () => {
+  const wheel = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'colour-wheel.tsx'), 'utf8');
+  assert.match(wheel, /function unwrapTurn\(previousTurn: number, hue: number\)/);
+  assert.match(wheel, /setCommitted\(\{ \.\.\.next, turn: unwrapTurn\(committed\.turn, next\.hue\) \}\)/);
+  assert.match(wheel, /const orbitTransform = \(turn: number\) => `rotate\(/);
+});
+
+test('light/dark/system mode is remembered explicitly and synced with the colour', () => {
+  const { parseThemeSelection, sameThemeSelection } = require('../src/lib/theme.ts');
+  const themeLib = fs.readFileSync(path.join(__dirname, '..', 'src', 'lib', 'theme.ts'), 'utf8');
+  const route = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'api', 'account', 'theme', 'route.ts'), 'utf8');
+
+  assert.equal(parseThemeSelection({ accent: 'blue', mode: 'dark' }).mode, 'dark');
+  assert.equal(parseThemeSelection({ accent: 'blue', mode: 'purple' }).mode, undefined);
+  assert.equal(sameThemeSelection({ accent: 'blue', mode: 'dark' }, { accent: 'blue', mode: 'light' }), false);
+  assert.match(themeLib, /writeStorage\('theme', theme\);/);
+  assert.match(themeLib, /theme !== 'light' && window\.matchMedia\('\(prefers-color-scheme: dark\)'\)\.matches/);
+  assert.match(themeLib, /if \(source === 'user'\) window\.dispatchEvent\(new Event\(THEME_USER_EVENT\)\);\n\}/);
+  assert.match(route, /mode: sql`coalesce\(excluded\.mode, \$\{userThemePreference\.mode\}\)`/);
 });

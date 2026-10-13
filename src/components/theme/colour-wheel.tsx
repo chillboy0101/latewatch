@@ -54,6 +54,18 @@ const RING_GRADIENT = `conic-gradient(from 0deg, ${Array.from({ length: 25 }, (_
 
 type Kind = 'hue' | 'tone';
 
+/**
+ * The knob's rotation is tracked "unwrapped" (it can go past 360 or below 0) so an animated change
+ * always travels the shorter way around the ring instead of spinning the long way or cutting across.
+ */
+function unwrapTurn(previousTurn: number, hue: number) {
+  const current = ((previousTurn % 360) + 360) % 360;
+  let delta = hue - current;
+  if (delta > 180) delta -= 360;
+  if (delta < -180) delta += 360;
+  return previousTurn + delta;
+}
+
 function toneGradient(hue: number) {
   return `linear-gradient(90deg, ${hslToHex(hue, SATURATION, MIN_TONE)}, ${hslToHex(hue, SATURATION, (MIN_TONE + MAX_TONE) / 2)}, ${hslToHex(hue, SATURATION, MAX_TONE)})`;
 }
@@ -75,13 +87,16 @@ export function ColourWheel({
   onPreview: (hex: string) => void;
   size?: number;
 }) {
-  const [committed, setCommitted] = useState(() => hexToHueTone(value));
+  const [committed, setCommitted] = useState(() => {
+    const initial = hexToHueTone(value);
+    return { ...initial, turn: initial.hue };
+  });
   const [dragging, setDragging] = useState<Kind | null>(null);
   const [followedValue, setFollowedValue] = useState(value);
   const [lastEmitted, setLastEmitted] = useState<string | null>(null);
 
   const wheelRef = useRef<HTMLDivElement>(null);
-  const knobRef = useRef<HTMLSpanElement>(null);
+  const orbitRef = useRef<HTMLSpanElement>(null);
   const centreRef = useRef<HTMLSpanElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const trackFillRef = useRef<HTMLSpanElement>(null);
@@ -89,6 +104,7 @@ export function ColourWheel({
   const live = useRef({
     hue: committed.hue,
     tone: committed.tone,
+    turn: committed.turn,
     kind: null as Kind | null,
     rect: null as DOMRect | null,
     pendingHex: null as string | null,
@@ -104,7 +120,10 @@ export function ColourWheel({
   // Follow colour changes made elsewhere (a preset tap, another device) without fighting a drag.
   if (!dragging && value !== followedValue) {
     setFollowedValue(value);
-    if (value !== lastEmitted) setCommitted(hexToHueTone(value));
+    if (value !== lastEmitted) {
+      const next = hexToHueTone(value);
+      setCommitted({ ...next, turn: unwrapTurn(committed.turn, next.hue) });
+    }
   }
 
   // Keep the drag model in step with the committed colour.
@@ -112,6 +131,7 @@ export function ColourWheel({
     if (live.current.kind) return;
     live.current.hue = committed.hue;
     live.current.tone = committed.tone;
+    live.current.turn = committed.turn;
   }, [committed]);
 
   // If the picker closes mid-drag, keep the colour that was showing instead of snapping back.
@@ -125,26 +145,17 @@ export function ColourWheel({
   }, []);
 
   const ring = Math.round(size * 0.15);
-  const knob = ring + 8;
+  const knob = ring + 6; // hollow: the 3px border sits just outside the ring, the centre shows it
   const outer = size + KNOB_GAP * 2;
-  const radius = size / 2 - ring / 2;
   const innerRadius = size / 2 - ring;
 
-  const knobTransform = (hue: number) => {
-    const radians = ((hue - 90) * Math.PI) / 180;
-    const x = outer / 2 + radius * Math.cos(radians) - knob / 2;
-    const y = outer / 2 + radius * Math.sin(radians) - knob / 2;
-    return `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`;
-  };
+  const orbitTransform = (turn: number) => `rotate(${turn.toFixed(2)}deg)`;
   const toneFraction = (tone: number) => (tone - MIN_TONE) / (MAX_TONE - MIN_TONE);
 
   /** Moves the picker's own visuals directly; cheap enough for every pointer move. */
   function paint(hue: number, tone: number) {
     const colour = hslToHex(hue, SATURATION, tone);
-    if (knobRef.current) {
-      knobRef.current.style.transform = knobTransform(hue);
-      knobRef.current.style.backgroundColor = hslToHex(hue, SATURATION, RING_LIGHTNESS);
-    }
+    if (orbitRef.current) orbitRef.current.style.transform = orbitTransform(live.current.turn);
     if (centreRef.current) centreRef.current.style.backgroundColor = colour;
     if (trackFillRef.current) trackFillRef.current.style.backgroundImage = toneGradient(hue);
     if (thumbRef.current) {
@@ -179,6 +190,7 @@ export function ColourWheel({
     if (state.kind === 'hue') {
       const angle = Math.atan2(clientY - (rect.top + rect.height / 2), clientX - (rect.left + rect.width / 2));
       state.hue = Math.round(((angle * 180) / Math.PI + 90 + 360) % 360);
+      state.turn = unwrapTurn(state.turn, state.hue);
     } else {
       const fraction = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
       state.tone = Math.round(MIN_TONE + fraction * (MAX_TONE - MIN_TONE));
@@ -196,7 +208,7 @@ export function ColourWheel({
     state.maxWaitTimer = null;
     const hex = hslToHex(state.hue, SATURATION, state.tone);
     state.pendingHex = null;
-    setCommitted({ hue: state.hue, tone: state.tone });
+    setCommitted({ hue: state.hue, tone: state.tone, turn: state.turn });
     setLastEmitted(hex);
     callbacks.current.onChange(hex);
   }
@@ -239,7 +251,10 @@ export function ColourWheel({
     if (!forward && !backward) return;
     event.preventDefault();
     const state = live.current;
-    if (kind === 'hue') state.hue = (state.hue + (forward ? 1 : -1) * (event.shiftKey ? 15 : 5) + 360) % 360;
+    if (kind === 'hue') {
+      state.hue = (state.hue + (forward ? 1 : -1) * (event.shiftKey ? 15 : 5) + 360) % 360;
+      state.turn = unwrapTurn(state.turn, state.hue);
+    }
     else state.tone = Math.min(MAX_TONE, Math.max(MIN_TONE, state.tone + (forward ? 2 : -2)));
     paint(state.hue, state.tone);
     commit();
@@ -295,20 +310,27 @@ export function ColourWheel({
             strokeWidth={3}
           />
         </span>
+        {/* The knob rides an orbit that rotates around the centre, so any animated change moves it
+            along the ring. It is hollow, so it always shows the exact ring colour beneath it. */}
         <span
-          ref={knobRef}
+          ref={orbitRef}
           aria-hidden
           className={cn(
-            'pointer-events-none absolute left-0 top-0 rounded-full border-[3px] border-white shadow-[0_2px_10px_rgba(0,0,0,0.35)] will-change-transform',
-            dragging === 'hue' ? '' : 'transition-[transform,background-color] duration-300 ease-out',
+            'pointer-events-none absolute inset-0 will-change-transform',
+            dragging === 'hue' ? '' : 'transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]',
           )}
-          style={{
-            width: knob,
-            height: knob,
-            transform: knobTransform(committed.hue),
-            backgroundColor: hslToHex(committed.hue, SATURATION, RING_LIGHTNESS),
-          }}
-        />
+          style={{ transform: orbitTransform(committed.turn) }}
+        >
+          <span
+            className="absolute rounded-full border-[3px] border-white shadow-[0_0_0_1px_rgba(0,0,0,0.12),0_0_10px_rgba(0,0,0,0.35)]"
+            style={{
+              width: knob,
+              height: knob,
+              left: outer / 2 - knob / 2,
+              top: KNOB_GAP + ring / 2 - knob / 2,
+            }}
+          />
+        </span>
       </div>
 
       {/* Tone track: padded so the thumb is never clipped at either end. */}

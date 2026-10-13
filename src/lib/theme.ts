@@ -125,11 +125,16 @@ export function getThemeAccentColor() {
   return accent === 'custom' ? getThemeCustomColor() : PRESET_SWATCHES[accent];
 }
 
-export type ThemeSelection = { accent: ThemeAccent; customColor: string; updatedAt?: number };
+export type ThemeSelection = { accent: ThemeAccent; customColor: string; mode?: ThemePreference; updatedAt?: number };
 
 /** The accent selection in the shape saved to the signed-in user's account. */
 export function getThemeSelection(): ThemeSelection {
-  return { accent: getThemeAccent(), customColor: getThemeCustomColor(), updatedAt: getThemeUpdatedAt() };
+  return {
+    accent: getThemeAccent(),
+    customColor: getThemeCustomColor(),
+    mode: getThemePreference(),
+    updatedAt: getThemeUpdatedAt(),
+  };
 }
 
 /** When the colour on this device was last chosen (ms). 0 when it has never been chosen here. */
@@ -146,15 +151,18 @@ export function parseThemeSelection(value: unknown): ThemeSelection | null {
   const updatedAt = typeof record.updatedAt === 'number' && Number.isFinite(record.updatedAt) && record.updatedAt > 0
     ? record.updatedAt
     : 0;
-  if (record.accent === 'custom') return { accent: 'custom', customColor, updatedAt };
+  const mode = record.mode === 'light' || record.mode === 'dark' || record.mode === 'system' ? record.mode : undefined;
+  if (record.accent === 'custom') return { accent: 'custom', customColor, mode, updatedAt };
   if (typeof record.accent === 'string' && record.accent in PRESET_SWATCHES) {
-    return { accent: record.accent as ThemeAccentPreset, customColor, updatedAt };
+    return { accent: record.accent as ThemeAccentPreset, customColor, mode, updatedAt };
   }
   return null;
 }
 
 export function sameThemeSelection(left: ThemeSelection, right: ThemeSelection) {
-  return left.accent === right.accent && (left.accent !== 'custom' || left.customColor === right.customColor);
+  return left.accent === right.accent
+    && (left.accent !== 'custom' || left.customColor === right.customColor)
+    && (!left.mode || !right.mode || left.mode === right.mode);
 }
 
 /** Live-update channel carrying one person's theme colour to their other open devices. */
@@ -180,6 +188,9 @@ export function setThemeAccentOwner(userId: string) {
 
 /** Applies a selection that came from the account, keeping its timestamp. */
 export function applyThemeSelection(selection: ThemeSelection) {
+  if (selection.mode && selection.mode !== getThemePreference()) {
+    applyThemePreference(selection.mode, 'sync');
+  }
   if (sameThemeSelection(selection, getThemeSelection()) && hasStoredThemeAccent()) {
     if (selection.updatedAt && selection.updatedAt > getThemeUpdatedAt()) writeStorage(THEME_UPDATED_AT_KEY, String(selection.updatedAt));
     return;
@@ -282,14 +293,17 @@ export function applyThemeAccent(
   if (source === 'user') window.dispatchEvent(new Event(THEME_USER_EVENT));
 }
 
-export function applyThemePreference(theme: ThemePreference) {
+export function applyThemePreference(theme: ThemePreference, source: 'user' | 'sync' = 'user') {
   if (typeof window === 'undefined') return;
 
-  writeStorage('theme', theme === 'system' ? null : theme);
+  // 'system' is stored explicitly so a deliberate choice is remembered (and synced) like the others.
+  writeStorage('theme', theme);
+  if (source === 'user') writeStorage(THEME_UPDATED_AT_KEY, String(Date.now()));
 
   document.documentElement.classList.toggle('dark', getIsDarkTheme());
   applyAccentToDocument();
   window.dispatchEvent(new Event(THEME_EVENT));
+  if (source === 'user') window.dispatchEvent(new Event(THEME_USER_EVENT));
 }
 
 /** Inline script for the root layout: applies mode and accent before first paint (no colour flash). */
@@ -298,7 +312,7 @@ export function buildThemeBootScript() {
   var root = document.documentElement;
   try {
     var theme = localStorage.getItem('theme');
-    if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    if (theme === 'dark' || (theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
       root.classList.add('dark');
     }
     var saved = JSON.parse(localStorage.getItem('${THEME_VARIABLES_KEY}') || 'null');

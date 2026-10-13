@@ -16,7 +16,9 @@ async function readTheme(userId: string): Promise<ThemeSelection | null> {
     .from(userThemePreference)
     .where(eq(userThemePreference.userId, userId))
     .limit(1);
-  return row ? parseThemeSelection({ accent: row.accent, customColor: row.customColor, updatedAt: Number(row.updatedAt) }) : null;
+  return row
+    ? parseThemeSelection({ accent: row.accent, customColor: row.customColor, mode: row.mode, updatedAt: Number(row.updatedAt) })
+    : null;
 }
 
 export async function GET() {
@@ -48,17 +50,20 @@ export async function POST(request: NextRequest) {
   const theme: ThemeSelection = {
     accent: selection.accent,
     customColor: selection.customColor,
+    mode: selection.mode,
     updatedAt: selection.updatedAt || Date.now(),
   };
 
   try {
     // Newest wins in one statement: an older save (e.g. a slow request from another device) is ignored.
     const saved = await db.insert(userThemePreference)
-      .values({ accent: theme.accent, customColor: theme.customColor, updatedAt: theme.updatedAt!, userId })
+      .values({ accent: theme.accent, customColor: theme.customColor, mode: theme.mode ?? null, updatedAt: theme.updatedAt!, userId })
       .onConflictDoUpdate({
         set: {
           accent: sql`excluded.accent`,
           customColor: sql`excluded.custom_color`,
+          // Keep the stored mode when an older client sends none.
+          mode: sql`coalesce(excluded.mode, ${userThemePreference.mode})`,
           updatedAt: sql`excluded.updated_at`,
         },
         target: userThemePreference.userId,

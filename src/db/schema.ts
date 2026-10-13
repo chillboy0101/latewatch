@@ -579,6 +579,7 @@ export const userThemePreference = pgTable('user_theme_preference', {
   userId: text('user_id').primaryKey(),
   accent: text('accent').notNull(),
   customColor: text('custom_color').notNull(),
+  mode: text('mode'),
   updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

@@ -25,15 +25,28 @@ function subscribePhone(callback: () => void) {
   return () => media.removeEventListener('change', callback);
 }
 
-function Swatch({ background, ringColor, selected }: { background: string; ringColor: string; selected: boolean }) {
+// Gives each preset a dimensional, glossy finish: a light-to-deep body, a soft highlight and depth.
+const SWATCH_SHINE = 'radial-gradient(circle at 32% 24%, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.12) 28%, transparent 52%)';
+const SWATCH_DEPTH = 'inset 0 -3px 5px rgba(0,0,0,0.28), inset 0 1px 1px rgba(255,255,255,0.4), 0 2px 5px rgba(0,0,0,0.22)';
+
+function swatchFill(colour: string | null) {
+  if (!colour) return `${SWATCH_SHINE}, ${NEUTRAL_SWATCH}`;
+  return `${SWATCH_SHINE}, radial-gradient(circle at 35% 30%, color-mix(in oklab, ${colour} 72%, #ffffff) 0%, ${colour} 52%, color-mix(in oklab, ${colour} 78%, #000000) 100%)`;
+}
+
+function Swatch({ colour, ringColor, selected }: { colour: string | null; ringColor: string; selected: boolean }) {
   return (
     <span
       aria-hidden
       className={cn(
-        'flex h-10 w-10 items-center justify-center rounded-full transition-transform duration-200 sm:h-8 sm:w-8',
-        selected ? 'scale-110 ring-2 ring-offset-2 ring-offset-card' : 'ring-1 ring-black/10 hover:scale-110 active:scale-95 dark:ring-white/15',
+        'flex h-10 w-10 items-center justify-center rounded-full transition-transform duration-200 ease-out sm:h-8 sm:w-8',
+        selected ? 'scale-110' : 'hover:-translate-y-0.5 hover:scale-105 active:scale-95',
       )}
-      style={{ background, ...(selected ? { ['--tw-ring-color' as string]: ringColor } : {}) }}
+      style={{
+        background: swatchFill(colour),
+        // Depth plus, when selected, a gap and an outer ring in the swatch's own colour.
+        boxShadow: selected ? `${SWATCH_DEPTH}, 0 0 0 2px var(--card), 0 0 0 4px ${ringColor}` : SWATCH_DEPTH,
+      }}
     >
       {selected && <Check className="h-4 w-4 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)]" strokeWidth={3} />}
     </span>
@@ -94,7 +107,7 @@ function ColourPanel({ wheelSize }: { wheelSize: number }) {
             className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <Swatch
-              background={option === 'neutral' ? NEUTRAL_SWATCH : swatch}
+              colour={option === 'neutral' ? null : swatch}
               ringColor={option === 'neutral' ? '#737373' : swatch}
               selected={accent === option}
             />
