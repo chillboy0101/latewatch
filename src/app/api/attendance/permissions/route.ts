@@ -20,7 +20,7 @@ import { getNonWorkdayLabel } from '@/lib/attendance';
 export const dynamic = 'force-dynamic';
 
 const VALID_TYPES = new Set(['late_arrival', 'absence']);
-const MAX_ABSENCE_DAYS = 62;
+const MAX_PERMISSION_DAYS = 62;
 
 function optionalText(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -84,7 +84,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const staffId = optionalText(body?.staffId);
     const date = optionalText(body?.date);
-    const absenceEndDate = optionalText(body?.absenceEndDate) || date;
+    // Both permission types can cover a date range (absenceEndDate kept for older clients).
+    const endDate = optionalText(body?.endDate) || optionalText(body?.absenceEndDate) || date;
     let reason = optionalText(body?.reason);
     const permissionType = optionalText(body?.permissionType) || 'late_arrival';
 
@@ -115,19 +116,18 @@ export async function POST(request: NextRequest) {
     let expectedEndTime: string | null;
     let expectedStartTime: string | null;
 
+    if (!endDate || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      return NextResponse.json({ error: 'Valid end date is required' }, { status: 400 });
+    }
+    appliedDates = date === endDate ? [date] : getInclusivePermissionDateRange(date, endDate);
+    if (appliedDates.length === 0) {
+      return NextResponse.json({ error: 'Permission period must end on or after the start date and include at least one weekday' }, { status: 400 });
+    }
+    if (appliedDates.length > MAX_PERMISSION_DAYS) {
+      return NextResponse.json({ error: `Permission period cannot exceed ${MAX_PERMISSION_DAYS} days` }, { status: 400 });
+    }
+
     if (permissionType === 'absence') {
-      if (!absenceEndDate || !/^\d{4}-\d{2}-\d{2}$/.test(absenceEndDate)) {
-        return NextResponse.json({ error: 'Valid absence end date is required' }, { status: 400 });
-      }
-
-      appliedDates = getInclusivePermissionDateRange(date, absenceEndDate);
-      if (appliedDates.length === 0) {
-        return NextResponse.json({ error: 'Absence period must end on or after the start date and include at least one weekday' }, { status: 400 });
-      }
-      if (appliedDates.length > MAX_ABSENCE_DAYS) {
-        return NextResponse.json({ error: `Absence period cannot exceed ${MAX_ABSENCE_DAYS} days` }, { status: 400 });
-      }
-
       const selectedReason = normalizeAbsencePermissionReason(reason);
       if (!selectedReason) return NextResponse.json({ error: 'Select a valid excused absence reason' }, { status: 400 });
       reason = selectedReason;
@@ -156,17 +156,14 @@ export async function POST(request: NextRequest) {
       expectedStartTime = windowBounds.startTime;
     }
 
-    if (permissionType === 'absence') {
-      const nonWorkdayLabels = await Promise.all(appliedDates.map((permissionDate) => getNonWorkdayLabel(permissionDate)));
-      appliedDates = appliedDates.filter((_, index) => !nonWorkdayLabels[index]);
-      if (appliedDates.length === 0) {
-        return NextResponse.json({ error: 'The selected absence period has no workdays' }, { status: 400 });
-      }
-    } else {
-      const nonWorkdayLabel = await getNonWorkdayLabel(date);
-      if (nonWorkdayLabel) {
-        return NextResponse.json({ error: `${date} is ${nonWorkdayLabel}, so no permission is needed` }, { status: 400 });
-      }
+    // Weekends and holidays in the period are skipped; they never need a permission.
+    const nonWorkdayLabels = await Promise.all(appliedDates.map((permissionDate) => getNonWorkdayLabel(permissionDate)));
+    if (appliedDates.length === 1 && nonWorkdayLabels[0]) {
+      return NextResponse.json({ error: `${date} is ${nonWorkdayLabels[0]}, so no permission is needed` }, { status: 400 });
+    }
+    appliedDates = appliedDates.filter((_, index) => !nonWorkdayLabels[index]);
+    if (appliedDates.length === 0) {
+      return NextResponse.json({ error: 'The selected period has no workdays' }, { status: 400 });
     }
 
     const permissions = [];

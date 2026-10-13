@@ -559,3 +559,14 @@ test('device transfer approval rejects shared attendance devices before upsert',
   assert.ok(route.indexOf('const sharedDeviceOwner = await findSharedAttendanceDeviceOwner') < route.indexOf('const deviceValues = {'));
   assert.ok(route.indexOf('error: SHARED_ATTENDANCE_DEVICE_MESSAGE') < route.indexOf('await db.insert(staffDevice)'));
 });
+
+test('late arrival permissions can cover a date range like excused absences', () => {
+  const source = fs.readFileSync(attendancePagePath, 'utf8');
+  const route = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'api', 'attendance', 'permissions', 'route.ts'), 'utf8');
+
+  assert.match(source, /label="From"/);
+  assert.match(source, /label="To"/);
+  assert.match(source, /absenceEndDate: permissionAbsenceEndDate,\n\s+arrivalWindow: permissionWindow,\n\s+date: permissionAbsenceStartDate,/);
+  assert.match(route, /appliedDates = date === endDate \? \[date\] : getInclusivePermissionDateRange\(date, endDate\);/);
+  assert.doesNotMatch(route, /const nonWorkdayLabel = await getNonWorkdayLabel\(date\);/);
+});

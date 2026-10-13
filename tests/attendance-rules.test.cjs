@@ -443,8 +443,9 @@ test('permissions and general pardons are refused on weekends and holidays', () 
   const pardonRoute = read('src', 'app', 'api', 'attendance', 'permissions', 'general-pardon', 'route.ts');
   const overview = read('src', 'app', 'attendance', 'overview', 'page.tsx');
 
-  assert.match(permissionsRoute, /getNonWorkdayLabel\(date\)/);
-  assert.match(permissionsRoute, /The selected absence period has no workdays/);
+  assert.match(permissionsRoute, /appliedDates\.map\(\(permissionDate\) => getNonWorkdayLabel\(permissionDate\)\)/);
+  assert.match(permissionsRoute, /so no permission is needed/);
+  assert.match(permissionsRoute, /The selected period has no workdays/);
   assert.match(pardonRoute, /getNonWorkdayLabel\(date\)/);
   assert.match(overview, /disabled=\{savingGeneralPardon \|\| !data\?\.rows\.length \|\| isWeekendAttendanceDate\}/);
 });

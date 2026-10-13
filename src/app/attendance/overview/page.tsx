@@ -504,15 +504,13 @@ export default function AttendancePage() {
         : 'Select a staff member and choose the late arrival reason.');
       return;
     }
-    if (permissionType === 'absence') {
-      if (!isIsoDateKey(permissionAbsenceStartDate) || !isIsoDateKey(permissionAbsenceEndDate)) {
-        setError('Select a valid absence start and end date.');
-        return;
-      }
-      if (permissionAbsenceEndDate < permissionAbsenceStartDate) {
-        setError('Absence end date must be on or after the start date.');
-        return;
-      }
+    if (!isIsoDateKey(permissionAbsenceStartDate) || !isIsoDateKey(permissionAbsenceEndDate)) {
+      setError('Select a valid start and end date.');
+      return;
+    }
+    if (permissionAbsenceEndDate < permissionAbsenceStartDate) {
+      setError('End date must be on or after the start date.');
+      return;
     }
 
     setSavingPermission(true);
@@ -530,8 +528,9 @@ export default function AttendancePage() {
             staffId: permissionStaffId,
           }
         : {
+            absenceEndDate: permissionAbsenceEndDate,
             arrivalWindow: permissionWindow,
-            date: attendanceDate,
+            date: permissionAbsenceStartDate,
             expectedEndTime: permissionWindow === 'specific_time' ? permissionExpectedTime : null,
             permissionType,
             reason: permissionReason,
@@ -1056,11 +1055,7 @@ export default function AttendancePage() {
                 onChange={(value) => {
                   setPermissionType(value);
                   setPermissionReason('');
-                  if (value === 'absence') {
-                    setPermissionWindow('any_time_today');
-                    setPermissionAbsenceStartDate(attendanceDate);
-                    setPermissionAbsenceEndDate(attendanceDate);
-                  }
+                  if (value === 'absence') setPermissionWindow('any_time_today');
                 }}
               >
                 <option value="late_arrival">Late arrival</option>
@@ -1068,6 +1063,18 @@ export default function AttendancePage() {
               </SelectField>
               {permissionType === 'late_arrival' ? (
                 <>
+                  <DateField
+                    disabled={isEditingPermission}
+                    label="From"
+                    value={permissionAbsenceStartDate}
+                    onChange={setPermissionAbsenceStartDate}
+                  />
+                  <DateField
+                    disabled={isEditingPermission}
+                    label="To"
+                    value={permissionAbsenceEndDate}
+                    onChange={setPermissionAbsenceEndDate}
+                  />
                   <SelectField
                     icon={<Clock className="h-3.5 w-3.5" />}
                     label="Arrival"
