@@ -189,3 +189,19 @@ test('checking in while on leave ends the leave, and back-dated changes recalcul
   assert.match(patchRoute, /await recalculateDaysAfterLeaveChange\(returnedOn, today\)/);
   assert.match(patchRoute, /await recalculateDaysAfterLeaveChange\(nextDateKey\(earlier\), later\)/);
 });
+
+test('archiving staff releases their LateWatch sign-in seat and restoring invites them back', () => {
+  const route = fs.readFileSync(staffUpdateRoutePath, 'utf8');
+  const clerk = fs.readFileSync(path.join(__dirname, '../src/lib/clerk-organization.ts'), 'utf8');
+
+  // Archive (PUT archived:true and DELETE without permanent) frees the organisation seat.
+  assert.match(route, /if \(updated\[0\]\.archived === true\) \{/);
+  assert.match(route, /unlinkStaffEmailIdentity\(\{ email: staffEmail, releaseSeat: true, staffId: id \}\)/);
+  assert.match(route, /unlinkStaffEmailIdentity\(\{ email: before\.email, releaseSeat: true, staffId: id \}\)/);
+  assert.match(route, /reason: 'clerk-organization-seat-released'/);
+  // Restoring falls through to the normal sync, which re-adds or re-invites them.
+  assert.match(route, /\} else if \(nextEmail\) \{\s+await syncStaffEmailIdentity\(/);
+  // Seat release also covers accounts that predate the LateWatch metadata.
+  assert.match(clerk, /if \(!force && !ownsStaffRecord\(user, staffId\)\) return false;/);
+  assert.match(clerk, /anyForEmail\s+\|\| asMetadata\(invitation\.privateMetadata\)\.latewatchStaffId === staffId/);
+});

@@ -26,6 +26,11 @@ type SyncStaffIdentityInput = {
 
 type UnlinkStaffIdentityInput = {
   email: string | null | undefined;
+  /**
+   * Archiving: free this person's organisation seat even when their Clerk account predates the
+   * LateWatch metadata. The account is matched by the staff record's own email.
+   */
+  releaseSeat?: boolean;
   staffId: string;
 };
 
@@ -233,7 +238,7 @@ async function removeOwnedMetadata(client: ClerkClient, user: ClerkUser, staffId
   });
 }
 
-async function removeOwnedPendingInvitations(client: ClerkClient, organizationId: string, email: string, staffId: string) {
+async function removeOwnedPendingInvitations(client: ClerkClient, organizationId: string, email: string, staffId: string, anyForEmail = false) {
   const invitations = await client.organizations.getOrganizationInvitationList({
     organizationId,
     status: ['pending'],
@@ -243,7 +248,8 @@ async function removeOwnedPendingInvitations(client: ClerkClient, organizationId
   const ownedInvitations = invitations.data.filter((invitation) => (
     invitation.emailAddress.toLowerCase() === email
     && (
-      asMetadata(invitation.privateMetadata).latewatchStaffId === staffId
+      anyForEmail
+      || asMetadata(invitation.privateMetadata).latewatchStaffId === staffId
       || asMetadata(invitation.publicMetadata).latewatchStaffId === staffId
     )
   ));
@@ -260,8 +266,8 @@ async function removeOwnedPendingInvitations(client: ClerkClient, organizationId
   )));
 }
 
-async function removeOwnedMembership(client: ClerkClient, organizationId: string, user: ClerkUser, staffId: string) {
-  if (!ownsStaffRecord(user, staffId)) return;
+async function removeOwnedMembership(client: ClerkClient, organizationId: string, user: ClerkUser, staffId: string, force = false) {
+  if (!force && !ownsStaffRecord(user, staffId)) return false;
 
   const memberships = await client.organizations.getOrganizationMembershipList({
     organizationId,
@@ -269,15 +275,16 @@ async function removeOwnedMembership(client: ClerkClient, organizationId: string
     limit: 1,
   });
 
-  if (memberships.data.length === 0) return;
+  if (memberships.data.length === 0) return false;
 
-  await client.organizations.deleteOrganizationMembership({
+  return client.organizations.deleteOrganizationMembership({
     organizationId,
     userId: user.id,
-  }).catch((error) => {
+  }).then(() => true).catch((error) => {
     if (!isConflict(error)) {
       console.warn('Failed to remove old Clerk organization membership:', error);
     }
+    return false;
   });
 }
 
@@ -332,19 +339,21 @@ export async function unlinkStaffEmailIdentity(input: UnlinkStaffIdentityInput) 
       findUserByEmail(client, email),
     ]);
 
+    const releaseSeat = input.releaseSeat === true;
     if (organizationId) {
-      await removeOwnedPendingInvitations(client, organizationId, email, input.staffId);
+      await removeOwnedPendingInvitations(client, organizationId, email, input.staffId, releaseSeat);
     }
 
+    let seatReleased = false;
     if (user) {
       if (organizationId) {
-        await removeOwnedMembership(client, organizationId, user, input.staffId);
+        seatReleased = await removeOwnedMembership(client, organizationId, user, input.staffId, releaseSeat);
       }
 
       await removeOwnedMetadata(client, user, input.staffId);
     }
 
-    return { organizationId, status: 'unlinked' };
+    return { organizationId, seatReleased, status: 'unlinked' };
   } catch (error) {
     console.warn('Failed to unlink old staff email from Clerk organization:', error);
     return { status: 'unlink_failed' };

@@ -188,7 +188,26 @@ export async function PUT(
       });
     }
 
-    if (emailChanged) {
+    if (updated[0].archived === true) {
+      // Former staff give up their LateWatch sign-in seat (organisation membership and any pending
+      // invitation). Their login and all history are kept; restoring them invites them back.
+      const released = await Promise.all([...new Set([previousEmail, nextEmail].filter(Boolean))].map((staffEmail) => (
+        unlinkStaffEmailIdentity({ email: staffEmail, releaseSeat: true, staffId: id })
+      )));
+      if (!before.archived) {
+        await writeAuditEvent({
+          entityType: 'staff',
+          entityId: id,
+          action: 'UPDATE',
+          before: null,
+          after: {
+            fullName: updated[0].fullName,
+            seat: released.some((result) => 'seatReleased' in result && result.seatReleased) ? 'released' : 'not_member',
+          },
+          reason: 'clerk-organization-seat-released',
+        });
+      }
+    } else if (emailChanged) {
       const [registeredDevice] = await db.select()
         .from(staffDevice)
         .where(eq(staffDevice.staffId, id))
@@ -315,6 +334,9 @@ export async function DELETE(
       .set({ active: false, archived: true, archivedAt: new Date(), updatedAt: new Date() })
       .where(eq(staff.id, id))
       .returning();
+
+    // Archiving frees the person's LateWatch sign-in seat; history and login are kept.
+    await unlinkStaffEmailIdentity({ email: before.email, releaseSeat: true, staffId: id });
 
     await writeAuditEvent({
       entityType: 'staff',
