@@ -62,7 +62,8 @@ export function DashboardLayout({ children, title, userRole }: DashboardLayoutPr
       <div className="relative hidden h-screen w-full overflow-hidden lg:flex">
         <div aria-hidden="true" className="pointer-events-none absolute left-0 right-0 top-16 z-50 h-px bg-border" />
         <Sidebar />
-        <div className="flex min-w-0 flex-1 flex-col">
+        {/* relative: page loaders centre in this column, so they track the sidebar's width. */}
+        <div className="relative flex min-w-0 flex-1 flex-col">
           <Header title={title} userRole={userRole} />
           <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-6">{children}</main>
         </div>

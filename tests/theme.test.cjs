@@ -227,3 +227,12 @@ test('staff picker opens inside its dialog with search and a capped scroll list'
     assert.doesNotMatch(source, /<option value="">Select staff<\/option>/);
   }
 });
+
+test('page loader centres in the content area for compact and expanded sidebars', () => {
+  const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
+  const loader = read('src', 'components', 'ui', 'loading-buffer.tsx');
+  const layout = read('src', 'components', 'layout', 'dashboard-layout.tsx');
+  assert.match(loader, /variant === 'page' && 'pointer-events-none absolute inset-x-0 bottom-0 top-16 z-30'/);
+  assert.doesNotMatch(loader, /left-64/);
+  assert.match(layout, /<div className="relative flex min-w-0 flex-1 flex-col">/);
+});

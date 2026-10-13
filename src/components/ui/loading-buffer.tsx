@@ -19,7 +19,8 @@ export function LoadingBuffer({
       aria-live="polite"
       className={cn(
         'flex items-center justify-center text-center',
-        variant === 'page' && 'pointer-events-none fixed bottom-0 left-64 right-0 top-16 z-30',
+        // Fills the content area beside the sidebar (whatever its width), below the header.
+        variant === 'page' && 'pointer-events-none absolute inset-x-0 bottom-0 top-16 z-30',
         variant === 'screen' && 'min-h-screen w-full',
         variant === 'section' && 'min-h-48 w-full py-8',
         variant === 'inline' && 'w-full py-8',
