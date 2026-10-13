@@ -20,7 +20,7 @@ test('entries page shows leave for the selected date and excludes it from totals
 
   assert.match(source, /fetch\(`\/api\/staff\?date=\$\{selectedDateKey\}`/);
   assert.match(source, /const isOnLeave = member\?\.onLeave === true/);
-  assert.match(source, /On Leave/);
+  assert.match(source, /On leave/);
   assert.match(source, /const rowDisabled = entriesDisabled \|\| isOnLeave/);
   assert.match(source, /staff\.find\(\(member\) => member\.id === entry\.staffId\)\?\.onLeave !== true && entry\.amount > 0/);
   assert.match(source, /staff\.find\(\(member\) => member\.id === entry\.staffId\)\?\.onLeave === true \? 0 : entry\.amount/);

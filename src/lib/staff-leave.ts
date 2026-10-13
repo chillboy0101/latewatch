@@ -91,6 +91,7 @@ export function formatLeaveDuration(
   return `${dayCount} day${dayCount === 1 ? '' : 's'}`;
 }
 
+/** Short leave note for badges: "until 20 Nov", "no end date" or "returned 20 Sep". */
 export function formatLeaveSummary(
   period: {
     endDate?: string | Date | null;
@@ -101,24 +102,11 @@ export function formatLeaveSummary(
 ) {
   if (!period || !period.startDate) return 'Not on leave';
 
-  const startDate = parseISO(dateKey(period.startDate));
-  // Open-ended leave has no end yet; never show it as a one-day leave.
-  if (!getEffectiveLeaveEndDate(period)) return `Since ${format(startDate, 'd MMM yyyy')} • no end date`;
-  const effectiveEndDateValue = getEffectiveLeaveEndDate(period) || period.endDate || period.startDate;
-  const effectiveEndDate = parseISO(dateKey(effectiveEndDateValue));
-  const dateRange = `${format(startDate, 'd MMM yyyy')} to ${format(effectiveEndDate, 'd MMM yyyy')}`;
   const returnedOn = dateKey(period.returnedOn);
-  const expectedReturnDate = getExpectedReturnDate(period);
+  if (returnedOn) return `returned ${format(parseISO(returnedOn), 'd MMM')}`;
 
-  if (returnedOn) {
-    return `${dateRange} • returned ${format(parseISO(returnedOn), 'd MMM yyyy')}`;
-  }
-
-  if (expectedReturnDate) {
-    return `${dateRange} • returns ${format(parseISO(expectedReturnDate), 'd MMM yyyy')}`;
-  }
-
-  return dateRange;
+  const endDate = getEffectiveLeaveEndDate(period);
+  return endDate ? `until ${format(parseISO(endDate), 'd MMM')}` : 'no end date';
 }
 
 export function isStaffLeaveDate(periods: StaffLeavePeriodLike[], staffId: string, date: string) {

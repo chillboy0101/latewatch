@@ -1119,7 +1119,7 @@ export default function AttendancePage() {
                               <span>{row.staff.fullName}</span>
                               {row.staff.activeLeave && (
                                 <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
-                                  Leave • {formatLeaveSummary(row.staff.activeLeave)}
+                                  On leave · {formatLeaveSummary(row.staff.activeLeave)}
                                 </span>
                               )}
                             </div>

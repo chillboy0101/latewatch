@@ -873,7 +873,7 @@ function EntriesPageContent() {
                           <span>{member?.fullName}</span>
                           {isOnLeave && (
                             <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
-                              On Leave{leaveSummary ? ` • ${leaveSummary}` : ''}
+                              On leave{leaveSummary ? ` · ${leaveSummary}` : ''}
                             </span>
                           )}
                           {member?.archived && (

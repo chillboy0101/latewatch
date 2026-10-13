@@ -77,7 +77,7 @@ test('expected return date defaults to the planned leave end date', () => {
   assert.equal(getExpectedReturnDate({ ...period, returnedOn: '2026-10-05' }), '2026-09-30');
 });
 
-test('leave summary clearly shows the date range and expected return', () => {
+test('leave summary is short and to the point', () => {
   const period = {
     endDate: '2026-09-30',
     source: 'approved_leave',
@@ -85,16 +85,13 @@ test('leave summary clearly shows the date range and expected return', () => {
     startDate: '2026-09-01',
   };
 
-  assert.equal(formatLeaveSummary(period), '1 Sep 2026 to 30 Sep 2026 • returns 30 Sep 2026');
-  assert.equal(
-    formatLeaveSummary({ ...period, returnedOn: '2026-09-20' }),
-    '1 Sep 2026 to 19 Sep 2026 • returned 20 Sep 2026',
-  );
+  assert.equal(formatLeaveSummary(period), 'until 30 Sep');
+  assert.equal(formatLeaveSummary({ ...period, returnedOn: '2026-09-20' }), 'returned 20 Sep');
 });
 
 test('open-ended leave is summarised as ongoing, not as a one-day leave', () => {
   assert.equal(
     formatLeaveSummary({ endDate: null, returnedOn: null, staffId: 's', startDate: '2026-05-01' }),
-    'Since 1 May 2026 • no end date',
+    'no end date',
   );
 });
