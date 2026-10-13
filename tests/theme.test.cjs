@@ -237,3 +237,20 @@ test('page loader centres in the content area for compact and expanded sidebars'
   assert.doesNotMatch(loader, /left-64/);
   assert.match(layout, /<div className="relative flex min-w-0 flex-1 flex-col">/);
 });
+
+test('dialogs with a staff picker scroll normally and only overflow while the picker is open', () => {
+  const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
+  assert.match(read('src', 'components', 'ui', 'staff-picker.tsx'), /data-picker-open=\{open \|\| undefined\}/);
+  for (const file of [
+    ['src', 'app', 'payments', 'page.tsx'],
+    ['src', 'components', 'attendance', 'staff-leave-dialog.tsx'],
+    ['src', 'app', 'attendance', 'overview', 'page.tsx'],
+    ['src', 'app', 'emergency-contacts', 'page.tsx'],
+  ]) {
+    const source = read(...file);
+    assert.match(source, /has-\[\[data-picker-open\]\]:overflow-visible/);
+    assert.doesNotMatch(source, /<DialogContent className="[^"]*(?<!:)overflow-visible/);
+  }
+  // The pardon staff list scrolls on its own however many people it holds.
+  assert.match(read('src', 'app', 'payments', 'page.tsx'), /<ul className="max-h-48 divide-y divide-border overflow-y-auto/);
+});

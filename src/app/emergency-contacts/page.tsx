@@ -268,7 +268,7 @@ export default function EmergencyContactsPage() {
                 Add Contact
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl overflow-visible">
+            <DialogContent className="max-w-2xl has-[[data-picker-open]]:overflow-visible">
               <DialogHeader>
                 <DialogTitle>{editingContact ? 'Edit Emergency Contact' : 'Add Emergency Contact'}</DialogTitle>
                 <DialogDescription className="sr-only">

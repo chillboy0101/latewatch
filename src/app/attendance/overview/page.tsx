@@ -817,7 +817,7 @@ export default function AttendancePage() {
             else closePermissionDialog();
           }}
         >
-          <DialogContent className="max-w-2xl overflow-visible">
+          <DialogContent className="max-w-2xl has-[[data-picker-open]]:overflow-visible">
             <DialogHeader>
               <DialogTitle>{isEditingPermission ? 'Change Permission' : 'New Permission'}</DialogTitle>
               <DialogDescription>{formatDisplayDate(isEditingPermission ? permissionAbsenceStartDate : attendanceDate)}</DialogDescription>

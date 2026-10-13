@@ -93,7 +93,8 @@ export function StaffPicker({
   }
 
   return (
-    <div ref={rootRef} className={cn('relative min-w-0', className)}>
+    // data-picker-open lets the surrounding dialog stop clipping while the list floats over it.
+    <div ref={rootRef} data-picker-open={open || undefined} className={cn('relative min-w-0', className)}>
       <span className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">{label}</span>
       <button
         type="button"

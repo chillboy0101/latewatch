@@ -1050,7 +1050,7 @@ export default function PenaltyPaymentsPage() {
         </Dialog>
 
         <Dialog open={debtPardonOpen} onOpenChange={(open) => { if (!debtPardonApplying) setDebtPardonOpen(open); }}>
-          <DialogContent className="overflow-visible sm:max-w-md">
+          <DialogContent className="has-[[data-picker-open]]:overflow-visible sm:max-w-md">
             <DialogHeader>
               <DialogTitle>{debtPardonStaffName ? `Pardon ${debtPardonStaffName}` : 'Pardon debts'}</DialogTitle>
               <DialogDescription>Clears unpaid penalties up to the selected date.</DialogDescription>

@@ -157,7 +157,7 @@ export function StaffLeaveDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !submitting && onOpenChange(next)}>
-      <DialogContent className="max-w-lg overflow-visible">
+      <DialogContent className="max-w-lg has-[[data-picker-open]]:overflow-visible">
         <DialogHeader>
           <DialogTitle>Staff leave</DialogTitle>
           <DialogDescription>
