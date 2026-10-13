@@ -205,7 +205,7 @@ test('check-in page exposes a penalty history sheet from the overflow menu', () 
   assert.match(source, /Penalty history/);
   assert.match(source, /onClick=\{openPenaltyHistory\}/);
   assert.match(source, /\/api\/attendance\/check-in\/penalty-history/);
-  // Minimal: one headline (what you owe, or all paid up) and one row per penalty day.
+  // Minimal: one headline (what you owe, or nothing owed) and one row per penalty day.
   assert.match(source, /<p className="text-sm text-muted-foreground">You owe<\/p>/);
   assert.match(source, /Nothing owed/);
   assert.match(source, /function penaltyReasonLabel\(entry: PenaltyHistoryEntry\)/);
