@@ -22,11 +22,11 @@
   --muted-foreground: #9ca3af;
 
   /* Light mode: surfaces carry a faint tint of the accent so every page matches the selection. */
-  --background: color-mix(in oklab, var(--brand) 9%, #ffffff);
+  --background: color-mix(in oklab, var(--brand) 11%, #ffffff);
   --foreground: color-mix(in oklab, var(--brand) 10%, #171717);
-  --card: color-mix(in oklab, var(--brand) 3%, #ffffff);
+  --card: color-mix(in oklab, var(--brand) 6%, #ffffff);
   --card-foreground: var(--foreground);
-  --border: color-mix(in oklab, var(--brand) 22%, #e5e7eb);
+  --border: color-mix(in oklab, var(--brand) 26%, #e5e7eb);
   --primary: var(--brand-light);
   --primary-foreground: var(--brand-light-foreground);
   --scrollbar-track: color-mix(in oklab, var(--brand) 10%, #f3f4f6);

@@ -73,7 +73,7 @@ test('theme picker closes on outside taps and Escape, and all surfaces derive fr
   assert.match(wheel, /setPointerCapture/);
   assert.match(wheel, /touch-none/);
   assert.doesNotMatch(picker, /Applies across every page/);
-  assert.match(css, /--background: color-mix\(in oklab, var\(--brand\) 9%, #ffffff\);/);
+  assert.match(css, /--background: color-mix\(in oklab, var\(--brand\) 11%, #ffffff\);/);
   assert.match(css, /\.dark\[data-accent='neutral'\]/);
   assert.doesNotMatch(css, /data-accent='(pink|red|green|violet)'/);
 });
