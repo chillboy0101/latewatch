@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import Link from 'next/link';
 import { CheckCircle2, ChevronDown, ExternalLink, HandHeart, Loader2, Plus, ReceiptText, Save, Search, Trash2, Users } from 'lucide-react';
 import { DateField } from '@/components/ui/date-field';
+import { StaffPicker } from '@/components/ui/staff-picker';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -518,7 +519,11 @@ export default function PenaltyPaymentsPage() {
   const debtPardonStaffOptions = useMemo(() => {
     return (data?.staff || [])
       .filter((row) => row.isAttendanceOnly !== true)
-      .map((row) => ({ fullName: row.fullName, id: row.id }))
+      .map((row) => ({
+        fullName: row.fullName,
+        hint: moneyNumber(row.outstandingBalance) > 0 ? currency(row.outstandingBalance) : undefined,
+        id: row.id,
+      }))
       .sort((left, right) => left.fullName.localeCompare(right.fullName));
   }, [data?.staff]);
   const debtPardonStaffName = debtPardonStaffOptions.find((option) => option.id === debtPardonStaffId)?.fullName || null;
@@ -1052,27 +1057,17 @@ export default function PenaltyPaymentsPage() {
             </DialogHeader>
 
             <div className="space-y-3">
-              <div>
-                <label htmlFor="debt-pardon-who" className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Who</label>
-                <div className="relative">
-                  <select
-                    id="debt-pardon-who"
-                    value={debtPardonStaffId}
-                    disabled={debtPardonApplying}
-                    onChange={(event) => {
-                      setDebtPardonStaffId(event.target.value);
-                      setDebtPardonShowStaff(false);
-                    }}
-                    className="h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-10 text-sm font-medium text-foreground outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/35 disabled:opacity-60"
-                  >
-                    <option value="">Everyone</option>
-                    {debtPardonStaffOptions.map((option) => (
-                      <option key={option.id} value={option.id}>{option.fullName}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                </div>
-              </div>
+              <StaffPicker
+                label="Who"
+                allLabel="Everyone"
+                value={debtPardonStaffId}
+                disabled={debtPardonApplying}
+                options={debtPardonStaffOptions}
+                onChange={(value) => {
+                  setDebtPardonStaffId(value);
+                  setDebtPardonShowStaff(false);
+                }}
+              />
 
               {/* Date and total side by side, same height, labels aligned. */}
               <div className="grid grid-cols-2 gap-3">

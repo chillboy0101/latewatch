@@ -205,3 +205,20 @@ test('colour wheel tone thumb stays whole at both ends of the track', () => {
   assert.match(wheel, /\(clientX - rect\.left - THUMB_INSET\) \/ \(rect\.width - THUMB_INSET \* 2\)/);
   assert.match(wheel, /relative h-9 cursor-pointer touch-none select-none outline-none \[contain:layout\] /);
 });
+
+test('staff picker opens inside its dialog with search and a capped scroll list', () => {
+  const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
+  const picker = read('src', 'components', 'ui', 'staff-picker.tsx');
+  assert.match(picker, /placeholder="Search name"/);
+  assert.match(picker, /max-h-56 overflow-y-auto/);
+  assert.doesNotMatch(picker, /<select/);
+  for (const file of [
+    ['src', 'app', 'payments', 'page.tsx'],
+    ['src', 'components', 'attendance', 'staff-leave-dialog.tsx'],
+    ['src', 'app', 'attendance', 'overview', 'page.tsx'],
+  ]) {
+    const source = read(...file);
+    assert.match(source, /<StaffPicker/);
+    assert.doesNotMatch(source, /<option value="">Select staff<\/option>/);
+  }
+});

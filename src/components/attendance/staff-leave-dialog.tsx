@@ -5,6 +5,7 @@ import { format, parseISO } from 'date-fns';
 import { ChevronDown, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DateField } from '@/components/ui/date-field';
+import { StaffPicker } from '@/components/ui/staff-picker';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { getAccraDateKey } from '@/lib/date-key';
 import { STAFF_LEAVE_TYPES } from '@/lib/staff-leave';
@@ -165,14 +166,13 @@ export function StaffLeaveDialog({
         </DialogHeader>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <Select label="Staff" value={staffId} onChange={(value) => { setStaffId(value); setMessage(null); }}>
-              <option value="">Select staff</option>
-              {staffOptions.map((option) => (
-                <option key={option.id} value={option.id}>{option.fullName}</option>
-              ))}
-            </Select>
-          </div>
+          <StaffPicker
+            className="sm:col-span-2"
+            label="Staff"
+            value={staffId}
+            options={staffOptions}
+            onChange={(value) => { setStaffId(value); setMessage(null); }}
+          />
 
           {current ? (
             <>

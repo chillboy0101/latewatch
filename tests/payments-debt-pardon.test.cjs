@@ -58,7 +58,7 @@ test('debts can be pardoned for one staff member as well as everyone', () => {
   assert.match(route, /async function resolveStaff\(value: unknown\)/);
   assert.match(route, /previewLatenessDebtPardon\(resolved\.cutoffDate, target\.staffId\)/);
   assert.match(route, /staffId: target\.staffId,/);
-  assert.match(page, /<option value="">Everyone<\/option>/);
+  assert.match(page, /<StaffPicker\n\s+label="Who"\n\s+allLabel="Everyone"/);
   assert.match(page, /openDebtPardonDialog\(selectedRow\.id\)/);
   assert.match(page, /staffId: debtPardonStaffId \|\| undefined/);
 });

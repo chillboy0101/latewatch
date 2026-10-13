@@ -1,11 +1,12 @@
 'use client';
 
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CalendarDays, CheckCircle2, ChevronDown, Clock, FileText, Loader2, Pencil, Plus, Printer, RotateCcw, Search, ShieldCheck, Smartphone, Trash2, UserRound, XCircle } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CheckCircle2, ChevronDown, Clock, FileText, Loader2, Pencil, Plus, Printer, RotateCcw, Search, ShieldCheck, Smartphone, Trash2, XCircle } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { DateField } from '@/components/ui/date-field';
+import { StaffPicker } from '@/components/ui/staff-picker';
 import { StaffLeaveDialog } from '@/components/attendance/staff-leave-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -823,19 +824,14 @@ export default function AttendancePage() {
             </DialogHeader>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <SelectField
+              <StaffPicker
                 className="sm:col-span-2"
-                icon={<UserRound className="h-3.5 w-3.5" />}
                 label="Staff"
                 value={permissionStaffId}
                 onChange={setPermissionStaffId}
                 disabled={isEditingPermission}
-              >
-                <option value="">Select staff</option>
-                {(data?.rows || []).map((row) => (
-                  <option key={row.staff.id} value={row.staff.id}>{row.staff.fullName}</option>
-                ))}
-              </SelectField>
+                options={(data?.rows || []).map((row) => ({ fullName: row.staff.fullName, id: row.staff.id }))}
+              />
               <SelectField
                 className="sm:col-span-2"
                 icon={<ShieldCheck className="h-3.5 w-3.5" />}
