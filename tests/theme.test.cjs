@@ -144,9 +144,11 @@ test('colour wheel drags without re-rendering and recolours the app on pause', (
   assert.match(wheel, /orbitRef\.current\.style\.transform = orbitTransform\(live\.current\.turn\)/);
   assert.match(wheel, /live\.current\.rect = rect;/);
   assert.doesNotMatch(wheel, /function moveDrag[\s\S]{0,300}getBoundingClientRect/);
-  // Whole-app recolour waits for a pause (or a max interval), never every move.
-  assert.match(wheel, /PAGE_PREVIEW_IDLE_MS/);
-  assert.match(wheel, /PAGE_PREVIEW_MAX_WAIT_MS/);
+  // Whole-app recolour runs live once per frame, spacing out only if a device cannot keep up.
+  assert.match(wheel, /state\.previewFrame = requestAnimationFrame\(run\)/);
+  assert.match(wheel, /cost > FRAME_BUDGET_MS/);
+  // Colours snap during a drag: transitions are suspended for the drag and restored after commit.
+  assert.match(wheel, /live\.current\.resumeTransitions = suspendThemeTransitions\(\)/);
   // Ring drawn from the same formula as the picked colour; centre taps ignored.
   assert.match(wheel, /hslToHex\(index \* 15, SATURATION, RING_LIGHTNESS\)/);
   assert.match(wheel, /if \(distance < innerRadius - 6\) return;/);
@@ -171,4 +173,17 @@ test('light/dark/system mode is remembered explicitly and synced with the colour
   assert.match(themeLib, /theme !== 'light' && window\.matchMedia\('\(prefers-color-scheme: dark\)'\)\.matches/);
   assert.match(themeLib, /if \(source === 'user'\) window\.dispatchEvent\(new Event\(THEME_USER_EVENT\)\);\n\}/);
   assert.match(route, /mode: sql`coalesce\(excluded\.mode, \$\{userThemePreference\.mode\}\)`/);
+});
+
+test('theme changes snap instantly and are shared live while dragging', () => {
+  const themeLib = fs.readFileSync(path.join(__dirname, '..', 'src', 'lib', 'theme.ts'), 'utf8');
+  const picker = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'theme-picker.tsx'), 'utf8');
+  const sync = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'theme-account-sync.tsx'), 'utf8');
+
+  assert.match(themeLib, /\*:not\(\[data-keep-transition\]\),\*::before,\*::after\{transition:none!important\}/);
+  assert.match(themeLib, /function applyAccentToDocument\(\) \{\n  const resume = suspendThemeTransitions\(\);/);
+  assert.match(picker, /const LIVE_SHARE_INTERVAL_MS = 250;/);
+  assert.match(picker, /onPreview=\{previewLive\}/);
+  // First save goes out immediately, then at most one per interval.
+  assert.match(sync, /const wait = Math\.max\(0, SAVE_INTERVAL_MS - \(Date\.now\(\) - lastSentAt\)\);/);
 });

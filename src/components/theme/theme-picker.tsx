@@ -76,9 +76,42 @@ function NativeColourButton({ value }: { value: string }) {
   );
 }
 
+const LIVE_SHARE_INTERVAL_MS = 250;
+
 function ColourPanel({ wheelSize }: { wheelSize: number }) {
   const accent = useSyncExternalStore(subscribeThemeChange, getThemeAccent, () => 'blue');
   const accentColor = useSyncExternalStore(subscribeThemeChange, getThemeAccentColor, () => '#2563eb');
+  const shareRef = useRef<{ lastAt: number; timer: ReturnType<typeof setTimeout> | null; hex: string | null }>({ lastAt: 0, timer: null, hex: null });
+
+  useEffect(() => {
+    const share = shareRef.current;
+    return () => {
+      if (share.timer) clearTimeout(share.timer);
+    };
+  }, []);
+
+  // Live while dragging: recolour this page every frame, and share the colour with the person's
+  // other devices a few times a second so they follow the drag too.
+  const previewLive = useCallback((hex: string) => {
+    previewThemeAccentColor(hex);
+    const share = shareRef.current;
+    share.hex = hex;
+    if (share.timer) return;
+    const wait = Math.max(0, LIVE_SHARE_INTERVAL_MS - (Date.now() - share.lastAt));
+    share.timer = setTimeout(() => {
+      share.timer = null;
+      share.lastAt = Date.now();
+      if (share.hex) applyThemeAccent('custom', share.hex);
+    }, wait);
+  }, []);
+
+  const commitColour = useCallback((hex: string) => {
+    const share = shareRef.current;
+    if (share.timer) clearTimeout(share.timer);
+    share.timer = null;
+    share.hex = null;
+    applyThemeAccent('custom', hex);
+  }, []);
 
   return (
     <div className="flex flex-col items-center gap-5">
@@ -106,8 +139,8 @@ function ColourPanel({ wheelSize }: { wheelSize: number }) {
         size={wheelSize}
         value={accentColor}
         selected={accent === 'custom'}
-        onChange={(hex) => applyThemeAccent('custom', hex)}
-        onPreview={previewThemeAccentColor}
+        onChange={commitColour}
+        onPreview={previewLive}
       />
 
       <NativeColourButton value={accentColor} />

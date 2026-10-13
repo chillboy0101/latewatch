@@ -214,10 +214,12 @@ export function previewThemeAccentColor(hex: string) {
   const color = normalizeHexColor(hex);
   if (!color) return;
   const root = document.documentElement;
+  const resume = suspendThemeTransitions();
   root.dataset.accent = 'brand';
   for (const [name, value] of Object.entries(computeAccentVariables(color))) {
     root.style.setProperty(name, value);
   }
+  resume();
 }
 
 /** The primary colour actually shown for the current accent and mode (used outside CSS, e.g. Clerk). */
@@ -253,7 +255,45 @@ export function subscribeThemeChange(callback: () => void) {
   };
 }
 
+// Colour changes should snap, not fade: while suspended, no element animates colour transitions.
+// This also removes transition bookkeeping for every element during live wheel drags.
+const NO_TRANSITIONS_ID = 'latewatch-theme-no-transitions';
+let suspendCount = 0;
+
+/** Suspends all CSS transitions until the returned function is called (nestable). */
+export function suspendThemeTransitions() {
+  if (typeof document === 'undefined') return () => {};
+  suspendCount += 1;
+  if (!document.getElementById(NO_TRANSITIONS_ID)) {
+    const style = document.createElement('style');
+    style.id = NO_TRANSITIONS_ID;
+    // Elements marked data-keep-transition (the colour wheel's knob and previews) keep animating.
+    style.textContent = '*:not([data-keep-transition]),*::before,*::after{transition:none!important}';
+    document.head.appendChild(style);
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    suspendCount -= 1;
+    if (suspendCount > 0) return;
+    // Wait for the new colours to be painted before transitions come back.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (suspendCount === 0) document.getElementById(NO_TRANSITIONS_ID)?.remove();
+    }));
+  };
+}
+
 function applyAccentToDocument() {
+  const resume = suspendThemeTransitions();
+  try {
+    applyAccentVariables();
+  } finally {
+    resume();
+  }
+}
+
+function applyAccentVariables() {
   const root = document.documentElement;
   const accent = getThemeAccent();
   root.dataset.accent = accent === 'neutral' ? 'neutral' : 'brand';
@@ -300,8 +340,10 @@ export function applyThemePreference(theme: ThemePreference, source: 'user' | 's
   writeStorage('theme', theme);
   if (source === 'user') writeStorage(THEME_UPDATED_AT_KEY, String(Date.now()));
 
+  const resume = suspendThemeTransitions();
   document.documentElement.classList.toggle('dark', getIsDarkTheme());
   applyAccentToDocument();
+  resume();
   window.dispatchEvent(new Event(THEME_EVENT));
   if (source === 'user') window.dispatchEvent(new Event(THEME_USER_EVENT));
 }

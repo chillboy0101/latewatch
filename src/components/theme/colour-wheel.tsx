@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { Check } from 'lucide-react';
+import { suspendThemeTransitions } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 
 // Touch-first colour wheel: drag the knob around the hue ring and use the tone track for lighter or
@@ -9,9 +10,9 @@ import { cn } from '@/lib/utils';
 // - while dragging, the knob, centre preview and tone thumb are moved directly (GPU transforms) every
 //   frame, with no React re-render;
 // - the wheel is measured once per drag, never per move (no forced layout);
-// - recolouring the whole app is the expensive part, so while the finger moves it only happens when
-//   the finger pauses (and occasionally during long drags); the centre preview is always exact, and
-//   the final colour is applied once on release.
+// - the whole app recolours live on every frame of a drag (with CSS transitions suspended so colours
+//   snap instead of fading); if a device cannot keep up, previews space themselves out automatically
+//   so the wheel itself never stutters. The final colour is saved once on release.
 // Every drag target opts out of the mobile sheet's swipe-to-close.
 
 const SATURATION = 78;
@@ -19,8 +20,7 @@ const RING_LIGHTNESS = 50;
 const MIN_TONE = 28;
 const MAX_TONE = 68;
 const KNOB_GAP = 8; // room around the ring so the knob and its shadow are never clipped
-const PAGE_PREVIEW_IDLE_MS = 90; // recolour the app once the finger pauses this long
-const PAGE_PREVIEW_MAX_WAIT_MS = 400; // and at least this often during a long continuous drag
+const FRAME_BUDGET_MS = 20; // a whole-app recolour slower than this spaces out the next one
 
 export function hslToHex(hue: number, saturation: number, lightness: number) {
   const s = saturation / 100;
@@ -108,8 +108,10 @@ export function ColourWheel({
     kind: null as Kind | null,
     rect: null as DOMRect | null,
     pendingHex: null as string | null,
-    previewTimer: null as ReturnType<typeof setTimeout> | null,
-    maxWaitTimer: null as ReturnType<typeof setTimeout> | null,
+    dragHex: null as string | null,
+    previewFrame: null as number | null,
+    nextPreviewAt: 0,
+    resumeTransitions: null as (() => void) | null,
   });
   const callbacks = useRef({ onChange, onPreview });
 
@@ -138,9 +140,9 @@ export function ColourWheel({
   useEffect(() => {
     const state = live.current;
     return () => {
-      if (state.previewTimer) clearTimeout(state.previewTimer);
-      if (state.maxWaitTimer) clearTimeout(state.maxWaitTimer);
-      if (state.kind && state.pendingHex) callbacks.current.onChange(state.pendingHex);
+      if (state.previewFrame !== null) cancelAnimationFrame(state.previewFrame);
+      if (state.kind && state.dragHex) callbacks.current.onChange(state.dragHex);
+      state.resumeTransitions?.();
     };
   }, []);
 
@@ -164,22 +166,33 @@ export function ColourWheel({
     }
   }
 
-  /** Recolours the whole app when the finger pauses, and at least every PAGE_PREVIEW_MAX_WAIT_MS. */
+  /**
+   * Recolours the whole app live, at most once per frame. If a recolour takes longer than a frame on
+   * this device, the next one waits a little so the wheel keeps moving smoothly in between.
+   */
   function previewPage(hex: string) {
     const state = live.current;
     state.pendingHex = hex;
-    const flush = () => {
-      if (state.previewTimer) clearTimeout(state.previewTimer);
-      if (state.maxWaitTimer) clearTimeout(state.maxWaitTimer);
-      state.previewTimer = null;
-      state.maxWaitTimer = null;
-      requestAnimationFrame(() => {
-        if (state.kind && state.pendingHex) callbacks.current.onPreview(state.pendingHex);
+    state.dragHex = hex;
+    if (state.previewFrame !== null) return;
+
+    const run = (now: number) => {
+      state.previewFrame = null;
+      if (!state.kind || !state.pendingHex) return;
+      if (now < state.nextPreviewAt) {
+        state.previewFrame = requestAnimationFrame(run);
+        return;
+      }
+      callbacks.current.onPreview(state.pendingHex);
+      state.pendingHex = null;
+      // The recolour is painted before the next frame; measure how long that took.
+      requestAnimationFrame((next) => {
+        const cost = next - now;
+        // Heavy recolour on this device: leave the next ~1.5x its cost of frames to the wheel alone.
+        state.nextPreviewAt = cost > FRAME_BUDGET_MS ? next + cost * 1.5 : 0;
       });
     };
-    if (state.previewTimer) clearTimeout(state.previewTimer);
-    state.previewTimer = setTimeout(flush, PAGE_PREVIEW_IDLE_MS);
-    if (!state.maxWaitTimer) state.maxWaitTimer = setTimeout(flush, PAGE_PREVIEW_MAX_WAIT_MS);
+    state.previewFrame = requestAnimationFrame(run);
   }
 
   function update(clientX: number, clientY: number) {
@@ -202,15 +215,17 @@ export function ColourWheel({
 
   function commit() {
     const state = live.current;
-    if (state.previewTimer) clearTimeout(state.previewTimer);
-    if (state.maxWaitTimer) clearTimeout(state.maxWaitTimer);
-    state.previewTimer = null;
-    state.maxWaitTimer = null;
+    if (state.previewFrame !== null) cancelAnimationFrame(state.previewFrame);
+    state.previewFrame = null;
+    state.nextPreviewAt = 0;
     const hex = hslToHex(state.hue, SATURATION, state.tone);
     state.pendingHex = null;
+    state.dragHex = null;
     setCommitted({ hue: state.hue, tone: state.tone, turn: state.turn });
     setLastEmitted(hex);
     callbacks.current.onChange(hex);
+    state.resumeTransitions?.();
+    state.resumeTransitions = null;
   }
 
   function startDrag(kind: Kind, event: PointerEvent<HTMLDivElement>) {
@@ -227,6 +242,9 @@ export function ColourWheel({
     event.currentTarget.setPointerCapture(event.pointerId);
     live.current.kind = kind;
     live.current.rect = rect;
+    // Colours snap while dragging (no per-element fade work); restored after the final colour lands.
+    live.current.resumeTransitions?.();
+    live.current.resumeTransitions = suspendThemeTransitions();
     setDragging(kind);
     update(event.clientX, event.clientY);
   }
@@ -296,6 +314,7 @@ export function ColourWheel({
         <span
           ref={centreRef}
           aria-hidden
+          data-keep-transition
           className={cn(
             'absolute flex items-center justify-center rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)]',
             dragging ? '' : 'transition-colors duration-300',
@@ -315,6 +334,7 @@ export function ColourWheel({
         <span
           ref={orbitRef}
           aria-hidden
+          data-keep-transition
           className={cn(
             'pointer-events-none absolute inset-0 will-change-transform',
             dragging === 'hue' ? '' : 'transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]',
@@ -361,6 +381,7 @@ export function ColourWheel({
           <span
             ref={thumbRef}
             aria-hidden
+            data-keep-transition
             className={cn(
               'pointer-events-none absolute top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white shadow-[0_2px_10px_rgba(0,0,0,0.35)]',
               dragging === 'tone' ? 'scale-110' : 'transition-[left,background-color,transform] duration-300 ease-out',

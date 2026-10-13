@@ -17,7 +17,7 @@ import {
   type ThemeSelection,
 } from '@/lib/theme';
 
-const SAVE_DELAY_MS = 200;
+const SAVE_INTERVAL_MS = 250;
 const REFRESH_INTERVAL_MS = 10_000;
 const POLL_INTERVAL_MS = 15_000;
 // Identifies this tab, so it ignores the live echo of its own save.
@@ -104,22 +104,29 @@ export function ThemeAccountSync() {
     };
   }, [userId]);
 
-  // Save only when the person on this device picks a colour.
+  // Save only when the person on this device picks a colour or mode. The first change is sent
+  // immediately; during a continuous change (dragging the wheel) at most one save per interval goes
+  // out, plus a final one, so other devices follow live without flooding the server.
   useEffect(() => {
     if (!userId) return;
 
+    let lastSentAt = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const send = async () => {
+      timer = null;
+      lastSentAt = Date.now();
+      const selection = getThemeSelection();
+      try {
+        const result = await saveAccountTheme(selection);
+        if (result.stale && result.theme) adopt(result.theme, true);
+      } catch (error) {
+        console.error('Could not save theme colour to account:', error);
+      }
+    };
     const unsubscribe = subscribeThemeUserChange(() => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(async () => {
-        const selection = getThemeSelection();
-        try {
-          const result = await saveAccountTheme(selection);
-          if (result.stale && result.theme) adopt(result.theme, true);
-        } catch (error) {
-          console.error('Could not save theme colour to account:', error);
-        }
-      }, SAVE_DELAY_MS);
+      if (timer) return;
+      const wait = Math.max(0, SAVE_INTERVAL_MS - (Date.now() - lastSentAt));
+      timer = setTimeout(() => void send(), wait);
     });
 
     return () => {
