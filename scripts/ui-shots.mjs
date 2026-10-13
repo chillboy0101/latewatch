@@ -18,8 +18,10 @@ const outDir = path.join(root, 'output', 'ui-shots');
 const port = Number(process.env.UI_SHOTS_PORT || 3100);
 const baseUrl = `http://localhost:${port}`;
 
-const PHONE = { deviceScaleFactor: 2, hasTouch: true, isMobile: true, viewport: { height: 844, width: 390 } };
-const DESKTOP = { viewport: { height: 800, width: 1280 } };
+// UI_SHOTS_SCHEME=dark takes the same screenshots in dark mode (files get a "dark-" prefix).
+const SCHEME = process.env.UI_SHOTS_SCHEME === 'dark' ? 'dark' : 'light';
+const PHONE = { colorScheme: SCHEME, deviceScaleFactor: 2, hasTouch: true, isMobile: true, viewport: { height: 844, width: 390 } };
+const DESKTOP = { colorScheme: SCHEME, viewport: { height: 800, width: 1280 } };
 
 function startServer() {
   const env = {
@@ -73,7 +75,7 @@ async function mockApi(context) {
 
 async function shoot(page, name) {
   await page.waitForTimeout(600);
-  const file = path.join(outDir, `${name}.png`);
+  const file = path.join(outDir, `${SCHEME === 'dark' ? 'dark-' : ''}${name}.png`);
   await page.screenshot({ path: file });
   console.log(`saved ${path.relative(root, file)}`);
 }
