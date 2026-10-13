@@ -1,19 +1,28 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Touch-first colour wheel: drag the knob around the hue ring and use the tone track for lighter or
-// deeper shades. Drawn by the app (not the native picker) so it looks and behaves the same on phones,
-// installed PWAs and desktops. Every drag target opts out of the mobile sheet's swipe-to-close.
+// deeper shades. Built for smoothness on phones:
+// - while dragging, the knob, centre preview and tone thumb are moved directly (GPU transforms) every
+//   frame, with no React re-render;
+// - the wheel is measured once per drag, never per move (no forced layout);
+// - recolouring the whole app is the expensive part, so while the finger moves it only happens when
+//   the finger pauses (and occasionally during long drags); the centre preview is always exact, and
+//   the final colour is applied once on release.
+// Every drag target opts out of the mobile sheet's swipe-to-close.
 
 const SATURATION = 78;
+const RING_LIGHTNESS = 50;
 const MIN_TONE = 28;
 const MAX_TONE = 68;
 const KNOB_GAP = 8; // room around the ring so the knob and its shadow are never clipped
+const PAGE_PREVIEW_IDLE_MS = 90; // recolour the app once the finger pauses this long
+const PAGE_PREVIEW_MAX_WAIT_MS = 400; // and at least this often during a long continuous drag
 
-function hslToHex(hue: number, saturation: number, lightness: number) {
+export function hslToHex(hue: number, saturation: number, lightness: number) {
   const s = saturation / 100;
   const l = lightness / 100;
   const k = (n: number) => (n + hue / 30) % 12;
@@ -25,7 +34,7 @@ function hslToHex(hue: number, saturation: number, lightness: number) {
   return `#${channel(0)}${channel(8)}${channel(4)}`;
 }
 
-function hexToHueTone(hex: string) {
+export function hexToHueTone(hex: string) {
   const [red, green, blue] = [1, 3, 5].map((index) => parseInt(hex.slice(index, index + 2), 16) / 255);
   const max = Math.max(red, green, blue);
   const min = Math.min(red, green, blue);
@@ -37,26 +46,16 @@ function hexToHueTone(hex: string) {
     else hue = ((red - green) / delta + 4) * 60;
   }
   const tone = Math.min(MAX_TONE, Math.max(MIN_TONE, Math.round(((max + min) / 2) * 100)));
-  return { hue: Math.round(hue), tone };
+  return { hue: Math.round(hue) % 360, tone };
 }
 
-function useFrameEmitter(onPreview: (hex: string) => void) {
-  const frameRef = useRef<number | null>(null);
-  const pendingRef = useRef<string | null>(null);
+// Drawn from the same formula as the picked colour, so the ring under the knob always matches it.
+const RING_GRADIENT = `conic-gradient(from 0deg, ${Array.from({ length: 25 }, (_, index) => hslToHex(index * 15, SATURATION, RING_LIGHTNESS)).join(', ')})`;
 
-  useEffect(() => () => {
-    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
-  }, []);
+type Kind = 'hue' | 'tone';
 
-  // At most one theme update per animation frame while dragging keeps the whole app smooth.
-  return useCallback((hex: string) => {
-    pendingRef.current = hex;
-    if (frameRef.current !== null) return;
-    frameRef.current = requestAnimationFrame(() => {
-      frameRef.current = null;
-      if (pendingRef.current) onPreview(pendingRef.current);
-    });
-  }, [onPreview]);
+function toneGradient(hue: number) {
+  return `linear-gradient(90deg, ${hslToHex(hue, SATURATION, MIN_TONE)}, ${hslToHex(hue, SATURATION, (MIN_TONE + MAX_TONE) / 2)}, ${hslToHex(hue, SATURATION, MAX_TONE)})`;
 }
 
 export function ColourWheel({
@@ -76,106 +75,178 @@ export function ColourWheel({
   onPreview: (hex: string) => void;
   size?: number;
 }) {
-  const [hue, setHue] = useState(() => hexToHueTone(value).hue);
-  const [tone, setTone] = useState(() => hexToHueTone(value).tone);
-  const [dragging, setDragging] = useState<'hue' | 'tone' | null>(null);
-  const [lastEmitted, setLastEmitted] = useState<string | null>(null);
+  const [committed, setCommitted] = useState(() => hexToHueTone(value));
+  const [dragging, setDragging] = useState<Kind | null>(null);
   const [followedValue, setFollowedValue] = useState(value);
+  const [lastEmitted, setLastEmitted] = useState<string | null>(null);
+
   const wheelRef = useRef<HTMLDivElement>(null);
+  const knobRef = useRef<HTMLSpanElement>(null);
+  const centreRef = useRef<HTMLSpanElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
-  const emitFrame = useFrameEmitter(onPreview);
-  const dragColourRef = useRef<string | null>(null);
-  const onChangeRef = useRef(onChange);
+  const trackFillRef = useRef<HTMLSpanElement>(null);
+  const thumbRef = useRef<HTMLSpanElement>(null);
+  const live = useRef({
+    hue: committed.hue,
+    tone: committed.tone,
+    kind: null as Kind | null,
+    rect: null as DOMRect | null,
+    pendingHex: null as string | null,
+    previewTimer: null as ReturnType<typeof setTimeout> | null,
+    maxWaitTimer: null as ReturnType<typeof setTimeout> | null,
+  });
+  const callbacks = useRef({ onChange, onPreview });
 
   useEffect(() => {
-    onChangeRef.current = onChange;
-  }, [onChange]);
-
-  // If the sheet closes mid-drag, keep the colour that was showing instead of snapping back.
-  useEffect(() => () => {
-    if (dragColourRef.current) onChangeRef.current(dragColourRef.current);
-  }, []);
+    callbacks.current = { onChange, onPreview };
+  }, [onChange, onPreview]);
 
   // Follow colour changes made elsewhere (a preset tap, another device) without fighting a drag.
   if (!dragging && value !== followedValue) {
     setFollowedValue(value);
-    if (value !== lastEmitted) {
-      const next = hexToHueTone(value);
-      setHue(next.hue);
-      setTone(next.tone);
-    }
+    if (value !== lastEmitted) setCommitted(hexToHueTone(value));
   }
 
-  // While dragging only preview; the colour is saved once when the drag ends.
-  const emit = (nextHue: number, nextTone: number, commit = false) => {
-    const hex = hslToHex(nextHue, SATURATION, nextTone);
-    setLastEmitted(hex);
-    if (commit) {
-      dragColourRef.current = null;
-      onChange(hex);
-    } else {
-      dragColourRef.current = hex;
-      emitFrame(hex);
-    }
-  };
+  // Keep the drag model in step with the committed colour.
+  useLayoutEffect(() => {
+    if (live.current.kind) return;
+    live.current.hue = committed.hue;
+    live.current.tone = committed.tone;
+  }, [committed]);
+
+  // If the picker closes mid-drag, keep the colour that was showing instead of snapping back.
+  useEffect(() => {
+    const state = live.current;
+    return () => {
+      if (state.previewTimer) clearTimeout(state.previewTimer);
+      if (state.maxWaitTimer) clearTimeout(state.maxWaitTimer);
+      if (state.kind && state.pendingHex) callbacks.current.onChange(state.pendingHex);
+    };
+  }, []);
 
   const ring = Math.round(size * 0.15);
   const knob = ring + 8;
   const outer = size + KNOB_GAP * 2;
   const radius = size / 2 - ring / 2;
-  const radians = ((hue - 90) * Math.PI) / 180;
-  const knobX = outer / 2 + radius * Math.cos(radians);
-  const knobY = outer / 2 + radius * Math.sin(radians);
-  const toneFraction = (tone - MIN_TONE) / (MAX_TONE - MIN_TONE);
+  const innerRadius = size / 2 - ring;
 
-  function hueFromPointer(event: PointerEvent<HTMLDivElement>) {
-    const rect = wheelRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const angle = Math.atan2(event.clientY - (rect.top + rect.height / 2), event.clientX - (rect.left + rect.width / 2));
-    const nextHue = Math.round(((angle * 180) / Math.PI + 90 + 360) % 360);
-    setHue(nextHue);
-    emit(nextHue, tone);
+  const knobTransform = (hue: number) => {
+    const radians = ((hue - 90) * Math.PI) / 180;
+    const x = outer / 2 + radius * Math.cos(radians) - knob / 2;
+    const y = outer / 2 + radius * Math.sin(radians) - knob / 2;
+    return `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`;
+  };
+  const toneFraction = (tone: number) => (tone - MIN_TONE) / (MAX_TONE - MIN_TONE);
+
+  /** Moves the picker's own visuals directly; cheap enough for every pointer move. */
+  function paint(hue: number, tone: number) {
+    const colour = hslToHex(hue, SATURATION, tone);
+    if (knobRef.current) {
+      knobRef.current.style.transform = knobTransform(hue);
+      knobRef.current.style.backgroundColor = hslToHex(hue, SATURATION, RING_LIGHTNESS);
+    }
+    if (centreRef.current) centreRef.current.style.backgroundColor = colour;
+    if (trackFillRef.current) trackFillRef.current.style.backgroundImage = toneGradient(hue);
+    if (thumbRef.current) {
+      thumbRef.current.style.left = `${toneFraction(tone) * 100}%`;
+      thumbRef.current.style.backgroundColor = colour;
+    }
   }
 
-  function toneFromPointer(event: PointerEvent<HTMLDivElement>) {
-    const rect = trackRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const fraction = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
-    const nextTone = Math.round(MIN_TONE + fraction * (MAX_TONE - MIN_TONE));
-    setTone(nextTone);
-    emit(hue, nextTone);
+  /** Recolours the whole app when the finger pauses, and at least every PAGE_PREVIEW_MAX_WAIT_MS. */
+  function previewPage(hex: string) {
+    const state = live.current;
+    state.pendingHex = hex;
+    const flush = () => {
+      if (state.previewTimer) clearTimeout(state.previewTimer);
+      if (state.maxWaitTimer) clearTimeout(state.maxWaitTimer);
+      state.previewTimer = null;
+      state.maxWaitTimer = null;
+      requestAnimationFrame(() => {
+        if (state.kind && state.pendingHex) callbacks.current.onPreview(state.pendingHex);
+      });
+    };
+    if (state.previewTimer) clearTimeout(state.previewTimer);
+    state.previewTimer = setTimeout(flush, PAGE_PREVIEW_IDLE_MS);
+    if (!state.maxWaitTimer) state.maxWaitTimer = setTimeout(flush, PAGE_PREVIEW_MAX_WAIT_MS);
   }
 
-  function nudge(event: KeyboardEvent<HTMLDivElement>, kind: 'hue' | 'tone') {
+  function update(clientX: number, clientY: number) {
+    const state = live.current;
+    const rect = state.rect;
+    if (!rect || !state.kind) return;
+
+    if (state.kind === 'hue') {
+      const angle = Math.atan2(clientY - (rect.top + rect.height / 2), clientX - (rect.left + rect.width / 2));
+      state.hue = Math.round(((angle * 180) / Math.PI + 90 + 360) % 360);
+    } else {
+      const fraction = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+      state.tone = Math.round(MIN_TONE + fraction * (MAX_TONE - MIN_TONE));
+    }
+
+    paint(state.hue, state.tone);
+    previewPage(hslToHex(state.hue, SATURATION, state.tone));
+  }
+
+  function commit() {
+    const state = live.current;
+    if (state.previewTimer) clearTimeout(state.previewTimer);
+    if (state.maxWaitTimer) clearTimeout(state.maxWaitTimer);
+    state.previewTimer = null;
+    state.maxWaitTimer = null;
+    const hex = hslToHex(state.hue, SATURATION, state.tone);
+    state.pendingHex = null;
+    setCommitted({ hue: state.hue, tone: state.tone });
+    setLastEmitted(hex);
+    callbacks.current.onChange(hex);
+  }
+
+  function startDrag(kind: Kind, event: PointerEvent<HTMLDivElement>) {
+    const rect = (kind === 'hue' ? wheelRef.current : trackRef.current)?.getBoundingClientRect() ?? null;
+    if (!rect) return;
+
+    if (kind === 'hue') {
+      // Only the ring is grabbable; touching the centre preview does nothing.
+      const distance = Math.hypot(event.clientX - (rect.left + rect.width / 2), event.clientY - (rect.top + rect.height / 2));
+      if (distance < innerRadius - 6) return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    live.current.kind = kind;
+    live.current.rect = rect;
+    setDragging(kind);
+    update(event.clientX, event.clientY);
+  }
+
+  function moveDrag(kind: Kind, event: PointerEvent<HTMLDivElement>) {
+    if (live.current.kind !== kind) return;
+    // Use the latest sample only; intermediate coalesced points would just repaint the same frame.
+    update(event.clientX, event.clientY);
+  }
+
+  function endDrag(kind: Kind) {
+    if (live.current.kind !== kind) return;
+    live.current.kind = null;
+    live.current.rect = null;
+    setDragging(null);
+    commit();
+  }
+
+  function nudge(event: KeyboardEvent<HTMLDivElement>, kind: Kind) {
     const forward = event.key === 'ArrowRight' || event.key === 'ArrowUp';
     const backward = event.key === 'ArrowLeft' || event.key === 'ArrowDown';
     if (!forward && !backward) return;
     event.preventDefault();
-    if (kind === 'hue') {
-      const nextHue = (hue + (forward ? 1 : -1) * (event.shiftKey ? 15 : 5) + 360) % 360;
-      setHue(nextHue);
-      emit(nextHue, tone, true);
-    } else {
-      const nextTone = Math.min(MAX_TONE, Math.max(MIN_TONE, tone + (forward ? 2 : -2)));
-      setTone(nextTone);
-      emit(hue, nextTone, true);
-    }
+    const state = live.current;
+    if (kind === 'hue') state.hue = (state.hue + (forward ? 1 : -1) * (event.shiftKey ? 15 : 5) + 360) % 360;
+    else state.tone = Math.min(MAX_TONE, Math.max(MIN_TONE, state.tone + (forward ? 2 : -2)));
+    paint(state.hue, state.tone);
+    commit();
   }
 
-  function startDrag(kind: 'hue' | 'tone', event: PointerEvent<HTMLDivElement>) {
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setDragging(kind);
-    if (kind === 'hue') hueFromPointer(event);
-    else toneFromPointer(event);
-  }
-
-  const stopDrag = () => {
-    setDragging(null);
-    const finalColour = dragColourRef.current;
-    dragColourRef.current = null;
-    if (finalColour) onChange(finalColour);
-  };
+  const centreColour = hslToHex(committed.hue, SATURATION, committed.tone);
+  const showCheck = selected && !dragging;
 
   return (
     <div className="flex w-full flex-col items-center gap-4" data-vaul-no-drag>
@@ -185,49 +256,57 @@ export function ColourWheel({
         aria-label="Colour hue"
         aria-valuemin={0}
         aria-valuemax={359}
-        aria-valuenow={hue}
+        aria-valuenow={committed.hue}
         tabIndex={0}
         data-vaul-no-drag
-        className="relative shrink-0 cursor-grab touch-none select-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary active:cursor-grabbing"
+        className="relative shrink-0 touch-none select-none rounded-full outline-none [contain:layout_paint] focus-visible:ring-2 focus-visible:ring-primary"
         style={{ width: outer, height: outer }}
         onKeyDown={(event) => nudge(event, 'hue')}
         onPointerDown={(event) => startDrag('hue', event)}
-        onPointerMove={(event) => {
-          if (dragging === 'hue') hueFromPointer(event);
-        }}
-        onPointerUp={stopDrag}
-        onPointerCancel={stopDrag}
-        onLostPointerCapture={stopDrag}
+        onPointerMove={(event) => moveDrag('hue', event)}
+        onPointerUp={() => endDrag('hue')}
+        onPointerCancel={() => endDrag('hue')}
+        onLostPointerCapture={() => endDrag('hue')}
       >
         <span
           aria-hidden
-          className="absolute rounded-full"
+          className="absolute cursor-grab rounded-full active:cursor-grabbing"
           style={{
             inset: KNOB_GAP,
-            background: 'conic-gradient(from 0deg, hsl(0 78% 50%), hsl(45 85% 50%), hsl(90 70% 45%), hsl(150 70% 42%), hsl(195 80% 45%), hsl(240 75% 58%), hsl(285 70% 55%), hsl(330 78% 52%), hsl(360 78% 50%))',
+            background: RING_GRADIENT,
             WebkitMask: `radial-gradient(farthest-side, transparent calc(100% - ${ring}px), #000 calc(100% - ${ring - 1}px))`,
             mask: `radial-gradient(farthest-side, transparent calc(100% - ${ring}px), #000 calc(100% - ${ring - 1}px))`,
           }}
         />
         <span
-          aria-hidden
-          className="absolute flex items-center justify-center rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)] transition-[background-color,transform] duration-200"
-          style={{ inset: KNOB_GAP + ring + 12, background: dragging ? hslToHex(hue, SATURATION, tone) : value, transform: dragging ? 'scale(1.04)' : undefined }}
-        >
-          {selected && <Check className="h-7 w-7 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]" strokeWidth={3} />}
-        </span>
-        <span
+          ref={centreRef}
           aria-hidden
           className={cn(
-            'absolute rounded-full border-[3px] border-white shadow-[0_2px_10px_rgba(0,0,0,0.35)]',
-            dragging === 'hue' ? 'scale-110' : 'transition-[left,top,transform] duration-200 ease-out',
+            'absolute flex items-center justify-center rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)]',
+            dragging ? '' : 'transition-colors duration-300',
+          )}
+          style={{ inset: KNOB_GAP + ring + 12, backgroundColor: centreColour }}
+        >
+          <Check
+            className={cn(
+              'h-7 w-7 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)] transition-[opacity,transform] duration-200',
+              showCheck ? 'scale-100 opacity-100' : 'scale-75 opacity-0',
+            )}
+            strokeWidth={3}
+          />
+        </span>
+        <span
+          ref={knobRef}
+          aria-hidden
+          className={cn(
+            'pointer-events-none absolute left-0 top-0 rounded-full border-[3px] border-white shadow-[0_2px_10px_rgba(0,0,0,0.35)] will-change-transform',
+            dragging === 'hue' ? '' : 'transition-[transform,background-color] duration-300 ease-out',
           )}
           style={{
             width: knob,
             height: knob,
-            left: knobX - knob / 2,
-            top: knobY - knob / 2,
-            background: hslToHex(hue, SATURATION, 50),
+            transform: knobTransform(committed.hue),
+            backgroundColor: hslToHex(committed.hue, SATURATION, RING_LIGHTNESS),
           }}
         />
       </div>
@@ -240,31 +319,31 @@ export function ColourWheel({
           aria-label="Colour tone"
           aria-valuemin={MIN_TONE}
           aria-valuemax={MAX_TONE}
-          aria-valuenow={tone}
+          aria-valuenow={committed.tone}
           tabIndex={0}
           data-vaul-no-drag
-          className="relative h-8 cursor-pointer touch-none select-none outline-none focus-visible:rounded-full focus-visible:ring-2 focus-visible:ring-primary"
+          className="relative h-9 cursor-pointer touch-none select-none outline-none [contain:layout_paint] focus-visible:rounded-full focus-visible:ring-2 focus-visible:ring-primary"
           onKeyDown={(event) => nudge(event, 'tone')}
           onPointerDown={(event) => startDrag('tone', event)}
-          onPointerMove={(event) => {
-            if (dragging === 'tone') toneFromPointer(event);
-          }}
-          onPointerUp={stopDrag}
-          onPointerCancel={stopDrag}
-          onLostPointerCapture={stopDrag}
+          onPointerMove={(event) => moveDrag('tone', event)}
+          onPointerUp={() => endDrag('tone')}
+          onPointerCancel={() => endDrag('tone')}
+          onLostPointerCapture={() => endDrag('tone')}
         >
           <span
+            ref={trackFillRef}
             aria-hidden
             className="absolute inset-x-0 top-1/2 h-3 -translate-y-1/2 rounded-full"
-            style={{ background: `linear-gradient(90deg, ${hslToHex(hue, SATURATION, MIN_TONE)}, ${hslToHex(hue, SATURATION, (MIN_TONE + MAX_TONE) / 2)}, ${hslToHex(hue, SATURATION, MAX_TONE)})` }}
+            style={{ backgroundImage: toneGradient(committed.hue) }}
           />
           <span
+            ref={thumbRef}
             aria-hidden
             className={cn(
-              'absolute top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white shadow-[0_2px_10px_rgba(0,0,0,0.35)]',
-              dragging === 'tone' ? 'scale-110' : 'transition-[left,transform] duration-200 ease-out',
+              'pointer-events-none absolute top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white shadow-[0_2px_10px_rgba(0,0,0,0.35)]',
+              dragging === 'tone' ? 'scale-110' : 'transition-[left,background-color,transform] duration-300 ease-out',
             )}
-            style={{ left: `${toneFraction * 100}%`, background: hslToHex(hue, SATURATION, tone) }}
+            style={{ left: `${toneFraction(committed.tone) * 100}%`, backgroundColor: centreColour }}
           />
         </div>
       </div>

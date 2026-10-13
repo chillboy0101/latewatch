@@ -137,3 +137,18 @@ test('rate limiter falls back to Postgres when the configured Redis is unreachab
   assert.match(source, /rate-limit Redis unavailable, using Postgres/);
   assert.match(source, /return await allowRequestViaPostgres\(key, limit, windowSeconds\);/);
 });
+
+test('colour wheel drags without re-rendering and recolours the app on pause', () => {
+  const wheel = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'colour-wheel.tsx'), 'utf8');
+  // Visuals move by direct transforms during a drag; the wheel is measured once per drag.
+  assert.match(wheel, /knobRef\.current\.style\.transform = knobTransform\(hue\)/);
+  assert.match(wheel, /translate3d\(/);
+  assert.match(wheel, /live\.current\.rect = rect;/);
+  assert.doesNotMatch(wheel, /function moveDrag[\s\S]{0,300}getBoundingClientRect/);
+  // Whole-app recolour waits for a pause (or a max interval), never every move.
+  assert.match(wheel, /PAGE_PREVIEW_IDLE_MS/);
+  assert.match(wheel, /PAGE_PREVIEW_MAX_WAIT_MS/);
+  // Ring drawn from the same formula as the picked colour; centre taps ignored.
+  assert.match(wheel, /hslToHex\(index \* 15, SATURATION, RING_LIGHTNESS\)/);
+  assert.match(wheel, /if \(distance < innerRadius - 6\) return;/);
+});
