@@ -142,6 +142,17 @@ function entryMatchesSnapshot(entry: Entry, snapshot: EntrySnapshot | undefined)
   );
 }
 
+// The fields an admin edits in the grid; everything else (amount, reason, flags) comes from the server.
+function pickEditableFields(entry: Entry) {
+  return {
+    arrivalTime: entry.arrivalTime,
+    didNotSignOut: entry.didNotSignOut,
+    noShowSignInWaived: entry.noShowSignInWaived,
+    noSignOutWaived: entry.noSignOutWaived,
+    signOutTime: entry.signOutTime,
+  };
+}
+
 function formatChangedEntriesMessage(names: string[], count: number) {
   if (count <= 0) return 'No changes to save.';
   if (count === 1 && names[0]) return `Updated ${names[0]}.`;
@@ -173,11 +184,26 @@ function EntriesPageContent() {
   const [lateArrivalPardonTarget, setLateArrivalPardonTarget] = useState<{ staffId: string; staffName: string } | null>(null);
   const [lateArrivalPardonReason, setLateArrivalPardonReason] = useState<string>('personal excuse');
   const [pardoningLateArrival, setPardoningLateArrival] = useState(false);
+  // Rows another admin changed while this person had unsaved edits on them.
+  const [conflictStaffIds, setConflictStaffIds] = useState<Set<string>>(() => new Set());
+  // Latest grid state, read by background refreshes so they never wipe unsaved edits.
+  const entriesRef = useRef<Entry[]>([]);
+  const snapshotsRef = useRef<Record<string, EntrySnapshot>>({});
+  const loadedDateRef = useRef<string | null>(null);
+  // True while this page's own save is in flight; its echo refresh is not someone else's change.
+  const savingRef = useRef(false);
+
+  useEffect(() => {
+    entriesRef.current = entries;
+    snapshotsRef.current = originalEntrySnapshots;
+  }, [entries, originalEntrySnapshots]);
 
   const fetchStaffAndEntries = useCallback(async () => {
+    const selectedDateKey = format(selectedDate, 'yyyy-MM-dd');
+    // Same day: a quiet background refresh that keeps the grid (and anything being typed) on screen.
+    const isRefresh = loadedDateRef.current === selectedDateKey;
     try {
-      setLoading(true);
-      const selectedDateKey = format(selectedDate, 'yyyy-MM-dd');
+      if (!isRefresh) setLoading(true);
 
       // Fetch all data in parallel
       const [staffResponse, calendarResponse, entriesResponse] = await Promise.all([
@@ -229,10 +255,36 @@ function EntriesPageContent() {
         };
       });
 
-      setEntries(mergedEntries);
+      // Keep unsaved edits: a row someone is editing keeps their values; every other row takes the
+      // latest saved values. If another admin saved a change to a row being edited, flag it.
+      const previousEntries = isRefresh ? new Map(entriesRef.current.map((entry) => [entry.staffId, entry])) : new Map<string, Entry>();
+      const previousSnapshots = isRefresh ? snapshotsRef.current : {};
+      const newConflicts: string[] = [];
+      const nextEntries = mergedEntries.map((serverEntry) => {
+        const local = previousEntries.get(serverEntry.staffId);
+        const base = previousSnapshots[serverEntry.staffId];
+        if (!local || !base || entryMatchesSnapshot(local, base)) return serverEntry;
+        if (!savingRef.current && !entryMatchesSnapshot(serverEntry, base)) newConflicts.push(serverEntry.staffId);
+        return { ...serverEntry, ...pickEditableFields(local) };
+      });
+
+      setEntries(nextEntries);
       setOriginalEntrySnapshots(Object.fromEntries(
         mergedEntries.map((entry) => [entry.staffId, snapshotEntry(entry)]),
       ));
+      setConflictStaffIds((current) => {
+        const next = isRefresh ? new Set(current) : new Set<string>();
+        newConflicts.forEach((staffId) => next.add(staffId));
+        return next;
+      });
+      if (newConflicts.length > 0) {
+        const names = newConflicts.map((staffId) => allStaffList.find((member) => member.id === staffId)?.fullName).filter(Boolean);
+        setMessage({
+          type: 'error',
+          text: `Another admin just saved changes to ${names.join(', ') || 'a row you are editing'}. Your unsaved edits are kept; saving will replace theirs for ${names.length === 1 ? 'that row' : 'those rows'}.`,
+        });
+      }
+      loadedDateRef.current = selectedDateKey;
       setLoadError(null);
     } catch (error) {
       console.error('Failed to fetch data:', error);
@@ -524,6 +576,7 @@ function EntriesPageContent() {
     }
 
     setSaving(true);
+    savingRef.current = true;
     try {
       const today = format(selectedDate, 'yyyy-MM-dd');
       const response = await fetch('/api/entries', {
@@ -555,6 +608,12 @@ function EntriesPageContent() {
           type: 'success',
           text: formatChangedEntriesMessage(changedStaffNames, changedStaffCount),
         });
+        // What was just saved is now the baseline, so the follow-up refresh replaces these rows
+        // with the saved values instead of treating them as still being edited.
+        const savedSnapshots = Object.fromEntries(changedEntries.map((entry) => [entry.staffId, snapshotEntry(entry)]));
+        snapshotsRef.current = { ...snapshotsRef.current, ...savedSnapshots };
+        setOriginalEntrySnapshots((current) => ({ ...current, ...savedSnapshots }));
+        setConflictStaffIds(new Set());
         // Re-fetch fresh data from DB so saved entries display immediately
         setTimeout(() => fetchStaffAndEntries(), 50);
       } else {
@@ -566,6 +625,7 @@ function EntriesPageContent() {
       setMessage({ type: 'error', text: 'Failed to save entries' });
     } finally {
       setSaving(false);
+      savingRef.current = false;
       // Auto-dismiss message after 5 seconds
       setTimeout(() => setMessage(null), 5000);
     }
@@ -611,9 +671,21 @@ function EntriesPageContent() {
   }
 
   function changeSelectedDate(nextDate: Date) {
+    if (changedEntries.length > 0 && !window.confirm('You have unsaved changes on this day. Leave without saving them?')) return;
     setSelectedDate(nextDate);
     setMessage(null);
   }
+
+  // Warn before closing or reloading the tab with unsaved edits.
+  useEffect(() => {
+    if (changedEntries.length === 0) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [changedEntries.length]);
 
   function handleDateInputChange(value: string) {
     const parsed = parseISO(value);
@@ -871,6 +943,14 @@ function EntriesPageContent() {
                       <td className="px-4 py-3 text-sm font-medium">
                         <div className="flex items-center gap-2">
                           <span>{member?.fullName}</span>
+                          {hasUnsavedChanges && conflictStaffIds.has(entry.staffId) && (
+                            <span
+                              className="shrink-0 whitespace-nowrap rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning"
+                              title="Another admin saved a change to this row while you were editing it. Saving keeps your version."
+                            >
+                              Changed by another admin
+                            </span>
+                          )}
                           {isOnLeave && (
                             <span className="shrink-0 whitespace-nowrap rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
                               On leave{leaveSummary ? ` · ${leaveSummary}` : ''}

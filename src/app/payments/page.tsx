@@ -225,6 +225,24 @@ export default function PenaltyPaymentsPage() {
   const [debtPardonError, setDebtPardonError] = useState<string | null>(null);
   // Empty means everyone; otherwise the pardon covers only this staff member.
   const [debtPardonStaffId, setDebtPardonStaffId] = useState('');
+  const debtPardonStaffListRef = useRef<HTMLDivElement>(null);
+
+  // The floating staff list closes on a tap outside it or on Escape.
+  useEffect(() => {
+    if (!debtPardonShowStaff) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!debtPardonStaffListRef.current?.contains(event.target as Node)) setDebtPardonShowStaff(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDebtPardonShowStaff(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown, true);
+    };
+  }, [debtPardonShowStaff]);
   const [offenceBookMonth, setOffenceBookMonth] = useState(new Date().getMonth());
   const [offenceBookYear, setOffenceBookYear] = useState(new Date().getFullYear());
   const [loadedOffenceBookKey, setLoadedOffenceBookKey] = useState<string | null>(null);
@@ -1099,9 +1117,10 @@ export default function PenaltyPaymentsPage() {
 
               {!debtPardonLoading && debtPardonPreview && debtPardonPreview.entryCount > 0 && (
                 <>
-                  {/* Staff list: a full-width row that opens into the list, like an accordion. */}
+                  {/* Staff list: opens as a floating list above the row with its own scrollbar, so the
+                      dialog never grows or scrolls however many staff are included. */}
                   {!debtPardonStaffId && (
-                  <div className="overflow-hidden rounded-md border border-border">
+                  <div ref={debtPardonStaffListRef} data-picker-open={debtPardonShowStaff || undefined} className="relative rounded-md border border-border">
                     <button
                       type="button"
                       aria-expanded={debtPardonShowStaff}
@@ -1114,7 +1133,7 @@ export default function PenaltyPaymentsPage() {
                       <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', debtPardonShowStaff && 'rotate-180')} />
                     </button>
                     {debtPardonShowStaff && (
-                      <ul className="max-h-48 divide-y divide-border overflow-y-auto border-t border-border text-sm">
+                      <ul className="absolute inset-x-0 bottom-full z-50 mb-1.5 max-h-48 divide-y divide-border overflow-y-auto overscroll-contain rounded-md border border-border bg-card text-sm shadow-xl">
                         {debtPardonPreview.staff.map((member) => (
                           <li key={member.staffId} className="flex items-center justify-between gap-3 px-3 py-2">
                             <span className="truncate">{member.fullName}</span>

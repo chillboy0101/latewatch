@@ -211,3 +211,17 @@ test('payments and offence book ignore pardons on entries that no longer carry a
   assert.match(exportRoute, /pardonedAmount: currentPardonedAmount\(entry\.computedAmount,/);
   assert.match(itemsRoute, /pardonedAmount: currentPardonedAmount\(entry\.computedAmount,/);
 });
+
+test('entries page keeps unsaved edits when another admin saves', () => {
+  const source = fs.readFileSync(entriesPagePath, 'utf8');
+  // Background refreshes merge instead of replacing the grid.
+  assert.match(source, /const isRefresh = loadedDateRef\.current === selectedDateKey;/);
+  assert.match(source, /if \(!isRefresh\) setLoading\(true\);/);
+  assert.match(source, /return \{ \.\.\.serverEntry, \.\.\.pickEditableFields\(local\) \};/);
+  // Same-row changes by someone else are flagged, but not the echo of this page's own save.
+  assert.match(source, /if \(!savingRef\.current && !entryMatchesSnapshot\(serverEntry, base\)\) newConflicts\.push/);
+  assert.match(source, /Changed by another admin/);
+  // Leaving with unsaved edits asks first.
+  assert.match(source, /You have unsaved changes on this day\. Leave without saving them\?/);
+  assert.match(source, /window\.addEventListener\('beforeunload', warn\)/);
+});

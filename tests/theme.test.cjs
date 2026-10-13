@@ -252,5 +252,5 @@ test('dialogs with a staff picker scroll normally and only overflow while the pi
     assert.doesNotMatch(source, /<DialogContent className="[^"]*(?<!:)overflow-visible/);
   }
   // The pardon staff list scrolls on its own however many people it holds.
-  assert.match(read('src', 'app', 'payments', 'page.tsx'), /<ul className="max-h-48 divide-y divide-border overflow-y-auto/);
+  assert.match(read('src', 'app', 'payments', 'page.tsx'), /<ul className="absolute inset-x-0 bottom-full z-50 mb-1\.5 max-h-48 divide-y divide-border overflow-y-auto/);
 });
