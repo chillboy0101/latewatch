@@ -19,6 +19,7 @@ import {
 
 const SAVE_DELAY_MS = 200;
 const REFRESH_INTERVAL_MS = 10_000;
+const POLL_INTERVAL_MS = 15_000;
 // Identifies this tab, so it ignores the live echo of its own save.
 const SOURCE_ID = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Math.random());
 
@@ -127,14 +128,28 @@ export function ThemeAccountSync() {
     };
   }, [userId]);
 
-  // Live: apply a colour picked on another device the moment it is saved.
+  // Live: apply a colour picked on another device the moment it is saved. If the live connection
+  // is unavailable (some networks block it), check the account every few seconds while visible.
   useEffect(() => {
     if (!userId) return;
 
     let cancelled = false;
     let cleanup: (() => void) | null = null;
+    let liveConnected = false;
+    const poll = setInterval(() => {
+      if (liveConnected || document.visibilityState !== 'visible') return;
+      void fetchAccountTheme().then((remote) => {
+        if (remote && !cancelled) adopt(remote);
+      });
+    }, POLL_INTERVAL_MS);
+
     void getAblyRealtime().then((ably) => {
       if (cancelled) return;
+      const updateConnection = () => {
+        liveConnected = ably.connection.state === 'connected';
+      };
+      updateConnection();
+      ably.connection.on(updateConnection);
       const channel = ably.channels.get(`latewatch:${themeChannelForUser(userId)}`);
       const handler = (message: { data?: unknown }) => {
         const data = message.data as { sourceId?: unknown; theme?: unknown } | null;
@@ -143,13 +158,17 @@ export function ThemeAccountSync() {
         if (remote) adopt(remote);
       };
       void channel.subscribe('theme', handler);
-      cleanup = () => channel.unsubscribe('theme', handler);
+      cleanup = () => {
+        channel.unsubscribe('theme', handler);
+        ably.connection.off(updateConnection);
+      };
     }).catch(() => {
-      // Live updates unavailable: the foreground refresh below still catches up.
+      // Live updates unavailable: the polling above keeps devices in step.
     });
 
     return () => {
       cancelled = true;
+      clearInterval(poll);
       cleanup?.();
     };
   }, [userId]);
