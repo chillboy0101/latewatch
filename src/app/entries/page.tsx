@@ -977,7 +977,7 @@ function EntriesPageContent() {
               <thead className="border-b border-border bg-card">
                 <tr>
                   <th className="w-12 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">#</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</th>
+                  <th className="min-w-[15rem] px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</th>
                   <th className="w-44 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Sign In</th>
                   <th className="w-56 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Sign Out</th>
                   <th className="w-28 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Amount</th>
@@ -1054,8 +1054,8 @@ function EntriesPageContent() {
                       <td className="px-4 py-3 text-sm text-muted-foreground">
                         {String(index + 1).padStart(2, '0')}
                       </td>
-                      <td className="px-4 py-3 text-sm font-medium">
-                        <div>{member?.fullName}</div>
+                      <td className="min-w-[15rem] px-4 py-3 text-sm font-medium">
+                        <div className="whitespace-nowrap">{member?.fullName}</div>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5 empty:hidden">
                           {statusTag && (
                             <span className={STATUS_TAG_CLASS}>
