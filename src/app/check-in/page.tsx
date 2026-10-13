@@ -1281,7 +1281,7 @@ export default function CheckInPage() {
                     icon={<History className="h-5 w-5" />}
                     title="Penalty history"
                     onClick={openPenaltyHistory}
-                    status={penaltyHistory ? (owedNow > 0 ? `You owe ${ghc(owedNow)}` : 'All paid up') : ''}
+                    status={penaltyHistory ? (owedNow > 0 ? `You owe ${ghc(owedNow)}` : 'Nothing owed') : ''}
                     statusClassName={penaltyHistory ? (owedNow > 0 ? 'text-warning' : 'text-success') : undefined}
                   />
                   <MenuRow
@@ -1520,7 +1520,7 @@ function PenaltyHistoryDialog({
               ) : (
                 <p className="flex items-center gap-2 text-lg font-semibold text-success">
                   <CheckCircle2 className="h-5 w-5" />
-                  All paid up
+                  Nothing owed
                 </p>
               )}
             </div>

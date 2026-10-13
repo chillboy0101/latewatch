@@ -207,7 +207,7 @@ test('check-in page exposes a penalty history sheet from the overflow menu', () 
   assert.match(source, /\/api\/attendance\/check-in\/penalty-history/);
   // Minimal: one headline (what you owe, or all paid up) and one row per penalty day.
   assert.match(source, /<p className="text-sm text-muted-foreground">You owe<\/p>/);
-  assert.match(source, /All paid up/);
+  assert.match(source, /Nothing owed/);
   assert.match(source, /function penaltyReasonLabel\(entry: PenaltyHistoryEntry\)/);
   assert.match(source, /if \(reason\.includes\("DIDN'T SIGN IN"\)\) return 'No sign-in';/);
   assert.doesNotMatch(source, /Current week penalty|PenaltyHistoryStat/);
@@ -287,7 +287,7 @@ test('the ⋯ menu shows the status of each sheet at a glance', () => {
   assert.match(source, /function penaltyOwed\(history: PenaltyHistoryResponse \| null\)/);
   assert.match(source, /const owedNow = penaltyOwed\(penaltyHistory\);/);
   assert.match(source, /const owed = penaltyOwed\(history\);/);
-  assert.match(source, /owedNow > 0 \? `You owe \$\{ghc\(owedNow\)\}` : 'All paid up'/);
+  assert.match(source, /owedNow > 0 \? `You owe \$\{ghc\(owedNow\)\}` : 'Nothing owed'/);
   assert.match(source, /if \(signIn && signOut\) return 'On · 8:15 AM & 4:30 PM';/);
   assert.match(source, /if \(next\) void fetchPenaltyHistory\(\);/);
 });
