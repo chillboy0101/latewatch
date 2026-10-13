@@ -265,3 +265,14 @@ test('entries status tags sit under the name in the theme colour, with a clear l
   assert.match(source, /label: 'Late permission'/);
   assert.match(source, /\{statusTag\?\.coversReason \? '-' : entry\.reason \|\| '-'\}/);
 });
+
+test('a missing sign-out is only charged once the day is over (not when cleared earlier in the day)', () => {
+  const source = fs.readFileSync(entriesPagePath, 'utf8');
+  const route = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'api', 'entries', 'route.ts'), 'utf8');
+  const workHours = fs.readFileSync(path.join(__dirname, '..', 'src', 'lib', 'work-hours.ts'), 'utf8');
+  assert.match(workHours, /export function isNoSignOutChargeDue\(dateKey: string, todayKey: string, nowTimeKey: string\)/);
+  assert.match(route, /const noSignOutChargeDue = isNoSignOutChargeDue\(date, getAccraDateKey\(\), getAccraTimeKey\(\)\);/);
+  assert.match(route, /submittedSignOutTime \|\| requestedNoSignOutWaived \|\| !noSignOutChargeDue/);
+  assert.match(source, /didNotSignOut: signOutTime \? false : !entry\.isExcusedAbsence && noSignOutDue/);
+  assert.match(source, /didNotSignOut: nextWaived \? false : !normalizeTimeValue\(entry\.signOutTime\) && noSignOutDue/);
+});

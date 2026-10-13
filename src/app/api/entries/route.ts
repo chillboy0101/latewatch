@@ -13,6 +13,8 @@ import {
 import { mergeAttendanceRowsIntoEntryRows } from '@/lib/lateness-entry-presentation';
 import { isStaffLeaveDate } from '@/lib/staff-leave';
 import { isIsoDateKey, isoDateKeyToLocalDate } from '@/lib/date-format';
+import { getAccraDateKey, getAccraTimeKey } from '@/lib/date-key';
+import { isNoSignOutChargeDue } from '@/lib/work-hours';
 import {
   manualAttendanceCorrectionChanged,
   resolveManualAttendanceCorrection,
@@ -359,6 +361,8 @@ export async function POST(request: NextRequest) {
       });
     };
 
+    const noSignOutChargeDue = isNoSignOutChargeDue(date, getAccraDateKey(), getAccraTimeKey());
+
     for (const entry of entries) {
       if (!entry || typeof entry.staffId !== 'string' || !allowedStaffIds.has(entry.staffId)) {
         continue;
@@ -591,7 +595,9 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      const didNotSignOut = submittedSignOutTime || requestedNoSignOutWaived
+      // A missing sign-out is only charged once the day is over (see isNoSignOutChargeDue);
+      // clearing a sign-out earlier in the day must not charge anyone yet.
+      const didNotSignOut = submittedSignOutTime || requestedNoSignOutWaived || !noSignOutChargeDue
         ? false
         : entry.didNotSignOut === true;
       const activePermission = activePermissionsByStaffId.get(entry.staffId) || null;

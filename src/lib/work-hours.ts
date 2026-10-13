@@ -34,3 +34,13 @@ export function isOnTimeCheckIn(value: string | null | undefined) {
   const time = toMinuteTime(value);
   return MINUTE_TIME_PATTERN.test(time) && time <= WORKDAY_START_TIME;
 }
+
+/**
+ * The no-sign-out charge belongs to a finished day: any past day, or today once the
+ * no-sign-out cut-off has passed. Before that a missing sign-out is simply "not yet".
+ */
+export function isNoSignOutChargeDue(dateKey: string, todayKey: string, nowTimeKey: string) {
+  if (dateKey < todayKey) return true;
+  if (dateKey > todayKey) return false;
+  return shouldAlertNoSignOut(nowTimeKey);
+}

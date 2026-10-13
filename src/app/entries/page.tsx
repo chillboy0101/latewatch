@@ -14,7 +14,8 @@ import { addDays, format, isValid, parseISO } from 'date-fns';
 import { ArrowLeft, ClockAlert, Save, CheckCircle, AlertCircle, CalendarOff, ChevronLeft, ChevronRight, Clock, RefreshCw, Search, ShieldCheck, X } from 'lucide-react';
 import { computePenalty } from '@/lib/penalty-calculator';
 import { NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/penalty-calculator';
-import { getAccraDateKey } from '@/lib/date-key';
+import { getAccraDateKey, getAccraTimeKey } from '@/lib/date-key';
+import { isNoSignOutChargeDue } from '@/lib/work-hours';
 import { formatLongDisplayDate } from '@/lib/date-format';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { formatLeaveSummary } from '@/lib/staff-leave';
@@ -509,9 +510,11 @@ function EntriesPageContent() {
         if (entry.staffId !== staffId) return entry;
 
         const signOutTime = normalizeTimeValue(value);
+        // No sign-out is only a charge once the day is over; earlier it just means "not yet".
+        const noSignOutDue = isNoSignOutChargeDue(format(selectedDate, 'yyyy-MM-dd'), getAccraDateKey(), getAccraTimeKey());
         const updated = {
           ...entry,
-          didNotSignOut: signOutTime ? false : !entry.isExcusedAbsence,
+          didNotSignOut: signOutTime ? false : !entry.isExcusedAbsence && noSignOutDue,
           noSignOutWaived: false,
           signOutTime,
         };
@@ -528,9 +531,10 @@ function EntriesPageContent() {
         if (entry.isExcusedAbsence) return entry;
 
         const nextWaived = !entry.noSignOutWaived;
+        const noSignOutDue = isNoSignOutChargeDue(format(selectedDate, 'yyyy-MM-dd'), getAccraDateKey(), getAccraTimeKey());
         const updated = {
           ...entry,
-          didNotSignOut: nextWaived ? false : !normalizeTimeValue(entry.signOutTime),
+          didNotSignOut: nextWaived ? false : !normalizeTimeValue(entry.signOutTime) && noSignOutDue,
           noSignOutWaived: nextWaived,
           signOutTime: '',
         };
