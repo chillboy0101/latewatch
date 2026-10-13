@@ -128,3 +128,9 @@ test('colour wheel stays visible, follows the current colour and never uses the 
   assert.match(wheel, /aria-label="Colour tone"/);
   assert.equal((wheel.match(/data-vaul-no-drag/g) || []).length >= 3, true);
 });
+
+test('rate limiter falls back to Postgres when the configured Redis is unreachable', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'lib', 'rate-limit.ts'), 'utf8');
+  assert.match(source, /rate-limit Redis unavailable, using Postgres/);
+  assert.match(source, /return await allowRequestViaPostgres\(key, limit, windowSeconds\);/);
+});

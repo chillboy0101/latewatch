@@ -90,9 +90,16 @@ export async function allowRequest(
   const redis = getRedis();
 
   try {
-    return redis
-      ? await allowRequestViaRedis(redis, key, limit, windowSeconds)
-      : await allowRequestViaPostgres(key, limit, windowSeconds);
+    if (redis) {
+      try {
+        return await allowRequestViaRedis(redis, key, limit, windowSeconds);
+      } catch (error) {
+        // Redis configured but unreachable (e.g. the database was removed): use Postgres instead
+        // of silently disabling the limit.
+        console.error('rate-limit Redis unavailable, using Postgres', { key, error });
+      }
+    }
+    return await allowRequestViaPostgres(key, limit, windowSeconds);
   } catch (error) {
     // Fail open. This throttle is defence in depth on endpoints that are already behind Clerk
     // and idempotent by constraint, so it must never be the reason a staff member cannot
