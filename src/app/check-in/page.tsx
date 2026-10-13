@@ -1494,7 +1494,7 @@ function PenaltyHistoryDialog({
   return (
     <DrawerNested open={open} onOpenChange={onOpenChange}>
       <DrawerContent className="h-[calc(100dvh-env(safe-area-inset-top)-1rem)] sm:h-[85dvh]">
-        <DrawerHeader>
+        <DrawerHeader className="text-center">
           <DrawerTitle>Penalty history</DrawerTitle>
           <DrawerDescription className="sr-only">What you owe and each penalty day.</DrawerDescription>
         </DrawerHeader>
@@ -1833,30 +1833,31 @@ function ReceiptsDialog({
         {selectedId ? (
           <>
             <DrawerHeader>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2">
-                  <button
-                    type="button"
-                    aria-label="Back to receipts"
-                    onClick={() => setSelectedId(null)}
-                    className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
-                  >
-                    <ArrowLeft className="h-5 w-5" />
-                  </button>
-                  <DrawerTitle>Receipt</DrawerTitle>
+              {/* Back on the left, title centred (like the other sheets), Print on the right. */}
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                <button
+                  type="button"
+                  aria-label="Back to receipts"
+                  onClick={() => setSelectedId(null)}
+                  className="-ml-1 flex h-10 w-10 items-center justify-center justify-self-start rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                </button>
+                <DrawerTitle className="text-center">Receipt</DrawerTitle>
+                <div className="justify-self-end">
+                  {detail.receipt && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="gap-2"
+                      onClick={printReceipt}
+                      disabled={!pdfFile}
+                    >
+                      {pdfBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                      Print
+                    </Button>
+                  )}
                 </div>
-                {detail.receipt && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="shrink-0 gap-2"
-                    onClick={printReceipt}
-                    disabled={!pdfFile}
-                  >
-                    {pdfBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-                    Print
-                  </Button>
-                )}
               </div>
               <DrawerDescription className="sr-only">Receipt details.</DrawerDescription>
             </DrawerHeader>
@@ -1866,7 +1867,7 @@ function ReceiptsDialog({
           </>
         ) : (
           <>
-            <DrawerHeader>
+            <DrawerHeader className="text-center">
               <DrawerTitle>Payment receipts</DrawerTitle>
               <DrawerDescription className="sr-only">Receipts for payments recorded on your account.</DrawerDescription>
             </DrawerHeader>
@@ -1940,7 +1941,7 @@ function RemindersDialog({
   return (
     <DrawerNested open={open} onOpenChange={onOpenChange}>
       <DrawerContent className="max-h-[85dvh]">
-        <DrawerHeader>
+        <DrawerHeader className="text-center">
           <DrawerTitle>Reminders</DrawerTitle>
           <DrawerDescription>Works even when LateWatch is closed.</DrawerDescription>
         </DrawerHeader>

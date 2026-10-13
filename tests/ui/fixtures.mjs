@@ -150,6 +150,18 @@ export function buildFixtures(now = new Date()) {
       subscription: { disabledAt: null, endpoint: 'https://push.example.test/1', signInEnabled: false, signOutEnabled: false },
     },
     '/api/attendance/check-in/receipt-notifications': { notifications: receipts.slice(0, 2), receipts },
+    '/api/attendance/check-in/receipts/payment-0': {
+      allocations: historyEntries.slice(0, 2).map((entry) => ({
+        allocatedAmount: entry.penaltyAmount,
+        arrivalTime: entry.arrivalTime,
+        date: entry.date,
+        entryId: entry.entryId,
+        penaltyAmount: entry.penaltyAmount,
+        reason: entry.reason,
+      })),
+      receipt: receipts[0],
+      staff: { email: me.email, fullName: me.fullName, id: me.id },
+    },
     '/api/attendance/device-health': {
       generatedAt: now.toISOString(),
       rows: [],

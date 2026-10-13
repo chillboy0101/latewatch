@@ -96,6 +96,10 @@ async function phoneShots(browser) {
   await page.waitForTimeout(500);
   await page.getByRole('button', { name: /Payment receipts/ }).click();
   await shoot(page, 'phone-receipts');
+  await page.getByRole('button', { name: /GHC 10\.00/ }).first().click();
+  await page.waitForTimeout(1500);
+  await shoot(page, 'phone-receipt-detail');
+  await page.getByRole('button', { name: 'Back to receipts' }).click();
   await page.keyboard.press('Escape');
   await page.waitForTimeout(500);
   await page.getByRole('button', { name: 'Reminders' }).click();
