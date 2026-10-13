@@ -1109,7 +1109,8 @@ function EntriesPageContent() {
                             emptyText={signOutField.text}
                             title={signOutField.title}
                           />
-                          {!entry.signOutTime && !entry.isExcusedAbsence && !isOnLeave && (
+                          {/* No sign-in means no sign-out charge, so nothing to waive there. */}
+                          {!entry.signOutTime && Boolean(entry.arrivalTime) && !entry.isExcusedAbsence && !isOnLeave && (
                             <Button
                               type="button"
                               size="sm"
