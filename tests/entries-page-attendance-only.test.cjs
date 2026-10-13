@@ -225,3 +225,15 @@ test('entries page keeps unsaved edits when another admin saves', () => {
   assert.match(source, /You have unsaved changes on this day\. Leave without saving them\?/);
   assert.match(source, /window\.addEventListener\('beforeunload', warn\)/);
 });
+
+test('entries page puts each waiver beside its charge and offers Waive all for two charges', () => {
+  const source = fs.readFileSync(entriesPagePath, 'utf8');
+  const signInCell = source.slice(source.indexOf('label="Sign-in time"'), source.indexOf('label="Sign-out time"'));
+  assert.match(signInCell, />\s*Waive late fee\s*</);
+  assert.match(signInCell, /Waive no sign-in/);
+  assert.match(source, /const showWaiveAllButton =\s+showLateArrivalPardonButton &&\s+entry\.didNotSignOut &&\s+!entry\.noSignOutWaived/);
+  assert.match(source, />\s*Waive all\s*</);
+  // Waive all applies the late-fee permission, then saves the no-sign-out waiver for that row.
+  assert.match(source, /if \(mode === 'all'\) \{/);
+  assert.match(source, /noSignOutWaived: true,\s+noSignOutWaivedChanged:/);
+});

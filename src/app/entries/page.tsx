@@ -181,7 +181,13 @@ function EntriesPageContent() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState(() => queryParam || '');
   const [showBackToPayments, setShowBackToPayments] = useState(() => Boolean(dateParam || queryParam));
-  const [lateArrivalPardonTarget, setLateArrivalPardonTarget] = useState<{ staffId: string; staffName: string } | null>(null);
+  // 'late' waives the late fee only; 'all' also waives the no-sign-out charge on the same row.
+  const [lateArrivalPardonTarget, setLateArrivalPardonTarget] = useState<{
+    amount: number;
+    mode: 'late' | 'all';
+    staffId: string;
+    staffName: string;
+  } | null>(null);
   const [lateArrivalPardonReason, setLateArrivalPardonReason] = useState<string>('personal excuse');
   const [pardoningLateArrival, setPardoningLateArrival] = useState(false);
   // Rows another admin changed while this person had unsaved edits on them.
@@ -633,7 +639,7 @@ function EntriesPageContent() {
 
   async function pardonLateArrival() {
     if (!lateArrivalPardonTarget) return;
-    const { staffId, staffName } = lateArrivalPardonTarget;
+    const { mode, staffId, staffName } = lateArrivalPardonTarget;
 
     setPardoningLateArrival(true);
     try {
@@ -653,13 +659,45 @@ function EntriesPageContent() {
         throw new Error(body?.error || 'Failed to pardon late arrival');
       }
 
-      setLateArrivalPardonTarget(null);
-      setMessage(body?.reconciliation?.financialReviewRequired
-        ? {
-            type: 'error',
-            text: `Late arrival permission recorded for ${staffName}, but the amount was not changed because a payment is already allocated to this entry. Review it on Payments.`,
+      // Waive all: also waive the no-sign-out charge for this one row, saved straight away.
+      let signOutWaiverError: string | null = null;
+      if (mode === 'all') {
+        const entry = entriesRef.current.find((row) => row.staffId === staffId);
+        const original = snapshotsRef.current[staffId];
+        if (entry) {
+          const waiverResponse = await fetch('/api/entries', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              date: format(selectedDate, 'yyyy-MM-dd'),
+              entries: [{
+                ...entry,
+                didNotSignOut: false,
+                didNotSignOutChanged: original?.didNotSignOut !== false,
+                noShowSignInWaivedChanged: false,
+                noSignOutWaived: true,
+                noSignOutWaivedChanged: original?.noSignOutWaived !== true,
+                signOutTime: '',
+                signOutTimeChanged: false,
+              }],
+            }),
+          });
+          if (!waiverResponse.ok) {
+            const waiverBody = await waiverResponse.json().catch(() => ({}));
+            signOutWaiverError = waiverBody?.error || 'the no-sign-out waiver could not be saved';
           }
-        : { type: 'success', text: `Late fee waived for ${staffName}.` });
+        }
+      }
+
+      setLateArrivalPardonTarget(null);
+      setMessage(signOutWaiverError
+        ? { type: 'error', text: `Late fee waived for ${staffName}, but ${signOutWaiverError}. Use Waive no sign-out, then Save Entries.` }
+        : body?.reconciliation?.financialReviewRequired
+          ? {
+              type: 'error',
+              text: `Late arrival permission recorded for ${staffName}, but the amount was not changed because a payment is already allocated to this entry. Review it on Payments.`,
+            }
+          : { type: 'success', text: mode === 'all' ? `All charges waived for ${staffName}.` : `Late fee waived for ${staffName}.` });
       await fetchStaffAndEntries();
     } catch (error) {
       console.error('Failed to pardon late arrival:', error);
@@ -934,6 +972,12 @@ function EntriesPageContent() {
                     Boolean(entry.arrivalTime) &&
                     entry.amount > 0 &&
                     entry.reason.includes(LATE_ARRIVAL_PENALTY_REASON);
+                  // Two charges on the row (late + no sign-out): offer one action for both.
+                  const showWaiveAllButton =
+                    showLateArrivalPardonButton &&
+                    entry.didNotSignOut &&
+                    !entry.noSignOutWaived &&
+                    !entry.signOutTime;
                   const isLateArrivalPardoned = entry.amount === 0 && entry.reason.includes(LATE_ARRIVAL_PARDON_REASON_PREFIX);
                   return (
                     <tr key={entry.staffId} className="hover:bg-card/50 transition-colors">
@@ -986,6 +1030,21 @@ function EntriesPageContent() {
                               )}
                             </Button>
                           )}
+                          {showLateArrivalPardonButton && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={hasUnsavedChanges || pardoningLateArrival}
+                              title={hasUnsavedChanges ? 'Save entries first' : undefined}
+                              onClick={() => {
+                                setLateArrivalPardonReason('personal excuse');
+                                setLateArrivalPardonTarget({ amount: entry.amount, mode: 'late', staffId: entry.staffId, staffName: member?.fullName || 'staff member' });
+                              }}
+                            >
+                              Waive late fee
+                            </Button>
+                          )}
                         </div>
                         {!entry.arrivalTime && (entry.reason === NO_SHOW_SIGN_IN_REASON || entry.noShowSignInWaived) && (
                           <p className="mt-1 text-xs text-muted-foreground">
@@ -1033,20 +1092,20 @@ function EntriesPageContent() {
                         {entry.amount > 0 ? (
                           <div className="flex flex-col items-start gap-1">
                             <span className="text-danger">GHC {entry.amount}</span>
-                            {showLateArrivalPardonButton && (
+                            {showWaiveAllButton && (
                               <Button
                                 type="button"
                                 size="sm"
                                 variant="outline"
                                 className="font-sans"
                                 disabled={hasUnsavedChanges || pardoningLateArrival}
-                                title={hasUnsavedChanges ? 'Save entries before pardoning this late arrival' : undefined}
+                                title={hasUnsavedChanges ? 'Save entries first' : 'Waive the late fee and the no sign-out charge'}
                                 onClick={() => {
                                   setLateArrivalPardonReason('personal excuse');
-                                  setLateArrivalPardonTarget({ staffId: entry.staffId, staffName: member?.fullName || 'staff member' });
+                                  setLateArrivalPardonTarget({ amount: entry.amount, mode: 'all', staffId: entry.staffId, staffName: member?.fullName || 'staff member' });
                                 }}
                               >
-                                Waive late fee
+                                Waive all
                               </Button>
                             )}
                           </div>
@@ -1108,7 +1167,7 @@ function EntriesPageContent() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Waive late fee</DialogTitle>
+            <DialogTitle>{lateArrivalPardonTarget?.mode === 'all' ? 'Waive all charges' : 'Waive late fee'}</DialogTitle>
             <DialogDescription>
               {lateArrivalPardonTarget?.staffName} / {formatLongDisplayDate(selectedDateKey)}
             </DialogDescription>
@@ -1128,7 +1187,9 @@ function EntriesPageContent() {
               ))}
             </select>
             <p className="text-xs text-muted-foreground">
-              Late fee only. No sign-out has its own Waive button.
+              {lateArrivalPardonTarget?.mode === 'all'
+                ? `Clears GHC ${lateArrivalPardonTarget.amount}: the late fee and the no sign-out charge.`
+                : 'Late fee only. No sign-out has its own Waive button.'}
             </p>
           </div>
 
@@ -1137,7 +1198,7 @@ function EntriesPageContent() {
               Cancel
             </Button>
             <Button onClick={() => void pardonLateArrival()} disabled={pardoningLateArrival}>
-              {pardoningLateArrival ? 'Waiving…' : 'Waive late fee'}
+              {pardoningLateArrival ? 'Waiving…' : lateArrivalPardonTarget?.mode === 'all' ? 'Waive all' : 'Waive late fee'}
             </Button>
           </DialogFooter>
         </DialogContent>
