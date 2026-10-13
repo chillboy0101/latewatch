@@ -1,5 +1,5 @@
 // db/schema.ts
-import { pgTable, uuid, text, boolean, date, time, decimal, timestamp, jsonb, unique, integer, index } from 'drizzle-orm/pg-core';
+import { bigint, pgTable, uuid, text, boolean, date, time, decimal, timestamp, jsonb, unique, integer, index } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const staff = pgTable('staff', {
@@ -572,6 +572,15 @@ export const rateLimit = pgTable('rate_limit', {
   key: text('key').primaryKey(),
   count: integer('count').notNull().default(0),
   windowStart: timestamp('window_start').notNull().defaultNow(),
+});
+
+// One theme colour per signed-in person (Clerk user id), shared by every device they use.
+export const userThemePreference = pgTable('user_theme_preference', {
+  userId: text('user_id').primaryKey(),
+  accent: text('accent').notNull(),
+  customColor: text('custom_color').notNull(),
+  updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const reminderCronRun = pgTable('reminder_cron_run', {

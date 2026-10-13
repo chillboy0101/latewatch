@@ -101,10 +101,10 @@ test('theme colour syncs to the account, defaulting to blue for first-time users
 
   const route = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'api', 'account', 'theme', 'route.ts'), 'utf8');
   const themeLib = fs.readFileSync(path.join(__dirname, '..', 'src', 'lib', 'theme.ts'), 'utf8');
-  // Stored in Redis (no sign-in provider API calls per change, so no rate limits).
-  assert.match(route, /await redis\.set\(themeKey\(userId\), theme\)/);
-  assert.doesNotMatch(route, /clerkClient|updateUserMetadata/);
-  assert.match(route, /current\.updatedAt > \(theme\.updatedAt \|\| 0\)/);
+  // Stored in the app database with an atomic newest-wins upsert (no sign-in provider API calls).
+  assert.match(route, /onConflictDoUpdate\(/);
+  assert.match(route, /setWhere: sql`\$\{userThemePreference\.updatedAt\} <= excluded\.updated_at`/);
+  assert.doesNotMatch(route, /clerkClient|updateUserMetadata|redis/i);
   assert.match(route, /await ablyPublish\(`latewatch:\$\{themeChannelForUser\(userId\)\}`, 'theme'/);
   // Only the person's own picks are saved; colours applied by sync never trigger a save (no loops).
   assert.match(sync, /subscribeThemeUserChange\(/);

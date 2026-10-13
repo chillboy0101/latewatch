@@ -1,22 +1,22 @@
 import { auth } from '@clerk/nextjs/server';
+import { eq, sql } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/db';
+import { userThemePreference } from '@/db/schema';
 import { ablyPublish } from '@/lib/ably-channel';
-import { getRedis } from '@/lib/redis';
 import { parseThemeSelection, themeChannelForUser, type ThemeSelection } from '@/lib/theme';
 
 export const dynamic = 'force-dynamic';
 
-// One theme colour per person, kept in Redis: fast, and not subject to the sign-in provider's API
-// rate limits. Each save is pushed live to the person's other open devices.
-
-function themeKey(userId: string) {
-  return `theme:${userId}`;
-}
+// One theme colour per person, stored in the app database and pushed live to the person's other
+// open devices on every save. The newest choice always wins.
 
 async function readTheme(userId: string): Promise<ThemeSelection | null> {
-  const redis = getRedis();
-  if (!redis) return null;
-  return parseThemeSelection(await redis.get(themeKey(userId)));
+  const [row] = await db.select()
+    .from(userThemePreference)
+    .where(eq(userThemePreference.userId, userId))
+    .limit(1);
+  return row ? parseThemeSelection({ accent: row.accent, customColor: row.customColor, updatedAt: Number(row.updatedAt) }) : null;
 }
 
 export async function GET() {
@@ -39,11 +39,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const redis = getRedis();
-  if (!redis) {
-    return NextResponse.json({ error: 'Theme sync storage is not configured' }, { status: 503 });
-  }
-
   const body = await request.json().catch(() => null);
   const selection = parseThemeSelection(body);
   if (!selection) {
@@ -57,13 +52,23 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    const current = await readTheme(userId);
-    // Never let an older change (for example a slow request from another device) overwrite a newer one.
-    if (current?.updatedAt && current.updatedAt > (theme.updatedAt || 0)) {
-      return NextResponse.json({ theme: current, stale: true });
-    }
+    // Newest wins in one statement: an older save (e.g. a slow request from another device) is ignored.
+    const saved = await db.insert(userThemePreference)
+      .values({ accent: theme.accent, customColor: theme.customColor, updatedAt: theme.updatedAt!, userId })
+      .onConflictDoUpdate({
+        set: {
+          accent: sql`excluded.accent`,
+          customColor: sql`excluded.custom_color`,
+          updatedAt: sql`excluded.updated_at`,
+        },
+        target: userThemePreference.userId,
+        setWhere: sql`${userThemePreference.updatedAt} <= excluded.updated_at`,
+      })
+      .returning({ userId: userThemePreference.userId });
 
-    await redis.set(themeKey(userId), theme);
+    if (saved.length === 0) {
+      return NextResponse.json({ stale: true, theme: await readTheme(userId) });
+    }
 
     // Awaited: a serverless function can be frozen once the response is sent, which would drop it.
     try {
