@@ -1423,7 +1423,7 @@ function PenaltyHistoryDialog({
 
   return (
     <DrawerNested open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="h-[85dvh]">
+      <DrawerContent className="h-[calc(100dvh-env(safe-area-inset-top)-1rem)] sm:h-[85dvh]">
         <DrawerHeader>
           <DrawerTitle>Penalty history</DrawerTitle>
           <DrawerDescription>
@@ -1816,7 +1816,7 @@ function ReceiptsDialog({
 
   return (
     <DrawerNested open={open} onOpenChange={handleOpenChange}>
-      <DrawerContent className="h-[85dvh]">
+      <DrawerContent className="h-[calc(100dvh-env(safe-area-inset-top)-1rem)] sm:h-[85dvh]">
         {selectedId ? (
           <>
             <DrawerHeader>

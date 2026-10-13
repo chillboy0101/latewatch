@@ -271,3 +271,9 @@ test('one reminders pop-up replaces the top banner and shows at most once a day'
   assert.match(page, /if \(options\?\.refresh && existingSubscription\)/);
   assert.match(route, /return latest\?\.status === 'failed';/);
 });
+
+test('penalty history and receipts sheets fill the screen on phones', () => {
+  const page = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'check-in', 'page.tsx'), 'utf8');
+  const fullHeight = page.match(/<DrawerContent className="h-\[calc\(100dvh-env\(safe-area-inset-top\)-1rem\)\] sm:h-\[85dvh\]">/g) || [];
+  assert.equal(fullHeight.length, 2);
+});
