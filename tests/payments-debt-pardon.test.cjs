@@ -30,7 +30,7 @@ test('debt pardon writes event, ledger and audit atomically and never re-pardons
 test('payments page offers a previewed, confirmed pardon-all action', () => {
   const page = read('src', 'app', 'payments', 'page.tsx');
 
-  assert.match(page, /Pardon all/);
+  assert.match(page, /Pardon debts/);
   assert.match(page, /\/api\/payments\/debt-pardon\?\$\{query\}/);
   assert.match(page, /expectedSnapshotHash: debtPardonPreview\.snapshotHash/);
   assert.match(page, /if \(!debtPardonConfirmed\) \{\s*setDebtPardonConfirmed\(true\);\s*return;/);

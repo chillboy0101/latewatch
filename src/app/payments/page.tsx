@@ -801,7 +801,7 @@ export default function PenaltyPaymentsPage() {
                   onClick={() => openDebtPardonDialog()}
                 >
                   <HandHeart className="h-4 w-4" />
-                  Pardon all
+                  Pardon debts
                 </Button>
               </div>
             </div>

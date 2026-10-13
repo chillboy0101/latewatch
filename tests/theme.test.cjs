@@ -197,3 +197,11 @@ test('check-in status card and location chip follow the theme colour in every st
   assert.match(chip, /border-primary\/30 bg-primary\/10 px-3\.5 text-sm font-semibold text-primary/);
   assert.doesNotMatch(chip.slice(0, chip.indexOf('\n}\n')), /success|warning|danger/);
 });
+
+test('colour wheel tone thumb stays whole at both ends of the track', () => {
+  const wheel = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'colour-wheel.tsx'), 'utf8');
+  assert.match(wheel, /const THUMB_INSET = 16;/);
+  assert.match(wheel, /style=\{\{ left: THUMB_INSET, right: THUMB_INSET \}\}/);
+  assert.match(wheel, /\(clientX - rect\.left - THUMB_INSET\) \/ \(rect\.width - THUMB_INSET \* 2\)/);
+  assert.match(wheel, /relative h-9 cursor-pointer touch-none select-none outline-none \[contain:layout\] /);
+});

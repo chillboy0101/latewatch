@@ -20,6 +20,7 @@ const RING_LIGHTNESS = 50;
 const MIN_TONE = 28;
 const MAX_TONE = 68;
 const KNOB_GAP = 8; // room around the ring so the knob and its shadow are never clipped
+const THUMB_INSET = 16; // the tone thumb's centre stays this far inside each end, so it never overhangs
 const FRAME_BUDGET_MS = 20; // a whole-app recolour slower than this spaces out the next one
 
 export function hslToHex(hue: number, saturation: number, lightness: number) {
@@ -205,7 +206,7 @@ export function ColourWheel({
       state.hue = Math.round(((angle * 180) / Math.PI + 90 + 360) % 360);
       state.turn = unwrapTurn(state.turn, state.hue);
     } else {
-      const fraction = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+      const fraction = Math.min(1, Math.max(0, (clientX - rect.left - THUMB_INSET) / (rect.width - THUMB_INSET * 2)));
       state.tone = Math.round(MIN_TONE + fraction * (MAX_TONE - MIN_TONE));
     }
 
@@ -353,8 +354,8 @@ export function ColourWheel({
         </span>
       </div>
 
-      {/* Tone track: padded so the thumb is never clipped at either end. */}
-      <div className="w-full px-3" style={{ maxWidth: outer + 24 }}>
+      {/* Tone track: the thumb travels inside the track (inset by its radius), so it is always whole. */}
+      <div className="w-full px-1" style={{ maxWidth: outer + 8 }}>
         <div
           ref={trackRef}
           role="slider"
@@ -364,7 +365,7 @@ export function ColourWheel({
           aria-valuenow={committed.tone}
           tabIndex={0}
           data-vaul-no-drag
-          className="relative h-9 cursor-pointer touch-none select-none outline-none [contain:layout_paint] focus-visible:rounded-full focus-visible:ring-2 focus-visible:ring-primary"
+          className="relative h-9 cursor-pointer touch-none select-none outline-none [contain:layout] focus-visible:rounded-full focus-visible:ring-2 focus-visible:ring-primary"
           onKeyDown={(event) => nudge(event, 'tone')}
           onPointerDown={(event) => startDrag('tone', event)}
           onPointerMove={(event) => moveDrag('tone', event)}
@@ -378,16 +379,17 @@ export function ColourWheel({
             className="absolute inset-x-0 top-1/2 h-3 -translate-y-1/2 rounded-full"
             style={{ backgroundImage: toneGradient(committed.hue) }}
           />
-          <span
-            ref={thumbRef}
-            aria-hidden
-            data-keep-transition
-            className={cn(
-              'pointer-events-none absolute top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white shadow-[0_2px_10px_rgba(0,0,0,0.35)]',
-              dragging === 'tone' ? 'scale-110' : 'transition-[left,background-color,transform] duration-300 ease-out',
-            )}
-            style={{ left: `${toneFraction(committed.tone) * 100}%`, backgroundColor: centreColour }}
-          />
+          <span aria-hidden className="pointer-events-none absolute inset-y-0" style={{ left: THUMB_INSET, right: THUMB_INSET }}>
+            <span
+              ref={thumbRef}
+              data-keep-transition
+              className={cn(
+                'absolute top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white shadow-[0_2px_10px_rgba(0,0,0,0.35)]',
+                dragging === 'tone' ? 'scale-110' : 'transition-[left,background-color,transform] duration-300 ease-out',
+              )}
+              style={{ left: `${toneFraction(committed.tone) * 100}%`, backgroundColor: centreColour }}
+            />
+          </span>
         </div>
       </div>
     </div>

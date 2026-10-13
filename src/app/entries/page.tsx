@@ -599,7 +599,7 @@ function EntriesPageContent() {
             type: 'error',
             text: `Late arrival permission recorded for ${staffName}, but the amount was not changed because a payment is already allocated to this entry. Review it on Payments.`,
           }
-        : { type: 'success', text: `Late arrival pardoned for ${staffName}.` });
+        : { type: 'success', text: `Late fee waived for ${staffName}.` });
       await fetchStaffAndEntries();
     } catch (error) {
       console.error('Failed to pardon late arrival:', error);
@@ -902,7 +902,7 @@ function EntriesPageContent() {
                               {entry.noShowSignInWaived ? (
                                 <>Remove waiver</>
                               ) : (
-                                <>Mark as waived</>
+                                <>Waive no sign-in</>
                               )}
                             </Button>
                           )}
@@ -938,7 +938,7 @@ function EntriesPageContent() {
                               {entry.noSignOutWaived ? (
                                 <>Remove waiver</>
                               ) : (
-                                <>Mark as waived</>
+                                <>Waive no sign-out</>
                               )}
                             </Button>
                           )}
@@ -966,7 +966,7 @@ function EntriesPageContent() {
                                   setLateArrivalPardonTarget({ staffId: entry.staffId, staffName: member?.fullName || 'staff member' });
                                 }}
                               >
-                                Pardon late
+                                Waive late fee
                               </Button>
                             )}
                           </div>
@@ -1028,7 +1028,7 @@ function EntriesPageContent() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Pardon Late Arrival</DialogTitle>
+            <DialogTitle>Waive late fee</DialogTitle>
             <DialogDescription>
               {lateArrivalPardonTarget?.staffName} / {formatLongDisplayDate(selectedDateKey)}
             </DialogDescription>
@@ -1048,7 +1048,7 @@ function EntriesPageContent() {
               ))}
             </select>
             <p className="text-xs text-muted-foreground">
-              Records an approved late arrival permission for this day. Any no sign-out penalty still applies.
+              Late fee only. No sign-out has its own Waive button.
             </p>
           </div>
 
@@ -1057,7 +1057,7 @@ function EntriesPageContent() {
               Cancel
             </Button>
             <Button onClick={() => void pardonLateArrival()} disabled={pardoningLateArrival}>
-              {pardoningLateArrival ? 'Pardoning...' : 'Pardon Late Arrival'}
+              {pardoningLateArrival ? 'Waiving…' : 'Waive late fee'}
             </Button>
           </DialogFooter>
         </DialogContent>
