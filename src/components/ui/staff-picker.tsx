@@ -130,7 +130,7 @@ export function StaffPicker({
               className="h-10 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
           </div>
-          <ul ref={listRef} id={listId} role="listbox" aria-label={label} className="max-h-60 overflow-y-auto overscroll-contain py-1">
+          <ul ref={listRef} id={listId} role="listbox" aria-label={label} className="max-h-48 overflow-y-auto overscroll-contain py-1">
             {rows.map((row, index) => (
               <li
                 key={row.id || 'all'}
