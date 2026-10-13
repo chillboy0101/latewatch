@@ -166,7 +166,8 @@ test('one shared leave dialog approves, extends and closes any open leave', () =
   assert.match(dialog, /Approve leave/);
   assert.match(dialog, /Change end date/);
   assert.match(dialog, /Record return/);
-  assert.match(dialog, /<DateField label="Returned on"/);
+  assert.match(dialog, /label="Back at work on"/);
+  assert.match(dialog, /Save end date/);
   assert.doesNotMatch(dialog, /type="date"/);
   // Leave recorded any way (backfill, permission, approved) can be closed or extended.
   assert.match(patchRoute, /ne\(staffLeavePeriod\.source, 'staff_status'\), isNull\(staffLeavePeriod\.returnedOn\)/);

@@ -48,7 +48,7 @@ function leaveTypeLabel(value: string) {
 /**
  * One place to put staff on leave, change when the leave ends, or record their return.
  * Shows only what applies: a new-leave form when the person is not on leave, otherwise their
- * current leave with "Change end date" and "Record return".
+ * current leave with a choice between recording their return and changing the end date.
  */
 export function StaffLeaveDialog({
   initialStaffId,
@@ -70,6 +70,7 @@ export function StaffLeaveDialog({
   const [endDate, setEndDate] = useState(today);
   const [leaveType, setLeaveType] = useState('annual');
   const [returnDate, setReturnDate] = useState(today);
+  const [action, setAction] = useState<'return' | 'end'>('return');
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null);
 
@@ -101,6 +102,7 @@ export function StaffLeaveDialog({
     setEndDate(current?.endDate || key);
     setLeaveType('annual');
     setReturnDate(key);
+    setAction('return');
   }, [staffId, current?.id, current?.endDate]);
 
   async function submit(request: () => Promise<Response>, success: string) {
@@ -158,7 +160,7 @@ export function StaffLeaveDialog({
         <DialogHeader>
           <DialogTitle>Staff leave</DialogTitle>
           <DialogDescription>
-            {!staffName ? 'Select a staff member' : periods === null ? 'Loading…' : current ? 'On leave' : 'Not on leave'}
+            {!staffName ? 'New leave' : periods === null ? 'Loading…' : current ? 'On leave' : 'Not on leave'}
           </DialogDescription>
         </DialogHeader>
 
@@ -172,7 +174,7 @@ export function StaffLeaveDialog({
             </Select>
           </div>
 
-          {staffId && periods !== null && (current ? (
+          {current ? (
             <>
               <div className="rounded-md border border-primary/25 bg-primary/10 px-3 py-2.5 text-sm text-primary sm:col-span-2">
                 <span className="font-semibold">{leaveTypeLabel(current.leaveType)} leave</span>
@@ -181,8 +183,28 @@ export function StaffLeaveDialog({
                 {' · '}
                 {current.endDate ? `ends ${displayDate(current.endDate)}` : 'no end date'}
               </div>
-              <DateField label="End date" value={endDate} onChange={setEndDate} />
-              <DateField label="Returned on" value={returnDate} onChange={setReturnDate} />
+              <div role="tablist" aria-label="Leave action" className="grid grid-cols-2 gap-1 rounded-md border border-border bg-background p-1 sm:col-span-2">
+                {([['return', 'Returned'], ['end', 'Change end date']] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="tab"
+                    aria-selected={action === value}
+                    onClick={() => { setAction(value); setMessage(null); }}
+                    className={cn(
+                      'h-9 rounded text-sm font-medium transition-colors',
+                      action === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground',
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {action === 'return' ? (
+                <DateField className="sm:col-span-2" label="Back at work on" value={returnDate} onChange={setReturnDate} />
+              ) : (
+                <DateField className="sm:col-span-2" label="New end date" value={endDate} onChange={setEndDate} />
+              )}
             </>
           ) : (
             <>
@@ -196,7 +218,7 @@ export function StaffLeaveDialog({
                 </Select>
               </div>
             </>
-          ))}
+          )}
 
           {message && (
             <p className={cn('text-sm font-medium sm:col-span-2', message.error ? 'text-danger' : 'text-primary')}>{message.text}</p>
@@ -205,15 +227,17 @@ export function StaffLeaveDialog({
 
         <DialogFooter>
           {current ? (
-            <>
-              <Button variant="outline" onClick={changeEndDate} disabled={submitting || !endDate || endDate === current.endDate}>
-                Change end date
-              </Button>
+            action === 'return' ? (
               <Button onClick={recordReturn} disabled={submitting || !returnDate}>
                 {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Record return
               </Button>
-            </>
+            ) : (
+              <Button onClick={changeEndDate} disabled={submitting || !endDate || endDate === current.endDate}>
+                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save end date
+              </Button>
+            )
           ) : (
             <Button onClick={approveLeave} disabled={submitting || !staffId || periods === null}>
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
