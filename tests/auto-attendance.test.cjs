@@ -74,3 +74,13 @@ test('excused absence lets staff check in without a penalty', () => {
   assert.match(route, /const penalty = hasAbsencePermission\s*\?\s*\{\s*amount: 0,/);
   assert.match(route, /const status = hasAbsencePermission \? 'excused'/);
 });
+
+test('admin-entered sign-outs are kept, including 17:00', () => {
+  const entries = fs.readFileSync(path.join(__dirname, '../src/app/api/entries/route.ts'), 'utf8');
+  const sync = fs.readFileSync(path.join(__dirname, '../src/lib/attendance-lateness-sync.ts'), 'utf8');
+
+  assert.match(entries, /const MANUAL_SIGN_OUT_MARKER = 'manual_entries';/);
+  assert.doesNotMatch(entries, /signOutNetworkIp[^\n]*'manual_admin'/);
+  // Only legacy auto-filled placeholders are cleared.
+  assert.match(sync, /input\.signOutNetworkIp === 'manual_admin'/);
+});

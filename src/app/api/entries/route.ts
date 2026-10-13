@@ -24,6 +24,8 @@ import {
 } from '@/lib/penalty-calculator';
 import { enforceRole } from '@/lib/auth/roles';
 
+const MANUAL_SIGN_OUT_MARKER = 'manual_entries';
+
 export const dynamic = 'force-dynamic';
 
 async function getAttendanceRowsForEntries(start: string, end: string) {
@@ -601,7 +603,9 @@ export async function POST(request: NextRequest) {
           if (Object.prototype.hasOwnProperty.call(correction, 'signOutTime')) {
             attendanceUpdateValues.signOutAt = correction.signOutAt;
             attendanceUpdateValues.signOutTime = correction.signOutTime;
-            attendanceUpdateValues.signOutNetworkIp = correction.signOutTime ? 'manual_admin' : null;
+            // 'manual_entries' marks a sign-out an admin chose; legacy 'manual_admin' 17:00 values were
+            // auto-filled placeholders that sync and check-in still clear.
+            attendanceUpdateValues.signOutNetworkIp = correction.signOutTime ? MANUAL_SIGN_OUT_MARKER : null;
             attendanceUpdateValues.signOutUserAgent = correction.signOutTime
               ? request.headers.get('user-agent') || 'manual_entries'
               : null;
@@ -661,7 +665,7 @@ export async function POST(request: NextRequest) {
           ...(submittedSignOutTime ? {
             signOutAt: buildManualSignOutAt(date, submittedSignOutTime),
             signOutTime: submittedSignOutTime,
-            signOutNetworkIp: 'manual_admin',
+            signOutNetworkIp: MANUAL_SIGN_OUT_MARKER,
             signOutUserAgent: request.headers.get('user-agent') || 'manual_entries',
           } : {}),
           ...(shouldWaiveNoSignOut ? {
