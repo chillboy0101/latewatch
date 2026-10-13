@@ -251,11 +251,11 @@ function locationValue(status: CheckInStatus | null, liveLocation: LiveLocation)
   );
 }
 
+// Normal location states follow the theme colour; only problems keep their warning colours.
 function locationTone(liveLocation: LiveLocation) {
-  if (liveLocation.state === 'inside') return 'success';
   if (liveLocation.state === 'outside' || liveLocation.state === 'error') return 'danger';
   if (liveLocation.state === 'weak') return 'warning';
-  return 'neutral';
+  return 'theme';
 }
 
 function attendanceButtonLabel(status: CheckInStatus | null, submitting: boolean, liveLocation: LiveLocation) {
@@ -2135,10 +2135,9 @@ function LocationStatusChip({
   return (
     <div className={cn(
       'inline-flex h-9 min-w-0 items-center gap-2 rounded-full border px-3.5 text-sm font-semibold',
-      tone === 'success' && 'border-success/25 bg-success/10 text-success',
+      tone === 'theme' && 'border-primary/30 bg-primary/10 text-primary',
       tone === 'warning' && 'border-warning/25 bg-warning/10 text-warning',
       tone === 'danger' && 'border-danger/25 bg-danger/10 text-danger',
-      tone === 'neutral' && 'border-border/80 bg-background/65 text-foreground',
     )}>
       <span className="shrink-0">{locationIcon(liveLocation)}</span>
       <span className="flex min-w-0 items-center truncate">{locationValue(status, liveLocation)}</span>

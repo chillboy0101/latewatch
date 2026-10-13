@@ -187,3 +187,10 @@ test('theme changes snap instantly and are shared live while dragging', () => {
   // First save goes out immediately, then at most one per interval.
   assert.match(sync, /const wait = Math\.max\(0, SAVE_INTERVAL_MS - \(Date\.now\(\) - lastSentAt\)\);/);
 });
+
+test('check-in location chip follows the theme colour for normal states', () => {
+  const page = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'check-in', 'page.tsx'), 'utf8');
+  assert.match(page, /tone === 'theme' && 'border-primary\/30 bg-primary\/10 text-primary'/);
+  assert.doesNotMatch(page, /tone === 'success' && 'border-success\/25 bg-success\/10 text-success'/);
+  assert.match(page, /tone === 'danger' && 'border-danger\/25 bg-danger\/10 text-danger'/);
+});
