@@ -194,16 +194,14 @@ export async function PUT(
       const released = await Promise.all([...new Set([previousEmail, nextEmail].filter(Boolean))].map((staffEmail) => (
         unlinkStaffEmailIdentity({ email: staffEmail, releaseSeat: true, staffId: id })
       )));
-      if (!before.archived) {
+      // Record every seat actually freed (also when re-saving someone archived before this existed).
+      if (released.some((result) => 'seatReleased' in result && result.seatReleased)) {
         await writeAuditEvent({
           entityType: 'staff',
           entityId: id,
           action: 'UPDATE',
           before: null,
-          after: {
-            fullName: updated[0].fullName,
-            seat: released.some((result) => 'seatReleased' in result && result.seatReleased) ? 'released' : 'not_member',
-          },
+          after: { fullName: updated[0].fullName, seat: 'released' },
           reason: 'clerk-organization-seat-released',
         });
       }
