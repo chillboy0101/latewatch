@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, isNotNull, or } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { attendanceAttempt, attendancePermission, attendanceRecord, deviceTransferRequest, staff, staffDevice } from '@/db/schema';
+import { attendanceAttempt, attendancePermission, attendanceRecord, deviceTransferRequest, latenessEntry, staff, staffDevice } from '@/db/schema';
 import { getAccraClock, getActiveOfficeNetwork, getOfficeLocationsForAttendance, isOfficeIp, resolveClientIpInfo } from '@/lib/attendance';
 import { syncLatenessEntriesFromAttendanceForDate } from '@/lib/attendance-lateness-sync';
 import { isGeneralPardonReason, isPermissionWindowActive, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
       startDate: date,
     });
 
-    const [attemptRows, deviceRows, network, locationRows, transferRows] = await Promise.all([
+    const [attemptRows, deviceRows, network, locationRows, transferRows, chargeRows] = await Promise.all([
       optionalAttendanceQuery('attendance-attempts', [], () => db.select()
         .from(attendanceAttempt)
         .where(eq(attendanceAttempt.date, date))
@@ -137,7 +137,12 @@ export async function GET(request: NextRequest) {
         .where(eq(deviceTransferRequest.status, 'pending'))
         .orderBy(desc(deviceTransferRequest.requestedAt))
         .limit(20)),
+      // The day's charges, including a no sign-in, which has no attendance record.
+      requiredAttendanceQuery('day-charges', () => db.select({ amount: latenessEntry.computedAmount, staffId: latenessEntry.staffId })
+        .from(latenessEntry)
+        .where(eq(latenessEntry.date, date))),
     ]);
+    const chargeByStaffId = new Map(chargeRows.map((row) => [row.staffId, row.amount]));
 
     const location = resolveOfficeLocationForDate(locationRows, date);
     const attendanceByStaffId = new Map(attendanceRows.map((row) => [row.staffId, row]));
@@ -235,6 +240,7 @@ export async function GET(request: NextRequest) {
               registered: false,
               registeredAt: null,
             },
+        penaltyAmount: chargeByStaffId.get(member.id) ?? null,
         permission,
         status: primaryAttendanceStatus(statuses),
         statuses,

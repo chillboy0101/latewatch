@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   AlertCircle,
@@ -139,6 +139,8 @@ export default function LocationPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  // Radius and accuracy being typed: live updates (every sign-in) must not reset them.
+  const limitsEditedRef = useRef(false);
 
   const resolvedLocation = data?.location || null;
   const defaultLocation = data?.defaultLocation || null;
@@ -163,7 +165,7 @@ export default function LocationPage() {
       setData(body as OfficeLocationResponse);
 
       const incomingDefault = body.defaultLocation || null;
-      if (incomingDefault) {
+      if (incomingDefault && !limitsEditedRef.current) {
         setRadiusMeters(String(incomingDefault.radiusMeters || 80));
         setMaxAccuracyMeters(String(incomingDefault.maxAccuracyMeters || 75));
       }
@@ -174,7 +176,7 @@ export default function LocationPage() {
     } catch (err) {
       console.error('Failed to load office location:', err);
       setError(err instanceof Error ? err.message : 'Could not load office location.');
-      setData(null);
+      // Keep what was already on screen; only a first load with nothing to show stays empty.
     } finally {
       setLoading(false);
     }
@@ -271,6 +273,8 @@ export default function LocationPage() {
       const body = await response.json().catch(() => ({})) as { error?: string };
       if (!response.ok) throw new Error(body.error || `Location update failed (${response.status})`);
 
+      // Saved: the stored values are the ones to show from now on.
+      limitsEditedRef.current = false;
       await fetchLocation();
       setDraft(null);
       setSuccess(mode === 'scheduled' ? 'Program location saved.' : 'Office location saved.');
@@ -383,7 +387,10 @@ export default function LocationPage() {
                         className="h-11 pr-12 font-mono"
                         inputMode="numeric"
                         value={radiusMeters}
-                        onChange={(event) => setRadiusMeters(event.target.value.replace(/\D/g, '').slice(0, 4))}
+                        onChange={(event) => {
+                          limitsEditedRef.current = true;
+                          setRadiusMeters(event.target.value.replace(/\D/g, '').slice(0, 4));
+                        }}
                         placeholder="100"
                       />
                       <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-muted-foreground">m</span>
@@ -394,7 +401,10 @@ export default function LocationPage() {
                     <select
                       className="flex h-11 w-full rounded-md border border-border bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                       value={maxAccuracyMeters}
-                      onChange={(event) => setMaxAccuracyMeters(event.target.value)}
+                      onChange={(event) => {
+                        limitsEditedRef.current = true;
+                        setMaxAccuracyMeters(event.target.value);
+                      }}
                     >
                       <option value="50">Strict</option>
                       <option value="75">Standard</option>

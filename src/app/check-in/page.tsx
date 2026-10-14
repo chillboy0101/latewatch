@@ -172,7 +172,8 @@ const CHECK_IN_FEEDBACK_DISMISS_MS = 4_000;
 const LOCAL_CATCH_UP_REMINDER_STORAGE_PREFIX = 'latewatch.local-reminder.v1';
 const DEVICE_TRANSFER_REVIEW_STORAGE_PREFIX = 'latewatch.device-transfer-review.v1';
 const SIGN_IN_REMINDER_START_MINUTE = 8 * 60 + 15;
-const SIGN_IN_REMINDER_END_MINUTE = 17 * 60;
+// Sign-in closes at 4:30 PM, so the sign-in nudge stops there too.
+const SIGN_IN_REMINDER_END_MINUTE = 16 * 60 + 30;
 const SIGN_OUT_REMINDER_START_MINUTE = 16 * 60 + 30;
 const SIGN_OUT_REMINDER_END_MINUTE = 24 * 60;
 
@@ -212,7 +213,8 @@ function statusCopy(status: CheckInStatus | null) {
   if (hasLateCheckInPenalty(status) && hasNoSignOutPenalty(status)) return 'Late + no sign-out recorded';
   if (hasNoSignOutPenalty(status)) return 'No sign-out recorded';
   if (hasLateCheckInPenalty(status)) return 'Late check-in recorded';
-  if (status.attendance?.status === 'present') return 'Checked in';
+  // On time, or late with an approved permission (stored as "excused").
+  if (status.attendance?.checkInTime) return 'Checked in';
   if (status.isAfterWorkdayEnd) return 'Check-ins closed';
   return 'Ready to check in';
 }
@@ -785,6 +787,8 @@ export default function CheckInPage() {
 
   const dismissReceiptNotification = useCallback(async (id: string) => {
     setReceiptNotifications((current) => current.filter((notification) => notification.id !== id));
+    // Seen now: the receipts list drops its "New" badge straight away.
+    setReceiptHistory((current) => current.map((receipt) => (receipt.id === id ? { ...receipt, read: true } : receipt)));
 
     try {
       await fetch('/api/notifications', {
@@ -1423,7 +1427,13 @@ export default function CheckInPage() {
                   today={status?.date || null}
                   onCustomize={() => { setMenuOpen(true); setRemindersDialogOpen(true); }}
                   onTurnOn={(refresh) => {
-                    void updatePushReminderSettings({ signInEnabled: true, signOutEnabled: true }, 'all', { refresh });
+                    // A phone that stopped working gets back the reminders the person had chosen;
+                    // reminders that were off are all turned on.
+                    const chosen = pushReminderStatus?.subscription;
+                    const keepChoice = refresh && Boolean(chosen?.signInEnabled || chosen?.signOutEnabled);
+                    void updatePushReminderSettings(keepChoice
+                      ? { signInEnabled: chosen?.signInEnabled === true, signOutEnabled: chosen?.signOutEnabled === true }
+                      : { signInEnabled: true, signOutEnabled: true }, 'all', { refresh });
                   }}
                 />
 

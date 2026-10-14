@@ -33,8 +33,9 @@ interface DashboardStats {
   weekTotal: number;
   weekEntryCount: number;
   staffCount: number;
-  prevWeekTotal: number;
-  prevWeekEntryCount: number;
+  /** Finished days this week against the same days last week; null when there's nothing to compare. */
+  penaltyChangePercent: number | null;
+  entryChangePercent: number | null;
   weekDays: WeekDayData[];
   weekEnd?: string;
   weekStart?: string;
@@ -133,12 +134,8 @@ export default function DashboardPage() {
     ? `${formatShortDisplayDate(stats.weekStart)} - ${formatShortDisplayDate(stats.weekEnd)}`
     : '';
 
-  const penaltyChange = stats && stats.prevWeekTotal > 0
-    ? (((stats.weekTotal - stats.prevWeekTotal) / stats.prevWeekTotal) * 100).toFixed(0)
-    : null;
-  const entryChange = stats && stats.prevWeekEntryCount > 0
-    ? (((stats.weekEntryCount - stats.prevWeekEntryCount) / stats.prevWeekEntryCount) * 100).toFixed(0)
-    : null;
+  const penaltyChange = stats?.penaltyChangePercent ?? null;
+  const entryChange = stats?.entryChangePercent ?? null;
   const recentActivity = stats?.recentActivity.slice(0, 10) || [];
 
   return (
@@ -276,7 +273,7 @@ function StatCard({
 }: {
   title: string;
   value: string;
-  change: string | null;
+  change: number | null;
   icon?: 'penalty' | 'entries' | 'users';
   fallback: string | null;
 }) {
@@ -292,9 +289,9 @@ function StatCard({
           <div className="mb-1 text-2xl font-bold font-mono">{value}</div>
           <div className="text-sm text-muted-foreground">{title}</div>
           {change !== null ? (
-            <div className={`mt-2 text-xs font-medium ${Number(change) >= 0 ? 'text-danger' : 'text-success'}`}>
-              <TrendingUp className={`inline h-3 w-3 ${Number(change) < 0 ? 'rotate-180' : ''}`} />{' '}
-              {Number(change) >= 0 ? '+' : ''}{change}% vs last week
+            <div className={`mt-2 text-xs font-medium ${change >= 0 ? 'text-danger' : 'text-success'}`}>
+              <TrendingUp className={`inline h-3 w-3 ${change < 0 ? 'rotate-180' : ''}`} />{' '}
+              {change >= 0 ? '+' : ''}{change}% vs last week
             </div>
           ) : fallback ? (
             <div className="mt-2 text-xs font-medium text-muted-foreground">{fallback}</div>

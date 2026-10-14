@@ -319,7 +319,10 @@ function EntriesPageContent() {
       setLoadError(null);
     } catch (error) {
       console.error('Failed to fetch data:', error);
-      setLoadError(error instanceof Error ? error.message : 'Failed to load entries');
+      const text = error instanceof Error ? error.message : 'Failed to load entries';
+      // A failed background refresh keeps the grid (and any typing) on screen.
+      if (isRefresh) setMessage({ type: 'error', text: `${text.replace(/\.$/, '')}. Showing the last loaded entries.` });
+      else setLoadError(text);
     } finally {
       setLoading(false);
     }

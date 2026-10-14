@@ -3,12 +3,14 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { and, count, desc, eq, gte, inArray, ne } from 'drizzle-orm';
 import { format, subDays } from 'date-fns';
 import { db } from '@/db';
-import { attendancePermission, attendanceRecord, auditEvent, latenessEntry, notificationRead, staff, staffDevice, workCalendar } from '@/db/schema';
+import { attendancePermission, attendanceRecord, auditEvent, latenessEntry, latenessPayment, notificationRead, staff, staffDevice, workCalendar } from '@/db/schema';
 import { getAccraClock } from '@/lib/attendance';
 import { getPermissionWindowBounds, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
 import { getAuditActionLabel, getAuditEntityLabel, getAuditOperation } from '@/lib/audit-taxonomy';
 import { tryWriteAuditEvent } from '@/lib/audit';
 import { enforceRole } from '@/lib/auth/roles';
+import { getSignedInStaff } from '@/lib/auth/signed-in-staff';
+import { getLatenessPaymentReceiptNotificationId } from '@/lib/lateness-payment-receipt-notifications';
 import { formatDisplayDate, isIsoDateKey } from '@/lib/date-format';
 import { publishRealtime } from '@/lib/realtime';
 import { NO_SIGN_OUT_ALERT_LABEL, shouldAlertNoSignOut } from '@/lib/work-hours';
@@ -1118,13 +1120,23 @@ export async function GET(request: NextRequest) {
   }
 }
 
+const RECEIPT_NOTIFICATION_ID = /^receipt:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Staff have no admin feed; the only notifications they can mark are their own payment receipts.
+async function ownReceiptNotificationIds(ids: string[]) {
+  const paymentIds = ids.filter((id) => RECEIPT_NOTIFICATION_ID.test(id)).map((id) => id.slice('receipt:'.length));
+  if (paymentIds.length === 0) return [];
+  const clerkUser = await currentUser();
+  const member = clerkUser ? await getSignedInStaff(clerkUser) : null;
+  if (!member) return [];
+  const own = await db.select({ id: latenessPayment.id })
+    .from(latenessPayment)
+    .where(and(inArray(latenessPayment.id, paymentIds), eq(latenessPayment.staffId, member.id)));
+  return own.map((payment) => getLatenessPaymentReceiptNotificationId(payment.id));
+}
+
 export async function POST(request: NextRequest) {
   try {
-    // The feed is for admins only, so only admins can mark it read or dismiss from it.
-    if (await enforceRole(['admin'])) {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
-    }
-
     const user = await getNotificationUser({ resolveEmail: true });
     if (!user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -1132,7 +1144,9 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const action = typeof body?.action === 'string' ? body.action : 'mark_read';
-    const ids = normalizeIds(body?.ids ?? body?.readIds);
+    const requestedIds = normalizeIds(body?.ids ?? body?.readIds);
+    const isAdmin = (await enforceRole(['admin'])) === null;
+    const ids = isAdmin ? requestedIds : await ownReceiptNotificationIds(requestedIds);
 
     if (ids.length === 0) {
       return NextResponse.json({ success: true, count: 0 });

@@ -76,11 +76,14 @@ test('realtime tokens can only listen; staff only on their own channels', () => 
   assert.doesNotMatch(route, /'publish'/);
 });
 
-test('only admins can mark notifications, and ids are capped', () => {
+test('staff can only mark their own payment receipts; ids are capped', () => {
   const route = read('src', 'app', 'api', 'notifications', 'route.ts');
   const post = route.slice(route.indexOf('export async function POST'));
-  assert.match(post, /if \(await enforceRole\(\['admin'\]\)\) \{\s*return NextResponse\.json\(\{ success: false, error: 'Forbidden' \}, \{ status: 403 \}\);/);
+  assert.match(post, /const ids = isAdmin \? requestedIds : await ownReceiptNotificationIds\(requestedIds\);/);
+  assert.match(route, /\.where\(and\(inArray\(latenessPayment\.id, paymentIds\), eq\(latenessPayment\.staffId, member\.id\)\)\);/);
   assert.match(route, /id\.length <= MAX_NOTIFICATION_ID_LENGTH/);
+  // The check-in page dismisses receipts through this endpoint, so it must keep working for staff.
+  assert.match(read('src', 'app', 'check-in', 'page.tsx'), /body: JSON\.stringify\(\{ action: 'dismiss', ids: \[id\] \}\)/);
 });
 
 test('reminders are only posted to real push services', () => {

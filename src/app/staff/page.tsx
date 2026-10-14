@@ -60,6 +60,8 @@ export default function StaffPage() {
   const [identityActioningId, setIdentityActioningId] = useState<string | null>(null);
   const [identityNotice, setIdentityNotice] = useState<{ detail: string; title: string; tone: StaffIdentitySyncTone } | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [loadError, setLoadError] = useState('');
   const [submitMessage, setSubmitMessage] = useState('');
   const [archiveTarget, setArchiveTarget] = useState<StaffMember | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<StaffMember | null>(null);
@@ -94,12 +96,15 @@ export default function StaffPage() {
   const fetchStaff = useCallback(async () => {
     try {
       const response = await fetch('/api/staff', { cache: 'no-store' });
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || `Staff could not be loaded (${response.status})`);
       const staffList = Array.isArray(data) ? data : (data?.data ? data.data : []);
       setStaff(staffList);
+      setLoadError('');
     } catch (error) {
+      // Keep the list already on screen: a failed refresh is not an empty staff list.
       console.error('Failed to fetch staff:', error);
-      setStaff([]);
+      setLoadError(error instanceof Error ? error.message : 'Staff could not be loaded');
     } finally {
       setLoading(false);
     }
@@ -275,6 +280,7 @@ export default function StaffPage() {
   const handleEdit = async () => {
     if (!editingId || !editName.trim()) return;
     setSavingEdit(true);
+    setEditError('');
     try {
       const response = await fetch(`/api/staff/${editingId}`, {
         method: 'PUT',
@@ -292,12 +298,15 @@ export default function StaffPage() {
         }),
       });
 
-      if (response.ok) {
-        await fetchStaff();
-        setEditingId(null);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Changes could not be saved (${response.status})`);
       }
+      await fetchStaff();
+      setEditingId(null);
     } catch (error) {
       console.error('Failed to update staff:', error);
+      setEditError(error instanceof Error ? error.message : 'Changes could not be saved');
     } finally {
       setSavingEdit(false);
     }
@@ -350,6 +359,7 @@ export default function StaffPage() {
   };
 
   const openEdit = (member: StaffMember) => {
+    setEditError('');
     setEditingId(member.id);
     setEditName(member.fullName);
     setEditEmail(member.email || '');
@@ -452,6 +462,11 @@ export default function StaffPage() {
           staffOptions={staff.filter((member) => !member.archived).map((member) => ({ fullName: member.fullName, id: member.id }))}
           onChanged={fetchStaff}
         />
+        {loadError && (
+          <div role="alert" className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+            {loadError}
+          </div>
+        )}
         {/* Stats Bar */}
         <div className="grid auto-cols-[minmax(10.5rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-7 xl:overflow-visible xl:pb-0">
           {staffFilterCards.map((card) => {
@@ -786,7 +801,8 @@ export default function StaffPage() {
                             <span className={`inline-flex w-fit items-center rounded-full px-2 py-1 text-xs font-medium ${getStaffStatusClass(member)}`}>
                               {getStaffStatusLabel(member)}
                             </span>
-                            <div className="flex flex-wrap gap-2 sm:justify-end">
+                            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                              {editError && <span role="alert" className="text-sm text-danger">{editError}</span>}
                               <Button size="sm" onClick={handleEdit} className="h-9 gap-2" disabled={savingEdit}>
                                 {savingEdit && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                                 Save

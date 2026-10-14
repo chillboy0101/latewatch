@@ -65,6 +65,8 @@ export function useReceiptDetail(paymentId: string) {
     let cancelled = false;
 
     async function loadReceipt() {
+      // Drop the previous receipt first, so nothing (e.g. Print) can act on it while this one loads.
+      setReceipt(null);
       setLoading(true);
       setError(null);
 
@@ -161,11 +163,11 @@ export function ReceiptDetailView({
       <section className="p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Allocated penalty days</h2>
         <div className="mt-3 overflow-x-auto rounded-md border border-border">
-          <table className="w-full min-w-[28rem] text-sm">
+          <table className="w-full text-sm">
             <thead className="bg-muted/30 text-left text-xs uppercase text-muted-foreground">
               <tr>
-                <th className="px-3 py-2 font-medium">Day / Date</th>
-                <th className="px-3 py-2 font-medium">Reason</th>
+                <th className="whitespace-nowrap px-3 py-2 font-medium">Day / Date</th>
+                <th className="hidden px-3 py-2 font-medium sm:table-cell">Reason</th>
                 <th className="px-3 py-2 text-right font-medium">Penalty</th>
                 <th className="px-3 py-2 text-right font-medium">Paid</th>
               </tr>
@@ -176,10 +178,12 @@ export function ReceiptDetailView({
                   <td className="px-3 py-2">
                     <div className="font-medium">{formatLongDisplayDate(allocation.date)}</div>
                     <div className="text-xs text-muted-foreground">{allocation.arrivalTime?.slice(0, 5) || '-'}</div>
+                    {/* On a phone the reason sits under the date, so the amounts fit on screen. */}
+                    <div className="text-xs text-muted-foreground sm:hidden">{allocation.reason || 'Late arrival'}</div>
                   </td>
-                  <td className="px-3 py-2">{allocation.reason || 'Late arrival'}</td>
-                  <td className="px-3 py-2 text-right font-mono">{ghc(allocation.penaltyAmount)}</td>
-                  <td className="px-3 py-2 text-right font-mono font-semibold">{ghc(allocation.allocatedAmount)}</td>
+                  <td className="hidden px-3 py-2 sm:table-cell">{allocation.reason || 'Late arrival'}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right font-mono">{ghc(allocation.penaltyAmount)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right font-mono font-semibold">{ghc(allocation.allocatedAmount)}</td>
                 </tr>
               ))}
               {receipt.allocations.length === 0 && (

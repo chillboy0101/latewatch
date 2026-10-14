@@ -219,8 +219,8 @@ export function buildFixtures(now = new Date()) {
     '/api/calendar': [],
     '/api/dashboard': {
       missedReminders: [],
-      prevWeekEntryCount: 18,
-      prevWeekTotal: 74,
+      entryChangePercent: -11,
+      penaltyChangePercent: 8,
       recentActivity: [],
       staffCount: staff.length,
       weekDays: [

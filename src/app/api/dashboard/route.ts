@@ -24,6 +24,11 @@ export async function GET() {
     const today = getAccraDateKey();
     const { weekEnd: weekEndStr, weekStart: weekStartStr } = getWeekBoundsForDate(today);
     const { weekEnd: prevWeekEndStr, weekStart: prevWeekStartStr } = getWeekBoundsForDate(shiftDateKey(weekStartStr, -7));
+    // Like for like: this week's finished days against the same days last week. On a Monday
+    // nothing is finished yet, so there is no comparison (rather than a misleading -100%).
+    const comparedThrough = shiftDateKey(today, -1);
+    const comparable = comparedThrough >= weekStartStr;
+    const prevComparedThrough = [prevWeekEndStr, shiftDateKey(comparedThrough, -7)].sort()[0];
 
     // Fetch current week entries - use db.select with proper where clause
     const weekEntriesResult = await db.select({
@@ -46,7 +51,7 @@ export async function GET() {
       computedAmount: latenessEntry.computedAmount,
     })
     .from(latenessEntry)
-    .where(and(gte(latenessEntry.date, prevWeekStartStr), lte(latenessEntry.date, prevWeekEndStr), gt(latenessEntry.computedAmount, '0')));
+    .where(and(gte(latenessEntry.date, prevWeekStartStr), lte(latenessEntry.date, prevComparedThrough), gt(latenessEntry.computedAmount, '0')));
 
     // Fetch active staff count
     const staffCountResult = await db.select({ count: count() })
@@ -60,6 +65,15 @@ export async function GET() {
     // Calculate totals
     const weekTotal = weekEntriesResult.reduce((sum, e) => sum + parseFloat(e.computedAmount || '0'), 0);
     const prevWeekTotal = prevWeekEntriesResult.reduce((sum, e) => sum + parseFloat(e.computedAmount || '0'), 0);
+    const finishedDayEntries = weekEntriesResult.filter((entry) => String(entry.date).slice(0, 10) <= comparedThrough);
+    const percentChange = (current: number, previous: number) => (
+      comparable && previous > 0 ? Math.round(((current - previous) / previous) * 100) : null
+    );
+    const penaltyChangePercent = percentChange(
+      finishedDayEntries.reduce((sum, e) => sum + parseFloat(e.computedAmount || '0'), 0),
+      prevWeekTotal,
+    );
+    const entryChangePercent = percentChange(finishedDayEntries.length, prevWeekEntriesResult.length);
 
     // One row per workday: holiday, still to come, penalties charged, or none (yet, if today).
     const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
@@ -115,8 +129,8 @@ export async function GET() {
       weekTotal,
       weekEntryCount: weekEntriesResult.length,
       staffCount,
-      prevWeekTotal,
-      prevWeekEntryCount: prevWeekEntriesResult.length,
+      entryChangePercent,
+      penaltyChangePercent,
       weekDays,
       weekEnd: weekEndStr,
       weekStart: weekStartStr,

@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CalendarDays, CheckCircle2, ChevronDown, Clock, FileText, Loader2, Pencil, Plus, Printer, RotateCcw, Search, ShieldCheck, Smartphone, Trash2, XCircle } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
@@ -84,6 +84,8 @@ interface AttendanceRow {
     registered: boolean;
     registeredAt: string | null;
   };
+  /** The day's charge (also a no sign-in, which has no attendance record). */
+  penaltyAmount?: string | null;
   permission: AttendancePermission | null;
   status: AttendanceStatus;
   statuses?: AttendanceStatus[];
@@ -240,14 +242,17 @@ export default function AttendancePage() {
   const [savingGeneralPardon, setSavingGeneralPardon] = useState(false);
   const [resettingDeviceStaffId, setResettingDeviceStaffId] = useState<string | null>(null);
   const [reviewingTransferId, setReviewingTransferId] = useState<string | null>(null);
-  // Approving a transfer and resetting a device sign people out, so both ask first.
+  // Approving a transfer and resetting a device sign people out, and removing a permission brings
+  // its charges back, so all three ask first.
   const [confirmAction, setConfirmAction] = useState<
     | { kind: 'approve_transfer'; staffName: string; transferId: string }
+    | { kind: 'remove_permission'; permissionId: string; staffName: string }
     | { kind: 'reset_device'; staffId: string; staffName: string }
     | null
   >(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const loadedDateRef = useRef<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
   const [leaveManagerStaffId, setLeaveManagerStaffId] = useState('');
@@ -270,17 +275,22 @@ export default function AttendancePage() {
   }, [attendanceDate]);
 
   const fetchAttendance = useCallback(async () => {
-    setLoading(true);
+    // Same date again (a live update or a refresh after a change): keep the table and counters on
+    // screen, and keep the last good figures if the refresh fails. A new date shows the loader.
+    const quiet = loadedDateRef.current === attendanceDate;
+    if (!quiet) setLoading(true);
     setError(null);
 
     try {
       const response = await fetch(`/api/attendance?date=${attendanceDate}`, { cache: 'no-store' });
       if (!response.ok) throw new Error(`Attendance request failed (${response.status})`);
       setData(await response.json());
+      loadedDateRef.current = attendanceDate;
     } catch (err) {
       console.error('Failed to load attendance:', err);
-      setError(err instanceof Error ? err.message : 'Could not load attendance');
-      setData(null);
+      const text = err instanceof Error ? err.message : 'Could not load attendance';
+      setError(quiet ? `${text.replace(/\.$/, '')}. Showing the last loaded figures.` : text);
+      if (!quiet) setData(null);
     } finally {
       setLoading(false);
     }
@@ -317,6 +327,15 @@ export default function AttendancePage() {
   useEffect(() => {
     let cleanups: Array<() => void> = [];
     let mounted = true;
+    // One sign-in sends updates on both channels: refresh once for the burst.
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        void fetchAttendance();
+      }, 400);
+    };
 
     (async () => {
       const unsubscribers = await Promise.all(
@@ -324,7 +343,7 @@ export default function AttendancePage() {
           subscribeRealtimeChannel({
             channel,
             events: ['invalidate'],
-            onEvent: fetchAttendance,
+            onEvent: scheduleRefresh,
           }),
         ),
       );
@@ -338,6 +357,7 @@ export default function AttendancePage() {
 
     return () => {
       mounted = false;
+      if (refreshTimer) clearTimeout(refreshTimer);
       cleanups.forEach((unsubscribe) => unsubscribe());
     };
   }, [fetchAttendance]);
@@ -790,7 +810,11 @@ export default function AttendancePage() {
                       className="h-8 gap-2 border-danger/40 text-danger hover:bg-danger/10"
                       size="sm"
                       variant="outline"
-                      onClick={() => deletePermission(permission.id)}
+                      onClick={() => setConfirmAction({
+                        kind: 'remove_permission',
+                        permissionId: permission.id,
+                        staffName: permission.staffName || staffNameById.get(permission.staffId) || 'This staff member',
+                      })}
                       disabled={deletingPermissionId === permission.id}
                     >
                       {deletingPermissionId === permission.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
@@ -1097,12 +1121,16 @@ export default function AttendancePage() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
-                {confirmAction?.kind === 'approve_transfer' ? 'Approve device transfer' : 'Reset attendance device'}
+                {confirmAction?.kind === 'approve_transfer'
+                  ? 'Approve device transfer'
+                  : confirmAction?.kind === 'remove_permission' ? 'Remove permission' : 'Reset attendance device'}
               </DialogTitle>
               <DialogDescription>
                 {confirmAction?.kind === 'approve_transfer'
                   ? `${confirmAction.staffName}'s new phone becomes their attendance device. Their old phone is signed out and its reminders are switched off. Approve only if they are here in person.`
-                  : `${confirmAction?.staffName || 'This staff member'} is signed out of old sessions and their reminders are switched off. They'll link a device again at the office.`}
+                  : confirmAction?.kind === 'remove_permission'
+                    ? `${confirmAction.staffName}'s day is charged again under the normal rules.`
+                    : `${confirmAction?.staffName || 'This staff member'} is signed out of old sessions and their reminders are switched off. They'll link a device again at the office.`}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -1113,11 +1141,16 @@ export default function AttendancePage() {
                   const action = confirmAction;
                   setConfirmAction(null);
                   if (action?.kind === 'approve_transfer') void reviewDeviceTransfer(action.transferId, 'approve');
+                  if (action?.kind === 'remove_permission') void deletePermission(action.permissionId);
                   if (action?.kind === 'reset_device') void resetDevice(action.staffId, action.staffName);
                 }}
               >
-                {confirmAction?.kind === 'approve_transfer' ? <ShieldCheck className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
-                {confirmAction?.kind === 'approve_transfer' ? 'Approve' : 'Reset Device'}
+                {confirmAction?.kind === 'approve_transfer'
+                  ? <ShieldCheck className="h-4 w-4" />
+                  : confirmAction?.kind === 'remove_permission' ? <Trash2 className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
+                {confirmAction?.kind === 'approve_transfer'
+                  ? 'Approve'
+                  : confirmAction?.kind === 'remove_permission' ? 'Remove' : 'Reset Device'}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1212,8 +1245,8 @@ export default function AttendancePage() {
                             )}
                           </td>
                           <td className="px-4 py-3 text-sm font-mono">
-                            {Number(row.attendance?.computedAmount || 0) > 0
-                              ? `GHC ${Number(row.attendance?.computedAmount || 0).toFixed(2)}`
+                            {Number(row.penaltyAmount || 0) > 0
+                              ? `GHC ${Number(row.penaltyAmount || 0).toFixed(2)}`
                               : '-'}
                           </td>
                         </tr>

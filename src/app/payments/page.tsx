@@ -118,7 +118,7 @@ interface OffenceBookDraftItem {
 const paymentFilterOptions: Array<{ label: string; value: PaymentFilter }> = [
   { label: 'All', value: 'all' },
   { label: 'Unpaid', value: 'unpaid' },
-  { label: 'Paid', value: 'paid' },
+  { label: 'Nothing owed', value: 'paid' },
 ];
 
 const offenceBookLimits = {
@@ -227,6 +227,12 @@ export default function PenaltyPaymentsPage() {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'error' | 'success' } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // Shown inside the payment dialog, so the result isn't hidden behind it.
+  const [paymentNotice, setPaymentNotice] = useState<{ text: string; type: 'error' | 'success' } | null>(null);
+  const paymentsLoadedRef = useRef(false);
+  // Offence book rows typed but not saved yet: live refreshes leave them alone.
+  const offenceBookDirtyRef = useRef(false);
   const [debtPardonOpen, setDebtPardonOpen] = useState(false);
   const [debtPardonCutoff, setDebtPardonCutoff] = useState(() => getAccraYesterdayKey());
   const [debtPardonPreview, setDebtPardonPreview] = useState<DebtPardonPreview | null>(null);
@@ -276,8 +282,9 @@ export default function PenaltyPaymentsPage() {
     if (paymentsRequestRef.current) return paymentsRequestRef.current;
 
     const request = (async () => {
-    setLoading(true);
-    setMessage(null);
+    // Only the first load shows the spinner. Live refreshes swap the figures in quietly and keep
+    // the last good ones if a refresh fails, instead of showing an empty table of zeros.
+    if (!paymentsLoadedRef.current) setLoading(true);
 
     const timeout = AbortSignal.timeout(20_000);
 
@@ -289,13 +296,14 @@ export default function PenaltyPaymentsPage() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || `Payments request failed (${response.status})`);
       setData(body);
+      paymentsLoadedRef.current = true;
+      setLoadError(null);
     } catch (error) {
       console.error('Failed to load lateness payments:', error);
-      setData(null);
       const text = error instanceof Error && error.name === 'TimeoutError'
         ? 'Loading payments timed out. Please try again.'
         : error instanceof Error ? error.message : 'Could not load payments';
-      setMessage({ type: 'error', text });
+      setLoadError(paymentsLoadedRef.current ? `${text.replace(/\.$/, '')}. Showing the last loaded figures.` : text);
     } finally {
       setLoading(false);
       paymentsRequestRef.current = null;
@@ -305,14 +313,18 @@ export default function PenaltyPaymentsPage() {
     return request;
   }, []);
 
-  const loadOffenceBookItems = useCallback(async () => {
+  const loadOffenceBookItems = useCallback(async (options: { background?: boolean } = {}) => {
     const requestKey = `${offenceBookYear}-${offenceBookMonth}`;
+    // A live refresh never overwrites rows being typed; they are reloaded after saving.
+    if (options.background && offenceBookDirtyRef.current) return;
     if (offenceBookRequestRef.current?.key === requestKey) return offenceBookRequestRef.current.promise;
 
     const request = (async () => {
-    setOffenceBookLoading(true);
-    setLoadedOffenceBookKey(null);
-    setOffenceBookMessage(null);
+    if (!options.background) {
+      setOffenceBookLoading(true);
+      setLoadedOffenceBookKey(null);
+      setOffenceBookMessage(null);
+    }
 
     const timeout = AbortSignal.timeout(20_000);
 
@@ -325,8 +337,12 @@ export default function PenaltyPaymentsPage() {
       if (!response.ok) throw new Error(body.error || `Offence book request failed (${response.status})`);
       if (offenceBookSelectionRef.current !== requestKey) return;
 
-      setExternalMoneyDrafts(offenceBookDraftsFromRows(body.externalMoney || []));
-      setExpenditureDrafts(offenceBookDraftsFromRows(body.expenditure || []));
+      // Typing may have started while this was loading: keep those rows.
+      if (!(options.background && offenceBookDirtyRef.current)) {
+        setExternalMoneyDrafts(offenceBookDraftsFromRows(body.externalMoney || []));
+        setExpenditureDrafts(offenceBookDraftsFromRows(body.expenditure || []));
+        offenceBookDirtyRef.current = false;
+      }
       setOpeningBalance(body.openingBalance || body.carriedOpeningBalance || '');
       setClosingBalance(body.closingBalance || body.calculatedClosingBalance || '');
       setPaymentsCollected(body.paymentsCollected || '0.00');
@@ -334,6 +350,7 @@ export default function PenaltyPaymentsPage() {
     } catch (error) {
       if (offenceBookSelectionRef.current !== requestKey) return;
       console.error('Failed to load offence book inputs:', error);
+      if (options.background) return;
       const text = error instanceof Error && error.name === 'TimeoutError'
         ? 'Loading offence book inputs timed out. Please try again.'
         : error instanceof Error ? error.message : 'Could not load offence book inputs';
@@ -360,12 +377,12 @@ export default function PenaltyPaymentsPage() {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         void loadPayments();
-        void loadOffenceBookItems();
+        void loadOffenceBookItems({ background: true });
       }
     };
     const handleFocus = () => {
       void loadPayments();
-      void loadOffenceBookItems();
+      void loadOffenceBookItems({ background: true });
     };
 
     document.addEventListener('visibilitychange', handleVisibility);
@@ -389,7 +406,7 @@ export default function PenaltyPaymentsPage() {
             events: ['invalidate'],
             onEvent: () => {
               void loadPayments();
-              void loadOffenceBookItems();
+              void loadOffenceBookItems({ background: true });
             },
           }),
         ),
@@ -456,6 +473,7 @@ export default function PenaltyPaymentsPage() {
     setSelectedStaffId(row.id);
     setAmount('');
     setNote('');
+    setPaymentNotice(null);
     setPaymentDialogOpen(true);
   }
 
@@ -466,6 +484,7 @@ export default function PenaltyPaymentsPage() {
     value: string,
   ) {
     const setter = list === 'externalMoney' ? setExternalMoneyDrafts : setExpenditureDrafts;
+    offenceBookDirtyRef.current = true;
     setter((current) => current.map((item) => (
       item.clientId === clientId
         ? { ...item, [field]: field === 'amount' ? normalizePaymentAmountInput(value) : value }
@@ -476,11 +495,13 @@ export default function PenaltyPaymentsPage() {
   function addOffenceBookDraft(list: 'externalMoney' | 'expenditure') {
     const limit = list === 'externalMoney' ? offenceBookLimits.externalMoney : offenceBookLimits.expenditure;
     const setter = list === 'externalMoney' ? setExternalMoneyDrafts : setExpenditureDrafts;
+    offenceBookDirtyRef.current = true;
     setter((current) => current.length >= limit ? current : [...current, createOffenceBookDraftItem()]);
   }
 
   function removeOffenceBookDraft(list: 'externalMoney' | 'expenditure', clientId: string) {
     const setter = list === 'externalMoney' ? setExternalMoneyDrafts : setExpenditureDrafts;
+    offenceBookDirtyRef.current = true;
     setter((current) => {
       const next = current.filter((item) => item.clientId !== clientId);
       return next.length > 0 ? next : [createOffenceBookDraftItem()];
@@ -512,6 +533,7 @@ export default function PenaltyPaymentsPage() {
       setOpeningBalance(body.openingBalance || body.carriedOpeningBalance || '');
       setClosingBalance(body.closingBalance || body.calculatedClosingBalance || '');
       setPaymentsCollected(body.paymentsCollected || '0.00');
+      offenceBookDirtyRef.current = false;
       setOffenceBookMessage({ type: 'success', text: 'Offence book inputs saved.' });
     } catch (error) {
       console.error('Offence book save failed:', error);
@@ -616,7 +638,7 @@ export default function PenaltyPaymentsPage() {
     if (!selectedRow || input.amount <= 0) return;
 
     setSavingAction(input.actionKey);
-    setMessage(null);
+    setPaymentNotice(null);
 
     try {
       const response = await fetch('/api/payments/lateness', {
@@ -634,11 +656,11 @@ export default function PenaltyPaymentsPage() {
 
       setAmount('');
       setNote('');
-      setMessage({ type: 'success', text: 'Payment recorded.' });
+      setPaymentNotice({ type: 'success', text: `Payment of ${currency(input.amount)} recorded.` });
       await loadPayments();
     } catch (error) {
       console.error('Payment recording failed:', error);
-      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Payment could not be recorded' });
+      setPaymentNotice({ type: 'error', text: error instanceof Error ? error.message : 'Payment could not be recorded' });
     } finally {
       setSavingAction(null);
     }
@@ -684,6 +706,13 @@ export default function PenaltyPaymentsPage() {
           )}>
             {message.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <ReceiptText className="h-4 w-4" />}
             {message.text}
+          </div>
+        )}
+        {loadError && (
+          <div role="alert" className="flex items-center gap-2 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+            <ReceiptText className="h-4 w-4" />
+            {loadError}
+            <Button type="button" variant="outline" size="sm" className="ml-auto h-7" onClick={() => void loadPayments()}>Retry</Button>
           </div>
         )}
 
@@ -833,6 +862,10 @@ export default function PenaltyPaymentsPage() {
               </div>
               <div className="flex flex-wrap items-center gap-2 lg:justify-center">
                 <PaymentToolbarTotal label="Live outstanding" value={currency(paymentTotals)} tone="live" />
+                {/* The four totals below are for the month picked under Offence book inputs. */}
+                <span className="text-xs font-medium text-muted-foreground">
+                  {new Date(offenceBookYear, offenceBookMonth, 1).toLocaleString('en-GB', { month: 'short', year: 'numeric' })}
+                </span>
                 <PaymentToolbarTotal label="Penalties" value={currency(selectedMonthBalance?.penaltyAmount)} tone="month" />
                 <PaymentToolbarTotal label="Paid" value={currency(selectedMonthBalance?.paidAmount)} tone="paid" />
                 <PaymentToolbarTotal label="Pardoned" value={currency(selectedMonthBalance?.pardonedAmount)} tone="month" />
@@ -864,6 +897,8 @@ export default function PenaltyPaymentsPage() {
 
           {loading ? (
             <LoadingBuffer variant="section" label="Loading payments" description="Checking balances." />
+          ) : !data ? (
+            <div className="px-4 py-8 text-center text-sm text-muted-foreground">Payments could not be loaded.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[700px] text-sm">
@@ -1079,6 +1114,19 @@ export default function PenaltyPaymentsPage() {
                       placeholder="Note"
                     />
                   </div>
+                  {paymentNotice && (
+                    <div
+                      role={paymentNotice.type === 'error' ? 'alert' : 'status'}
+                      className={cn(
+                        'rounded-md border px-3 py-2 text-sm',
+                        paymentNotice.type === 'success'
+                          ? 'border-success/30 bg-success/10 text-success'
+                          : 'border-danger/30 bg-danger/10 text-danger',
+                      )}
+                    >
+                      {paymentNotice.text}
+                    </div>
+                  )}
                   <div className={cn('grid grid-cols-2 gap-2', moneyNumber(selectedRow.outstandingBalance) > 0 && 'sm:grid-cols-3')}>
                     {moneyNumber(selectedRow.outstandingBalance) > 0 && (
                       <Button
@@ -1323,7 +1371,7 @@ function StaffPaymentStatusBadge({ status }: { status: StaffPaymentStatus }) {
       status === 'paid' && 'border-success/25 bg-success/10 text-success',
       status === 'unpaid' && 'border-danger/25 bg-danger/10 text-danger',
     )}>
-      {status === 'paid' ? 'Paid' : 'Unpaid'}
+      {status === 'paid' ? 'Nothing owed' : 'Unpaid'}
     </span>
   );
 }

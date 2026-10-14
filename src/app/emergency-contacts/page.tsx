@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Loader2, Pencil, PhoneCall, Plus, Search, Trash2 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
@@ -95,14 +95,20 @@ export default function EmergencyContactsPage() {
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [form, setForm] = useState<ContactForm>(emptyForm);
   const [formError, setFormError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const loadedRef = useRef(false);
 
   const fetchData = useCallback(async () => {
-    setLoading(true);
+    // Only the first load shows the spinner; live refreshes keep the list on screen.
+    if (!loadedRef.current) setLoading(true);
     try {
       const [contactsResponse, staffResponse] = await Promise.all([
         fetch('/api/emergency-contacts', { cache: 'no-store' }),
         fetch('/api/staff', { cache: 'no-store' }),
       ]);
+      if (!contactsResponse.ok || !staffResponse.ok) {
+        throw new Error(`Emergency contacts could not be loaded (${contactsResponse.ok ? staffResponse.status : contactsResponse.status})`);
+      }
 
       const [contactsData, staffData] = await Promise.all([
         contactsResponse.json(),
@@ -111,9 +117,12 @@ export default function EmergencyContactsPage() {
 
       setContacts(Array.isArray(contactsData) ? contactsData : []);
       setStaffOptions(Array.isArray(staffData) ? staffData : []);
+      loadedRef.current = true;
+      setLoadError('');
     } catch (error) {
+      // Keep the list already on screen: a failed refresh is not an empty list.
       console.error('Failed to load emergency contacts:', error);
-      setContacts([]);
+      setLoadError(error instanceof Error ? error.message : 'Emergency contacts could not be loaded');
     } finally {
       setLoading(false);
     }
@@ -242,6 +251,11 @@ export default function EmergencyContactsPage() {
   return (
     <DashboardLayout title="Emergency Contacts">
       <div className="space-y-5">
+        {loadError && (
+          <div role="alert" className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+            {loadError}
+          </div>
+        )}
         <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_220px_auto] lg:items-center">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
