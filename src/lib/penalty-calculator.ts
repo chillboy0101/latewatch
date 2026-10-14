@@ -1,10 +1,11 @@
 // lib/penalty-calculator.ts
 
-import { WORKDAY_START_TIME } from '@/lib/work-hours';
+import { isSignInClosed, WORKDAY_START_TIME } from '@/lib/work-hours';
 
 export const NO_SHOW_SIGN_IN_AMOUNT = 10;
 export const DAILY_PENALTY_CAP = 50;
 export const NO_SHOW_SIGN_IN_REASON = 'DIDN\'T SIGN IN BEFORE 4:30PM';
+export const SIGNED_IN_AFTER_CLOSE_REASON = 'SIGNED IN AFTER 4:30PM';
 export const NO_SHOW_SIGN_IN_WAIVED_REASON = 'No-show waived';
 export const NO_SHOW_SIGN_IN_EFFECTIVE_DATE = '2026-07-08';
 
@@ -52,6 +53,11 @@ export function computePenalty(input: PenaltyInput): PenaltyOutput {
       return { amount: SIGN_OUT_PENALTY, reason: 'DID NOT SIGN OUT' };
     }
     return { amount: 0, reason: '' };
+  }
+
+  // Sign-in closes at 4:30 PM: arriving after that is charged as not signing in, never the late fee.
+  if (isSignInClosed(input.arrivalTime)) {
+    return { amount: NO_SHOW_SIGN_IN_AMOUNT, reason: SIGNED_IN_AFTER_CLOSE_REASON };
   }
 
   const isLate = input.arrivalTime > CUTOFF_TIME;

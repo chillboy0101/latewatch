@@ -13,6 +13,8 @@ import {
 import { mergeAttendanceRowsIntoEntryRows } from '@/lib/lateness-entry-presentation';
 import { isStaffLeaveDate } from '@/lib/staff-leave';
 import { getHolidayForDate } from '@/lib/attendance';
+import { deleteUnsettledLatenessEntry, updateUnsettledLatenessEntry } from '@/lib/lateness-entry-writes';
+import { recalculateDaysAfterLeaveChange } from '@/lib/staff-leave-return';
 import { isIsoDateKey, isoDateKeyToLocalDate } from '@/lib/date-format';
 import { getAccraDateKey, getAccraTimeKey } from '@/lib/date-key';
 import { isNoSignOutChargeDue } from '@/lib/work-hours';
@@ -29,16 +31,6 @@ import {
 import { enforceRole } from '@/lib/auth/roles';
 
 const MANUAL_SIGN_OUT_MARKER = 'manual_entries';
-
-// A day with a payment or pardon against it keeps its records: deleting the entry would cascade
-// to the payment allocation or be refused by the pardon ledger.
-async function isEntryPaidOrPardoned(entryId: string) {
-  const [[allocation], [pardon]] = await Promise.all([
-    db.select({ id: latenessPaymentAllocation.id }).from(latenessPaymentAllocation).where(eq(latenessPaymentAllocation.entryId, entryId)).limit(1),
-    db.select({ id: latenessDebtPardonEntry.id }).from(latenessDebtPardonEntry).where(eq(latenessDebtPardonEntry.entryId, entryId)).limit(1),
-  ]);
-  return Boolean(allocation || pardon);
-}
 
 export const dynamic = 'force-dynamic';
 
@@ -331,8 +323,9 @@ export async function POST(request: NextRequest) {
 
       const existing = existingByStaffId.get(entry.staffId);
       if (existing && financiallyProtectedEntryIds.has(existing.id)) {
+        const staffName = staffMap.get(entry.staffId) || 'This staff member';
         return NextResponse.json(
-          { error: 'This entry has payment or pardon history and requires financial review before correction' },
+          { error: `${staffName}: this day is already paid or pardoned, so it can't be changed. Nothing was saved.` },
           { status: 409 },
         );
       }
@@ -363,6 +356,7 @@ export async function POST(request: NextRequest) {
     let deletedCount = 0;
     let attendanceChangedCount = 0;
     let removedCheckInCount = 0;
+    let reopenedLeaveCount = 0;
     const blockedCheckInRemovals: string[] = [];
     const changedStaff = new Map<string, { fullName: string; staffId: string }>();
     const markStaffChanged = (staffId: string) => {
@@ -390,13 +384,12 @@ export async function POST(request: NextRequest) {
       // with its penalty. Days with a payment or pardon are never touched, so money records stay intact.
       if (entry.arrivalTimeCleared === true && !arrivalTime && existingAttendance?.checkInTime) {
         const staffName = staffMap.get(entry.staffId) || 'Unknown';
-        if (existing && (await isEntryPaidOrPardoned(existing.id))) {
-          blockedCheckInRemovals.push(staffName);
-          continue;
-        }
-
         if (existing) {
-          await db.delete(latenessEntry).where(eq(latenessEntry.id, existing.id));
+          // Skipped if a payment or pardon landed on the day meanwhile; the check-in then stays too.
+          if (!(await deleteUnsettledLatenessEntry(existing.id))) {
+            blockedCheckInRemovals.push(staffName);
+            continue;
+          }
           await writeAuditEvent({
             entityType: 'entry',
             entityId: existing.id,
@@ -431,6 +424,7 @@ export async function POST(request: NextRequest) {
             ne(staffLeavePeriod.source, 'staff_status'),
           ))
           .returning();
+        reopenedLeaveCount += reopened.length;
         for (const period of reopened) {
           await writeAuditEvent({
             entityType: 'staff_leave_period',
@@ -559,10 +553,7 @@ export async function POST(request: NextRequest) {
 
         if (existing) {
           const before = { ...existing };
-          const [result] = await db.update(latenessEntry)
-            .set({ ...nextEntryValues, updatedAt: new Date() })
-            .where(eq(latenessEntry.id, existing.id))
-            .returning();
+          const result = await updateUnsettledLatenessEntry(existing.id, { ...nextEntryValues, updatedAt: new Date() });
 
           if (result) {
             await writeAuditEvent({
@@ -796,8 +787,7 @@ export async function POST(request: NextRequest) {
       }
 
       if (!shouldStoreEntry) {
-        if (existing) {
-          await db.delete(latenessEntry).where(eq(latenessEntry.id, existing.id));
+        if (existing && await deleteUnsettledLatenessEntry(existing.id)) {
           await writeAuditEvent({
             entityType: 'entry',
             entityId: existing.id,
@@ -826,13 +816,9 @@ export async function POST(request: NextRequest) {
         };
 
         if (latenessEntryChanged({ existing, next: nextValues })) {
-          [result] = await db.update(latenessEntry)
-            .set({
-              ...nextValues,
-              updatedAt: new Date(),
-            })
-            .where(eq(latenessEntry.id, existing.id))
-            .returning();
+          result = await updateUnsettledLatenessEntry(existing.id, { ...nextValues, updatedAt: new Date() });
+          // Paid or pardoned meanwhile: the settled charge stays as it is.
+          if (!result) continue;
 
           await writeAuditEvent({
             entityType: 'entry',
@@ -875,8 +861,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Days whose check-in was removed now follow the normal no-sign-in rule (after the cut-off,
-    // unless waived, excused or on leave).
-    if (removedCheckInCount > 0) {
+    // unless waived, excused or on leave). If that check-in had ended someone's leave, every day
+    // since is back on leave: re-check them all so the no-shows charged meanwhile are cleared.
+    if (reopenedLeaveCount > 0) {
+      await recalculateDaysAfterLeaveChange(date, getAccraDateKey());
+    } else if (removedCheckInCount > 0) {
       await applyNoShowSignInPenaltiesForDate(date);
     }
 

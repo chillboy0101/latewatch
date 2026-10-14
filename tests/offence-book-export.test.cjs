@@ -513,3 +513,52 @@ test('offence book export is standalone and can be re-opened without external wo
     assert.doesNotMatch(formula, /\[[^\]]+\.?xlsx?\]/i);
   }
 });
+
+test('a 17th staff member uses the spare row; former staff only appear when charged or owing', async () => {
+  const current = Array.from({ length: 15 }, (_, index) => ({ current: true, fullName: `Current ${index + 1}`, id: `current-${index + 1}` }));
+  const roster = [
+    ...current,
+    { current: false, fullName: 'Former Charged', id: 'former-charged' },
+    { current: false, fullName: 'Former Owing', id: 'former-owing' },
+    { current: false, fullName: 'Former Settled', id: 'former-settled' },
+  ];
+  const workbook = await buildOffenceBookWorkbookFromData({
+    allocations: [{ allocatedAmount: '10.00', entryId: 'settled-april' }],
+    entries: [
+      { computedAmount: '10.00', date: '2026-05-04', id: 'charged-may', staffId: 'former-charged' },
+      { computedAmount: '15.00', date: '2026-04-28', id: 'owing-april', staffId: 'former-owing' },
+      { computedAmount: '10.00', date: '2026-04-27', id: 'settled-april', staffId: 'former-settled' },
+    ],
+    items: [],
+    month: 4,
+    staff: roster,
+    templatePath: OFFENCE_BOOK_TEMPLATE_PATH,
+    year: 2026,
+  });
+  const sheet = workbook.getWorksheet('MAY 2026');
+
+  // Week 2 block: data rows 27-43 (17 names), TOTAL stays on row 44.
+  assert.equal(sheet.getCell('C27').value, 'Current 1');
+  assert.equal(sheet.getCell('C42').value, 'Former Charged');
+  assert.equal(sheet.getCell('B43').value, 17);
+  assert.equal(sheet.getCell('C43').value, 'Former Owing');
+  assert.equal(sheet.getCell('C44').value, 'TOTAL');
+  assert.equal(sheet.getCell('J44').value.formula, 'SUM(J27:J43)');
+  assert.equal(sheet.getCell('D42').value, 10);
+  assert.equal(resultOf(sheet.getCell('J44').value), 10);
+  // The settled former member has nothing this month and is left off the sheet.
+  const names = [];
+  for (let row = 27; row <= 43; row++) names.push(sheet.getCell(`C${row}`).value);
+  assert.ok(!names.includes('Former Settled'));
+  // The owed list grows to 17 as well.
+  assert.equal(sheet.getCell('P42').value, 'Former Owing');
+  assert.equal(sheet.getCell('Q42').value, 15);
+});
+
+test('more names than the sheet can hold fails with a plain message', async () => {
+  const roster = Array.from({ length: 18 }, (_, index) => ({ fullName: `Staff ${index + 1}`, id: `staff-${index + 1}` }));
+  await assert.rejects(
+    buildWorkbookWithStaff(roster),
+    /The OFFENCE BOOK sheet has room for 17 staff; this month has 18\./,
+  );
+});

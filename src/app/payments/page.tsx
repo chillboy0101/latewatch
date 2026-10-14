@@ -410,7 +410,7 @@ export default function PenaltyPaymentsPage() {
 
   const matchingRows = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const rows = (data?.staff || []).filter((row) => row.isAttendanceOnly !== true);
+    const rows = data?.staff || [];
     const searchedRows = query
       ? rows.filter((row) => [
         row.fullName,
@@ -425,9 +425,7 @@ export default function PenaltyPaymentsPage() {
   }, [data?.staff, search, statusFilter]);
   const filteredRows = useMemo(() => sortPaymentRowsByBalance(matchingRows), [matchingRows]);
   const paymentTotals = useMemo(() => {
-    const rows = (data?.staff || []).filter((row) => row.isAttendanceOnly !== true);
-
-    return rows.reduce(
+    return (data?.staff || []).reduce(
       (total, row) => total + moneyNumber(row.outstandingBalance),
       0,
     );
@@ -448,7 +446,7 @@ export default function PenaltyPaymentsPage() {
   }, [filteredRows]);
 
   const selectedRow = useMemo(() => {
-    return (data?.staff || []).find((row) => row.id === selectedStaffId && row.isAttendanceOnly !== true) || null;
+    return (data?.staff || []).find((row) => row.id === selectedStaffId) || null;
   }, [data?.staff, selectedStaffId]);
   const selectedEntries = useMemo(() => {
     return selectedRow ? sortPaymentEntriesNewestFirst(selectedRow.entries) : [];
@@ -548,7 +546,6 @@ export default function PenaltyPaymentsPage() {
 
   const debtPardonStaffOptions = useMemo(() => {
     return (data?.staff || [])
-      .filter((row) => row.isAttendanceOnly !== true)
       .map((row) => ({
         fullName: row.fullName,
         hint: moneyNumber(row.outstandingBalance) > 0 ? currency(row.outstandingBalance) : undefined,

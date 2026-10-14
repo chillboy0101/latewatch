@@ -267,6 +267,30 @@ Module._load = function patchedLoad(request, ...args) {
       )),
     };
   }
+  if (request === '@/lib/lateness-entry-writes') {
+    // As in SQL: a paid or pardoned charge is never rewritten or deleted.
+    const isPaid = (id) => fixture.latenessPaymentAllocation.some((row) => row.entryId === id);
+    const isPardoned = (id) => fixture.latenessDebtPardonEntry.some((row) => row.entryId === id);
+    const update = (id, changes) => {
+      let updated = null;
+      fixture.latenessEntry = fixture.latenessEntry.map((row) => {
+        if (row.id !== id) return row;
+        updated = { ...row, ...changes };
+        return updated;
+      });
+      return updated;
+    };
+    return {
+      deleteUnsettledLatenessEntry: async (id) => {
+        if (isPaid(id) || isPardoned(id)) return 0;
+        const before = fixture.latenessEntry.length;
+        fixture.latenessEntry = fixture.latenessEntry.filter((row) => row.id !== id);
+        return before - fixture.latenessEntry.length;
+      },
+      updateUnpaidLatenessEntry: async (id, changes) => (isPaid(id) ? null : update(id, changes)),
+      updateUnsettledLatenessEntry: async (id, changes) => (isPaid(id) || isPardoned(id) ? null : update(id, changes)),
+    };
+  }
   if (request === 'drizzle-orm') {
     return {
       and: (...conditions) => ({ conditions, op: 'and' }),

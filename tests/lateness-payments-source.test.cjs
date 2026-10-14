@@ -298,7 +298,8 @@ test('former staff can pay, and a payment is recorded once, atomically', () => {
   const post = route.slice(route.indexOf('export async function POST'));
   assert.doesNotMatch(post, /eq\(staff\.active, true\)/);
   assert.doesNotMatch(post, /eq\(staff\.archived, false\)/);
-  assert.match(post, /eq\(staff\.isAttendanceOnly, false\)/);
+  // Someone made attendance-only later can still settle old charges.
+  assert.doesNotMatch(post, /eq\(staff\.isAttendanceOnly, false\)/);
   // A per-staff lock, then a guarded insert that writes nothing if the balances moved.
   const record = fs.readFileSync(paymentRecordLibPath, 'utf8');
   assert.match(post, /const paymentId = await recordPaymentAtomically\(\{/);
@@ -326,7 +327,8 @@ test('offence book counts former staff, and the payments dialog separates pardon
   const items = fs.readFileSync(path.join(root, 'src/app/api/payments/offence-book-items/route.ts'), 'utf8');
   const exportRoute = fs.readFileSync(path.join(root, 'src/app/api/export/offence-book/route.ts'), 'utf8');
   const page = fs.readFileSync(paymentsPagePath, 'utf8');
-  assert.match(roster, /or\(and\(eq\(staff\.active, true\), eq\(staff\.archived, false\)\), inArray\(staff\.id, chargedStaff\)\)/);
+  assert.match(roster, /return or\(currentChargeableStaff\(\), inArray\(staff\.id, chargedStaff\)\);/);
+  assert.match(roster, /and\(eq\(staff\.active, true\), eq\(staff\.archived, false\), eq\(staff\.isAttendanceOnly, false\)\)/);
   assert.match(items, /\.where\(offenceBookRosterWhere\(monthEnd\)\)/);
   assert.match(exportRoute, /\.where\(offenceBookRosterWhere\(monthEnd\)\)/);
   assert.match(page, /<BalanceStat label="Penalties"/);

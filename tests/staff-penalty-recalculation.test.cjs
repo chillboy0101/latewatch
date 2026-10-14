@@ -420,3 +420,24 @@ test('an approved absence clears the charge even when the person signed in', () 
   assert.deepEqual(plan.latenessDeletes, [{ id: 'entry-1' }]);
   assert.equal(plan.attendanceUpdates[0].computedAmount, '0.00');
 });
+
+test('changing a staff flag never re-charges a public holiday', () => {
+  const plan = planStaffPenaltyRecalculation({
+    attendanceRecords: [{
+      checkInTime: '09:30:00',
+      computedAmount: '0.00',
+      date: '2026-09-21',
+      id: 'attendance-holiday',
+      reason: null,
+      status: 'late',
+    }],
+    holidayDates: new Set(['2026-09-21']),
+    isNssPersonnel: false,
+    latenessEntries: [],
+    permissions: [],
+    staffId: 'staff-1',
+  });
+
+  assert.deepEqual(plan.attendanceUpdates, []);
+  assert.deepEqual(plan.latenessCreates, []);
+});

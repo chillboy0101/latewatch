@@ -28,6 +28,8 @@ export type OffenceBookItemInput = {
 };
 
 export type OffenceBookStaffInput = {
+  /** False for former staff (and anyone now attendance-only): they get a row only when relevant. */
+  current?: boolean;
   fullName: string;
   id: string;
 };
@@ -78,6 +80,8 @@ export type OffenceBookFinancialSummary = {
 };
 
 const MAX_TEMPLATE_STAFF_ROWS = 16;
+// Each week block has a spare row before its TOTAL row, so the sheet fits one more name.
+const MAX_SHEET_STAFF_ROWS = MAX_TEMPLATE_STAFF_ROWS + 1;
 const WEEK_BLOCK_TITLE_ROWS = [4, 25, 46, 67, 88];
 const WEEKDAY_AMOUNT_COLUMNS = [4, 5, 6, 7, 8];
 const TOTAL_COLUMN = 10;
@@ -444,7 +448,7 @@ function cellRangeFormula(column: string, rows: number[]) {
 
 function clearBlockRows(worksheet: ExcelJS.Worksheet, titleRow: number) {
   const dataStart = titleRow + 2;
-  for (let offset = 0; offset < MAX_TEMPLATE_STAFF_ROWS; offset++) {
+  for (let offset = 0; offset < MAX_SHEET_STAFF_ROWS; offset++) {
     const rowNumber = dataStart + offset;
     for (let column = STAFF_NUMBER_COLUMN; column <= UNPAID_COLUMN; column++) {
       worksheet.getCell(rowNumber, column).value = null;
@@ -511,10 +515,6 @@ export async function buildOffenceBookWorkbookFromData({
   templatePath = OFFENCE_BOOK_TEMPLATE_PATH,
   year,
 }: BuildOffenceBookWorkbookInput) {
-  if (staff.length > MAX_TEMPLATE_STAFF_ROWS) {
-    throw new Error(`OFFENCE BOOK template supports up to ${MAX_TEMPLATE_STAFF_ROWS} staff rows`);
-  }
-
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(templatePath);
   workbook.creator = 'LateWatch';
@@ -550,6 +550,16 @@ export async function buildOffenceBookWorkbookFromData({
     ));
   }
 
+  // Current staff always get a row. Former staff only in months they were charged or still owe:
+  // their other months are all zeros. Totals and the carried balance still count everyone.
+  const chargedThisMonth = new Set(selectedEntries.filter((entry) => entryAmountCents(entry) > 0).map((entry) => entry.staffId));
+  const sheetStaff = staff.filter((member) => (
+    member.current !== false || chargedThisMonth.has(member.id) || (owedThroughMonthByStaff.get(member.id) || 0) > 0
+  ));
+  if (sheetStaff.length > MAX_SHEET_STAFF_ROWS) {
+    throw new Error(`The OFFENCE BOOK sheet has room for ${MAX_SHEET_STAFF_ROWS} staff; this month has ${sheetStaff.length}.`);
+  }
+
   const weeklyTotals = WEEK_BLOCK_TITLE_ROWS.map(() => ({
     paidCents: 0,
     penaltyCents: 0,
@@ -569,10 +579,18 @@ export async function buildOffenceBookWorkbookFromData({
     const dataStart = titleRow + 2;
     const totalRow = titleRow + 19;
     const weekDates = new Set(week?.dates || []);
+    // A 17th name uses the block's spare row: give it the data rows' look.
+    if (sheetStaff.length > MAX_TEMPLATE_STAFF_ROWS) {
+      const lastTemplateRow = dataStart + MAX_TEMPLATE_STAFF_ROWS - 1;
+      worksheet.getRow(lastTemplateRow + 1).height = worksheet.getRow(lastTemplateRow).height;
+      for (let column = STAFF_NUMBER_COLUMN; column <= UNPAID_COLUMN; column++) {
+        worksheet.getCell(lastTemplateRow + 1, column).style = cloneStyle(worksheet.getCell(lastTemplateRow, column).style);
+      }
+    }
 
-    for (let staffIndex = 0; staffIndex < staff.length; staffIndex++) {
+    for (let staffIndex = 0; staffIndex < sheetStaff.length; staffIndex++) {
       const row = dataStart + staffIndex;
-      const member = staff[staffIndex];
+      const member = sheetStaff[staffIndex];
       worksheet.getCell(row, STAFF_NUMBER_COLUMN).value = staffIndex + 1;
       worksheet.getCell(row, STAFF_NAME_COLUMN).value = member.fullName;
 
@@ -607,15 +625,15 @@ export async function buildOffenceBookWorkbookFromData({
     worksheet.getCell(totalRow, STAFF_NAME_COLUMN).value = 'TOTAL';
     for (let column = 4; column <= 9; column++) {
       const columnLetter = worksheet.getColumn(column).letter;
-      const columnTotalCents = Array.from({ length: staff.length }, (_, index) => {
+      const columnTotalCents = Array.from({ length: sheetStaff.length }, (_, index) => {
         const value = amountNumber(worksheet.getCell(dataStart + index, column).value as string | number | null);
         return cents(value);
       }).reduce((sum, value) => sum + value, 0);
-      writeFormula(worksheet.getCell(totalRow, column), `SUM(${columnLetter}${dataStart}:${columnLetter}${dataStart + staff.length - 1})`, columnTotalCents);
+      writeFormula(worksheet.getCell(totalRow, column), `SUM(${columnLetter}${dataStart}:${columnLetter}${dataStart + sheetStaff.length - 1})`, columnTotalCents);
     }
-    writeFormula(worksheet.getCell(totalRow, TOTAL_COLUMN), `SUM(J${dataStart}:J${dataStart + staff.length - 1})`, weeklyTotals[weekIndex].penaltyCents);
-    writeFormula(worksheet.getCell(totalRow, PAID_COLUMN), `SUM(M${dataStart}:M${dataStart + staff.length - 1})`, weeklyTotals[weekIndex].paidCents);
-    writeFormula(worksheet.getCell(totalRow, UNPAID_COLUMN), `SUM(N${dataStart}:N${dataStart + staff.length - 1})`, weeklyTotals[weekIndex].unpaidCents);
+    writeFormula(worksheet.getCell(totalRow, TOTAL_COLUMN), `SUM(J${dataStart}:J${dataStart + sheetStaff.length - 1})`, weeklyTotals[weekIndex].penaltyCents);
+    writeFormula(worksheet.getCell(totalRow, PAID_COLUMN), `SUM(M${dataStart}:M${dataStart + sheetStaff.length - 1})`, weeklyTotals[weekIndex].paidCents);
+    writeFormula(worksheet.getCell(totalRow, UNPAID_COLUMN), `SUM(N${dataStart}:N${dataStart + sheetStaff.length - 1})`, weeklyTotals[weekIndex].unpaidCents);
   }
 
   const externalMoneyItems = monthItems(items, 'external_money', selectedMonthKey);
@@ -662,9 +680,9 @@ export async function buildOffenceBookWorkbookFromData({
   const owedHighlightAmountStyle = cloneStyle(worksheet.getCell('Q27').style);
   const owedPlainNameStyle = cloneStyle(worksheet.getCell('P26').style);
   const owedPlainAmountStyle = cloneStyle(worksheet.getCell('Q26').style);
-  for (let index = 0; index < MAX_TEMPLATE_STAFF_ROWS; index++) {
+  for (let index = 0; index < Math.max(MAX_TEMPLATE_STAFF_ROWS, sheetStaff.length); index++) {
     const row = 26 + index;
-    const member = staff[index];
+    const member = sheetStaff[index];
     const owedCents = member ? owedThroughMonthByStaff.get(member.id) || 0 : 0;
     const nameCell = worksheet.getCell(row, 16);
     const amountCell = worksheet.getCell(row, 17);

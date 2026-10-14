@@ -12,6 +12,11 @@ import {
 } from '@/lib/staff-leave-service';
 import { isStaffLeaveDate } from '@/lib/staff-leave';
 import { getAccraDateKey } from '@/lib/date-key';
+import {
+  deleteUnsettledLatenessEntry,
+  updateUnpaidLatenessEntry,
+  updateUnsettledLatenessEntry,
+} from '@/lib/lateness-entry-writes';
 import { NO_SHOW_SIGN_IN_CUTOFF_TIME, shouldAlertNoSignOut } from '@/lib/work-hours';
 import {
   NO_SHOW_SIGN_IN_EFFECTIVE_DATE,
@@ -91,14 +96,11 @@ async function clearUnprotectedLeavePenalty(input: {
   for (const entry of input.entries) {
     if (input.protectedEntryIds.has(entry.id)) {
       if (amountNumber(entry.computedAmount) > 0) {
-        await db.update(latenessEntry)
-          .set({ computedAmount: '0.00', didNotSignOut: false, reason: 'On approved leave', updatedAt: new Date() })
-          .where(eq(latenessEntry.id, entry.id));
+        await updateUnpaidLatenessEntry(entry.id, { computedAmount: '0.00', didNotSignOut: false, reason: 'On approved leave', updatedAt: new Date() });
       }
       continue;
     }
-    await db.delete(latenessEntry).where(eq(latenessEntry.id, entry.id));
-    deleted += 1;
+    deleted += await deleteUnsettledLatenessEntry(entry.id);
   }
 
   return { attendanceUpdated, deleted };
@@ -272,16 +274,13 @@ export async function applyNoShowSignInPenaltiesForDate(dateKey: string) {
         continue;
       }
 
-      await db.update(latenessEntry)
-        .set({
-          arrivalTime: null,
-          computedAmount,
-          didNotSignOut: false,
-          reason: NO_SHOW_SIGN_IN_REASON,
-          updatedAt: new Date(),
-        })
-        .where(eq(latenessEntry.id, existing.id));
-      updated += 1;
+      if (await updateUnsettledLatenessEntry(existing.id, {
+        arrivalTime: null,
+        computedAmount,
+        didNotSignOut: false,
+        reason: NO_SHOW_SIGN_IN_REASON,
+        updatedAt: new Date(),
+      })) updated += 1;
       continue;
     }
 
@@ -447,16 +446,13 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
           continue;
         }
 
-        await db.update(latenessEntry)
-          .set({
-            arrivalTime: null,
-            computedAmount,
-            didNotSignOut: false,
-            reason: NO_SHOW_SIGN_IN_REASON,
-            updatedAt: new Date(),
-          })
-          .where(eq(latenessEntry.id, existing.id));
-        updated += 1;
+        if (await updateUnsettledLatenessEntry(existing.id, {
+          arrivalTime: null,
+          computedAmount,
+          didNotSignOut: false,
+          reason: NO_SHOW_SIGN_IN_REASON,
+          updatedAt: new Date(),
+        })) updated += 1;
         continue;
       }
 
@@ -653,16 +649,14 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
 
     if (penalty.amount <= 0) {
       for (const staleEntry of existingEntriesForKey) {
-        await db.delete(latenessEntry).where(eq(latenessEntry.id, staleEntry.id));
-        deleted += 1;
+        deleted += await deleteUnsettledLatenessEntry(staleEntry.id);
       }
       continue;
     }
 
     if (existing) {
       for (const duplicateEntry of existingEntriesForKey.slice(1)) {
-        await db.delete(latenessEntry).where(eq(latenessEntry.id, duplicateEntry.id));
-        deleted += 1;
+        deleted += await deleteUnsettledLatenessEntry(duplicateEntry.id);
       }
       const existingAmount = amountText(amountNumber(existing.computedAmount));
       const needsUpdate =
@@ -673,16 +667,13 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
 
       if (!needsUpdate) continue;
 
-      await db.update(latenessEntry)
-        .set({
-          arrivalTime,
-          computedAmount,
-          didNotSignOut: penalty.didNotSignOut,
-          reason,
-          updatedAt: new Date(),
-        })
-        .where(eq(latenessEntry.id, existing.id));
-      updated += 1;
+      if (await updateUnsettledLatenessEntry(existing.id, {
+        arrivalTime,
+        computedAmount,
+        didNotSignOut: penalty.didNotSignOut,
+        reason,
+        updatedAt: new Date(),
+      })) updated += 1;
       continue;
     }
 
@@ -728,8 +719,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     }
     // A no-show charged before the day was declared a holiday.
     if (holidayDates.has(date) && existing.reason === NO_SHOW_SIGN_IN_REASON) {
-      await db.delete(latenessEntry).where(eq(latenessEntry.id, existing.id));
-      deleted += 1;
+      deleted += await deleteUnsettledLatenessEntry(existing.id);
       continue;
     }
     if (existing.reason === NO_SHOW_SIGN_IN_REASON || existing.reason === NO_SHOW_SIGN_IN_WAIVED_REASON) continue;
@@ -748,8 +738,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     const computedAmount = amountText(penalty.amount);
 
     if (penalty.amount <= 0) {
-      await db.delete(latenessEntry).where(eq(latenessEntry.id, existing.id));
-      deleted += 1;
+      deleted += await deleteUnsettledLatenessEntry(existing.id);
       continue;
     }
 
@@ -762,15 +751,12 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
       continue;
     }
 
-    await db.update(latenessEntry)
-      .set({
-        computedAmount,
-        didNotSignOut: penalty.didNotSignOut,
-        reason: penalty.reason || existing.reason || 'Late arrival',
-        updatedAt: new Date(),
-      })
-      .where(eq(latenessEntry.id, existing.id));
-    updated += 1;
+    if (await updateUnsettledLatenessEntry(existing.id, {
+      computedAmount,
+      didNotSignOut: penalty.didNotSignOut,
+      reason: penalty.reason || existing.reason || 'Late arrival',
+      updatedAt: new Date(),
+    })) updated += 1;
   }
 
   const noShowSignInResult = await applyNoShowSignInPenaltiesForRange(startDate, endDate);

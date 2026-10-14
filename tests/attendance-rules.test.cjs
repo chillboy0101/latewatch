@@ -77,16 +77,23 @@ test('regular staff penalties increase at one minute past each clock hour', () =
   }
 });
 
+test('sign-in closes at 4:30: arriving at or after it is charged as no sign-in (GHC 10), never the late fee', () => {
+  for (const arrivalTime of ['16:30', '16:37', '17:01', '20:00']) {
+    const main = computePenalty({ arrivalTime, didNotSignOut: true, isHoliday: false });
+    assert.equal(main.amount, NO_SHOW_SIGN_IN_AMOUNT, `${arrivalTime} main staff`);
+    assert.equal(main.reason, 'SIGNED IN AFTER 4:30PM');
+    assert.equal(computePenalty({ arrivalTime, didNotSignOut: false, isHoliday: false, isNssPersonnel: true }).amount, 10, `${arrivalTime} NSS`);
+    assert.equal(computePenalty({ arrivalTime, didNotSignOut: false, isAttendanceOnly: true, isHoliday: false }).amount, 0, `${arrivalTime} attendance-only`);
+  }
+  assert.equal(computePenalty({ arrivalTime: '16:29', didNotSignOut: false, isHoliday: false }).amount, 50, 'one minute earlier is still a (capped) late arrival');
+});
+
 test('late-arrival penalty is capped at the GHC 50 daily ceiling', () => {
   assert.equal(DAILY_PENALTY_CAP, 50);
 
   const cases = [
     ['16:01', 50],
-    ['16:30', 50],
-    ['17:00', 50],
-    ['17:01', 50],
-    ['18:00', 50],
-    ['20:00', 50],
+    ['16:29', 50],
   ];
 
   for (const [arrivalTime, amount] of cases) {
@@ -98,7 +105,7 @@ test('late-arrival penalty is capped at the GHC 50 daily ceiling', () => {
   }
 
   assert.equal(
-    computePenalty({ arrivalTime: '17:01', didNotSignOut: true, isHoliday: false }).amount,
+    computePenalty({ arrivalTime: '16:29', didNotSignOut: true, isHoliday: false }).amount,
     50,
     'GHC 50 is a hard ceiling for the day -- the no-signout penalty does not push a capped late arrival above it',
   );
@@ -110,13 +117,13 @@ test('late-arrival penalty is capped at the GHC 50 daily ceiling', () => {
   );
 
   assert.equal(
-    computePenalty({ arrivalTime: '20:00', didNotSignOut: false, isHoliday: false, isNssPersonnel: true }).amount,
+    computePenalty({ arrivalTime: '16:29', didNotSignOut: false, isHoliday: false, isNssPersonnel: true }).amount,
     10,
     'NSS personnel are unaffected by the cap since their hourly increment is always 0',
   );
 
   assert.equal(
-    computePenalty({ arrivalTime: '20:00', didNotSignOut: true, isHoliday: false, isNssPersonnel: true }).amount,
+    computePenalty({ arrivalTime: '16:29', didNotSignOut: true, isHoliday: false, isNssPersonnel: true }).amount,
     12,
     'NSS personnel late plus no-signout stays well under the cap',
   );

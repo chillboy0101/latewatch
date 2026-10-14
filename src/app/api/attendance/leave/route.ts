@@ -7,6 +7,7 @@ import { getAccraDateKey } from '@/lib/date-key';
 import { isIsoDateKey } from '@/lib/date-format';
 import { STAFF_LEAVE_TYPES, type StaffLeaveType } from '@/lib/staff-leave';
 import { findOverlappingStaffLeavePeriod, getLeaveFinancialReview } from '@/lib/staff-leave-service';
+import { recalculateDaysAfterLeaveChange } from '@/lib/staff-leave-return';
 import { writeAuditEvent } from '@/lib/audit';
 import { publishRealtime } from '@/lib/realtime';
 import { enforceRole } from '@/lib/auth/roles';
@@ -131,6 +132,8 @@ export async function POST(request: NextRequest) {
       actor: { email: actorEmail, id: user?.id || null },
       reason: 'approved-staff-leave',
     });
+    // Leave recorded after the fact: clear the unpaid charges already made for those days.
+    await recalculateDaysAfterLeaveChange(startDate, endDate);
     publishLeaveInvalidations('approved-staff-leave', staffId);
 
     return NextResponse.json({ financialReview, period }, { status: 201 });

@@ -46,8 +46,11 @@ export async function buildOffenceBookExportWorkbook(input: {
   const monthEnd = format(endOfMonth(monthDate), 'yyyy-MM-dd');
 
   const staffRows = await db.select({
+    active: staff.active,
+    archived: staff.archived,
     fullName: staff.fullName,
     id: staff.id,
+    isAttendanceOnly: staff.isAttendanceOnly,
   })
     .from(staff)
     .where(offenceBookRosterWhere(monthEnd))
@@ -116,7 +119,11 @@ export async function buildOffenceBookExportWorkbook(input: {
       monthKey: normalizeDateKey(item.monthKey),
     })),
     month: input.month,
-    staff: staffRows,
+    staff: staffRows.map((member) => ({
+      current: member.active === true && member.archived !== true && member.isAttendanceOnly !== true,
+      fullName: member.fullName,
+      id: member.id,
+    })),
     year: input.year,
   });
   const buffer = await workbook.xlsx.writeBuffer();

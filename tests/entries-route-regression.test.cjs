@@ -269,6 +269,26 @@ Module._load = function patchedLoad(request, ...args) {
       },
     };
   }
+  if (request === '@/lib/lateness-entry-writes') {
+    const settled = (id) => fixture.latenessPaymentAllocation.some((row) => row.entryId === id)
+      || fixture.latenessDebtPardonEntry.some((row) => row.entryId === id);
+    return {
+      deleteUnsettledLatenessEntry: async (id) => {
+        if (settled(id)) return 0;
+        const before = fixture.latenessEntry.length;
+        fixture.latenessEntry = fixture.latenessEntry.filter((row) => row.id !== id);
+        return before - fixture.latenessEntry.length;
+      },
+      updateUnsettledLatenessEntry: async (id, changes) => {
+        if (settled(id)) return null;
+        fixture.latenessEntry = fixture.latenessEntry.map((row) => row.id === id ? { ...row, ...changes } : row);
+        return fixture.latenessEntry.find((row) => row.id === id) || null;
+      },
+    };
+  }
+  if (request === '@/lib/staff-leave-return') {
+    return { recalculateDaysAfterLeaveChange: async () => undefined };
+  }
   if (request === '@/lib/attendance-lateness-sync') {
     return {
       syncLatenessEntriesFromAttendanceForDate: async () => ({ inserted: 0, updated: 0 }),
@@ -357,7 +377,7 @@ test('Entries POST preserves rows with payment allocations for financial review'
   }));
 
   assert.equal(response.status, 409);
-  assert.match((await response.json()).error, /payment or pardon history/);
+  assert.match((await response.json()).error, /^CARL CHRISTIAN QUIST: this day is already paid or pardoned, so it can't be changed. Nothing was saved.$/);
   assert.equal(fixture.latenessEntry[0].computedAmount, '10.00');
   assert.equal(fixture.attendanceRecord[0].checkInTime, '09:12:00');
 });

@@ -14,6 +14,7 @@ import {
   resolveClientIpInfo,
 } from '@/lib/attendance';
 import { syncLatenessEntriesFromAttendanceForDate } from '@/lib/attendance-lateness-sync';
+import { updateUnsettledLatenessEntry } from '@/lib/lateness-entry-writes';
 import { endLeaveOnCheckIn } from '@/lib/staff-leave-return';
 import { getFinanciallyProtectedLeaveEntryIds } from '@/lib/staff-leave-service';
 import {
@@ -1504,27 +1505,25 @@ export async function POST(request: NextRequest) {
       : false;
 
     if (penalty.amount > 0 && !existingIsSettled) {
-      const [lateness] = existingLateness
-        ? await db.update(latenessEntry)
-          .set({
-            arrivalTime: checkInTime,
-            didNotSignOut: false,
-            computedAmount: penalty.amount.toString(),
-            reason: penalty.reason,
-            updatedAt: now,
-          })
-          .where(eq(latenessEntry.id, existingLateness.id))
-          .returning()
-        : await db.insert(latenessEntry).values({
+      const lateness = existingLateness
+        ? await updateUnsettledLatenessEntry(existingLateness.id, {
+          arrivalTime: checkInTime,
+          didNotSignOut: false,
+          computedAmount: penalty.amount.toString(),
+          reason: penalty.reason,
+          updatedAt: now,
+        })
+        : (await db.insert(latenessEntry).values({
           staffId: staffMember.id,
           date: clock.dateKey,
           arrivalTime: checkInTime,
           didNotSignOut: false,
           computedAmount: penalty.amount.toString(),
           reason: penalty.reason,
-        }).returning();
+        }).returning())[0];
 
-      await writeAuditEvent({
+      // Null only if a payment or pardon landed on today's charge meanwhile; it then stays as it is.
+      if (lateness) await writeAuditEvent({
         entityType: 'entry',
         entityId: lateness.id,
         action: existingLateness ? 'UPDATE' : 'CREATE',

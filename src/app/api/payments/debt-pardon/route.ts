@@ -3,8 +3,9 @@ import { eq } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { staff } from '@/db/schema';
+import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
 import { enforceRole } from '@/lib/auth/roles';
-import { getAccraYesterdayKey } from '@/lib/date-key';
+import { getAccraYesterdayKey, shiftDateKey } from '@/lib/date-key';
 import { isIsoDateKey } from '@/lib/date-format';
 import { applyLatenessDebtPardon, previewLatenessDebtPardon } from '@/lib/lateness-debt-pardon';
 import { publishRealtime } from '@/lib/realtime';
@@ -51,6 +52,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // Bring the last week's charges up to date first (e.g. a missed sign-out), so the pardon
+    // covers everything owed up to the cutoff.
+    await syncLatenessEntriesFromAttendanceForRange(shiftDateKey(resolved.cutoffDate, -7), resolved.cutoffDate);
     const preview = await previewLatenessDebtPardon(resolved.cutoffDate, target.staffId);
     return NextResponse.json(preview, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {

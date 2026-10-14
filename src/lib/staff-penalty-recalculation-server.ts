@@ -3,7 +3,9 @@ import 'server-only';
 import { and, eq, isNotNull, or } from 'drizzle-orm';
 import { db } from '@/db';
 import { attendancePermission, attendanceRecord, latenessEntry } from '@/db/schema';
+import { getHolidayDatesForRange } from '@/lib/attendance';
 import { writeAuditEvent } from '@/lib/audit';
+import { deleteUnsettledLatenessEntry, updateUnsettledLatenessEntry } from '@/lib/lateness-entry-writes';
 import { publishRealtime } from '@/lib/realtime';
 import { planStaffPenaltyRecalculation } from '@/lib/staff-penalty-recalculation';
 import { isStaffLeaveDate } from '@/lib/staff-leave';
@@ -46,15 +48,17 @@ export async function recalculateStaffStoredPenalties(input: {
       )),
   ]);
   const dates = [...attendanceRows.map((row) => dateKeyOf(row.date)), ...latenessRows.map((row) => dateKeyOf(row.date))].sort();
-  const [protectedEntryIds, leavePeriods] = await Promise.all([
+  const [protectedEntryIds, leavePeriods, holidayDates] = await Promise.all([
     getFinanciallyProtectedLeaveEntryIds(latenessRows.map((row) => row.id)),
     dates.length === 0
       ? Promise.resolve([])
       : getStaffLeavePeriodsForRange({ endDate: dates[dates.length - 1], staffIds: [input.staffMember.id], startDate: dates[0] }),
+    dates.length === 0 ? Promise.resolve(new Set<string>()) : getHolidayDatesForRange(dates[0], dates[dates.length - 1]),
   ]);
   const leaveDates = new Set(dates.filter((date) => isStaffLeaveDate(leavePeriods, input.staffMember.id, date)));
   const plan = planStaffPenaltyRecalculation({
     attendanceRecords: attendanceRows,
+    holidayDates,
     isAttendanceOnly: input.staffMember.isAttendanceOnly,
     isNssPersonnel: input.staffMember.isNssPersonnel,
     latenessEntries: latenessRows,
@@ -103,16 +107,13 @@ export async function recalculateStaffStoredPenalties(input: {
 
   for (const update of plan.latenessUpdates) {
     const before = latenessRows.find((row) => row.id === update.id) || null;
-    const [updated] = await db.update(latenessEntry)
-      .set({
-        arrivalTime: update.arrivalTime,
-        computedAmount: update.computedAmount,
-        didNotSignOut: update.didNotSignOut,
-        reason: update.reason,
-        updatedAt: now,
-      })
-      .where(eq(latenessEntry.id, update.id))
-      .returning();
+    const updated = await updateUnsettledLatenessEntry(update.id, {
+      arrivalTime: update.arrivalTime,
+      computedAmount: update.computedAmount,
+      didNotSignOut: update.didNotSignOut,
+      reason: update.reason,
+      updatedAt: now,
+    });
 
     if (!updated) continue;
     changed += 1;
@@ -165,7 +166,7 @@ export async function recalculateStaffStoredPenalties(input: {
 
   for (const deletion of plan.latenessDeletes) {
     const before = latenessRows.find((row) => row.id === deletion.id) || null;
-    await db.delete(latenessEntry).where(eq(latenessEntry.id, deletion.id));
+    if (!(await deleteUnsettledLatenessEntry(deletion.id))) continue;
     changed += 1;
 
     await writeAuditEvent({

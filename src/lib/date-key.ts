@@ -34,6 +34,13 @@ export function getAccraTimeKey(date = new Date()) {
   return `${hour === '24' ? '00' : hour}:${minute}`;
 }
 
+/** The YYYY-MM-DD date `days` days after (or, if negative, before) the given one. */
+export function shiftDateKey(dateKey: string, days: number) {
+  const date = new Date(`${dateKey}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 /** The Accra date before today. Today's charges can still change, so pardons stop here. */
 export function getAccraYesterdayKey(date = new Date()) {
   const today = new Date(`${getAccraDateKey(date)}T12:00:00Z`);

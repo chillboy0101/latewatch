@@ -105,15 +105,13 @@ export async function GET(request: NextRequest) {
     const historicalStaffRows = await db.select({ staffId: latenessEntry.staffId })
       .from(latenessEntry);
     const historicalStaffIds = [...new Set(historicalStaffRows.map((row) => row.staffId))];
-    const currentRoster = and(eq(staff.active, true), eq(staff.archived, false));
+    const chargeableRoster = and(eq(staff.active, true), eq(staff.archived, false), eq(staff.isAttendanceOnly, false));
+    // Anyone ever charged stays listed (also after leaving or becoming attendance-only), so their
+    // paid history and the totals never change.
+    const chargedStaff = historicalStaffIds.length > 0 ? inArray(staff.id, historicalStaffIds) : undefined;
     const staffWhere = staffId
-      ? and(eq(staff.id, staffId), eq(staff.isAttendanceOnly, false))
-      : and(
-        eq(staff.isAttendanceOnly, false),
-        historicalStaffIds.length > 0
-          ? or(currentRoster, inArray(staff.id, historicalStaffIds))
-          : currentRoster,
-      );
+      ? and(eq(staff.id, staffId), or(eq(staff.isAttendanceOnly, false), chargedStaff))
+      : or(chargeableRoster, chargedStaff);
 
     const staffRows = await db.select({
       email: staff.email,
@@ -290,12 +288,9 @@ export async function POST(request: NextRequest) {
       id: staff.id,
     })
       .from(staff)
-      // Former (archived or inactive) staff can still settle what they owe, so only
-      // attendance-only staff, who are never charged, are refused.
-      .where(and(
-        eq(staff.id, staffId),
-        eq(staff.isAttendanceOnly, false),
-      ))
+      // Former (archived or inactive) and now attendance-only staff can still settle what they
+      // owe; with nothing owed, the payment is refused below.
+      .where(eq(staff.id, staffId))
       .limit(1);
 
     if (!member) {

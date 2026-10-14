@@ -192,7 +192,10 @@ test('entries time fields show their state on the field and can be cleared', () 
   assert.match(source, /arrivalTimeCleared: !entry\.arrivalTime && Boolean\(originalEntrySnapshots\[entry\.staffId\]\?\.arrivalTime\)/);
   assert.match(source, /Remove the check-in for/);
   assert.match(route, /if \(entry\.arrivalTimeCleared === true && !arrivalTime && existingAttendance\?\.checkInTime\)/);
-  assert.match(route, /if \(existing && \(await isEntryPaidOrPardoned\(existing\.id\)\)\)/);
+  // Removing a check-in never touches a paid or pardoned day, even one settled mid-save.
+  assert.match(route, /if \(!\(await deleteUnsettledLatenessEntry\(existing\.id\)\)\) \{\s*blockedCheckInRemovals\.push\(staffName\);/);
+  // A reopened leave has every day since re-checked, clearing the no-shows charged meanwhile.
+  assert.match(route, /if \(reopenedLeaveCount > 0\) \{\s*await recalculateDaysAfterLeaveChange\(date, getAccraDateKey\(\)\);/);
   assert.match(route, /reason: 'staff-leave-reopened-check-in-removed'/);
   assert.match(route, /await applyNoShowSignInPenaltiesForDate\(date\)/);
 });

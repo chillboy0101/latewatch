@@ -4,7 +4,10 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { attendancePermission, attendanceRecord, latenessEntry } from '@/db/schema';
 import { formatAbsencePermissionReason, getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/attendance-permissions';
+import { applyNoShowSignInPenaltiesForDate } from '@/lib/attendance-lateness-sync';
 import { writeAuditEvent } from '@/lib/audit';
+import { deleteUnsettledLatenessEntry, updateUnsettledLatenessEntry } from '@/lib/lateness-entry-writes';
+import { attendanceStatusFor } from '@/lib/manual-attendance-correction';
 import { computePenalty, NO_SHOW_SIGN_IN_AMOUNT, NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/penalty-calculator';
 import { publishRealtime } from '@/lib/realtime';
 import { getFinanciallyProtectedLeaveEntryIds } from '@/lib/staff-leave-service';
@@ -120,7 +123,8 @@ function resolveNextAttendanceState(input: {
       reason: signOutPenalty.amount > 0
         ? `${signOutPenalty.reason}; ${pardonReason}`
         : pardonReason,
-      status: signOutPenalty.amount > 0 ? 'late' : 'present',
+      // From the time, never the fee: a GHC 2 no sign-out doesn't make the day "late".
+      status: attendanceStatusFor({ arrivalTime, lateArrivalApproved: true }),
     };
   }
 
@@ -136,7 +140,7 @@ function resolveNextAttendanceState(input: {
     didNotSignOut,
     pardoned: false,
     reason: penalty.reason || null,
-    status: penalty.amount > 0 ? 'late' : 'present',
+    status: attendanceStatusFor({ arrivalTime }),
   };
 }
 
@@ -164,6 +168,8 @@ export async function reconcileAttendanceForPermission(input: {
     .limit(1);
 
   if (!attendance && !existingLateness) {
+    // A permission was removed from a day with no sign-in: the no sign-in charge applies again now.
+    if (!input.activePermission) await applyNoShowSignInPenaltiesForDate(input.date);
     return { changed: false, reason: 'no_attendance' };
   }
 
@@ -245,32 +251,32 @@ export async function reconcileAttendanceForPermission(input: {
         existingLateness.reason !== next.reason ||
         existingLateness.didNotSignOut !== next.didNotSignOut
       ) {
-        const [updatedEntry] = await db.update(latenessEntry)
-          .set({
-            arrivalTime,
-            computedAmount: nextAmount,
-            didNotSignOut: next.didNotSignOut,
-            reason: next.reason || '',
-            updatedAt: now,
-          })
-          .where(eq(latenessEntry.id, existingLateness.id))
-          .returning();
-
-        await writeAuditEvent({
-          entityType: 'entry',
-          entityId: existingLateness.id,
-          action: 'UPDATE',
-          before: existingLateness,
-          after: {
-            ...updatedEntry,
-            permissionReason: input.reason,
-            staff: { fullName: input.staffMember.fullName },
-          },
-          actor: { email: input.actor.email, id: input.actor.id },
-          reason: input.reason,
+        const updatedEntry = await updateUnsettledLatenessEntry(existingLateness.id, {
+          arrivalTime,
+          computedAmount: nextAmount,
+          didNotSignOut: next.didNotSignOut,
+          reason: next.reason || '',
+          updatedAt: now,
         });
 
-        changed = true;
+        // Paid or pardoned meanwhile: the settled charge stays as it is.
+        if (updatedEntry) {
+          await writeAuditEvent({
+            entityType: 'entry',
+            entityId: existingLateness.id,
+            action: 'UPDATE',
+            before: existingLateness,
+            after: {
+              ...updatedEntry,
+              permissionReason: input.reason,
+              staff: { fullName: input.staffMember.fullName },
+            },
+            actor: { email: input.actor.email, id: input.actor.id },
+            reason: input.reason,
+          });
+
+          changed = true;
+        }
       }
     } else {
       const [createdEntry] = await db.insert(latenessEntry)
@@ -300,9 +306,7 @@ export async function reconcileAttendanceForPermission(input: {
 
       changed = true;
     }
-  } else if (existingLateness) {
-    await db.delete(latenessEntry).where(eq(latenessEntry.id, existingLateness.id));
-
+  } else if (existingLateness && await deleteUnsettledLatenessEntry(existingLateness.id)) {
     await writeAuditEvent({
       entityType: 'entry',
       entityId: existingLateness.id,

@@ -177,6 +177,8 @@ export function planStaffPenaltyRecalculation(input: {
   isAttendanceOnly?: boolean;
   isNssPersonnel: boolean;
   latenessEntries: LatenessEntryLike[];
+  /** Public holidays: nobody is charged, so these days are never recharged here. */
+  holidayDates?: Set<string>;
   /** Leave days: the sync clears those, so they are never recharged here. */
   leaveDates?: Set<string>;
   permissions: PermissionLike[];
@@ -201,6 +203,7 @@ export function planStaffPenaltyRecalculation(input: {
   const handledEntryIds = new Set<string>();
   const protectedEntryIds = input.protectedEntryIds || new Set<string>();
   const leaveDates = input.leaveDates || new Set<string>();
+  const holidayDates = input.holidayDates || new Set<string>();
   const currentClock = input.currentDateKey && input.currentTimeKey
     ? { dateKey: input.currentDateKey, timeKey: input.currentTimeKey }
     : getCurrentAccraClock();
@@ -209,7 +212,7 @@ export function planStaffPenaltyRecalculation(input: {
     const date = normalizeDateKey(attendance.date);
     const existingEntries = entriesByDate.get(date) || [];
     const existingEntry = existingEntries[0] || null;
-    if (leaveDates.has(date) || existingEntries.some((entry) => protectedEntryIds.has(entry.id))) {
+    if (leaveDates.has(date) || holidayDates.has(date) || existingEntries.some((entry) => protectedEntryIds.has(entry.id))) {
       for (const entry of existingEntries) handledEntryIds.add(entry.id);
       continue;
     }
@@ -308,7 +311,7 @@ export function planStaffPenaltyRecalculation(input: {
     if (handledEntryIds.has(entry.id) || protectedEntryIds.has(entry.id)) continue;
 
     const date = normalizeDateKey(entry.date);
-    if (leaveDates.has(date)) continue;
+    if (leaveDates.has(date) || holidayDates.has(date)) continue;
     const next = resolvePenaltyState({
       arrivalTime: normalizeTime(entry.arrivalTime),
       didNotSignOut: entry.didNotSignOut === true,
