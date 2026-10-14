@@ -6,6 +6,7 @@ import { db } from '@/db';
 import { attendancePermission, attendanceRecord, pushReminderDelivery, pushSubscription, reminderCronRun, staff } from '@/db/schema';
 import { getAccraClock, getHolidayForDate, isWeekendDate } from '@/lib/attendance';
 import { publishRealtime } from '@/lib/realtime';
+import { isSignInClosed, NO_SHOW_SIGN_IN_CUTOFF_TIME } from '@/lib/work-hours';
 
 export type PushReminderType = 'sign_in' | 'sign_out' | 'holiday';
 // Who started a batch: the Vercel cron, the cron-job.org catch-ups, or the app itself when it
@@ -169,7 +170,7 @@ function secondsUntilAccraTime(timeKey: string, expiresAt: string) {
 }
 
 export function reminderPushTtlSeconds(reminderType: PushReminderType, timeKey: string) {
-  return secondsUntilAccraTime(timeKey, reminderType === 'sign_out' ? '23:59' : '17:00');
+  return secondsUntilAccraTime(timeKey, reminderType === 'sign_out' ? '23:59' : NO_SHOW_SIGN_IN_CUTOFF_TIME);
 }
 
 export function reminderCopy(
@@ -433,7 +434,9 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
     skipped: 0,
   };
 
-  if (reminderType === 'holiday' ? !isHoliday : isWeekend || isHoliday) {
+  // Sign-in closes at 4:30 PM: a sign-in reminder after that would ask for something nobody can do.
+  const signInClosed = reminderType === 'sign_in' && isSignInClosed(clock.timeKey);
+  if (signInClosed || (reminderType === 'holiday' ? !isHoliday : isWeekend || isHoliday)) {
     await finishReminderBatch(summary, source);
     return summary;
   }

@@ -13,9 +13,9 @@ import { pushAdminAlert, sendAttendanceReminderBatch } from '@/lib/push-reminder
 type FallbackReminderType = 'sign_in' | 'sign_out';
 
 // [start, end) in Accra minutes since midnight. Starts 5 minutes after the cron time so the
-// crons get the first chance; ends where the cron guard's window ends.
+// crons get the first chance. Sign-in ends when sign-in closes (4:30 PM); sign-out runs to midnight.
 const FALLBACK_WINDOWS: Record<FallbackReminderType, { end: number; label: string; start: number }> = {
-  sign_in: { end: 8 * 60 + 15 + 526, label: '8:15 AM sign-in', start: 8 * 60 + 20 },
+  sign_in: { end: 16 * 60 + 30, label: '8:15 AM sign-in', start: 8 * 60 + 20 },
   sign_out: { end: 24 * 60, label: '4:30 PM sign-out', start: 16 * 60 + 35 },
 };
 

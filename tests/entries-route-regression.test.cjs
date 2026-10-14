@@ -261,6 +261,14 @@ Module._load = function patchedLoad(request, ...args) {
       publishRealtime: () => null,
     };
   }
+  if (request === '@/lib/attendance') {
+    return {
+      getHolidayForDate: async (dateKey) => {
+        const day = fixture.workCalendar.find((row) => row.date === dateKey && row.isHoliday);
+        return day ? { holidayNote: day.holidayNote || 'Holiday', id: day.id || dateKey } : null;
+      },
+    };
+  }
   if (request === '@/lib/attendance-lateness-sync') {
     return {
       syncLatenessEntriesFromAttendanceForDate: async () => ({ inserted: 0, updated: 0 }),

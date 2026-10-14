@@ -33,3 +33,10 @@ export function getAccraTimeKey(date = new Date()) {
   const minute = parts.find((part) => part.type === 'minute')?.value || '00';
   return `${hour === '24' ? '00' : hour}:${minute}`;
 }
+
+/** The Accra date before today. Today's charges can still change, so pardons stop here. */
+export function getAccraYesterdayKey(date = new Date()) {
+  const today = new Date(`${getAccraDateKey(date)}T12:00:00Z`);
+  today.setUTCDate(today.getUTCDate() - 1);
+  return today.toISOString().slice(0, 10);
+}

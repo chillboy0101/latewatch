@@ -9,6 +9,7 @@ const dbIndexPath = path.join(root, 'src/db/index.ts');
 const schemaPath = path.join(root, 'src/db/schema.ts');
 const migrationPath = path.join(root, 'drizzle/0019_lateness_payments.sql');
 const paymentsApiPath = path.join(root, 'src/app/api/payments/lateness/route.ts');
+const paymentRecordLibPath = path.join(root, 'src/lib/lateness-payment-record.ts');
 const penaltyHistoryApiPath = path.join(root, 'src/app/api/attendance/check-in/penalty-history/route.ts');
 const receiptApiPath = path.join(root, 'src/app/api/attendance/check-in/receipts/[paymentId]/route.ts');
 const receiptNotificationApiPath = path.join(root, 'src/app/api/attendance/check-in/receipt-notifications/route.ts');
@@ -290,4 +291,20 @@ test('the ⋯ menu shows the status of each sheet at a glance', () => {
   assert.match(source, /owedNow > 0 \? `You owe \$\{ghc\(owedNow\)\}` : 'Nothing owed'/);
   assert.match(source, /if \(signIn && signOut\) return 'On · 8:15 AM & 4:30 PM';/);
   assert.match(source, /if \(next\) void fetchPenaltyHistory\(\);/);
+});
+
+test('former staff can pay, and a payment is recorded once, atomically', () => {
+  const route = fs.readFileSync(paymentsApiPath, 'utf8');
+  const post = route.slice(route.indexOf('export async function POST'));
+  assert.doesNotMatch(post, /eq\(staff\.active, true\)/);
+  assert.doesNotMatch(post, /eq\(staff\.archived, false\)/);
+  assert.match(post, /eq\(staff\.isAttendanceOnly, false\)/);
+  // A per-staff lock, then a guarded insert that writes nothing if the balances moved.
+  const record = fs.readFileSync(paymentRecordLibPath, 'utf8');
+  assert.match(post, /const paymentId = await recordPaymentAtomically\(\{/);
+  assert.match(record, /SELECT pg_advisory_xact_lock\(hashtext\(\$\{`lateness-payment:\$\{input\.staffId\}`\}\)\)/);
+  assert.match(record, /c\.penalty = plan\.expected_penalty AND c\.paid = plan\.expected_paid AND c\.forgiven = plan\.expected_forgiven/);
+  assert.match(record, /WHERE unchanged\.ok/);
+  assert.match(post, /status: 409/);
+  assert.doesNotMatch(post, /for \(const allocation of allocationPlan\.allocations\) \{\n\s+const \[createdAllocation\] = await db\.insert/);
 });

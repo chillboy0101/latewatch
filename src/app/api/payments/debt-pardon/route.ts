@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { staff } from '@/db/schema';
 import { enforceRole } from '@/lib/auth/roles';
-import { getAccraDateKey } from '@/lib/date-key';
+import { getAccraYesterdayKey } from '@/lib/date-key';
 import { isIsoDateKey } from '@/lib/date-format';
 import { applyLatenessDebtPardon, previewLatenessDebtPardon } from '@/lib/lateness-debt-pardon';
 import { publishRealtime } from '@/lib/realtime';
@@ -25,11 +25,12 @@ async function resolveStaff(value: unknown) {
   return { staffId: member.id, staffName: member.fullName };
 }
 
+// Pardons cover finished days only: today's charges can still change (late fee, 8 PM no sign-out).
 function resolveCutoffDate(value: unknown) {
-  const today = getAccraDateKey();
-  const cutoffDate = typeof value === 'string' && value.trim() ? value.trim() : today;
+  const yesterday = getAccraYesterdayKey();
+  const cutoffDate = typeof value === 'string' && value.trim() ? value.trim() : yesterday;
   if (!isIsoDateKey(cutoffDate)) return { error: 'A valid cutoff date is required' };
-  if (cutoffDate > today) return { error: 'The cutoff date cannot be in the future' };
+  if (cutoffDate > yesterday) return { error: 'Pardons can cover days up to yesterday; today is not finished yet' };
   return { cutoffDate };
 }
 

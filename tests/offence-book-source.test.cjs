@@ -89,3 +89,13 @@ test('offence book export route uses the template and audit/export wiring', () =
   assert.match(lib, /closing_balance/);
   assert.match(lib, /buildOffenceBookWorkbookFromData/);
 });
+
+test('saving offence book inputs keeps the opening-balance anchor and is one transaction', () => {
+  const route = fs.readFileSync(itemsApiPath, 'utf8');
+  const page = fs.readFileSync(paymentsPagePath, 'utf8');
+  // Only the edited lists are replaced; the opening balance only when a new one is sent.
+  assert.match(route, /const replacedTypes: OffenceBookItemType\[\] = \['external_money', 'expenditure', \.\.\.\(openingBalance \? \['opening_balance' as const\] : \[\]\)\];/);
+  assert.match(route, /inArray\(offenceBookItem\.itemType, replacedTypes\)/);
+  assert.match(route, /await db\.batch\(\[deleteReplaced, db\.insert\(offenceBookItem\)\.values\(values\)\]\);/);
+  assert.doesNotMatch(page, /openingBalance: '',/);
+});

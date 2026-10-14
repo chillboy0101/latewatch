@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { latenessDebtPardon, latenessDebtPardonEntry, latenessEntry, latenessPayment, latenessPaymentAllocation, staff } from '@/db/schema';
 import { syncLatenessEntriesFromAttendanceForRange } from '@/lib/attendance-lateness-sync';
+import { recordPaymentAtomically } from '@/lib/lateness-payment-record';
 import { sendLatenessPaymentReceiptPush } from '@/lib/lateness-payment-receipt-push';
 import { allocateLatenessPayment, getWeekBoundsForDate, summarizeLatenessPaymentEntries, summarizeLatenessPaymentsByMonth, type LatenessPaymentEntryLike } from '@/lib/lateness-payments';
 import { publishRealtime } from '@/lib/realtime';
@@ -255,10 +256,10 @@ export async function POST(request: NextRequest) {
       id: staff.id,
     })
       .from(staff)
+      // Former (archived or inactive) staff can still settle what they owe, so only
+      // attendance-only staff, who are never charged, are refused.
       .where(and(
         eq(staff.id, staffId),
-        eq(staff.active, true),
-        eq(staff.archived, false),
         eq(staff.isAttendanceOnly, false),
       ))
       .limit(1);
@@ -314,29 +315,37 @@ export async function POST(request: NextRequest) {
     const paymentWeekEnd = hasDateFilter ? weekEnd : lastPaymentWeek.weekEnd;
 
     const actorEmail = getActorEmail(user);
-    const [payment] = await db.insert(latenessPayment)
-      .values({
-        amount: amountString(amount),
-        note,
-        recordedByEmail: actorEmail,
-        recordedByUserId: user.id,
-        staffId,
-        weekEnd: paymentWeekEnd,
-        weekStart: paymentWeekStart,
-      })
-      .returning();
-
-    const createdAllocations = [];
-    for (const allocation of allocationPlan.allocations) {
-      const [createdAllocation] = await db.insert(latenessPaymentAllocation)
-        .values({
-          allocatedAmount: allocation.amount,
-          entryId: allocation.entryId,
-          paymentId: payment.id,
-        })
-        .returning();
-      if (createdAllocation) createdAllocations.push(createdAllocation);
+    const paidByEntryId = new Map<string, number>();
+    for (const allocation of existingAllocations) {
+      paidByEntryId.set(allocation.entryId, (paidByEntryId.get(allocation.entryId) || 0) + Number(allocation.allocatedAmount || 0));
     }
+    const penaltyByEntryId = new Map(payableEntries.map((entry) => [entry.id, entry.computedAmount]));
+    const paymentId = await recordPaymentAtomically({
+      allocations: allocationPlan.allocations.map((allocation) => ({
+        ...allocation,
+        expectedForgiven: pardonsByEntryId.get(allocation.entryId) || '0',
+        expectedPaid: amountString(paidByEntryId.get(allocation.entryId) || 0),
+        expectedPenalty: penaltyByEntryId.get(allocation.entryId) || '0',
+      })),
+      amount: amountString(amount),
+      note,
+      recordedByEmail: actorEmail,
+      recordedByUserId: user.id,
+      staffId,
+      weekEnd: paymentWeekEnd,
+      weekStart: paymentWeekStart,
+    });
+
+    if (!paymentId) {
+      return NextResponse.json({
+        error: 'This balance changed while the payment was being recorded (it may already have been recorded). Refresh and check before trying again.',
+      }, { status: 409 });
+    }
+
+    const [payment] = await db.select().from(latenessPayment).where(eq(latenessPayment.id, paymentId)).limit(1);
+    const createdAllocations = await db.select()
+      .from(latenessPaymentAllocation)
+      .where(eq(latenessPaymentAllocation.paymentId, paymentId));
 
     await writeAuditEvent({
       entityType: 'lateness_payment',

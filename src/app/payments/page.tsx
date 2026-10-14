@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { formatDisplayDate } from '@/lib/date-format';
-import { getAccraDateKey } from '@/lib/date-key';
+import { getAccraYesterdayKey } from '@/lib/date-key';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 
@@ -215,7 +215,7 @@ export default function PenaltyPaymentsPage() {
   const [note, setNote] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'error' | 'success' } | null>(null);
   const [debtPardonOpen, setDebtPardonOpen] = useState(false);
-  const [debtPardonCutoff, setDebtPardonCutoff] = useState(() => getAccraDateKey());
+  const [debtPardonCutoff, setDebtPardonCutoff] = useState(() => getAccraYesterdayKey());
   const [debtPardonPreview, setDebtPardonPreview] = useState<DebtPardonPreview | null>(null);
   const [debtPardonLoading, setDebtPardonLoading] = useState(false);
   const [debtPardonApplying, setDebtPardonApplying] = useState(false);
@@ -490,7 +490,6 @@ export default function PenaltyPaymentsPage() {
           expenditure: expenditureDrafts.map(({ amount, label }) => ({ amount, label })),
           externalMoney: externalMoneyDrafts.map(({ amount, label }) => ({ amount, label })),
           month: offenceBookMonth,
-          openingBalance: '',
           year: offenceBookYear,
         }),
       });
@@ -547,9 +546,8 @@ export default function PenaltyPaymentsPage() {
   const debtPardonStaffName = debtPardonStaffOptions.find((option) => option.id === debtPardonStaffId)?.fullName || null;
 
   function openDebtPardonDialog(staffId = '') {
-    const today = getAccraDateKey();
     setDebtPardonStaffId(staffId);
-    setDebtPardonCutoff(today);
+    setDebtPardonCutoff(getAccraYesterdayKey());
     setDebtPardonReason('');
     setDebtPardonShowStaff(false);
     setDebtPardonConfirmed(false);
@@ -1094,7 +1092,7 @@ export default function PenaltyPaymentsPage() {
                   value={debtPardonCutoff}
                   disabled={debtPardonApplying}
                   onChange={(value) => {
-                    if (value) setDebtPardonCutoff(value > getAccraDateKey() ? getAccraDateKey() : value);
+                    if (value) setDebtPardonCutoff(value > getAccraYesterdayKey() ? getAccraYesterdayKey() : value);
                   }}
                 />
                 <div className="min-w-0">

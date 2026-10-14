@@ -150,7 +150,7 @@ export async function GET(request: NextRequest) {
       const onLeave = Boolean(leavePeriod);
       const noSignOut = Boolean(
         !onLeave &&
-        attendance &&
+        attendance?.checkInTime &&
         attendance.noSignOutWaived !== true &&
         !attendance.signOutTime &&
         (date < clock.dateKey || (date === clock.dateKey && shouldAlertNoSignOut(clock.timeKey))),

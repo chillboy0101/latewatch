@@ -167,8 +167,8 @@ test('general pardon reconciliation clears late records and keeps late-only miss
   assert.match(reconciliationSource, /status: 'excused'/);
   assert.match(reconciliationSource, /publishRealtime\('payments'/);
   assert.match(reconciliationSource, /publishRealtime\('staff-penalty-history'/);
-  assert.match(reconciliationSource, /getFinanciallyAllocatedEntryIds/);
-  assert.match(reconciliationSource, /getPardonedEntryIds/);
+  // Paid and pardoned entries both need a financial review instead of being rewritten.
+  assert.match(reconciliationSource, /getFinanciallyProtectedLeaveEntryIds\(\[existingLateness\.id\]\)/);
   assert.match(reconciliationSource, /financial_review_required/);
   assert.match(reconciliationSource, /NO_SHOW_SIGN_IN_REASON/);
   assert.match(reconciliationSource, /staffMember\.isAttendanceOnly === true/);

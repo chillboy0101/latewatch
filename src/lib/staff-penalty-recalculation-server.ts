@@ -1,11 +1,17 @@
 import 'server-only';
 
-import { eq } from 'drizzle-orm';
+import { and, eq, isNotNull, or } from 'drizzle-orm';
 import { db } from '@/db';
 import { attendancePermission, attendanceRecord, latenessEntry } from '@/db/schema';
 import { writeAuditEvent } from '@/lib/audit';
 import { publishRealtime } from '@/lib/realtime';
 import { planStaffPenaltyRecalculation } from '@/lib/staff-penalty-recalculation';
+import { isStaffLeaveDate } from '@/lib/staff-leave';
+import { getFinanciallyProtectedLeaveEntryIds, getStaffLeavePeriodsForRange } from '@/lib/staff-leave-service';
+
+function dateKeyOf(value: Date | string) {
+  return value instanceof Date ? value.toISOString().slice(0, 10) : value.slice(0, 10);
+}
 
 type ActorRef = {
   email?: string | null;
@@ -31,16 +37,30 @@ export async function recalculateStaffStoredPenalties(input: {
     db.select()
       .from(latenessEntry)
       .where(eq(latenessEntry.staffId, input.staffMember.id)),
+    // Only permissions that count: approved ones and general pardons (as the sync uses).
     db.select()
       .from(attendancePermission)
-      .where(eq(attendancePermission.staffId, input.staffMember.id)),
+      .where(and(
+        eq(attendancePermission.staffId, input.staffMember.id),
+        or(eq(attendancePermission.status, 'approved'), isNotNull(attendancePermission.generalPardonType)),
+      )),
   ]);
+  const dates = [...attendanceRows.map((row) => dateKeyOf(row.date)), ...latenessRows.map((row) => dateKeyOf(row.date))].sort();
+  const [protectedEntryIds, leavePeriods] = await Promise.all([
+    getFinanciallyProtectedLeaveEntryIds(latenessRows.map((row) => row.id)),
+    dates.length === 0
+      ? Promise.resolve([])
+      : getStaffLeavePeriodsForRange({ endDate: dates[dates.length - 1], staffIds: [input.staffMember.id], startDate: dates[0] }),
+  ]);
+  const leaveDates = new Set(dates.filter((date) => isStaffLeaveDate(leavePeriods, input.staffMember.id, date)));
   const plan = planStaffPenaltyRecalculation({
     attendanceRecords: attendanceRows,
     isAttendanceOnly: input.staffMember.isAttendanceOnly,
     isNssPersonnel: input.staffMember.isNssPersonnel,
     latenessEntries: latenessRows,
+    leaveDates,
     permissions: permissionRows,
+    protectedEntryIds,
     staffId: input.staffMember.id,
   });
   const reason = input.reason || 'staff-penalty-recalculation';

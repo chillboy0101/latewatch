@@ -15,7 +15,7 @@ const { DEFAULT_OFFICE_RADIUS_METERS, validateAttendanceLocation } = require('..
 const { getClientIp, getClientIpInfo, isLoopbackIp } = require('../src/lib/request-ip.ts');
 const {
   isOnTimeCheckIn,
-  isAfterWorkdayEnd,
+  isSignInClosed,
   NO_SIGN_OUT_ALERT_LABEL,
   NO_SIGN_OUT_ALERT_TIME,
   shouldAlertNoSignOut,
@@ -43,7 +43,7 @@ function requestWithHeaders(headers) {
   };
 }
 
-test('attendance rules use 8:30 AM as the lateness cutoff and close after 5:00 PM', () => {
+test('attendance rules use 8:30 AM as the lateness cutoff and close sign-in at 4:30 PM', () => {
   assert.deepEqual(
     computePenalty({ arrivalTime: '08:30', didNotSignOut: false, isHoliday: false }),
     { amount: 0, reason: '' },
@@ -52,8 +52,10 @@ test('attendance rules use 8:30 AM as the lateness cutoff and close after 5:00 P
     computePenalty({ arrivalTime: '08:31', didNotSignOut: false, isHoliday: false }),
     { amount: 10, reason: 'DIDN\'T COME BEFORE 8:30AM' },
   );
-  assert.equal(isAfterWorkdayEnd('17:00:00'), false);
-  assert.equal(isAfterWorkdayEnd('17:01:00'), true);
+  // Sign-in closes when the GHC 10 no sign-in fee applies, so a 4:40 sign-in can't turn it into GHC 50.
+  assert.equal(isSignInClosed('16:29:59'), false);
+  assert.equal(isSignInClosed('16:30:00'), true);
+  assert.equal(isSignInClosed('17:01:00'), true);
 });
 
 test('regular staff penalties increase at one minute past each clock hour', () => {

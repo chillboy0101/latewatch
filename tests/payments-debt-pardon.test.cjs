@@ -10,7 +10,8 @@ test('debt pardon API is admin-only and only applies a reviewed preview', () => 
   const route = read('src', 'app', 'api', 'payments', 'debt-pardon', 'route.ts');
 
   assert.equal((route.match(/enforceRole\(\['admin'\]\)/g) || []).length, 2);
-  assert.match(route, /The cutoff date cannot be in the future/);
+  // Pardons cover finished days only (up to yesterday), so 8 PM no-sign-out fees can't be skipped.
+  assert.match(route, /if \(cutoffDate > yesterday\) return \{ error: 'Pardons can cover days up to yesterday/);
   assert.match(route, /Preview the pardon before applying it/);
   assert.match(route, /A reason for the pardon is required/);
   assert.match(route, /status: 409/);

@@ -15,9 +15,13 @@ export function toMinuteTime(value: string | null | undefined) {
   return typeof value === 'string' ? value.slice(0, 5) : '';
 }
 
-export function isAfterWorkdayEnd(value: string | null | undefined) {
+/**
+ * Sign-in closes when the no sign-in fee applies (4:30 PM), so a late sign-in can never
+ * replace that fee with a bigger late fee.
+ */
+export function isSignInClosed(value: string | null | undefined) {
   const time = toMinuteTime(value);
-  return MINUTE_TIME_PATTERN.test(time) && time > WORKDAY_END_TIME;
+  return MINUTE_TIME_PATTERN.test(time) && time >= NO_SHOW_SIGN_IN_CUTOFF_TIME;
 }
 
 export function canSignOutNow(value: string | null | undefined) {

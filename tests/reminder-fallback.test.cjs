@@ -78,11 +78,13 @@ function reset() {
   state.holidays = new Set();
 }
 
-test('fallback windows start 5 minutes after each cron and end with the cron window', () => {
+test('fallback windows start 5 minutes after each cron; sign-in stops when sign-in closes at 4:30', () => {
   const { dueFallbackReminderType } = fallback;
   assert.equal(dueFallbackReminderType('08:19:00'), null);
   assert.equal(dueFallbackReminderType('08:20:00'), 'sign_in');
-  assert.equal(dueFallbackReminderType('16:34:00'), 'sign_in');
+  assert.equal(dueFallbackReminderType('16:29:00'), 'sign_in');
+  assert.equal(dueFallbackReminderType('16:30:00'), null);
+  assert.equal(dueFallbackReminderType('16:34:00'), null);
   assert.equal(dueFallbackReminderType('16:35:00'), 'sign_out');
   assert.equal(dueFallbackReminderType('23:59:00'), 'sign_out');
   assert.equal(dueFallbackReminderType('07:00:00'), null);

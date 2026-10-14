@@ -7,7 +7,7 @@ import { formatAbsencePermissionReason, getPermissionWindowBounds, isPermissionW
 import { writeAuditEvent } from '@/lib/audit';
 import { computePenalty, NO_SHOW_SIGN_IN_AMOUNT, NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/penalty-calculator';
 import { publishRealtime } from '@/lib/realtime';
-import { getFinanciallyAllocatedEntryIds, getPardonedEntryIds } from '@/lib/staff-leave-service';
+import { getFinanciallyProtectedLeaveEntryIds } from '@/lib/staff-leave-service';
 
 type ActorRef = {
   email: string;
@@ -181,7 +181,8 @@ export async function reconcileAttendanceForPermission(input: {
   let changed = false;
 
   if (existingLateness) {
-    const allocatedEntryIds = await getFinanciallyAllocatedEntryIds([existingLateness.id]);
+    // Paid or pardoned entries are settled; a permission never rewrites them.
+    const protectedEntryIds = await getFinanciallyProtectedLeaveEntryIds([existingLateness.id]);
     const entryWouldChange = next.amount <= 0 ||
       amountText(Number(existingLateness.computedAmount || 0)) !== nextAmount ||
       existingLateness.reason !== next.reason ||
@@ -192,7 +193,7 @@ export async function reconcileAttendanceForPermission(input: {
       (attendance.reason || null) !== (next.reason || null)
     ));
 
-    if (allocatedEntryIds.has(existingLateness.id) && (entryWouldChange || attendanceWouldChange)) {
+    if (protectedEntryIds.has(existingLateness.id) && (entryWouldChange || attendanceWouldChange)) {
       return {
         changed: false,
         financialReviewRequired: true,
@@ -300,48 +301,21 @@ export async function reconcileAttendanceForPermission(input: {
       changed = true;
     }
   } else if (existingLateness) {
-    const pardonedEntryIds = await getPardonedEntryIds([existingLateness.id]);
-    if (pardonedEntryIds.has(existingLateness.id)) {
-      const [updatedEntry] = await db.update(latenessEntry)
-        .set({
-          arrivalTime,
-          computedAmount: '0.00',
-          didNotSignOut: next.didNotSignOut,
-          updatedAt: now,
-        })
-        .where(eq(latenessEntry.id, existingLateness.id))
-        .returning();
+    await db.delete(latenessEntry).where(eq(latenessEntry.id, existingLateness.id));
 
-      await writeAuditEvent({
-        entityType: 'entry',
-        entityId: existingLateness.id,
-        action: 'UPDATE',
-        before: existingLateness,
-        after: {
-          ...updatedEntry,
-          staff: { fullName: input.staffMember.fullName },
-        },
-        actor: { email: input.actor.email, id: input.actor.id },
-        reason: input.reason,
-      });
-      changed = true;
-    } else {
-      await db.delete(latenessEntry).where(eq(latenessEntry.id, existingLateness.id));
-
-      await writeAuditEvent({
-        entityType: 'entry',
-        entityId: existingLateness.id,
-        action: 'DELETE',
-        before: {
-          ...existingLateness,
-          permissionReason: input.reason,
-          staff: { fullName: input.staffMember.fullName },
-        },
-        after: null,
-        actor: { email: input.actor.email, id: input.actor.id },
-        reason: input.reason,
-      });
-    }
+    await writeAuditEvent({
+      entityType: 'entry',
+      entityId: existingLateness.id,
+      action: 'DELETE',
+      before: {
+        ...existingLateness,
+        permissionReason: input.reason,
+        staff: { fullName: input.staffMember.fullName },
+      },
+      after: null,
+      actor: { email: input.actor.email, id: input.actor.id },
+      reason: input.reason,
+    });
 
     changed = true;
   }

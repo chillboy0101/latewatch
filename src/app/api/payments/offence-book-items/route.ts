@@ -339,11 +339,10 @@ export async function PUT(request: NextRequest) {
       .where(eq(offenceBookItem.monthKey, parsed.monthKey));
     const email = actorEmail(user);
 
-    await db.delete(offenceBookItem)
-      .where(and(
-        eq(offenceBookItem.monthKey, parsed.monthKey),
-      ));
-
+    // Only the rows this save carries are replaced. The opening balance (the ledger's starting
+    // anchor) is left alone unless a new one is actually sent. Delete and insert run as one
+    // transaction, so a failure can't leave the month empty.
+    const replacedTypes: OffenceBookItemType[] = ['external_money', 'expenditure', ...(openingBalance ? ['opening_balance' as const] : [])];
     const values = [
       ...(openingBalance ? [openingBalance] : []),
       ...externalMoney,
@@ -355,9 +354,16 @@ export async function PUT(request: NextRequest) {
       updatedAt: new Date(),
       updatedByEmail: email,
     }));
+    const deleteReplaced = db.delete(offenceBookItem)
+      .where(and(
+        eq(offenceBookItem.monthKey, parsed.monthKey),
+        inArray(offenceBookItem.itemType, replacedTypes),
+      ));
 
     if (values.length > 0) {
-      await db.insert(offenceBookItem).values(values);
+      await db.batch([deleteReplaced, db.insert(offenceBookItem).values(values)]);
+    } else {
+      await deleteReplaced;
     }
 
     const itemRows = await loadOffenceBookItemsThroughMonth(parsed.monthKey);

@@ -269,6 +269,7 @@ Module._load = function patchedLoad(request, ...args) {
       and: (...conditions) => ({ conditions, op: 'and' }),
       eq: (left, right) => ({ left, op: 'eq', right }),
       gte: (left, right) => ({ left, op: 'gte', right }),
+      inArray: (left, right) => ({ left, op: 'inArray', right }),
       isNotNull: (left) => ({ left, op: 'isNotNull' }),
       lte: (left, right) => ({ left, op: 'lte', right }),
       or: (...conditions) => ({ conditions, op: 'or' }),
@@ -321,7 +322,7 @@ test('sync deletes an existing positive lateness entry when a general pardon cle
   assert.match(fixture.attendanceRecord[0].reason, /general pardon/);
 });
 
-test('sync zeros a pardon-linked entry instead of violating its restrictive foreign key', async () => {
+test('sync leaves a pardoned entry and its attendance untouched, like a paid one', async () => {
   resetFixture();
   fixture.latenessEntry = [
     {
@@ -341,10 +342,9 @@ test('sync zeros a pardon-linked entry instead of violating its restrictive fore
   await syncLatenessEntriesFromAttendanceForDate('2026-05-15');
 
   assert.equal(fixture.latenessEntry.length, 1);
-  assert.equal(fixture.latenessEntry[0].computedAmount, '0.00');
-  assert.equal(fixture.latenessEntry[0].didNotSignOut, false);
-  assert.match(fixture.latenessEntry[0].reason, /general pardon/);
-  assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
+  assert.equal(fixture.latenessEntry[0].computedAmount, '15.00');
+  assert.equal(fixture.latenessEntry[0].reason, "DIDN'T COME BEFORE 8:30AM");
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '15.00');
 });
 
 test('sync leaves payment-allocated entries and linked attendance unchanged for review', async () => {
@@ -668,4 +668,84 @@ test('sync does not create a no-show sign-in penalty for dates before the rule t
   await syncLatenessEntriesFromAttendanceForDate('2026-07-07');
 
   assert.equal(fixture.latenessEntry.length, 0);
+});
+
+test('no-show charges start on the day the staff record was created', async () => {
+  resetFixture();
+  fixture.attendancePermission = [];
+  fixture.attendanceRecord = [];
+  fixture.staff[0].createdAt = new Date('2026-07-09T09:00:00.000Z');
+
+  await syncLatenessEntriesFromAttendanceForDate('2026-07-08');
+  assert.equal(fixture.latenessEntry.length, 0);
+
+  fixture.staff[0].createdAt = new Date('2026-07-08T15:00:00.000Z');
+  await syncLatenessEntriesFromAttendanceForDate('2026-07-08');
+  assert.equal(fixture.latenessEntry.length, 1);
+  assert.equal(fixture.latenessEntry[0].computedAmount, '10.00');
+});
+
+test('an un-waived no-show stays charged and its day stays absent', async () => {
+  resetFixture();
+  fixture.attendancePermission = [];
+  fixture.attendanceRecord = [{
+    checkInTime: null,
+    computedAmount: '10.00',
+    date: '2026-07-08',
+    id: 'attendance-unwaived',
+    noShowSignInWaived: false,
+    noSignOutWaived: false,
+    reason: null,
+    signOutTime: null,
+    source: 'no_show_sign_in_waiver',
+    staffId: 'staff-1',
+    status: 'absent',
+  }];
+  fixture.latenessEntry = [{
+    arrivalTime: null,
+    computedAmount: '10.00',
+    date: '2026-07-08',
+    didNotSignOut: false,
+    id: 'entry-unwaived',
+    reason: "DIDN'T SIGN IN BEFORE 4:30PM",
+    staffId: 'staff-1',
+  }];
+
+  await syncLatenessEntriesFromAttendanceForDate('2026-07-08');
+
+  assert.equal(fixture.latenessEntry.length, 1);
+  assert.equal(fixture.latenessEntry[0].computedAmount, '10.00');
+  assert.equal(fixture.attendanceRecord[0].status, 'absent');
+});
+
+test('a holiday declared after the day started clears its late and no-show charges', async () => {
+  resetFixture();
+  fixture.attendancePermission = [];
+  fixture.workCalendar = [{ date: '2026-07-08', isHoliday: true, isRemoved: false }];
+  fixture.attendanceRecord = [{ ...fixture.attendanceRecord[0], date: '2026-07-08' }];
+  fixture.latenessEntry = [
+    {
+      arrivalTime: '09:12:00',
+      computedAmount: '15.00',
+      date: '2026-07-08',
+      didNotSignOut: false,
+      id: 'entry-late',
+      reason: "DIDN'T COME BEFORE 8:30AM",
+      staffId: 'staff-1',
+    },
+    {
+      arrivalTime: null,
+      computedAmount: '10.00',
+      date: '2026-07-08',
+      didNotSignOut: false,
+      id: 'entry-no-show',
+      reason: "DIDN'T SIGN IN BEFORE 4:30PM",
+      staffId: 'staff-2',
+    },
+  ];
+
+  await syncLatenessEntriesFromAttendanceForDate('2026-07-08');
+
+  assert.deepEqual(fixture.latenessEntry, []);
+  assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
 });

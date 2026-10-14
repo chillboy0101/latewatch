@@ -353,3 +353,74 @@ test('staff penalty recalculation does not create no-show sign-in penalties befo
     status: 'present',
   }]);
 });
+
+test('changing a staff flag never touches paid or pardoned entries, or leave days', () => {
+  const lateDay = (date, id) => ({
+    attendance: {
+      checkInTime: '10:31:00',
+      computedAmount: '20.00',
+      date,
+      id: `attendance-${id}`,
+      reason: "DIDN'T COME BEFORE 8:30AM",
+      signOutTime: '16:45:00',
+      status: 'late',
+    },
+    entry: {
+      arrivalTime: '10:31:00',
+      computedAmount: '20.00',
+      date,
+      didNotSignOut: false,
+      id: `entry-${id}`,
+      reason: "DIDN'T COME BEFORE 8:30AM",
+      staffId: 'staff-1',
+    },
+  });
+  const paid = lateDay('2026-05-06', 'paid');
+  const leave = lateDay('2026-05-07', 'leave');
+  const open = lateDay('2026-05-08', 'open');
+
+  const plan = planStaffPenaltyRecalculation({
+    attendanceRecords: [paid.attendance, leave.attendance, open.attendance],
+    isAttendanceOnly: true,
+    isNssPersonnel: false,
+    latenessEntries: [paid.entry, leave.entry, open.entry],
+    leaveDates: new Set(['2026-05-07']),
+    permissions: [],
+    protectedEntryIds: new Set(['entry-paid']),
+    staffId: 'staff-1',
+  });
+
+  // Only the open day is recalculated (attendance-only staff are never charged).
+  assert.deepEqual(plan.latenessDeletes, [{ id: 'entry-open' }]);
+  assert.deepEqual(plan.attendanceUpdates.map((update) => update.id), ['attendance-open']);
+  assert.deepEqual(plan.latenessUpdates, []);
+});
+
+test('an approved absence clears the charge even when the person signed in', () => {
+  const plan = planStaffPenaltyRecalculation({
+    attendanceRecords: [{
+      checkInTime: '10:31:00',
+      computedAmount: '20.00',
+      date: '2026-05-06',
+      id: 'attendance-1',
+      reason: "DIDN'T COME BEFORE 8:30AM",
+      signOutTime: '16:45:00',
+      status: 'late',
+    }],
+    isNssPersonnel: false,
+    latenessEntries: [{
+      arrivalTime: '10:31:00',
+      computedAmount: '20.00',
+      date: '2026-05-06',
+      didNotSignOut: false,
+      id: 'entry-1',
+      reason: "DIDN'T COME BEFORE 8:30AM",
+      staffId: 'staff-1',
+    }],
+    permissions: [{ date: '2026-05-06', permissionType: 'absence', reason: 'Hospital', status: 'approved' }],
+    staffId: 'staff-1',
+  });
+
+  assert.deepEqual(plan.latenessDeletes, [{ id: 'entry-1' }]);
+  assert.equal(plan.attendanceUpdates[0].computedAmount, '0.00');
+});

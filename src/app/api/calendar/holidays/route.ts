@@ -1,10 +1,12 @@
 // app/api/calendar/holidays/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+import { after, NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { workCalendar } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
+import { syncLatenessEntriesFromAttendanceForDate } from '@/lib/attendance-lateness-sync';
+import { getAccraDateKey } from '@/lib/date-key';
 
 // POST - Create a new holiday entry
 export async function POST(request: NextRequest) {
@@ -63,6 +65,14 @@ export async function POST(request: NextRequest) {
     }
 
     publishRealtime('dashboard', 'invalidate', { reason: 'calendar' });
+    // A holiday on a day that has started clears that day's charges now, not on the next page view.
+    if (String(date).slice(0, 10) <= getAccraDateKey()) {
+      after(async () => {
+        await syncLatenessEntriesFromAttendanceForDate(String(date).slice(0, 10));
+        publishRealtime('entries', 'invalidate', { reason: 'calendar' });
+        publishRealtime('payments', 'invalidate', { reason: 'calendar' });
+      });
+    }
 
     return NextResponse.json(result);
   } catch (error) {

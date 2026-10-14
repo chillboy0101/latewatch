@@ -15,6 +15,7 @@ import {
 } from '@/lib/attendance';
 import { syncLatenessEntriesFromAttendanceForDate } from '@/lib/attendance-lateness-sync';
 import { endLeaveOnCheckIn } from '@/lib/staff-leave-return';
+import { getFinanciallyProtectedLeaveEntryIds } from '@/lib/staff-leave-service';
 import {
   findSharedAttendanceDeviceOwner,
   SHARED_ATTENDANCE_DEVICE_MESSAGE,
@@ -32,7 +33,8 @@ import { maybeRunMissedReminderBatch } from '@/lib/reminder-fallback';
 import { publishRealtime } from '@/lib/realtime';
 import {
   canSignOutNow,
-  isAfterWorkdayEnd,
+  isSignInClosed,
+  NO_SHOW_SIGN_IN_CUTOFF_LABEL,
   NO_SIGN_OUT_ALERT_LABEL,
   SIGN_OUT_START_LABEL,
   WORKDAY_END_LABEL,
@@ -674,7 +676,7 @@ export async function GET(request: NextRequest) {
       device: serializeDevice(resolvedDevice, deviceHash),
       holidayName: holiday?.holidayNote || null,
       isHoliday: Boolean(holiday),
-      isAfterWorkdayEnd: isAfterWorkdayEnd(clock.timeKey),
+      isAfterWorkdayEnd: isSignInClosed(clock.timeKey),
       isWeekend,
       locationConfigured: Boolean(office),
       locationPolicy: serializeLocationPolicy(office),
@@ -1013,7 +1015,7 @@ export async function POST(request: NextRequest) {
           device: serializeDevice(registeredDevice, trustedDeviceHash),
           holidayName: null,
           isHoliday: false,
-          isAfterWorkdayEnd: isAfterWorkdayEnd(clock.timeKey),
+          isAfterWorkdayEnd: isSignInClosed(clock.timeKey),
           isWeekend: false,
           locationConfigured: true,
           locationPolicy: responseLocationPolicy,
@@ -1104,7 +1106,7 @@ export async function POST(request: NextRequest) {
               device: serializeDevice(resolvedDevice, trustedDeviceHash),
               holidayName: null,
               isHoliday: false,
-              isAfterWorkdayEnd: isAfterWorkdayEnd(clock.timeKey),
+              isAfterWorkdayEnd: isSignInClosed(clock.timeKey),
               isWeekend: false,
               locationConfigured: true,
               locationPolicy: responseLocationPolicy,
@@ -1171,7 +1173,7 @@ export async function POST(request: NextRequest) {
               }, trustedDeviceHash),
               holidayName: null,
               isHoliday: false,
-              isAfterWorkdayEnd: isAfterWorkdayEnd(clock.timeKey),
+              isAfterWorkdayEnd: isSignInClosed(clock.timeKey),
               isWeekend: false,
               locationConfigured: true,
               locationPolicy: responseLocationPolicy,
@@ -1248,7 +1250,7 @@ export async function POST(request: NextRequest) {
             }, trustedDeviceHash),
             holidayName: null,
             isHoliday: false,
-            isAfterWorkdayEnd: isAfterWorkdayEnd(clock.timeKey),
+            isAfterWorkdayEnd: isSignInClosed(clock.timeKey),
             isWeekend: false,
             locationConfigured: true,
             locationPolicy: responseLocationPolicy,
@@ -1302,7 +1304,7 @@ export async function POST(request: NextRequest) {
           device: serializeDevice(resolvedDevice, trustedDeviceHash),
           holidayName: null,
           isHoliday: false,
-          isAfterWorkdayEnd: isAfterWorkdayEnd(clock.timeKey),
+          isAfterWorkdayEnd: isSignInClosed(clock.timeKey),
           isWeekend: false,
           locationConfigured: true,
           locationPolicy: responseLocationPolicy,
@@ -1318,10 +1320,10 @@ export async function POST(request: NextRequest) {
       return block('CHECK_IN_REQUIRED', 'You need to check in before signing out.', 400, staffMember.id, locationValidation, officeLocationExtra);
     }
 
-    if (isAfterWorkdayEnd(clock.timeKey)) {
+    if (isSignInClosed(clock.timeKey)) {
       return block(
         'CHECK_IN_CLOSED',
-        `Check-ins are closed after ${WORKDAY_END_LABEL}. Ask an admin to correct attendance if needed.`,
+        `Sign-in closes at ${NO_SHOW_SIGN_IN_CUTOFF_LABEL}. Ask an admin to correct attendance if needed.`,
         400,
         staffMember.id,
         locationValidation,
@@ -1485,12 +1487,18 @@ export async function POST(request: NextRequest) {
       reason: 'attendance-check-in',
     });
 
-    if (penalty.amount > 0) {
-      const [existingLateness] = await db.select()
+    const [existingLateness] = penalty.amount > 0
+      ? await db.select()
         .from(latenessEntry)
         .where(and(eq(latenessEntry.staffId, staffMember.id), eq(latenessEntry.date, clock.dateKey)))
-        .limit(1);
+        .limit(1)
+      : [];
+    // A paid or pardoned entry for today is settled; signing in never rewrites it.
+    const existingIsSettled = existingLateness
+      ? (await getFinanciallyProtectedLeaveEntryIds([existingLateness.id])).has(existingLateness.id)
+      : false;
 
+    if (penalty.amount > 0 && !existingIsSettled) {
       const [lateness] = existingLateness
         ? await db.update(latenessEntry)
           .set({

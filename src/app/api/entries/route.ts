@@ -1,7 +1,7 @@
 // app/api/entries/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { attendancePermission, attendanceRecord, entrySubmission, latenessDebtPardonEntry, latenessEntry, latenessPaymentAllocation, staff, staffLeavePeriod, workCalendar } from '@/db/schema';
+import { attendancePermission, attendanceRecord, entrySubmission, latenessDebtPardonEntry, latenessEntry, latenessPaymentAllocation, staff, staffLeavePeriod } from '@/db/schema';
 import { and, eq, gte, gt, inArray, isNotNull, isNull, lte, ne, or } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 import { getAuditActor, writeAuditEvent } from '@/lib/audit';
@@ -12,6 +12,7 @@ import {
 } from '@/lib/attendance-lateness-sync';
 import { mergeAttendanceRowsIntoEntryRows } from '@/lib/lateness-entry-presentation';
 import { isStaffLeaveDate } from '@/lib/staff-leave';
+import { getHolidayForDate } from '@/lib/attendance';
 import { isIsoDateKey, isoDateKeyToLocalDate } from '@/lib/date-format';
 import { getAccraDateKey, getAccraTimeKey } from '@/lib/date-key';
 import { isNoSignOutChargeDue } from '@/lib/work-hours';
@@ -246,10 +247,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if the date is a holiday
-    const [holidayCheck] = await db.select()
-      .from(workCalendar)
-      .where(and(eq(workCalendar.date, date), eq(workCalendar.isHoliday, true)));
+    // Same holiday rules as check-in and the sync (removed days and observed holidays included).
+    const holidayCheck = await getHolidayForDate(date);
 
     if (holidayCheck) {
       return NextResponse.json(
@@ -473,7 +472,8 @@ export async function POST(request: NextRequest) {
           noShowSignInWaivedByUserId: requestedNoShowSignInWaived ? actor.actorUserId : null,
           noShowSignInWaivedReason: requestedNoShowSignInWaived ? 'entries_no_show_sign_in_cleared' : null,
           reason: requestedNoShowSignInWaived ? NO_SHOW_SIGN_IN_WAIVED_REASON : null,
-          status: requestedNoShowSignInWaived ? 'absent' : 'present',
+          // Waived or not, nobody signed in that day.
+          status: 'absent',
           updatedAt: new Date(),
         };
 

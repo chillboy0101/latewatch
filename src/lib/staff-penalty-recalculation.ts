@@ -1,6 +1,5 @@
-import { getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/attendance-permissions';
+import { resolveManualPenalty } from '@/lib/manual-attendance-correction';
 import {
-  computePenalty,
   NO_SHOW_SIGN_IN_EFFECTIVE_DATE,
   NO_SHOW_SIGN_IN_REASON,
   NO_SHOW_SIGN_IN_WAIVED_REASON,
@@ -45,7 +44,7 @@ type PenaltyState = {
   amountText: string;
   didNotSignOut: boolean;
   reason: string | null;
-  status: 'late' | 'present';
+  status: 'excused' | 'late' | 'present';
 };
 
 export type StaffPenaltyRecalculationPlan = {
@@ -53,7 +52,7 @@ export type StaffPenaltyRecalculationPlan = {
     computedAmount: string;
     id: string;
     reason: string | null;
-    status: 'late' | 'present';
+    status: 'excused' | 'late' | 'present';
   }>;
   latenessCreates: Array<{
     arrivalTime: string | null;
@@ -90,15 +89,6 @@ function amountText(value: number) {
 function normalizeAmount(value: string | number | null | undefined) {
   const amount = Number(value || 0);
   return Number.isFinite(amount) ? amountText(amount) : '0.00';
-}
-
-function approvedLateArrivalReason(permission: PermissionLike) {
-  if (permission.generalPardonType === 'late_arrival') {
-    return 'Approved late arrival (Any time today): general pardon';
-  }
-
-  const window = getPermissionWindowBounds(permission);
-  return `Approved late arrival (${window.label}): ${permission.reason || ''}`.trim();
 }
 
 function getCurrentAccraClock() {
@@ -139,6 +129,7 @@ function shouldApplyNoSignOutPenalty(input: {
   return shouldAlertNoSignOut(input.currentTimeKey);
 }
 
+// Same rules as the sync and manual corrections, so changing a staff flag can't disagree with them.
 function resolvePenaltyState(input: {
   arrivalTime: string | null;
   didNotSignOut: boolean;
@@ -147,64 +138,21 @@ function resolvePenaltyState(input: {
   noSignIn?: boolean;
   permission: PermissionLike | null;
 }): PenaltyState {
-  if (
-    input.permission?.generalPardonType === 'absence' ||
-    (input.noSignIn && input.permission?.status === 'approved' && input.permission.permissionType === 'absence')
-  ) {
-    return {
-      amount: 0,
-      amountText: '0.00',
-      didNotSignOut: false,
-      reason: null,
-      status: 'present',
-    };
-  }
-
-  const permissionClearsLatePenalty = Boolean(
-    (input.permission?.generalPardonType === 'late_arrival' ||
-      (input.permission?.status === 'approved' && input.permission.permissionType === 'late_arrival')) &&
-    input.arrivalTime &&
-    isPermissionWindowActive(input.permission, input.arrivalTime),
-  );
-
-  if (permissionClearsLatePenalty && input.permission) {
-    const signOutPenalty = input.didNotSignOut
-      ? computePenalty({
-          arrivalTime: null,
-          didNotSignOut: true,
-          isAttendanceOnly: input.isAttendanceOnly,
-          isNssPersonnel: input.isNssPersonnel,
-          isHoliday: false,
-        })
-      : { amount: 0, reason: '' };
-    const reason = signOutPenalty.amount > 0
-      ? `${signOutPenalty.reason}; ${approvedLateArrivalReason(input.permission)}`
-      : approvedLateArrivalReason(input.permission);
-
-    return {
-      amount: signOutPenalty.amount,
-      amountText: amountText(signOutPenalty.amount),
-      didNotSignOut: input.didNotSignOut,
-      reason,
-      status: signOutPenalty.amount > 0 ? 'late' : 'present',
-    };
-  }
-
-  const penalty = computePenalty({
+  const penalty = resolveManualPenalty({
+    activePermission: input.permission,
     arrivalTime: input.arrivalTime,
     didNotSignOut: input.didNotSignOut,
     isAttendanceOnly: input.isAttendanceOnly,
     isNssPersonnel: input.isNssPersonnel,
-    isHoliday: false,
     noSignIn: input.noSignIn,
   });
 
   return {
     amount: penalty.amount,
     amountText: amountText(penalty.amount),
-    didNotSignOut: input.didNotSignOut,
+    didNotSignOut: penalty.didNotSignOut,
     reason: penalty.reason || null,
-    status: penalty.amount > 0 ? 'late' : 'present',
+    status: penalty.status,
   };
 }
 
@@ -229,7 +177,11 @@ export function planStaffPenaltyRecalculation(input: {
   isAttendanceOnly?: boolean;
   isNssPersonnel: boolean;
   latenessEntries: LatenessEntryLike[];
+  /** Leave days: the sync clears those, so they are never recharged here. */
+  leaveDates?: Set<string>;
   permissions: PermissionLike[];
+  /** Paid or pardoned entries are settled and never rewritten or deleted. */
+  protectedEntryIds?: Set<string>;
   staffId: string;
 }): StaffPenaltyRecalculationPlan {
   const plan: StaffPenaltyRecalculationPlan = {
@@ -247,6 +199,8 @@ export function planStaffPenaltyRecalculation(input: {
   }
   const permissionsByDate = new Map(input.permissions.map((permission) => [normalizeDateKey(permission.date), permission]));
   const handledEntryIds = new Set<string>();
+  const protectedEntryIds = input.protectedEntryIds || new Set<string>();
+  const leaveDates = input.leaveDates || new Set<string>();
   const currentClock = input.currentDateKey && input.currentTimeKey
     ? { dateKey: input.currentDateKey, timeKey: input.currentTimeKey }
     : getCurrentAccraClock();
@@ -255,6 +209,10 @@ export function planStaffPenaltyRecalculation(input: {
     const date = normalizeDateKey(attendance.date);
     const existingEntries = entriesByDate.get(date) || [];
     const existingEntry = existingEntries[0] || null;
+    if (leaveDates.has(date) || existingEntries.some((entry) => protectedEntryIds.has(entry.id))) {
+      for (const entry of existingEntries) handledEntryIds.add(entry.id);
+      continue;
+    }
     const arrivalTime = normalizeTime(attendance.checkInTime);
     const noSignIn = date >= NO_SHOW_SIGN_IN_EFFECTIVE_DATE && !arrivalTime && (
       attendance.noShowSignInWaived === true ||
@@ -347,9 +305,10 @@ export function planStaffPenaltyRecalculation(input: {
   }
 
   for (const entry of input.latenessEntries) {
-    if (handledEntryIds.has(entry.id)) continue;
+    if (handledEntryIds.has(entry.id) || protectedEntryIds.has(entry.id)) continue;
 
     const date = normalizeDateKey(entry.date);
+    if (leaveDates.has(date)) continue;
     const next = resolvePenaltyState({
       arrivalTime: normalizeTime(entry.arrivalTime),
       didNotSignOut: entry.didNotSignOut === true,
