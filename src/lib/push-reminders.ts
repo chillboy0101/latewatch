@@ -6,6 +6,8 @@ import { db } from '@/db';
 import { attendancePermission, attendanceRecord, pushReminderDelivery, pushSubscription, reminderCronRun, staff } from '@/db/schema';
 import { getAccraClock, getHolidayForDate, isWeekendDate } from '@/lib/attendance';
 import { publishRealtime } from '@/lib/realtime';
+import { isStaffLeaveDate } from '@/lib/staff-leave';
+import { getStaffLeavePeriodsForRange } from '@/lib/staff-leave-service';
 import { isSignInClosed, NO_SHOW_SIGN_IN_CUTOFF_TIME } from '@/lib/work-hours';
 
 export type PushReminderType = 'sign_in' | 'sign_out' | 'holiday';
@@ -20,6 +22,8 @@ type ReminderEligibilityInput = {
   } | null;
   isHoliday: boolean;
   isWeekend: boolean;
+  /** Staff on approved leave aren't reminded to sign in or out. */
+  onLeave?: boolean;
   permission?: {
     permissionType?: string | null;
   } | null;
@@ -138,7 +142,7 @@ export function shouldSendPushReminder(input: ReminderEligibilityInput) {
     return input.subscription.signInEnabled === true || input.subscription.signOutEnabled === true;
   }
 
-  if (input.isWeekend || input.isHoliday) return false;
+  if (input.isWeekend || input.isHoliday || input.onLeave) return false;
 
   if (input.reminderType === 'sign_in') {
     if (input.subscription.signInEnabled !== true) return false;
@@ -482,9 +486,12 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
 
   const attendanceByStaffId = new Map<string, { checkInTime?: string | null; signOutTime?: string | null }>();
   const permissionByStaffId = new Map<string, { permissionType?: string | null }>();
+  const onLeaveStaffIds = new Set<string>();
 
   if (reminderType !== 'holiday') {
     const staffIds = Array.from(new Set(subscriptionRows.map((row) => row.staffId)));
+    const leavePeriods = await getStaffLeavePeriodsForRange({ endDate: date, staffIds, startDate: date });
+    staffIds.filter((staffId) => isStaffLeaveDate(leavePeriods, staffId, date)).forEach((staffId) => onLeaveStaffIds.add(staffId));
     const [attendanceRows, permissionRows] = await Promise.all([
       db.select()
         .from(attendanceRecord)
@@ -507,6 +514,7 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
       attendance: attendanceByStaffId.get(row.staffId) || null,
       isHoliday,
       isWeekend,
+      onLeave: onLeaveStaffIds.has(row.staffId),
       permission: permissionByStaffId.get(row.staffId) || null,
       reminderType,
       staff: {

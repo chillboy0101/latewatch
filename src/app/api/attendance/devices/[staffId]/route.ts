@@ -50,29 +50,25 @@ export async function DELETE(
     const revokedSessions = sessionRevocation.revokedSessions;
     const disabledPushSubscriptions = await disableActivePushSubscriptionsForStaff(staffId, now);
 
-    if (!before) {
-      return NextResponse.json({
-        disabledPushSubscriptions,
-        reset: false,
-        revokedSessions,
-        sessionRevocation,
-        success: true,
-      });
+    if (before) {
+      await db.delete(staffDevice).where(eq(staffDevice.staffId, staffId));
     }
 
-    await db.delete(staffDevice).where(eq(staffDevice.staffId, staffId));
-
+    // Sessions and reminders were revoked either way, so the reset is always audited.
     const actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';
     await writeAuditEvent({
       entityType: 'staff_device',
       entityId: staffId,
       action: 'DELETE',
-      before: {
-        lastSeenAt: before.lastSeenAt,
-        registeredAt: before.registeredAt,
-        staffName: member.fullName,
-      },
+      before: before
+        ? {
+            lastSeenAt: before.lastSeenAt,
+            registeredAt: before.registeredAt,
+            staffName: member.fullName,
+          }
+        : null,
       after: {
+        deviceRemoved: Boolean(before),
         disabledPushSubscriptions,
         revokedSessions,
         sessionRevocation,
@@ -82,12 +78,13 @@ export async function DELETE(
       reason: 'attendance-device-reset',
     });
 
+    publishRealtime('attendance', 'invalidate', { reason: 'attendance-device-reset' });
     publishRealtime('dashboard', 'invalidate', { reason: 'attendance-device-reset' });
     publishRealtime('notifications', 'invalidate', { reason: 'attendance-device-reset' });
 
     return NextResponse.json({
       disabledPushSubscriptions,
-      reset: true,
+      reset: Boolean(before),
       revokedSessions,
       sessionRevocation,
       success: true,

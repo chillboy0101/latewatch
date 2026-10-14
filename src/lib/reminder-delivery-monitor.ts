@@ -1,9 +1,12 @@
 import 'server-only';
 
-import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import { attendancePermission, attendanceRecord, pushReminderDelivery, pushSubscription, reminderCronRun, staff, staffDevice } from '@/db/schema';
 import { getAccraClock, getHolidayForDate, isWeekendDate } from '@/lib/attendance';
+import { isCronReminderRun, REMINDER_GRACE_MINUTES } from '@/lib/reminder-fallback';
+import { isStaffLeaveDate } from '@/lib/staff-leave';
+import { getStaffLeavePeriodsForRange } from '@/lib/staff-leave-service';
 
 export type ReminderMonitorType = 'sign_in' | 'sign_out';
 // Whether a staff member's phone can get reminders at all, regardless of today's attendance.
@@ -48,13 +51,14 @@ function minutesFromTimeKey(timeKey: string | null | undefined) {
   return hour * 60 + minute;
 }
 
-function hasScheduledTimePassed(input: { date: string; reminderType: ReminderMonitorType }) {
+function hasScheduledTimePassed(input: { date: string; graceMinutes?: number; reminderType: ReminderMonitorType }) {
   const clock = getAccraClock();
   if (input.date < clock.dateKey) return true;
   if (input.date > clock.dateKey) return false;
 
   const currentMinutes = minutesFromTimeKey(clock.timeKey);
-  return currentMinutes !== null && currentMinutes >= REMINDER_SCHEDULES[input.reminderType].scheduledMinutes;
+  return currentMinutes !== null &&
+    currentMinutes >= REMINDER_SCHEDULES[input.reminderType].scheduledMinutes + (input.graceMinutes || 0);
 }
 
 function isAtOrBeforeReminderSchedule(timeKey: string | null | undefined, reminderType: ReminderMonitorType) {
@@ -149,6 +153,91 @@ function sentReason(input: {
   return base;
 }
 
+/**
+ * One person's reminder status for one reminder today. Pure, so the rules can be tested:
+ * what was sent or failed comes first, then why nothing was due, then whether the phone is set up.
+ */
+export function decideReminderRow(input: {
+  attendance: { checkInTime?: string | null; signOutTime?: string | null } | null;
+  counts: ReturnType<typeof deliveryCounts>;
+  enabledSubscriptions: number;
+  /** Phones that used to get reminders but were switched off by a reset, transfer or expiry. */
+  hadDisabledSubscriptions: boolean;
+  hasCurrentFailure: boolean;
+  hasTrustedDevice: boolean;
+  holidayNote?: string | null;
+  isHoliday: boolean;
+  isWeekend: boolean;
+  /** The scheduled time plus the grace period has passed. */
+  missedAfter: boolean;
+  onLeave: boolean;
+  permissionType?: string | null;
+  reminderType: ReminderMonitorType;
+  subscriptions: number;
+  /** Reminders were turned on (or the phone re-registered) after today's run. */
+  turnedOnAfterRun: boolean;
+}): { eligible: boolean; reason: string; status: ReminderMonitorRowStatus } {
+  const { attendance, counts, reminderType } = input;
+  const scheduledTime = REMINDER_SCHEDULES[reminderType].scheduledTime;
+
+  if (counts.sent > 0) {
+    return { eligible: true, reason: sentReason({ attendance, delivered: counts.delivered, reminderType, sent: counts.sent }), status: 'sent' };
+  }
+  if (input.hasCurrentFailure) {
+    return { eligible: true, reason: counts.latestError || 'Push send failed', status: 'failed' };
+  }
+  // The phone's push address expired during today's send, so it was switched off.
+  if (counts.disabled > 0 && input.enabledSubscriptions === 0) {
+    return { eligible: true, reason: 'Phone stopped accepting reminders; ask them to turn reminders on again', status: 'failed' };
+  }
+  if (counts.pending > 0 && input.subscriptions > 0) {
+    return { eligible: true, reason: 'Delivery reserved; waiting for send result', status: 'pending' };
+  }
+  if (input.isWeekend) return { eligible: false, reason: 'Weekend', status: 'skipped' };
+  if (input.isHoliday) {
+    return { eligible: false, reason: input.holidayNote ? `Holiday: ${input.holidayNote}` : 'Holiday', status: 'skipped' };
+  }
+  if (input.onLeave) return { eligible: false, reason: 'On leave', status: 'skipped' };
+  if (reminderType === 'sign_in' && isAtOrBeforeReminderSchedule(attendance?.checkInTime, 'sign_in')) {
+    return { eligible: false, reason: `Already signed in at ${attendance?.checkInTime}`, status: 'skipped' };
+  }
+  if (reminderType === 'sign_in' && ['absence', 'late_arrival'].includes(input.permissionType || '')) {
+    return { eligible: false, reason: permissionLabel(input.permissionType), status: 'skipped' };
+  }
+  if (reminderType === 'sign_out' && !isAtOrBeforeReminderSchedule(attendance?.checkInTime, 'sign_out')) {
+    return {
+      eligible: false,
+      reason: attendance?.checkInTime
+        ? `Not signed in by ${scheduledTime}; signed in at ${attendance.checkInTime}`
+        : 'Not signed in yet',
+      status: 'skipped',
+    };
+  }
+  if (reminderType === 'sign_out' && isAtOrBeforeReminderSchedule(attendance?.signOutTime, 'sign_out')) {
+    return { eligible: false, reason: `Already signed out at ${attendance?.signOutTime}`, status: 'skipped' };
+  }
+  if (!input.hasTrustedDevice) {
+    return { eligible: false, reason: 'No trusted attendance device', status: 'no_trusted_device' };
+  }
+  if (input.subscriptions === 0) {
+    return {
+      eligible: false,
+      reason: input.hadDisabledSubscriptions ? 'Reminders need turning on again' : 'Notifications not registered',
+      status: 'notifications_not_registered',
+    };
+  }
+  if (input.enabledSubscriptions === 0) {
+    return { eligible: false, reason: reminderType === 'sign_in' ? 'Sign-in reminder off' : 'Sign-out reminder off', status: 'reminder_off' };
+  }
+  if (input.turnedOnAfterRun) {
+    return { eligible: false, reason: "Turned on after today's reminder", status: 'skipped' };
+  }
+  if (input.missedAfter) {
+    return { eligible: true, reason: missingDeliveryReason({ attendance, reminderType }), status: 'missing' };
+  }
+  return { eligible: true, reason: `Scheduled for ${scheduledTime}`, status: 'waiting' };
+}
+
 export async function getReminderDeliveryMonitor(date: string) {
   const clock = getAccraClock();
   const isWeekend = isWeekendDate(date);
@@ -189,7 +278,9 @@ export async function getReminderDeliveryMonitor(date: string) {
             eq(attendancePermission.status, 'approved'),
             inArray(attendancePermission.staffId, staffIds),
           )),
+        // Disabled ones too, to tell "never turned on" from "switched off by a reset or expiry".
         db.select({
+          createdAt: pushSubscription.createdAt,
           disabledAt: pushSubscription.disabledAt,
           id: pushSubscription.id,
           signInEnabled: pushSubscription.signInEnabled,
@@ -199,10 +290,7 @@ export async function getReminderDeliveryMonitor(date: string) {
           userAgent: pushSubscription.userAgent,
         })
           .from(pushSubscription)
-          .where(and(
-            isNull(pushSubscription.disabledAt),
-            inArray(pushSubscription.staffId, staffIds),
-          )),
+          .where(inArray(pushSubscription.staffId, staffIds)),
         db.select({
           createdAt: pushReminderDelivery.createdAt,
           deliveredAt: pushReminderDelivery.deliveredAt,
@@ -227,8 +315,15 @@ export async function getReminderDeliveryMonitor(date: string) {
       ])
     : [[], [], [], [], []];
 
+  const disabledSubscriptionStaffIds = new Set(subscriptionRows.filter((row) => row.disabledAt).map((row) => row.staffId));
+  const activeSubscriptionRows = subscriptionRows.filter((row) => !row.disabledAt);
+  const leavePeriods = staffIds.length
+    ? await getStaffLeavePeriodsForRange({ endDate: date, staffIds, startDate: date })
+    : [];
+  const onLeaveStaffIds = new Set(staffIds.filter((staffId) => isStaffLeaveDate(leavePeriods, staffId, date)));
+
   // The last send to each active phone: if it failed, that phone is not accepting reminders.
-  const activeSubscriptionIds = subscriptionRows.map((row) => row.id);
+  const activeSubscriptionIds = activeSubscriptionRows.map((row) => row.id);
   const latestDeliveryRows = activeSubscriptionIds.length
     ? await db.selectDistinctOn([pushReminderDelivery.subscriptionId], {
         status: pushReminderDelivery.status,
@@ -245,6 +340,7 @@ export async function getReminderDeliveryMonitor(date: string) {
   const cronRunRows = await db.select({
     ranAt: reminderCronRun.ranAt,
     reminderType: reminderCronRun.reminderType,
+    source: reminderCronRun.source,
   })
     .from(reminderCronRun)
     .where(and(
@@ -252,10 +348,15 @@ export async function getReminderDeliveryMonitor(date: string) {
       inArray(reminderCronRun.reminderType, REMINDER_TYPES),
     ));
 
+  // Any run (cron or the app's fallback) for "last ran"; only cron runs count as "the job ran",
+  // the same rule as the dashboard banner.
   const lastRunAtByType = new Map<string, string>();
+  const cronRanTypes = new Set<string>();
+  const appRanTypes = new Set<string>();
   for (const row of cronRunRows) {
     const ranAt = row.ranAt instanceof Date ? row.ranAt : row.ranAt ? new Date(row.ranAt) : null;
     if (!ranAt || Number.isNaN(ranAt.getTime())) continue;
+    (isCronReminderRun(row.source) ? cronRanTypes : appRanTypes).add(row.reminderType);
     const existing = lastRunAtByType.get(row.reminderType);
     if (!existing || ranAt.toISOString() > existing) {
       lastRunAtByType.set(row.reminderType, ranAt.toISOString());
@@ -265,10 +366,10 @@ export async function getReminderDeliveryMonitor(date: string) {
   const attendanceByStaffId = new Map(attendanceRows.map((row) => [row.staffId, row]));
   const permissionByStaffId = new Map(permissionRows.map((row) => [row.staffId, row]));
   const trustedDeviceStaffIds = new Set(deviceRows.map((row) => row.staffId));
-  const subscriptionsByStaffId = new Map<string, typeof subscriptionRows>();
+  const subscriptionsByStaffId = new Map<string, typeof activeSubscriptionRows>();
   const deliveriesByStaffAndType = new Map<string, typeof deliveryRows>();
 
-  for (const subscription of subscriptionRows) {
+  for (const subscription of activeSubscriptionRows) {
     const current = subscriptionsByStaffId.get(subscription.staffId) || [];
     current.push(subscription);
     subscriptionsByStaffId.set(subscription.staffId, current);
@@ -282,12 +383,11 @@ export async function getReminderDeliveryMonitor(date: string) {
   }
 
   function buildRows(reminderType: ReminderMonitorType) {
-    const scheduledPassed = hasScheduledTimePassed({ date: date, reminderType: reminderType });
+    const missedAfter = hasScheduledTimePassed({ date, graceMinutes: REMINDER_GRACE_MINUTES, reminderType });
+    const lastRunAt = lastRunAtByType.get(reminderType) || null;
 
     return staffRows.map((member) => {
       const attendance = attendanceByStaffId.get(member.id) || null;
-      const permission = permissionByStaffId.get(member.id) || null;
-      const hasTrustedDevice = trustedDeviceStaffIds.has(member.id);
       const subscriptions = subscriptionsByStaffId.get(member.id) || [];
       const enabledSubscriptions = subscriptions.filter((subscription) => (
         reminderType === 'sign_in' ? subscription.signInEnabled : subscription.signOutEnabled
@@ -295,66 +395,27 @@ export async function getReminderDeliveryMonitor(date: string) {
       const deliveries = deliveriesByStaffAndType.get(`${member.id}:${reminderType}`) || [];
       const counts = deliveryCounts(deliveries);
       const activeSubscriptionIds = new Set(subscriptions.map((subscription) => subscription.id));
-      // A failure is only the *current* state if the subscription that failed is
-      // still active. A failed delivery from a subscription that has since been
-      // disabled/removed (e.g. device reset, expired endpoint) should fall
-      // through to the real device/registration state instead of showing "failed".
+      // A failure is only the *current* state if the subscription that failed is still active; a
+      // failed send to a phone since reset or replaced falls through to the real device state.
       const hasCurrentFailure = deliveries.some((delivery) => delivery.status === 'failed' && activeSubscriptionIds.has(delivery.subscriptionId));
-      const signedInByReminder = isAtOrBeforeReminderSchedule(attendance?.checkInTime, 'sign_in');
-      const signedInBySignOutReminder = isAtOrBeforeReminderSchedule(attendance?.checkInTime, 'sign_out');
-      const signedOutByReminder = isAtOrBeforeReminderSchedule(attendance?.signOutTime, 'sign_out');
-
-      let eligible = false;
-      let reason = '';
-      let status: ReminderMonitorRowStatus = 'skipped';
-
-      if (counts.sent > 0) {
-        eligible = true;
-        status = 'sent';
-        reason = sentReason({ attendance: attendance, delivered: counts.delivered, reminderType: reminderType, sent: counts.sent });
-      } else if (hasCurrentFailure) {
-        eligible = true;
-        status = 'failed';
-        reason = counts.latestError || 'Push send failed';
-      } else if (counts.pending > 0 && subscriptions.length > 0) {
-        eligible = true;
-        status = 'pending';
-        reason = 'Delivery reserved; waiting for send result';
-      } else if (isWeekend) {
-        reason = 'Weekend';
-      } else if (isHoliday) {
-        reason = holiday?.holidayNote ? `Holiday: ${holiday.holidayNote}` : 'Holiday';
-      } else if (reminderType === 'sign_in' && signedInByReminder) {
-        reason = `Already signed in at ${attendance?.checkInTime}`;
-      } else if (reminderType === 'sign_in' && ['absence', 'late_arrival'].includes(permission?.permissionType || '')) {
-        reason = permissionLabel(permission?.permissionType);
-      } else if (reminderType === 'sign_out' && !signedInBySignOutReminder) {
-        reason = attendance?.checkInTime
-          ? `Not signed in by ${REMINDER_SCHEDULES.sign_out.scheduledTime}; signed in at ${attendance.checkInTime}`
-          : 'Not signed in yet';
-      } else if (reminderType === 'sign_out' && signedOutByReminder) {
-        reason = `Already signed out at ${attendance?.signOutTime}`;
-      } else if (!hasTrustedDevice) {
-        status = 'no_trusted_device';
-        reason = 'No trusted attendance device';
-      } else if (subscriptions.length === 0) {
-        status = 'notifications_not_registered';
-        reason = 'Notifications not registered';
-      } else if (enabledSubscriptions.length === 0) {
-        status = 'reminder_off';
-        reason = reminderType === 'sign_in'
-          ? 'Sign-in reminder off'
-          : 'Sign-out reminder off';
-      } else {
-        eligible = true;
-        if (scheduledPassed) {
-          status = 'missing';
-          reason = missingDeliveryReason({ attendance: attendance, reminderType: reminderType });
-        } else {
-          status = 'waiting';
-          reason = `Scheduled for ${REMINDER_SCHEDULES[reminderType].scheduledTime}`;
-        }
-      }
+      const lastChangedAt = latestDate(enabledSubscriptions.flatMap((subscription) => [subscription.createdAt, subscription.updatedAt]));
+      const { eligible, reason, status } = decideReminderRow({
+        attendance,
+        counts,
+        enabledSubscriptions: enabledSubscriptions.length,
+        hadDisabledSubscriptions: disabledSubscriptionStaffIds.has(member.id),
+        hasCurrentFailure,
+        hasTrustedDevice: trustedDeviceStaffIds.has(member.id),
+        holidayNote: holiday?.holidayNote || null,
+        isHoliday,
+        isWeekend,
+        missedAfter,
+        onLeave: onLeaveStaffIds.has(member.id),
+        permissionType: permissionByStaffId.get(member.id)?.permissionType || null,
+        reminderType,
+        subscriptions: subscriptions.length,
+        turnedOnAfterRun: Boolean(lastRunAt && lastChangedAt && lastChangedAt > lastRunAt),
+      });
 
       return {
         activeReminderDevices: subscriptions.length,
@@ -373,8 +434,10 @@ export async function getReminderDeliveryMonitor(date: string) {
 
   function buildSection(reminderType: ReminderMonitorType) {
     const rows = buildRows(reminderType);
-    const scheduledPassed = hasScheduledTimePassed({ date: date, reminderType: reminderType });
+    const scheduledPassed = hasScheduledTimePassed({ date, reminderType });
+    const missedAfter = hasScheduledTimePassed({ date, graceMinutes: REMINDER_GRACE_MINUTES, reminderType });
     const lastRunAt = lastRunAtByType.get(reminderType) || null;
+    const sentByApp = appRanTypes.has(reminderType);
     const summary = {
       delivered: rows.filter((row) => row.status === 'sent' && row.delivered).length,
       eligible: rows.filter((row) => row.eligible).length,
@@ -390,14 +453,17 @@ export async function getReminderDeliveryMonitor(date: string) {
     };
     const alerts: Array<{ message: string; tone: 'danger' | 'warning' }> = [];
 
-    // No reminder is due on weekends or holidays, so a missing run then is not a problem.
-    const missedRun = !isWeekend && !isHoliday && scheduledPassed && !lastRunAt;
+    // Same rule as the dashboard banner: the cron hasn't run a few minutes after its time (a run
+    // the app sent itself doesn't count). No reminder is due on weekends or holidays.
+    const missedRun = !isWeekend && !isHoliday && missedAfter && !cronRanTypes.has(reminderType);
     if (missedRun) {
       alerts.push({
-        message: `${REMINDER_SCHEDULES[reminderType].label} reminder job has not run today. LateWatch sends it on the next page visit; check the cron jobs.`,
+        message: sentByApp
+          ? `${REMINDER_SCHEDULES[reminderType].label} reminder job didn't run today; LateWatch sent the reminders from the app. Check the cron jobs.`
+          : `${REMINDER_SCHEDULES[reminderType].label} reminder job has not run today. LateWatch sends it on the next page visit; check the cron jobs.`,
         tone: 'danger',
       });
-    } else if (scheduledPassed && summary.eligible > 0 && summary.sent === 0) {
+    } else if (missedAfter && summary.eligible > 0 && summary.sent === 0) {
       alerts.push({
         message: `${REMINDER_SCHEDULES[reminderType].label} has eligible staff but zero successful sends.`,
         tone: 'danger',
@@ -440,13 +506,15 @@ export async function getReminderDeliveryMonitor(date: string) {
       reminderType,
       rows,
       scheduledPassed,
+      sentByApp,
       scheduledTime: REMINDER_SCHEDULES[reminderType].scheduledTime,
       summary,
     };
   }
 
-  // Staff whose phones won't get reminders, for admins to follow up with in person.
+  // Staff whose phones won't get reminders, for admins to follow up with in person (not while on leave).
   const cannotReceive = staffRows.flatMap((member) => {
+    if (onLeaveStaffIds.has(member.id)) return [];
     const subscriptions = subscriptionsByStaffId.get(member.id) || [];
     const signIn = subscriptions.some((subscription) => subscription.signInEnabled);
     const signOut = subscriptions.some((subscription) => subscription.signOutEnabled);
@@ -457,7 +525,7 @@ export async function getReminderDeliveryMonitor(date: string) {
       label = 'No attendance phone';
     } else if (subscriptions.length === 0) {
       status = 'not_registered';
-      label = 'Reminders never turned on';
+      label = disabledSubscriptionStaffIds.has(member.id) ? 'Reminders need turning on again' : 'Reminders never turned on';
     } else if (subscriptions.some((subscription) => failingSubscriptionIds.has(subscription.id))) {
       status = 'failing';
       label = 'Phone not accepting reminders';

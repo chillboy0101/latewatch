@@ -324,20 +324,18 @@ test('admin reminder delivery monitor is protected and explains delivery outcome
   assert.match(helper, /Sign-out reminder off/);
   assert.match(helper, /Already signed in at/);
   assert.match(helper, /Already signed out at/);
-  assert.match(helper, /sentReason\(\{ attendance: attendance, delivered: counts\.delivered, reminderType: reminderType, sent: counts\.sent \}\)/);
+  assert.match(helper, /sentReason\(\{ attendance, delivered: counts\.delivered, reminderType, sent: counts\.sent \}\)/);
   assert.match(helper, /reminderCronRun/);
   assert.match(helper, /deliveredAt/);
   assert.match(helper, /delivered: rows\.filter\(\(row\) => row\.status === 'sent' && row\.delivered\)\.length/);
   assert.match(helper, /reminder job has not run today/);
   assert.match(helper, /lastRunAt/);
-  assert.match(helper, /const signedInByReminder = isAtOrBeforeReminderSchedule\(attendance\?\.checkInTime, 'sign_in'\)/);
-  assert.match(helper, /const signedInBySignOutReminder = isAtOrBeforeReminderSchedule\(attendance\?\.checkInTime, 'sign_out'\)/);
-  assert.match(helper, /const signedOutByReminder = isAtOrBeforeReminderSchedule\(attendance\?\.signOutTime, 'sign_out'\)/);
-  assert.match(helper, /reminderType === 'sign_in' && signedInByReminder/);
-  assert.match(helper, /reminderType === 'sign_out' && signedOutByReminder/);
-  assert.match(helper, /missingDeliveryReason\(\{ attendance: attendance, reminderType: reminderType \}\)/);
-  assert.ok(helper.indexOf('counts.sent > 0') < helper.indexOf("reminderType === 'sign_in' && signedInByReminder"));
-  assert.ok(helper.indexOf('counts.sent > 0') < helper.indexOf("reminderType === 'sign_out' && signedOutByReminder"));
+  // The per-person rules live in decideReminderRow (behaviour-tested in device-reminder-monitor.test.cjs).
+  assert.match(helper, /export function decideReminderRow\(/);
+  assert.match(helper, /reminderType === 'sign_in' && isAtOrBeforeReminderSchedule\(attendance\?\.checkInTime, 'sign_in'\)/);
+  assert.match(helper, /reminderType === 'sign_out' && isAtOrBeforeReminderSchedule\(attendance\?\.signOutTime, 'sign_out'\)/);
+  assert.match(helper, /missingDeliveryReason\(\{ attendance, reminderType \}\)/);
+  assert.ok(helper.indexOf('counts.sent > 0') < helper.indexOf("reminderType === 'sign_in' && isAtOrBeforeReminderSchedule"));
   assert.match(helper, /const summary = \{/);
   assert.match(helper, /missing: rows\.filter\(\(row\) => row\.status === 'missing'\)\.length/);
   assert.match(helper, /noTrustedDevice: rows\.filter\(\(row\) => row\.status === 'no_trusted_device'\)\.length/);

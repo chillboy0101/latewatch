@@ -240,6 +240,12 @@ export default function AttendancePage() {
   const [savingGeneralPardon, setSavingGeneralPardon] = useState(false);
   const [resettingDeviceStaffId, setResettingDeviceStaffId] = useState<string | null>(null);
   const [reviewingTransferId, setReviewingTransferId] = useState<string | null>(null);
+  // Approving a transfer and resetting a device sign people out, so both ask first.
+  const [confirmAction, setConfirmAction] = useState<
+    | { kind: 'approve_transfer'; staffName: string; transferId: string }
+    | { kind: 'reset_device'; staffId: string; staffName: string }
+    | null
+  >(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -1062,7 +1068,11 @@ export default function AttendancePage() {
                   <div className="flex gap-2 xl:justify-end">
                     <Button
                       className="h-9 gap-2"
-                      onClick={() => reviewDeviceTransfer(request.id, 'approve')}
+                      onClick={() => setConfirmAction({
+                        kind: 'approve_transfer',
+                        staffName: request.staffName || request.userEmail || 'This staff member',
+                        transferId: request.id,
+                      })}
                       disabled={reviewingTransferId === request.id}
                     >
                       {reviewingTransferId === request.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
@@ -1082,6 +1092,36 @@ export default function AttendancePage() {
             </div>
           </Card>
         )}
+
+        <Dialog open={Boolean(confirmAction)} onOpenChange={(open) => { if (!open) setConfirmAction(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {confirmAction?.kind === 'approve_transfer' ? 'Approve device transfer' : 'Reset attendance device'}
+              </DialogTitle>
+              <DialogDescription>
+                {confirmAction?.kind === 'approve_transfer'
+                  ? `${confirmAction.staffName}'s new phone becomes their attendance device. Their old phone is signed out and its reminders are switched off. Approve only if they are here in person.`
+                  : `${confirmAction?.staffName || 'This staff member'} is signed out of old sessions and their reminders are switched off. They'll link a device again at the office.`}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setConfirmAction(null)}>Cancel</Button>
+              <Button
+                className="gap-2"
+                onClick={() => {
+                  const action = confirmAction;
+                  setConfirmAction(null);
+                  if (action?.kind === 'approve_transfer') void reviewDeviceTransfer(action.transferId, 'approve');
+                  if (action?.kind === 'reset_device') void resetDevice(action.staffId, action.staffName);
+                }}
+              >
+                {confirmAction?.kind === 'approve_transfer' ? <ShieldCheck className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
+                {confirmAction?.kind === 'approve_transfer' ? 'Approve' : 'Reset Device'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Card>
           {loading ? (
@@ -1137,7 +1177,7 @@ export default function AttendancePage() {
                                   className="h-8 gap-1.5 px-2"
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => resetDevice(row.staff.id, row.staff.fullName)}
+                                  onClick={() => setConfirmAction({ kind: 'reset_device', staffId: row.staff.id, staffName: row.staff.fullName })}
                                   disabled={resettingDeviceStaffId === row.staff.id}
                                 >
                                   {resettingDeviceStaffId === row.staff.id ? (

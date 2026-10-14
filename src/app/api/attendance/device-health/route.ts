@@ -10,9 +10,13 @@ export async function GET() {
     return NextResponse.json({ error: adminError.error }, { status: adminError.status });
   }
 
-  const result = await getDeviceSessionHealth();
-
-  return NextResponse.json(result, {
-    headers: { 'Cache-Control': 'no-store' },
-  });
+  try {
+    const result = await getDeviceSessionHealth();
+    return NextResponse.json(result, {
+      headers: { 'Cache-Control': 'no-store' },
+    });
+  } catch (error) {
+    console.error('Failed to load device health:', error);
+    return NextResponse.json({ error: 'Could not load device health. Try again.' }, { status: 500 });
+  }
 }

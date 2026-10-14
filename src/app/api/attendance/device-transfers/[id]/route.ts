@@ -1,5 +1,5 @@
 import { currentUser } from '@clerk/nextjs/server';
-import { eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { deviceTransferRequest, staff, staffDevice } from '@/db/schema';
@@ -26,10 +26,18 @@ function actionFromBody(value: unknown) {
   return action === 'approve' || action === 'reject' ? action : null;
 }
 
+// Puts a claimed request back to pending when the approval can't go through.
+async function releaseClaim(id: string) {
+  await db.update(deviceTransferRequest)
+    .set({ reviewedAt: null, reviewedByEmail: null, reviewedByUserId: null, status: 'pending', updatedAt: new Date() })
+    .where(eq(deviceTransferRequest.id, id));
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  let claimedId: string | null = null;
   try {
     const user = await currentUser();
     if (!user) {
@@ -72,7 +80,26 @@ export async function PATCH(
 
     const actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';
     const now = new Date();
+
+    // Claim the request before acting: only one review can move it off "pending", so two admins
+    // can't approve and reject it at once, or approve it twice.
+    const [reviewedRequest] = await db.update(deviceTransferRequest)
+      .set({
+        reviewedAt: now,
+        reviewedByEmail: actorEmail,
+        reviewedByUserId: user.id,
+        status: action === 'approve' ? 'approved' : 'rejected',
+        updatedAt: now,
+      })
+      .where(and(eq(deviceTransferRequest.id, transfer.id), eq(deviceTransferRequest.status, 'pending')))
+      .returning();
+    if (!reviewedRequest) {
+      return NextResponse.json({ error: 'This request has already been reviewed' }, { status: 400 });
+    }
+    claimedId = reviewedRequest.id;
+
     let disabledPushSubscriptions = 0;
+    let closedOtherRequests = 0;
     let nextDevice: typeof staffDevice.$inferSelect | null = beforeDevice || null;
     let revokedSessions = 0;
     let sessionRevocation: StaffSessionRevocationResult | null = null;
@@ -102,6 +129,7 @@ export async function PATCH(
           reason: 'attendance-device-transfer-shared-device-block',
         });
 
+        await releaseClaim(transfer.id);
         return NextResponse.json({
           error: SHARED_ATTENDANCE_DEVICE_MESSAGE,
           result: SHARED_ATTENDANCE_DEVICE_RESULT,
@@ -125,6 +153,7 @@ export async function PATCH(
           reason: 'attendance-device-transfer-session-required',
         });
 
+        await releaseClaim(transfer.id);
         return NextResponse.json({
           error: 'The new device login is no longer active. Ask the staff member to sign in on the new device and request transfer again.',
           result: 'TRANSFER_SESSION_REQUIRED',
@@ -163,6 +192,7 @@ export async function PATCH(
           reason: 'attendance-device-transfer-session-not-active',
         });
 
+        await releaseClaim(transfer.id);
         return NextResponse.json({
           error: 'The new device login is no longer active. Ask the staff member to sign in on the new device and request transfer again.',
           result: 'TRANSFER_SESSION_NOT_ACTIVE',
@@ -195,19 +225,21 @@ export async function PATCH(
         .returning();
 
       nextDevice = upsertedDevice || nextDevice;
+      claimedId = null; // The device has moved; the approval stands even if a later step fails.
       disabledPushSubscriptions = await disableActivePushSubscriptionsForStaff(transfer.staffId, now);
-    }
 
-    const [reviewedRequest] = await db.update(deviceTransferRequest)
-      .set({
-        reviewedAt: now,
-        reviewedByEmail: actorEmail,
-        reviewedByUserId: user.id,
-        status: action === 'approve' ? 'approved' : 'rejected',
-        updatedAt: now,
-      })
-      .where(eq(deviceTransferRequest.id, transfer.id))
-      .returning();
+      // The person now has their device: their other pending requests (other phones) are closed.
+      const closed = await db.update(deviceTransferRequest)
+        .set({ reviewedAt: now, reviewedByEmail: actorEmail, reviewedByUserId: user.id, status: 'rejected', updatedAt: now })
+        .where(and(
+          eq(deviceTransferRequest.staffId, transfer.staffId),
+          eq(deviceTransferRequest.status, 'pending'),
+          ne(deviceTransferRequest.id, transfer.id),
+        ))
+        .returning({ id: deviceTransferRequest.id });
+      closedOtherRequests = closed.length;
+    }
+    claimedId = null;
 
     await writeAuditEvent({
       entityType: 'staff_device_transfer',
@@ -218,6 +250,7 @@ export async function PATCH(
         request: transfer,
       },
       after: {
+        closedOtherRequests,
         disabledPushSubscriptions,
         device: nextDevice,
         request: reviewedRequest,
@@ -243,6 +276,9 @@ export async function PATCH(
       success: true,
     });
   } catch (error) {
+    // Nothing was approved: put the request back so it can be reviewed again.
+    if (claimedId) await releaseClaim(claimedId).catch((releaseError) => console.error('Failed to release transfer review:', releaseError));
+
     if (isStaffSessionRevocationError(error)) {
       console.error('Failed to revoke old trusted-device login session during device transfer approval:', error);
       return NextResponse.json({

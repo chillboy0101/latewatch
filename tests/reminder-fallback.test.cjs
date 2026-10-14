@@ -135,7 +135,7 @@ test('check-in and dashboard trigger the fallback after responding; cron routes 
   assert.match(dashboard, /after\(\(\) => maybeRunMissedReminderBatch\(\)\);/);
   assert.match(dashboard, /missedReminders,/);
   assert.match(proxy, /'\/api\/attendance\/no-show-sign-in\/apply',/);
-  assert.match(monitor, /const missedRun = !isWeekend && !isHoliday && scheduledPassed && !lastRunAt;/);
+  assert.match(monitor, /const missedRun = !isWeekend && !isHoliday && missedAfter && !cronRanTypes\.has\(reminderType\);/);
   assert.match(read('scripts', 'setup-cron-job-org-reminders.mjs'), /LateWatch no sign-in fee 4PM catch-up/);
 });
 

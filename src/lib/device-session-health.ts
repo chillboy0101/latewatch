@@ -1,8 +1,15 @@
 import 'server-only';
 
-import { and, asc, desc, inArray, eq } from 'drizzle-orm';
+import { and, asc, desc, gte, inArray, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { auditEvent, deviceTransferRequest, pushSubscription, staff, staffDevice } from '@/db/schema';
+import { SHARED_ATTENDANCE_DEVICE_RESULT } from '@/lib/attendance-device-security';
+import { getAccraDateKey } from '@/lib/date-key';
+import { isStaffLeaveDate } from '@/lib/staff-leave';
+import { getStaffLeavePeriodsForRange } from '@/lib/staff-leave-service';
+
+// A blocked shared-device attempt stays on the Attention list for a week, or until a reset.
+const SECURITY_ALERT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -124,10 +131,15 @@ export async function getDeviceSessionHealth() {
       timestamp: auditEvent.timestamp,
     })
       .from(auditEvent)
-      .where(inArray(auditEvent.entityType, ['staff_device', 'staff_device_transfer']))
+      .where(and(
+        inArray(auditEvent.entityType, ['staff_device', 'staff_device_transfer']),
+        gte(auditEvent.timestamp, new Date(Date.now() - SECURITY_ALERT_WINDOW_MS)),
+      ))
       .orderBy(desc(auditEvent.timestamp))
       .limit(400),
   ]);
+  const today = getAccraDateKey();
+  const leavePeriods = await getStaffLeavePeriodsForRange({ endDate: today, staffIds, startDate: today });
 
   const deviceByStaffId = new Map(deviceRows.map((device) => [device.staffId, device]));
   const subscriptionsByStaffId = new Map<string, typeof subscriptionRows>();
@@ -161,19 +173,30 @@ export async function getDeviceSessionHealth() {
     const audits = auditsByStaffId.get(member.id) || [];
     const latestReset = audits.find((event) => event.entityType === 'staff_device' && event.action === 'DELETE') || null;
     const latestTransferReview = audits.find((event) => event.entityType === 'staff_device_transfer' && ['APPROVE', 'REJECT'].includes(event.action)) || null;
-    const latestAlert = audits.find((event) => event.action === 'ALERT') || null;
+    // Only a real shared-device block counts (not an expired login during a transfer), and a
+    // reset after it clears it.
+    const latestAlert = audits.find((event) => (
+      event.action === 'ALERT' &&
+      asRecord(event.afterJson)?.result === SHARED_ATTENDANCE_DEVICE_RESULT &&
+      (!latestReset?.timestamp || new Date(event.timestamp as Date).getTime() > new Date(latestReset.timestamp as Date).getTime())
+    )) || null;
     const sessionTracked = Boolean(device?.clerkSessionId);
+    const onLeave = isStaffLeaveDate(leavePeriods, member.id, today);
 
+    // Staff on leave aren't chased about their phone until they're back.
     const attentionReasons: string[] = [];
-    if (!device && pendingTransfers.length === 0) attentionReasons.push('No trusted attendance device');
-    if (device && !sessionTracked) attentionReasons.push('Legacy trusted device: open Check-In on this device to refresh session');
-    if (pendingTransfers.length > 0) attentionReasons.push('Device transfer pending');
-    if (activeSubscriptions.length > 1) attentionReasons.push('Multiple notification devices');
-    if (latestAlert) attentionReasons.push('Recent device security alert');
+    if (!onLeave) {
+      if (!device && pendingTransfers.length === 0) attentionReasons.push('No trusted attendance device');
+      if (device && !sessionTracked) attentionReasons.push('Legacy trusted device: open Check-In on this device to refresh session');
+      if (pendingTransfers.length > 0) attentionReasons.push('Device transfer pending');
+      if (activeSubscriptions.length > 1) attentionReasons.push('Multiple notification devices');
+      if (latestAlert) attentionReasons.push('Recent device security alert');
+    }
 
     return {
       attention: attentionReasons.length > 0,
       attentionReasons,
+      onLeave,
       reminders: {
         activeSubscriptions: activeSubscriptions.length,
         disabledSubscriptions: disabledSubscriptions.length,

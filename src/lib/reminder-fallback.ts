@@ -12,11 +12,19 @@ import { pushAdminAlert, sendAttendanceReminderBatch } from '@/lib/push-reminder
 
 type FallbackReminderType = 'sign_in' | 'sign_out';
 
-// [start, end) in Accra minutes since midnight. Starts 5 minutes after the cron time so the
+/** How long after its scheduled time a reminder job counts as missed (here and on the Devices page). */
+export const REMINDER_GRACE_MINUTES = 5;
+
+/** A run the app started itself stands in for a missed cron; it doesn't mean the cron ran. */
+export function isCronReminderRun(source: string | null | undefined) {
+  return source !== 'app';
+}
+
+// [start, end) in Accra minutes since midnight. Starts a grace period after the cron time so the
 // crons get the first chance. Sign-in ends when sign-in closes (4:30 PM); sign-out runs to midnight.
 const FALLBACK_WINDOWS: Record<FallbackReminderType, { end: number; label: string; start: number }> = {
-  sign_in: { end: 16 * 60 + 30, label: '8:15 AM sign-in', start: 8 * 60 + 20 },
-  sign_out: { end: 24 * 60, label: '4:30 PM sign-out', start: 16 * 60 + 35 },
+  sign_in: { end: 16 * 60 + 30, label: '8:15 AM sign-in', start: 8 * 60 + 15 + REMINDER_GRACE_MINUTES },
+  sign_out: { end: 24 * 60, label: '4:30 PM sign-out', start: 16 * 60 + 30 + REMINDER_GRACE_MINUTES },
 };
 
 const THROTTLE_MS = 5 * 60 * 1000;
@@ -82,7 +90,7 @@ export async function getMissedReminderRuns(now = new Date()) {
     .where(and(eq(reminderCronRun.date, clock.dateKey), inArray(reminderCronRun.reminderType, dueTypes)));
 
   return dueTypes
-    .filter((type) => !runs.some((run) => run.reminderType === type && run.source !== 'app'))
+    .filter((type) => !runs.some((run) => run.reminderType === type && isCronReminderRun(run.source)))
     .map((type) => ({
       label: FALLBACK_WINDOWS[type].label,
       reminderType: type,

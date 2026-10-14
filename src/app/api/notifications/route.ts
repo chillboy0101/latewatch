@@ -8,6 +8,7 @@ import { getAccraClock } from '@/lib/attendance';
 import { getPermissionWindowBounds, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
 import { getAuditActionLabel, getAuditEntityLabel, getAuditOperation } from '@/lib/audit-taxonomy';
 import { tryWriteAuditEvent } from '@/lib/audit';
+import { enforceRole } from '@/lib/auth/roles';
 import { formatDisplayDate, isIsoDateKey } from '@/lib/date-format';
 import { publishRealtime } from '@/lib/realtime';
 import { NO_SIGN_OUT_ALERT_LABEL, shouldAlertNoSignOut } from '@/lib/work-hours';
@@ -1061,6 +1062,11 @@ export async function GET(request: NextRequest) {
     const user = await getNotificationUser();
     if (!user) {
       return NextResponse.json({ notifications: [], unreadCount: 0 }, { status: 401 });
+    }
+    // The feed is built from the audit trail (payments, devices, staff changes), so it is for
+    // admins only. Staff get an empty feed; they can still POST to dismiss their own receipt notices.
+    if (await enforceRole(['admin'])) {
+      return NextResponse.json({ notifications: [], unreadCount: 0 }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
     const url = new URL(request.url);

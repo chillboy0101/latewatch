@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowLeftRight, CheckCircle2, Clock3, Loader2, RefreshCcw, RotateCcw, Search, Shield, Smartphone, XCircle } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
@@ -36,6 +36,7 @@ interface ReminderMonitorApiSection {
   missedRun?: boolean;
   rows: ReminderMonitorApiRow[];
   scheduledPassed: boolean;
+  sentByApp?: boolean;
 }
 
 interface CannotReceiveRow {
@@ -47,13 +48,28 @@ interface CannotReceiveRow {
 
 interface ReminderMonitorApiResponse {
   cannotReceive?: CannotReceiveRow[];
+  day?: { holidayName: string | null; isHoliday: boolean; isWeekend: boolean };
   sections: {
     signIn: ReminderMonitorApiSection;
     signOut: ReminderMonitorApiSection;
   };
 }
 
-type ReminderRunInfo = Pick<ReminderMonitorApiSection, 'label' | 'lastRunAt' | 'missedRun' | 'scheduledPassed'>;
+type ReminderRunInfo = Pick<ReminderMonitorApiSection, 'label' | 'lastRunAt' | 'missedRun' | 'scheduledPassed' | 'sentByApp'> & {
+  /** Weekend or holiday: no reminders are due. */
+  noRemindersReason: string | null;
+};
+
+const REALTIME_REFRESH_DELAY_MS = 800;
+
+function runChipText(run: ReminderRunInfo) {
+  if (run.noRemindersReason) return `no reminders today (${run.noRemindersReason})`;
+  if (run.missedRun) return run.sentByApp ? "sent by the app; the cron didn't run" : 'did not run today';
+  if (run.lastRunAt) {
+    return `last ran ${new Date(run.lastRunAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Accra' })}`;
+  }
+  return 'not yet';
+}
 
 function reminderStatusLabel(status: ReminderMonitorRowStatus) {
   if (status === 'sent') return 'Sent';
@@ -160,9 +176,14 @@ function staffMeta(row: DeviceHealthRow) {
   return [row.staff.department, row.staff.unit].filter(Boolean).join(' / ') || row.staff.email || '-';
 }
 
+/** Trusted and nothing to fix: the same rows whose badge reads "Trusted". */
+function isTrustedAndHealthy(row: DeviceHealthRow) {
+  return row.trustedDevice.registered && row.trustedDevice.sessionTracked && row.transfer.pending === 0;
+}
+
 function deviceMatchesFilter(row: DeviceHealthRow, filter: DeviceHealthFilter) {
   if (filter === 'attention') return row.attention;
-  if (filter === 'trusted') return row.trustedDevice.registered;
+  if (filter === 'trusted') return isTrustedAndHealthy(row);
   return true;
 }
 
@@ -267,7 +288,7 @@ function issueHelpText(reason: string) {
   }
 
   if (reason === 'Device transfer pending') {
-    return 'Review the pending transfer before the staff member can use the new device.';
+    return 'Approve or reject it on Attendance Overview before the staff member can use the new device.';
   }
 
   if (reason === 'Recent device security alert') {
@@ -289,6 +310,7 @@ export default function DeviceSessionHealthPage() {
   const [reminderMaps, setReminderMaps] = useState<ReminderStatusMaps>(EMPTY_REMINDER_MAPS);
   const [reminderRuns, setReminderRuns] = useState<ReminderRunInfo[]>([]);
   const [cannotReceive, setCannotReceive] = useState<CannotReceiveRow[]>([]);
+  const [reminderLoadFailed, setReminderLoadFailed] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
@@ -296,57 +318,78 @@ export default function DeviceSessionHealthPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [healthFilter, setHealthFilter] = useState<DeviceHealthFilter>('all');
   const [resetTarget, setResetTarget] = useState<DeviceHealthRow | null>(null);
+  const [resetError, setResetError] = useState('');
   const [resettingStaffId, setResettingStaffId] = useState<string | null>(null);
+  // Newest wins: a slow, older response never replaces data from a newer one.
+  const loadCounterRef = useRef(0);
+  const appliedLoadRef = useRef(0);
 
-  const loadReminders = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const response = await fetch(`/api/attendance/reminder-monitor?date=${encodeURIComponent(getAccraDateKey())}`, {
-        cache: 'no-store',
-        signal,
-      });
-      if (!response.ok) throw new Error('reminder-monitor failed');
-      const payload = (await response.json()) as ReminderMonitorApiResponse;
-      const signIn = new Map<string, ReminderMonitorRowStatus>();
-      const signOut = new Map<string, ReminderMonitorRowStatus>();
-      for (const row of payload.sections?.signIn?.rows ?? []) signIn.set(row.staff.id, row.status);
-      for (const row of payload.sections?.signOut?.rows ?? []) signOut.set(row.staff.id, row.status);
-      setReminderMaps({ signIn, signOut });
-      setReminderRuns([payload.sections?.signIn, payload.sections?.signOut].filter(Boolean).map((section) => ({
-        label: section.label,
-        lastRunAt: section.lastRunAt,
-        missedRun: section.missedRun,
-        scheduledPassed: section.scheduledPassed,
-      })));
-      setCannotReceive(Array.isArray(payload.cannotReceive) ? payload.cannotReceive : []);
-    } catch (reminderError) {
-      if ((reminderError as Error).name === 'AbortError') return;
-      // Non-blocking: keep device rows rendering, chips fall back to '—'.
-      setReminderMaps(EMPTY_REMINDER_MAPS);
-      setReminderRuns([]);
-      setCannotReceive([]);
-    }
+  const applyReminders = useCallback((payload: ReminderMonitorApiResponse) => {
+    const signIn = new Map<string, ReminderMonitorRowStatus>();
+    const signOut = new Map<string, ReminderMonitorRowStatus>();
+    for (const row of payload.sections?.signIn?.rows ?? []) signIn.set(row.staff.id, row.status);
+    for (const row of payload.sections?.signOut?.rows ?? []) signOut.set(row.staff.id, row.status);
+    const noRemindersReason = payload.day?.isWeekend
+      ? 'weekend'
+      : payload.day?.isHoliday ? (payload.day.holidayName || 'holiday') : null;
+    setReminderMaps({ signIn, signOut });
+    setReminderRuns([payload.sections?.signIn, payload.sections?.signOut].filter(Boolean).map((section) => ({
+      label: section.label,
+      lastRunAt: section.lastRunAt,
+      missedRun: section.missedRun,
+      noRemindersReason,
+      scheduledPassed: section.scheduledPassed,
+      sentByApp: section.sentByApp,
+    })));
+    setCannotReceive(Array.isArray(payload.cannotReceive) ? payload.cannotReceive : []);
   }, []);
 
   const loadData = useCallback(async (signal?: AbortSignal, options?: { silent?: boolean }) => {
+    const loadId = ++loadCounterRef.current;
     if (!options?.silent) setLoading(true);
-    setError('');
 
     try {
-      const [response] = await Promise.all([
-        fetch('/api/attendance/device-health', { cache: 'no-store', signal }),
-        loadReminders(signal),
+      const [health, reminders] = await Promise.allSettled([
+        fetch('/api/attendance/device-health', { cache: 'no-store', signal }).then(async (response) => {
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(payload?.error || 'Failed to load device health');
+          return payload as DeviceHealthResponse;
+        }),
+        fetch(`/api/attendance/reminder-monitor?date=${encodeURIComponent(getAccraDateKey())}`, { cache: 'no-store', signal }).then(async (response) => {
+          if (!response.ok) throw new Error('Failed to load reminder status');
+          return (await response.json()) as ReminderMonitorApiResponse;
+        }),
       ]);
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.error || 'Failed to load device health');
-      setData(payload);
-    } catch (loadError) {
-      if ((loadError as Error).name === 'AbortError') return;
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load device health');
-      setData(null);
+      if (signal?.aborted || loadId < appliedLoadRef.current) return;
+      appliedLoadRef.current = loadId;
+
+      if (health.status === 'fulfilled') {
+        setData(health.value);
+        setError('');
+      } else if (options?.silent) {
+        // A background refresh failed: keep the rows already on screen.
+        setError('Could not refresh device health. Showing the last loaded data.');
+      } else {
+        setError(health.reason instanceof Error ? health.reason.message : 'Failed to load device health');
+        setData(null);
+      }
+
+      if (reminders.status === 'fulfilled') {
+        applyReminders(reminders.value);
+        setReminderLoadFailed(false);
+      } else {
+        // Say so, rather than showing zeros that look like "all fine".
+        setReminderLoadFailed(true);
+        if (!options?.silent) {
+          setReminderMaps(EMPTY_REMINDER_MAPS);
+          setReminderRuns([]);
+          setCannotReceive([]);
+        }
+      }
     } finally {
       if (!signal?.aborted && !options?.silent) setLoading(false);
     }
-  }, [loadReminders]);
+  }, [applyReminders]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -357,6 +400,19 @@ export default function DeviceSessionHealthPage() {
   useEffect(() => {
     let cleanups: Array<() => void> = [];
     let mounted = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    // Most changes publish to both channels: wait for the burst to settle, then load once.
+    const scheduleRefresh = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        void loadData(undefined, { silent: true });
+      }, REALTIME_REFRESH_DELAY_MS);
+    };
+    // Coming back to the tab (say, the next morning) shows today's state, not yesterday's.
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') scheduleRefresh();
+    };
 
     (async () => {
       const unsubscribers = await Promise.all(
@@ -364,7 +420,7 @@ export default function DeviceSessionHealthPage() {
           subscribeRealtimeChannel({
             channel,
             events: ['invalidate'],
-            onEvent: () => loadData(undefined, { silent: true }),
+            onEvent: scheduleRefresh,
           }),
         ),
       );
@@ -375,41 +431,52 @@ export default function DeviceSessionHealthPage() {
         unsubscribers.forEach((unsubscribe) => unsubscribe());
       }
     })();
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    window.addEventListener('focus', refreshWhenVisible);
 
     return () => {
       mounted = false;
+      if (timer) clearTimeout(timer);
       cleanups.forEach((unsubscribe) => unsubscribe());
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      window.removeEventListener('focus', refreshWhenVisible);
     };
   }, [loadData]);
 
-  const rowReminderStatus = useCallback((row: DeviceHealthRow, target: ReminderMonitorRowStatus) => (
-    reminderMaps.signIn.get(row.staff.id) === target || reminderMaps.signOut.get(row.staff.id) === target
+  // Per person: Failed if either reminder failed or went missing; Sent only when nothing failed.
+  const rowReminderFailed = useCallback((row: DeviceHealthRow) => (
+    [reminderMaps.signIn.get(row.staff.id), reminderMaps.signOut.get(row.staff.id)]
+      .some((status) => status === 'failed' || status === 'missing')
   ), [reminderMaps]);
+  const rowReminderSent = useCallback((row: DeviceHealthRow) => (
+    !rowReminderFailed(row) &&
+    (reminderMaps.signIn.get(row.staff.id) === 'sent' || reminderMaps.signOut.get(row.staff.id) === 'sent')
+  ), [reminderMaps, rowReminderFailed]);
 
   const filteredRows = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return (data?.rows || []).filter((row) => {
       if (!deviceMatchesQuery(row, query)) return false;
-      if (healthFilter === 'reminder_sent') return rowReminderStatus(row, 'sent');
-      if (healthFilter === 'reminder_failed') return rowReminderStatus(row, 'failed');
+      if (healthFilter === 'reminder_sent') return rowReminderSent(row);
+      if (healthFilter === 'reminder_failed') return rowReminderFailed(row);
       return deviceMatchesFilter(row, healthFilter);
     });
-  }, [data?.rows, healthFilter, searchQuery, rowReminderStatus]);
+  }, [data?.rows, healthFilter, searchQuery, rowReminderFailed, rowReminderSent]);
 
   const derivedCounts = useMemo(() => {
     const rows = data?.rows || [];
     return {
-      trusted: rows.filter((row) => row.trustedDevice.registered).length,
-      reminderSent: rows.filter((row) => rowReminderStatus(row, 'sent')).length,
-      reminderFailed: rows.filter((row) => rowReminderStatus(row, 'failed')).length,
+      trusted: rows.filter(isTrustedAndHealthy).length,
+      reminderSent: rows.filter(rowReminderSent).length,
+      reminderFailed: rows.filter(rowReminderFailed).length,
     };
-  }, [data?.rows, rowReminderStatus]);
+  }, [data?.rows, rowReminderFailed, rowReminderSent]);
 
   async function resetDevice() {
     if (!resetTarget) return;
 
     setResettingStaffId(resetTarget.staff.id);
-    setError('');
+    setResetError('');
     setNotice('');
 
     try {
@@ -425,7 +492,8 @@ export default function DeviceSessionHealthPage() {
       await loadData();
     } catch (err) {
       console.error('Failed to reset attendance device:', err);
-      setError(err instanceof Error ? err.message : 'Could not reset device');
+      // Shown inside the dialog, where the admin is looking.
+      setResetError(err instanceof Error ? err.message : 'Could not reset device');
     } finally {
       setResettingStaffId(null);
     }
@@ -477,23 +545,29 @@ export default function DeviceSessionHealthPage() {
                 key={run.label}
                 className={cn(
                   'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium',
-                  run.missedRun
-                    ? 'border-danger/30 bg-danger/10 text-danger'
-                    : run.lastRunAt
-                      ? 'border-success/25 bg-success/10 text-success'
-                      : 'border-border bg-card text-muted-foreground',
+                  run.noRemindersReason
+                    ? 'border-border bg-card text-muted-foreground'
+                    : run.missedRun
+                      ? 'border-danger/30 bg-danger/10 text-danger'
+                      : run.lastRunAt
+                        ? 'border-success/25 bg-success/10 text-success'
+                        : 'border-border bg-card text-muted-foreground',
                 )}
               >
-                {run.missedRun ? <AlertTriangle className="h-3.5 w-3.5" /> : run.lastRunAt ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Clock3 className="h-3.5 w-3.5" />}
+                {run.noRemindersReason
+                  ? <Clock3 className="h-3.5 w-3.5" />
+                  : run.missedRun ? <AlertTriangle className="h-3.5 w-3.5" /> : run.lastRunAt ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Clock3 className="h-3.5 w-3.5" />}
                 {run.label}
                 {' · '}
-                {run.missedRun
-                  ? 'did not run today'
-                  : run.lastRunAt
-                    ? `last ran ${new Date(run.lastRunAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Accra' })}`
-                    : run.scheduledPassed ? 'not due today' : 'not yet'}
+                {runChipText(run)}
               </span>
             ))}
+          </div>
+        )}
+
+        {reminderLoadFailed && (
+          <div role="alert" className="rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+            Could not load today&apos;s reminder status, so the reminder chips and counts may be out of date. Refresh to try again.
           </div>
         )}
 
@@ -608,20 +682,28 @@ export default function DeviceSessionHealthPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 align-top">
-                          <Button
-                            className="h-8 gap-1.5 px-2"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setResetTarget(row)}
-                            disabled={resettingStaffId === row.staff.id}
-                          >
-                            {resettingStaffId === row.staff.id ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <RotateCcw className="h-3.5 w-3.5" />
-                            )}
-                            Reset
-                          </Button>
+                          {/* Nothing to reset without a linked device. */}
+                          {row.trustedDevice.registered ? (
+                            <Button
+                              className="h-8 gap-1.5 px-2"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setResetError('');
+                                setResetTarget(row);
+                              }}
+                              disabled={resettingStaffId === row.staff.id}
+                            >
+                              {resettingStaffId === row.staff.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <RotateCcw className="h-3.5 w-3.5" />
+                              )}
+                              Reset
+                            </Button>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -648,6 +730,11 @@ export default function DeviceSessionHealthPage() {
             <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
               This is a security action. Use it only when the staff member should start fresh on a trusted device.
             </div>
+            {resetError && (
+              <div role="alert" className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+                {resetError}
+              </div>
+            )}
             <DialogFooter>
               <Button variant="outline" onClick={() => setResetTarget(null)} disabled={Boolean(resettingStaffId)}>
                 Cancel

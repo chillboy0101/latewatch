@@ -314,7 +314,11 @@ test('attendance device reset also disables old push notification subscriptions'
   assert.match(helper, /return disabledSubscriptions\.length/);
   assert.match(route, /disableActivePushSubscriptionsForStaff\(staffId, now\)/);
   assert.match(route, /disabledPushSubscriptions/);
-  assert.ok(route.indexOf('disableActivePushSubscriptionsForStaff(staffId, now)') < route.indexOf('if (!before)'));
+  assert.ok(route.indexOf('disableActivePushSubscriptionsForStaff(staffId, now)') < route.indexOf('if (before)'));
+  // Sessions and reminders are revoked even with no device linked, so every reset is audited.
+  assert.ok(route.indexOf('if (before)') < route.indexOf('await writeAuditEvent({'));
+  assert.match(route, /deviceRemoved: Boolean\(before\)/);
+  assert.match(route, /publishRealtime\('attendance', 'invalidate', \{ reason: 'attendance-device-reset' \}\)/);
   assert.match(page, /old notification device/);
   assert.match(page, /Reminders must be enabled again on the new device/);
 });
@@ -334,7 +338,7 @@ test('attendance device reset revokes staff Clerk sessions before device cleanup
   assert.match(route, /sessionRevocation/);
   assert.match(route, /SESSION_REVOCATION_FAILED/);
   assert.ok(route.indexOf('revokeStaffLoginSessions({') < route.indexOf('disableActivePushSubscriptionsForStaff(staffId, now)'));
-  assert.ok(route.indexOf('revokeStaffLoginSessions({') < route.indexOf('if (!before)'));
+  assert.ok(route.indexOf('revokeStaffLoginSessions({') < route.indexOf('if (before)'));
   assert.ok(route.indexOf('revokeStaffLoginSessions({') < route.indexOf('await db.delete(staffDevice)'));
 });
 
