@@ -8,7 +8,6 @@ import {
   getActiveOfficeLocation,
   getApprovedAttendancePermission,
   getHolidayForDate,
-  getOrAutoLinkStaffByEmail,
   isWeekendDate,
   recordAttendanceAttempt,
   resolveClientIpInfo,
@@ -26,7 +25,7 @@ import { formatAbsencePermissionReason, getPermissionWindowBounds, isPermissionW
 import { getAuditActor, writeAuditEvent } from '@/lib/audit';
 import { computePenalty } from '@/lib/penalty-calculator';
 import { attendanceStatusFor } from '@/lib/manual-attendance-correction';
-import { syncStaffEmailIdentity } from '@/lib/clerk-organization';
+import { findStaffForEmails, verifiedEmailAddresses } from '@/lib/auth/signed-in-staff';
 import { getDeviceTokenFromRequest } from '@/lib/device-binding';
 import { resolveDeviceHash } from '@/lib/device-rekey';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
@@ -53,23 +52,6 @@ type SharedAttendanceDeviceOwner = NonNullable<Awaited<ReturnType<typeof findSha
 type DeviceBindingResult =
   | { device: StaffDeviceRow; sharedDeviceOwner?: null; trusted: true }
   | { device: StaffDeviceRow | null; sharedDeviceOwner?: SharedAttendanceDeviceOwner | null; trusted: false };
-
-function getUserFullName(user: NonNullable<Awaited<ReturnType<typeof currentUser>>>) {
-  return user.fullName
-    || [user.firstName, user.lastName].filter(Boolean).join(' ').trim()
-    || null;
-}
-
-function getUserEmailAddresses(user: NonNullable<Awaited<ReturnType<typeof currentUser>>>) {
-  const emails = [
-    user.primaryEmailAddress?.emailAddress,
-    ...user.emailAddresses.map((emailAddress) => emailAddress.emailAddress),
-  ]
-    .map((email) => email?.trim().toLowerCase())
-    .filter((email): email is string => Boolean(email));
-
-  return Array.from(new Set(emails));
-}
 
 function getDeviceLabel(value: unknown, userAgent: string | null) {
   if (typeof value === 'string' && value.trim()) {
@@ -150,56 +132,6 @@ function serializeLocationPolicy(location: typeof officeLocationTable.$inferSele
         scheduleStartDate: location.scheduleStartDate,
       }
     : null;
-}
-
-async function resolveMemberForAttendance(input: {
-  actorEmail: string;
-  actorId: string;
-  candidateEmails?: string[];
-  fullName: string | null;
-}) {
-  const candidateEmails = Array.from(new Set([
-    input.actorEmail,
-    ...(input.candidateEmails || []),
-  ].filter((email) => email && email !== 'unknown')));
-
-  for (const email of candidateEmails) {
-    const resolved = await getOrAutoLinkStaffByEmail({
-      email,
-      fullName: input.fullName,
-    });
-
-    if (!resolved.member) continue;
-
-    if (resolved.autoLinked && resolved.before) {
-      await writeAuditEvent({
-        entityType: 'staff',
-        entityId: resolved.member.id,
-        action: 'UPDATE',
-        before: resolved.before,
-        after: {
-          ...resolved.member,
-          autoLinkedFromAttendance: true,
-          matchedLoginEmail: email,
-        },
-        actor: { email: input.actorEmail, id: input.actorId },
-        reason: 'attendance-auto-link',
-      });
-
-      await syncStaffEmailIdentity({
-        actorUserId: input.actorId,
-        email,
-        isAttendanceOnly: resolved.member.isAttendanceOnly,
-        isNssPersonnel: resolved.member.isNssPersonnel,
-        staffId: resolved.member.id,
-        staffName: resolved.member.fullName,
-      });
-    }
-
-    return resolved.member;
-  }
-
-  return null;
 }
 
 function responsePayload(input: {
@@ -558,9 +490,8 @@ export async function GET(request: NextRequest) {
     after(() => maybeRunMissedReminderBatch());
 
     const clerkSessionId = session.sessionId || null;
-    const actorEmails = getUserEmailAddresses(user);
+    const actorEmails = verifiedEmailAddresses(user);
     const actorEmail = actorEmails[0] || 'unknown';
-    const actorFullName = getUserFullName(user);
     const clock = getAccraClock();
     const currentIpInfo = await resolveClientIpInfo(request);
     const currentIp = currentIpInfo.ip;
@@ -568,14 +499,7 @@ export async function GET(request: NextRequest) {
     const deviceToken = getDeviceTokenFromRequest(request);
     const deviceHash = deviceToken ? await resolveDeviceHash(deviceToken) : null;
     const [member, office, holiday] = await Promise.all([
-      actorEmail === 'unknown'
-        ? Promise.resolve(null)
-        : resolveMemberForAttendance({
-          actorEmail,
-          actorId: user.id,
-          candidateEmails: actorEmails,
-          fullName: actorFullName,
-        }),
+      findStaffForEmails(actorEmails),
       readActiveOfficeLocation(),
       getHolidayForDate(clock.dateKey),
     ]);
@@ -710,10 +634,9 @@ export async function POST(request: NextRequest) {
   }
 
   const clerkSessionId = session.sessionId || null;
-  const actorEmails = getUserEmailAddresses(user);
+  const actorEmails = verifiedEmailAddresses(user);
   const actorEmail = actorEmails[0] || 'unknown';
   const userId = user.id;
-  const actorFullName = getUserFullName(user);
   const userAgent = request.headers.get('user-agent');
   const currentIpInfo = await resolveClientIpInfo(request);
   const currentIp = currentIpInfo.ip;
@@ -820,19 +743,14 @@ export async function POST(request: NextRequest) {
 
   try {
     if (actorEmail === 'unknown') {
-      return block('NO_EMAIL', 'Your login account does not have an email address.');
+      return block('NO_EMAIL', 'Your login account has no verified email address.');
     }
 
-    const member = await resolveMemberForAttendance({
-      actorEmail,
-      actorId: userId,
-      candidateEmails: actorEmails,
-      fullName: actorFullName,
-    });
+    const member = await findStaffForEmails(actorEmails);
     if (!member) {
       return block(
         'STAFF_NOT_LINKED',
-        'Your login could not be matched to an active staff profile. Ask an admin to confirm your name or staff email on the Staff page.',
+        'Your login could not be matched to an active staff profile. Ask an admin to check your staff email on the Staff page.',
         403,
       );
     }

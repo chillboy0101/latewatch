@@ -197,7 +197,7 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.doesNotMatch(pushApi, /System notifications are working on this device\./);
   assert.doesNotMatch(pushApi, /latewatch-test-notification/);
   assert.match(pushTestApi, /currentUser/);
-  assert.match(pushTestApi, /getOrAutoLinkStaffByEmail/);
+  assert.match(pushTestApi, /const staffMember = await findStaffForEmails\(emails\);/);
   assert.match(pushTestApi, /export async function POST/);
   assert.match(pushTestApi, /webpush\.sendNotification/);
   assert.match(pushTestApi, /latewatch-reminder-test/);

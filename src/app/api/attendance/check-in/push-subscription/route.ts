@@ -3,31 +3,14 @@ import { and, desc, eq, isNull, ne } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { pushReminderDelivery, pushSubscription, staffDevice } from '@/db/schema';
-import { getOrAutoLinkStaffByEmail } from '@/lib/attendance';
+import { findStaffForEmails, verifiedEmailAddresses } from '@/lib/auth/signed-in-staff';
 import { getDeviceTokenFromRequest } from '@/lib/device-binding';
 import { resolveDeviceHash } from '@/lib/device-rekey';
-import { getVapidPublicKey, hasVapidConfig } from '@/lib/push-reminders';
+import { getVapidPublicKey, hasVapidConfig, isKnownPushEndpoint } from '@/lib/push-reminders';
 import { publishRealtime } from '@/lib/realtime';
 
 export const dynamic = 'force-dynamic';
 const UNTRUSTED_REMINDER_DEVICE_ERROR = 'Transfer this device before changing reminder notifications.';
-
-function getUserFullName(user: NonNullable<Awaited<ReturnType<typeof currentUser>>>) {
-  return user.fullName
-    || [user.firstName, user.lastName].filter(Boolean).join(' ').trim()
-    || null;
-}
-
-function getUserEmailAddresses(user: NonNullable<Awaited<ReturnType<typeof currentUser>>>) {
-  const emails = [
-    user.primaryEmailAddress?.emailAddress,
-    ...user.emailAddresses.map((emailAddress) => emailAddress.emailAddress),
-  ]
-    .map((email) => email?.trim().toLowerCase())
-    .filter((email): email is string => Boolean(email));
-
-  return Array.from(new Set(emails));
-}
 
 function publicPayload(subscription: typeof pushSubscription.$inferSelect | null, failing = false) {
   return {
@@ -123,22 +106,13 @@ async function resolveStaffForPush() {
     return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), staffMember: null, user: null };
   }
 
-  const emails = getUserEmailAddresses(user);
-  const email = emails[0] || null;
-  if (!email) {
-    return { error: NextResponse.json({ error: 'Signed-in email is required' }, { status: 400 }), staffMember: null, user };
+  const emails = verifiedEmailAddresses(user);
+  if (emails.length === 0) {
+    return { error: NextResponse.json({ error: 'A verified email is required' }, { status: 400 }), staffMember: null, user };
   }
 
-  for (const candidateEmail of emails) {
-    const resolved = await getOrAutoLinkStaffByEmail({
-      email: candidateEmail,
-      fullName: getUserFullName(user),
-    });
-
-    if (resolved.member) {
-      return { error: null, staffMember: resolved.member, user };
-    }
-  }
+  const staffMember = await findStaffForEmails(emails);
+  if (staffMember) return { error: null, staffMember, user };
 
   return { error: NextResponse.json({ error: 'Active staff profile required' }, { status: 404 }), staffMember: null, user };
 }
@@ -168,7 +142,7 @@ export async function PUT(request: NextRequest) {
   const p256dh = typeof browserSubscription?.keys?.p256dh === 'string' ? browserSubscription.keys.p256dh : '';
   const auth = typeof browserSubscription?.keys?.auth === 'string' ? browserSubscription.keys.auth : '';
 
-  if (!endpoint || !p256dh || !auth) {
+  if (!endpoint || !p256dh || !auth || !isKnownPushEndpoint(endpoint)) {
     return NextResponse.json({ error: 'A valid push subscription is required' }, { status: 400 });
   }
 

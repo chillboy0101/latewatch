@@ -3,43 +3,10 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { latenessEntry, latenessPayment, latenessPaymentAllocation } from '@/db/schema';
-import { getOrAutoLinkStaffByEmail } from '@/lib/attendance';
+import { getSignedInStaff } from '@/lib/auth/signed-in-staff';
 import { buildLatenessPaymentReceiptDetail } from '@/lib/lateness-payment-receipts';
 
 export const dynamic = 'force-dynamic';
-
-function getUserFullName(user: NonNullable<Awaited<ReturnType<typeof currentUser>>>) {
-  return user.fullName
-    || [user.firstName, user.lastName].filter(Boolean).join(' ').trim()
-    || null;
-}
-
-function getUserEmailAddresses(user: NonNullable<Awaited<ReturnType<typeof currentUser>>>) {
-  const emails = [
-    user.primaryEmailAddress?.emailAddress,
-    ...user.emailAddresses.map((emailAddress) => emailAddress.emailAddress),
-  ]
-    .map((email) => email?.trim().toLowerCase())
-    .filter((email): email is string => Boolean(email));
-
-  return Array.from(new Set(emails));
-}
-
-async function resolveMemberForReceipt(input: {
-  candidateEmails: string[];
-  fullName: string | null;
-}) {
-  for (const email of input.candidateEmails) {
-    const resolved = await getOrAutoLinkStaffByEmail({
-      email,
-      fullName: input.fullName,
-    });
-
-    if (resolved.member) return resolved.member;
-  }
-
-  return null;
-}
 
 export async function GET(
   _request: NextRequest,
@@ -52,10 +19,7 @@ export async function GET(
     }
 
     const { paymentId } = await params;
-    const member = await resolveMemberForReceipt({
-      candidateEmails: getUserEmailAddresses(user),
-      fullName: getUserFullName(user),
-    });
+    const member = await getSignedInStaff(user);
 
     if (!member || !paymentId) {
       return NextResponse.json({ error: 'Receipt was not found' }, { status: 404 });

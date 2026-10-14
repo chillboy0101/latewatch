@@ -2,8 +2,14 @@
 import { NextResponse } from 'next/server';
 import { Rest } from 'ably';
 import { currentUser } from '@clerk/nextjs/server';
+import { enforceRole } from '@/lib/auth/roles';
+import { themeChannelForUser } from '@/lib/theme';
 
 export const dynamic = 'force-dynamic';
+
+// Browsers only ever listen; every update is published by the server. Admins hear all LateWatch
+// channels, staff only what the check-in page uses and their own theme.
+const STAFF_CHANNELS = ['attendance', 'notifications', 'staff-penalty-history'];
 
 export async function GET() {
   const user = await currentUser();
@@ -17,8 +23,15 @@ export async function GET() {
   }
 
   const client = new Rest({ key });
+  const isAdmin = (await enforceRole(['admin'])) === null;
+  const capability: Record<string, ['subscribe']> = isAdmin
+    ? { 'latewatch:*': ['subscribe'] }
+    : Object.fromEntries(
+      [...STAFF_CHANNELS, themeChannelForUser(user.id)].map((channel) => [`latewatch:${channel}`, ['subscribe']]),
+    );
 
   const tokenRequest = await client.auth.createTokenRequest({
+    capability,
     clientId: user.id,
   });
 

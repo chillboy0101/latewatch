@@ -3,7 +3,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { latenessPayment, notificationRead } from '@/db/schema';
-import { getOrAutoLinkStaffByEmail } from '@/lib/attendance';
+import { getSignedInStaff } from '@/lib/auth/signed-in-staff';
 import {
   buildLatenessPaymentReceiptNotifications,
   getLatenessPaymentReceiptNotificationId,
@@ -14,39 +14,6 @@ export const dynamic = 'force-dynamic';
 const DISMISSED_PREFIX = 'dismissed:';
 const RECEIPT_NOTIFICATION_LIMIT = 50;
 
-function getUserFullName(user: NonNullable<Awaited<ReturnType<typeof currentUser>>>) {
-  return user.fullName
-    || [user.firstName, user.lastName].filter(Boolean).join(' ').trim()
-    || null;
-}
-
-function getUserEmailAddresses(user: NonNullable<Awaited<ReturnType<typeof currentUser>>>) {
-  const emails = [
-    user.primaryEmailAddress?.emailAddress,
-    ...user.emailAddresses.map((emailAddress) => emailAddress.emailAddress),
-  ]
-    .map((email) => email?.trim().toLowerCase())
-    .filter((email): email is string => Boolean(email));
-
-  return Array.from(new Set(emails));
-}
-
-async function resolveMemberForReceiptNotifications(input: {
-  candidateEmails: string[];
-  fullName: string | null;
-}) {
-  for (const email of input.candidateEmails) {
-    const resolved = await getOrAutoLinkStaffByEmail({
-      email,
-      fullName: input.fullName,
-    });
-
-    if (resolved.member) return resolved.member;
-  }
-
-  return null;
-}
-
 export async function GET() {
   try {
     const user = await currentUser();
@@ -54,10 +21,7 @@ export async function GET() {
       return NextResponse.json({ notifications: [], unreadCount: 0 }, { status: 401 });
     }
 
-    const member = await resolveMemberForReceiptNotifications({
-      candidateEmails: getUserEmailAddresses(user),
-      fullName: getUserFullName(user),
-    });
+    const member = await getSignedInStaff(user);
 
     if (!member) {
       return NextResponse.json({ notifications: [], unreadCount: 0 }, { status: 404 });

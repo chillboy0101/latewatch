@@ -3,7 +3,7 @@ import { currentUser } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { latenessEntry, staff, staffDevice } from '@/db/schema';
-import { and, count, eq, ilike, ne } from 'drizzle-orm';
+import { and, count, eq, ne, sql } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { normalizeStaffEmail } from '@/lib/attendance';
@@ -121,7 +121,7 @@ export async function PUT(
     if (updateData.email) {
       const [emailOwner] = await db.select({ id: staff.id })
         .from(staff)
-        .where(and(ilike(staff.email, updateData.email), ne(staff.id, id)))
+        .where(and(eq(sql`lower(${staff.email})`, updateData.email), ne(staff.id, id)))
         .limit(1);
 
       if (emailOwner) {

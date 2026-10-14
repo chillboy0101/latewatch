@@ -653,6 +653,9 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
   }
 }
 
+// Notification ids are short (an audit event id or a derived key); anything longer is not one.
+const MAX_NOTIFICATION_ID_LENGTH = 200;
+
 function normalizeIds(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
 
@@ -661,7 +664,7 @@ function normalizeIds(value: unknown): string[] {
       value
         .filter((id): id is string => typeof id === 'string')
         .map((id) => id.trim())
-        .filter(Boolean),
+        .filter((id) => id.length > 0 && id.length <= MAX_NOTIFICATION_ID_LENGTH),
     ),
   ).slice(0, 250);
 }
@@ -1117,6 +1120,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // The feed is for admins only, so only admins can mark it read or dismiss from it.
+    if (await enforceRole(['admin'])) {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+
     const user = await getNotificationUser({ resolveEmail: true });
     if (!user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });

@@ -1,11 +1,11 @@
 import 'server-only';
 
-import { and, desc, eq, gte, ilike, isNotNull, isNull, lte, or } from 'drizzle-orm';
+import { and, desc, eq, gte, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { attendanceAttempt, attendancePermission, officeLocation, officeNetwork, staff, workCalendar } from '@/db/schema';
 import { getObservedGhanaHolidayForDate, isSuppressedGhanaHolidayDate } from '@/lib/ghana-holidays';
 import { resolveOfficeLocationForDate } from '@/lib/office-location-policy';
-import { normalizeStaffEmail, normalizeStaffName } from '@/lib/staff-normalize';
+import { normalizeStaffEmail } from '@/lib/staff-normalize';
 export { getClientIp, getClientIpInfo, resolveClientIp, resolveClientIpInfo } from '@/lib/request-ip';
 export { normalizeStaffEmail, normalizeStaffName } from '@/lib/staff-normalize';
 
@@ -73,74 +73,24 @@ export function isOfficeIp(clientIp: string, allowedIp: string | null | undefine
   return clientIp === allowedIp;
 }
 
+/**
+ * The current (not archived) staff member with exactly this email address. Matched exactly on the
+ * lower-cased address: no wildcards, and never by name.
+ */
 export async function getStaffByEmail(email: string) {
+  const normalizedEmail = normalizeStaffEmail(email);
+  if (!normalizedEmail) return null;
+
   const [member] = await db.select()
     .from(staff)
     .where(and(
-      ilike(staff.email, email),
+      eq(sql`lower(${staff.email})`, normalizedEmail),
       eq(staff.active, true),
       eq(staff.archived, false),
     ))
     .limit(1);
 
   return member || null;
-}
-
-export async function getOrAutoLinkStaffByEmail(input: {
-  email: string;
-  fullName?: string | null;
-}) {
-  const normalizedEmail = normalizeStaffEmail(input.email);
-  if (!normalizedEmail) {
-    return { autoLinked: false, before: null, member: null };
-  }
-
-  const member = await getStaffByEmail(normalizedEmail);
-  if (member) {
-    return { autoLinked: false, before: null, member };
-  }
-
-  const normalizedName = normalizeStaffName(input.fullName);
-  if (!normalizedName) {
-    return { autoLinked: false, before: null, member: null };
-  }
-
-  const [existingEmailOwner] = await db.select()
-    .from(staff)
-    .where(ilike(staff.email, normalizedEmail))
-    .limit(1);
-
-  if (existingEmailOwner) {
-    return { autoLinked: false, before: null, member: null };
-  }
-
-  const candidates = await db.select()
-    .from(staff)
-    .where(and(
-      eq(staff.active, true),
-      eq(staff.archived, false),
-      or(isNull(staff.email), eq(staff.email, '')),
-    ));
-
-  const matches = candidates.filter((candidate) => normalizeStaffName(candidate.fullName) === normalizedName);
-  if (matches.length !== 1) {
-    return { autoLinked: false, before: null, member: null };
-  }
-
-  const before = matches[0];
-  const [linkedMember] = await db.update(staff)
-    .set({
-      email: normalizedEmail,
-      updatedAt: new Date(),
-    })
-    .where(eq(staff.id, before.id))
-    .returning();
-
-  return {
-    autoLinked: Boolean(linkedMember),
-    before,
-    member: linkedMember || null,
-  };
 }
 
 export async function getHolidayForDate(dateKey: string) {

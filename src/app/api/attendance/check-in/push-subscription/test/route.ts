@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 import webpush from 'web-push';
 import { db } from '@/db';
 import { pushSubscription } from '@/db/schema';
-import { getOrAutoLinkStaffByEmail } from '@/lib/attendance';
+import { findStaffForEmails, verifiedEmailAddresses } from '@/lib/auth/signed-in-staff';
 import { ensureVapidConfig, hasVapidConfig, isExpiredPushEndpoint } from '@/lib/push-reminders';
 import { allowRequest } from '@/lib/rate-limit';
 
@@ -13,45 +13,19 @@ export const dynamic = 'force-dynamic';
 const PUSH_TEST_LIMIT = 3;
 const PUSH_TEST_WINDOW_SECONDS = 3600;
 
-function getUserFullName(user: NonNullable<Awaited<ReturnType<typeof currentUser>>>) {
-  return user.fullName
-    || [user.firstName, user.lastName].filter(Boolean).join(' ').trim()
-    || null;
-}
-
-function getUserEmailAddresses(user: NonNullable<Awaited<ReturnType<typeof currentUser>>>) {
-  const emails = [
-    user.primaryEmailAddress?.emailAddress,
-    ...user.emailAddresses.map((emailAddress) => emailAddress.emailAddress),
-  ]
-    .map((email) => email?.trim().toLowerCase())
-    .filter((email): email is string => Boolean(email));
-
-  return Array.from(new Set(emails));
-}
-
 async function resolveStaffForPushTest() {
   const user = await currentUser();
   if (!user) {
     return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), staffMember: null, user: null };
   }
 
-  const emails = getUserEmailAddresses(user);
-  const email = emails[0] || null;
-  if (!email) {
-    return { error: NextResponse.json({ error: 'Signed-in email is required' }, { status: 400 }), staffMember: null, user };
+  const emails = verifiedEmailAddresses(user);
+  if (emails.length === 0) {
+    return { error: NextResponse.json({ error: 'A verified email is required' }, { status: 400 }), staffMember: null, user };
   }
 
-  for (const candidateEmail of emails) {
-    const resolved = await getOrAutoLinkStaffByEmail({
-      email: candidateEmail,
-      fullName: getUserFullName(user),
-    });
-
-    if (resolved.member) {
-      return { error: null, staffMember: resolved.member, user };
-    }
-  }
+  const staffMember = await findStaffForEmails(emails);
+  if (staffMember) return { error: null, staffMember, user };
 
   return { error: NextResponse.json({ error: 'Active staff profile required' }, { status: 404 }), staffMember: null, user };
 }

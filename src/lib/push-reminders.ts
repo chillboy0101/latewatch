@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lt, or } from 'drizzle-orm';
 import webpush from 'web-push';
 import { db } from '@/db';
 import { attendancePermission, attendanceRecord, pushReminderDelivery, pushSubscription, reminderCronRun, staff } from '@/db/schema';
@@ -211,6 +211,21 @@ export function reminderCopy(
   };
 }
 
+// Browsers subscribe through one of these push services (Apple, Google, Microsoft, Mozilla).
+// Reminders are only ever posted to them, never to an address someone typed in.
+const PUSH_SERVICE_HOST_SUFFIXES = ['push.apple.com', 'fcm.googleapis.com', 'android.googleapis.com', 'notify.windows.com', 'push.services.mozilla.com'];
+
+export function isKnownPushEndpoint(endpoint: string) {
+  try {
+    const url = new URL(endpoint);
+    const host = url.hostname.toLowerCase();
+    return url.protocol === 'https:'
+      && PUSH_SERVICE_HOST_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
+  } catch {
+    return false;
+  }
+}
+
 export function isExpiredPushEndpoint(error: unknown) {
   if (typeof error !== 'object' || error === null) return false;
 
@@ -230,15 +245,36 @@ export function isExpiredPushEndpoint(error: unknown) {
   return false;
 }
 
-function isStalePendingDelivery(delivery: PushReminderDeliveryRow) {
-  if (delivery.status !== 'pending') return false;
+// A phone whose reminder failed is retried on the following runs for an hour, then left for the
+// day: a permanent error (an expired or broken subscription) would otherwise fail every 5 minutes.
+const FAILED_DELIVERY_RETRY_MS = 60 * 60 * 1000;
 
-  const createdAt = delivery.createdAt instanceof Date
+function deliveryCreatedAt(delivery: PushReminderDeliveryRow) {
+  return delivery.createdAt instanceof Date
     ? delivery.createdAt
     : delivery.createdAt
       ? new Date(delivery.createdAt)
       : null;
+}
 
+function isRetryableFailedDelivery(delivery: PushReminderDeliveryRow) {
+  const createdAt = deliveryCreatedAt(delivery);
+  return delivery.status === 'failed' && Boolean(createdAt && Date.now() - createdAt.getTime() < FAILED_DELIVERY_RETRY_MS);
+}
+
+/** The error a push service gave, with its status code and reply, for the Devices page. */
+function pushErrorText(error: unknown) {
+  if (!(error instanceof Error)) return 'Push send failed';
+  const statusCode = 'statusCode' in error ? Number((error as { statusCode?: unknown }).statusCode) : NaN;
+  const body = 'body' in error ? String((error as { body?: unknown }).body ?? '').trim() : '';
+  const detail = Number.isFinite(statusCode) ? `${statusCode}${body ? `: ${body}` : ''}` : '';
+  return (detail ? `${error.message} (${detail})` : error.message).slice(0, 500);
+}
+
+function isStalePendingDelivery(delivery: PushReminderDeliveryRow) {
+  if (delivery.status !== 'pending') return false;
+
+  const createdAt = deliveryCreatedAt(delivery);
   return Boolean(createdAt && Date.now() - createdAt.getTime() >= STALE_PENDING_DELIVERY_MS);
 }
 
@@ -283,13 +319,23 @@ async function reservePushReminderDelivery(input: {
   if (existingDelivery.status === 'pending' && !isStalePendingDelivery(existingDelivery)) {
     return null;
   }
+  if (existingDelivery.status !== 'pending' && !isRetryableFailedDelivery(existingDelivery)) {
+    return null;
+  }
 
+  // Claimed only if the row is still as read, so two overlapping runs can't both send it: a
+  // failed row must still be failed, and a stale pending one (a run that died mid-send) still
+  // stale. Re-claiming a stale row restarts its clock.
   const [retryDelivery] = await db.update(pushReminderDelivery)
-    .set({
-      error: null,
-      status: 'pending',
-    })
-    .where(eq(pushReminderDelivery.id, existingDelivery.id))
+    .set(existingDelivery.status === 'pending'
+      ? { createdAt: new Date(), error: null, status: 'pending' }
+      : { error: null, status: 'pending' })
+    .where(and(
+      eq(pushReminderDelivery.id, existingDelivery.id),
+      existingDelivery.status === 'pending'
+        ? and(eq(pushReminderDelivery.status, 'pending'), lt(pushReminderDelivery.createdAt, new Date(Date.now() - STALE_PENDING_DELIVERY_MS)))
+        : eq(pushReminderDelivery.status, 'failed'),
+    ))
     .returning();
 
   return retryDelivery || null;
@@ -382,7 +428,7 @@ export async function pushAdminAlert(input: { alertType: string; body: string; d
         .where(eq(pushReminderDelivery.id, reserved.id));
     } catch (error) {
       await db.update(pushReminderDelivery)
-        .set({ error: error instanceof Error ? error.message.slice(0, 500) : 'admin alert failed', status: 'failed' })
+        .set({ error: pushErrorText(error), status: 'failed' })
         .where(eq(pushReminderDelivery.id, reserved.id));
     }
   }
@@ -586,7 +632,7 @@ export async function sendAttendanceReminderBatch(reminderType: PushReminderType
 
       await db.update(pushReminderDelivery)
         .set({
-          error: error instanceof Error ? error.message.slice(0, 500) : 'Push send failed',
+          error: pushErrorText(error),
           status: expiredEndpoint ? 'disabled' : 'failed',
         })
         .where(eq(pushReminderDelivery.id, delivery.id));

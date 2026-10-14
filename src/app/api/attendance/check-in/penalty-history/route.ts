@@ -3,44 +3,12 @@ import { desc, eq, inArray } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { latenessDebtPardonEntry, latenessEntry, latenessPayment, latenessPaymentAllocation } from '@/db/schema';
-import { getAccraClock, getOrAutoLinkStaffByEmail } from '@/lib/attendance';
+import { getAccraClock } from '@/lib/attendance';
+import { getSignedInStaff } from '@/lib/auth/signed-in-staff';
 import { summarizeLatenessPaymentReceipts } from '@/lib/lateness-payment-receipts';
 import { summarizeLatenessPaymentEntries, summarizePenaltyHistoryWeeks } from '@/lib/lateness-payments';
 
 export const dynamic = 'force-dynamic';
-
-function getUserFullName(user: NonNullable<Awaited<ReturnType<typeof currentUser>>>) {
-  return user.fullName
-    || [user.firstName, user.lastName].filter(Boolean).join(' ').trim()
-    || null;
-}
-
-function getUserEmailAddresses(user: NonNullable<Awaited<ReturnType<typeof currentUser>>>) {
-  const emails = [
-    user.primaryEmailAddress?.emailAddress,
-    ...user.emailAddresses.map((emailAddress) => emailAddress.emailAddress),
-  ]
-    .map((email) => email?.trim().toLowerCase())
-    .filter((email): email is string => Boolean(email));
-
-  return Array.from(new Set(emails));
-}
-
-async function resolveMemberForPenaltyHistory(input: {
-  candidateEmails: string[];
-  fullName: string | null;
-}) {
-  for (const email of input.candidateEmails) {
-    const resolved = await getOrAutoLinkStaffByEmail({
-      email,
-      fullName: input.fullName,
-    });
-
-    if (resolved.member) return resolved.member;
-  }
-
-  return null;
-}
 
 export async function GET() {
   try {
@@ -49,10 +17,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    const member = await resolveMemberForPenaltyHistory({
-      candidateEmails: getUserEmailAddresses(user),
-      fullName: getUserFullName(user),
-    });
+    const member = await getSignedInStaff(user);
 
     if (!member) {
       return NextResponse.json({ error: 'Staff profile was not found' }, { status: 404 });

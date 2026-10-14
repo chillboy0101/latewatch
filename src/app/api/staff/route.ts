@@ -3,7 +3,7 @@ import { currentUser } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { staff, staffLeavePeriod } from '@/db/schema';
-import { and, asc, desc, eq, gt, gte, ilike, inArray, isNull, lte, ne, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { publishRealtime } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { normalizeStaffEmail } from '@/lib/attendance';
@@ -139,13 +139,13 @@ export async function POST(request: Request) {
 
     const [existingStaff] = await db.select()
       .from(staff)
-      .where(ilike(staff.fullName, name))
+      .where(eq(sql`lower(${staff.fullName})`, name.toLowerCase()))
       .limit(1);
 
     if (normalizedEmail) {
       const [existingEmail] = await db.select()
         .from(staff)
-        .where(ilike(staff.email, normalizedEmail))
+        .where(eq(sql`lower(${staff.email})`, normalizedEmail))
         .limit(1);
 
       if (existingEmail && existingEmail.id !== existingStaff?.id) {

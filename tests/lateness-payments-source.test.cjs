@@ -66,7 +66,7 @@ test('staff penalty history endpoint is scoped to the signed-in staff member', (
   const source = fs.readFileSync(penaltyHistoryApiPath, 'utf8');
 
   assert.match(source, /currentUser\(\)/);
-  assert.match(source, /resolveMemberForPenaltyHistory/);
+  assert.match(source, /const member = await getSignedInStaff\(user\);/);
   assert.doesNotMatch(source, /syncLatenessEntriesFromAttendanceForRange/);
   assert.match(source, /eq\(latenessEntry\.staffId, member\.id\)/);
   assert.match(source, /latenessPayment/);
@@ -81,7 +81,7 @@ test('staff receipt API returns only signed-in staff payment receipts', () => {
   const source = fs.readFileSync(receiptApiPath, 'utf8');
 
   assert.match(source, /currentUser\(\)/);
-  assert.match(source, /resolveMemberForReceipt/);
+  assert.match(source, /const member = await getSignedInStaff\(user\);/);
   assert.match(source, /eq\(latenessPayment\.id, paymentId\)/);
   assert.match(source, /eq\(latenessPayment\.staffId, member\.id\)/);
   assert.match(source, /return NextResponse\.json\(\{ error: 'Receipt was not found' \}, \{ status: 404 \}\)/);
@@ -95,7 +95,7 @@ test('staff receipt notification API returns only unseen signed-in staff payment
   const source = fs.readFileSync(receiptNotificationApiPath, 'utf8');
 
   assert.match(source, /currentUser\(\)/);
-  assert.match(source, /resolveMemberForReceiptNotifications/);
+  assert.match(source, /const member = await getSignedInStaff\(user\);/);
   assert.match(source, /eq\(latenessPayment\.staffId, member\.id\)/);
   assert.match(source, /notificationRead/);
   assert.match(source, /DISMISSED_PREFIX/);
