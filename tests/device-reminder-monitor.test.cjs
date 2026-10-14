@@ -93,8 +93,8 @@ test('device health: alerts are recent shared-device blocks, leave is not chased
   // Page: newest load wins, refreshes are debounced, failures don't look like "all fine".
   assert.match(page, /if \(signal\?\.aborted \|\| loadId < appliedLoadRef\.current\) return;/);
   assert.match(page, /REALTIME_REFRESH_DELAY_MS/);
-  assert.match(page, /Could not load today&apos;s reminder status/);
-  assert.match(page, /\{row\.trustedDevice\.registered \? \(/);
+  assert.match(page, /Couldn&apos;t load today&apos;s reminders/);
+  assert.match(page, /\{row\.trustedDevice\.registered && \(/);
   assert.match(page, /\{resetError && \(/);
 });
 
@@ -102,4 +102,10 @@ test('the notifications feed (built from the audit trail) is for admins only', (
   const route = read('src', 'app', 'api', 'notifications', 'route.ts');
   const get = route.slice(route.indexOf('export async function GET'), route.indexOf('export async function POST'));
   assert.match(get, /if \(await enforceRole\(\['admin'\]\)\) \{\s*return NextResponse\.json\(\{ notifications: \[\], unreadCount: 0 \}/);
+});
+
+test('the monitor reports when reminders first went out, not the last catch-up run', () => {
+  const monitor = read('src', 'lib', 'reminder-delivery-monitor.ts');
+  assert.match(monitor, /if \(!first \|\| ranAt\.toISOString\(\) < first\)/);
+  assert.match(monitor, /firstRunAt: firstRunAtByType\.get\(reminderType\) \|\| null/);
 });

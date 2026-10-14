@@ -152,5 +152,5 @@ test('reminders are sent at high priority, phones repair themselves, and admins 
   assert.match(checkIn, /\{ refresh: failing, silent: true \}/);
   assert.match(monitor, /selectDistinctOn\(\[pushReminderDelivery\.subscriptionId\]/);
   assert.match(monitor, /cannotReceive,/);
-  assert.match(devices, /Won&apos;t get reminders · \{cannotReceive\.length\}/);
+  assert.match(devices, /Can&apos;t get reminders · \{cannotReceive\.length\}/);
 });

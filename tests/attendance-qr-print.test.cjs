@@ -442,25 +442,19 @@ test('device health dashboard exposes trusted devices, reminder devices, session
   assert.match(helper, /Legacy trusted device: open Check-In on this device to refresh session/);
   assert.match(helper, /Multiple notification devices/);
   assert.match(page, /\/api\/attendance\/device-health/);
-  assert.match(page, /Search/);
-  assert.match(page, /Health/);
-  // 502b6f5 turned the "Refresh Session" action into a status pill plus guidance text:
-  // the staff member refreshes by opening Check-In on the device, so there is no admin
-  // button to press.
-  assert.match(page, /Session needs refresh/);
-  assert.match(page, /issueHelpText/);
+  assert.match(page, /Search staff/);
+  // Minimal table: the device badge says the state (with help on hover); sign-in and sign-out
+  // are one word each, the full reason on hover.
+  assert.match(page, /'Refresh session'/);
+  assert.match(page, /function shortIssue\(reason: string\)/);
   assert.match(page, /subscribeRealtimeChannel/);
-  assert.match(page, /Last updated/);
-  assert.match(page, /Trusted Device/);
-  assert.match(page, /Reminders/);
-  // Reset now reports the count inline ("N login sessions revoked"), so assert on the API
-  // field the page reads rather than the old fixed phrase.
-  assert.match(page, /revokedSessions/);
+  assert.match(page, /Updated \{accraTime\(data\.generatedAt\)\}/);
+  assert.match(page, /<th className="px-4 py-3 font-medium">Device<\/th>/);
+  assert.match(page, /<th className="w-28 px-4 py-3 font-medium">Sign-in<\/th>/);
+  assert.match(page, /<th className="w-28 px-4 py-3 font-medium">Sign-out<\/th>/);
+  assert.match(page, /title=\{cell\.reason\}/);
   assert.match(page, /\/api\/attendance\/devices\/\$\{resetTarget\.staff\.id\}/);
-  assert.match(page, /Reset Device/);
-  assert.match(page, /notification devices will be disabled/);
-  assert.match(page, /disabledPushSubscriptions/);
-  assert.match(page, /revokedSessions/);
+  assert.match(page, /They&apos;re signed out everywhere and reminders switch off/);
   assert.doesNotMatch(helper, /Multiple active reminder devices/);
   assert.doesNotMatch(page, /Session not tracked/);
   assert.doesNotMatch(page, /Trusted device has no stored Clerk session/);

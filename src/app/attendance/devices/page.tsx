@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeftRight, CheckCircle2, Clock3, Loader2, RefreshCcw, RotateCcw, Search, Shield, Smartphone, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock3, Loader2, Minus, RefreshCcw, RotateCcw, Search, XCircle } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -26,16 +26,19 @@ type ReminderMonitorRowStatus =
   | 'waiting';
 
 interface ReminderMonitorApiRow {
+  reason?: string;
   staff: { id: string };
   status: ReminderMonitorRowStatus;
 }
 
 interface ReminderMonitorApiSection {
+  firstRunAt?: string | null;
   label: string;
   lastRunAt: string | null;
   missedRun?: boolean;
   rows: ReminderMonitorApiRow[];
   scheduledPassed: boolean;
+  scheduledTime?: string;
   sentByApp?: boolean;
 }
 
@@ -55,125 +58,120 @@ interface ReminderMonitorApiResponse {
   };
 }
 
-type ReminderRunInfo = Pick<ReminderMonitorApiSection, 'label' | 'lastRunAt' | 'missedRun' | 'scheduledPassed' | 'sentByApp'> & {
+interface ReminderRun {
+  firstRunAt: string | null;
+  missedRun: boolean;
   /** Weekend or holiday: no reminders are due. */
   noRemindersReason: string | null;
-};
-
-const REALTIME_REFRESH_DELAY_MS = 800;
-
-function runChipText(run: ReminderRunInfo) {
-  if (run.noRemindersReason) return `no reminders today (${run.noRemindersReason})`;
-  if (run.missedRun) return run.sentByApp ? "sent by the app; the cron didn't run" : 'did not run today';
-  if (run.lastRunAt) {
-    return `last ran ${new Date(run.lastRunAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Accra' })}`;
-  }
-  return 'not yet';
+  reached: number;
+  sentByApp: boolean;
+  title: string;
+  dueLabel: string;
 }
 
-function reminderStatusLabel(status: ReminderMonitorRowStatus) {
-  if (status === 'sent') return 'Sent';
-  if (status === 'failed') return 'Failed';
-  if (status === 'pending') return 'Pending';
-  if (status === 'missing') return 'Missing';
-  if (status === 'waiting') return 'Waiting';
-  if (status === 'no_trusted_device') return 'No device';
-  if (status === 'notifications_not_registered') return 'Not registered';
-  if (status === 'reminder_off') return 'Off';
-  return 'Skipped';
+interface ReminderCell {
+  reason: string;
+  status: ReminderMonitorRowStatus;
 }
 
-function reminderStatusClass(status: ReminderMonitorRowStatus) {
-  if (status === 'sent') return 'border-success/25 bg-success/10 text-success';
-  if (status === 'failed' || status === 'missing') return 'border-danger/25 bg-danger/10 text-danger';
-  if (status === 'pending' || status === 'waiting' || status === 'no_trusted_device' || status === 'notifications_not_registered') return 'border-warning/25 bg-warning/10 text-warning';
-  return 'border-border bg-muted/20 text-muted-foreground';
-}
-
-function ReminderStatusIcon({ status }: { status: ReminderMonitorRowStatus }) {
-  if (status === 'sent') return <CheckCircle2 className="h-3 w-3" />;
-  if (status === 'failed' || status === 'missing') return <XCircle className="h-3 w-3" />;
-  if (status === 'pending' || status === 'waiting') return <Clock3 className="h-3 w-3" />;
-  return <Smartphone className="h-3 w-3" />;
-}
-
-function ReminderChip({ kind, status }: { kind: string; status: ReminderMonitorRowStatus | null }) {
-  if (!status) {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2 py-0.5 text-xs font-medium text-muted-foreground">
-        {kind} <span className="text-muted-foreground/70">—</span>
-      </span>
-    );
-  }
-
-  return (
-    <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium', reminderStatusClass(status))}>
-      <ReminderStatusIcon status={status} />
-      {kind} {reminderStatusLabel(status)}
-    </span>
-  );
+interface ReminderStatusMaps {
+  signIn: Map<string, ReminderCell>;
+  signOut: Map<string, ReminderCell>;
 }
 
 interface DeviceHealthRow {
   attention: boolean;
   attentionReasons: string[];
-  reminders: {
-    activeSubscriptions: number;
-    disabledSubscriptions: number;
-    lastUpdatedAt: string | null;
-    signInEnabled: number;
-    signOutEnabled: number;
-  };
-  security: {
-    latestAlertAt: string | null;
-    latestResetAt: string | null;
-    latestTransferReviewAt: string | null;
-    revokedSessions: number;
-  };
   staff: {
     department: string | null;
     email: string | null;
     fullName: string;
     id: string;
-    isAttendanceOnly: boolean;
     unit: string | null;
   };
-  transfer: {
-    latestRequestedAt: string | null;
-    latestReviewedAt: string | null;
-    latestStatus: string | null;
-    pending: number;
-    requestedByEmail: string | null;
-  };
+  transfer: { pending: number };
   trustedDevice: {
     deviceLabel: string | null;
-    id: string | null;
-    lastDistanceMeters: string | null;
     lastSeenAt: string | null;
-    lastVerificationMethod: string | null;
-    lastVerifiedAt: string | null;
     registered: boolean;
-    registeredAt: string | null;
     sessionTracked: boolean;
-    updatedAt: string | null;
   };
 }
 
 interface DeviceHealthResponse {
   generatedAt: string;
   rows: DeviceHealthRow[];
-  summary: {
-    activeReminderDevices: number;
-    attention: number;
-    pendingTransfers: number;
-    registeredDevices: number;
-    sessionTrackedDevices: number;
-    staff: number;
+  summary: { attention: number; staff: number };
+}
+
+const EMPTY_REMINDER_MAPS: ReminderStatusMaps = { signIn: new Map(), signOut: new Map() };
+const REALTIME_REFRESH_DELAY_MS = 800;
+
+function accraTime(value: string) {
+  return new Date(value).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Accra' });
+}
+
+function toReminderRun(section: ReminderMonitorApiSection, title: string, dueLabel: string, noRemindersReason: string | null): ReminderRun {
+  return {
+    dueLabel,
+    firstRunAt: section.firstRunAt ?? section.lastRunAt ?? null,
+    missedRun: section.missedRun === true,
+    noRemindersReason,
+    reached: (section.rows || []).filter((row) => row.status === 'sent').length,
+    sentByApp: section.sentByApp === true,
+    title,
   };
 }
 
-function staffMeta(row: DeviceHealthRow) {
-  return [row.staff.department, row.staff.unit].filter(Boolean).join(' / ') || row.staff.email || '-';
+/** One line per reminder: when it went out (the first run, not later catch-ups) and how many it reached. */
+function reminderRunStatus(run: ReminderRun): { text: string; tone: 'danger' | 'muted' | 'success' } {
+  if (run.noRemindersReason) return { text: `None today · ${run.noRemindersReason}`, tone: 'muted' };
+  if (run.missedRun && run.sentByApp && run.firstRunAt) {
+    return { text: `Cron missed · app sent ${accraTime(run.firstRunAt)} · ${run.reached} reached`, tone: 'danger' };
+  }
+  if (run.missedRun) return { text: 'Didn’t run', tone: 'danger' };
+  if (run.firstRunAt) return { text: `Sent ${accraTime(run.firstRunAt)} · ${run.reached} reached`, tone: 'success' };
+  return { text: `Due ${run.dueLabel}`, tone: 'muted' };
+}
+
+const CELL_LABELS: Record<ReminderMonitorRowStatus, string> = {
+  failed: 'Failed',
+  missing: 'Missed',
+  no_trusted_device: 'No phone',
+  notifications_not_registered: 'Not on',
+  pending: 'Sending',
+  reminder_off: 'Off',
+  sent: 'Sent',
+  skipped: '',
+  waiting: 'Due',
+};
+
+/** A one-word reminder status; the full reason shows on hover. "Skipped" (nothing was due) is a dash. */
+function ReminderStatusCell({ cell }: { cell: ReminderCell | undefined }) {
+  if (!cell || cell.status === 'skipped') {
+    return (
+      <span title={cell?.reason} className="inline-flex items-center text-muted-foreground/70">
+        <Minus className="h-3.5 w-3.5" />
+      </span>
+    );
+  }
+
+  const { status } = cell;
+  const tone = status === 'sent'
+    ? 'text-success'
+    : status === 'failed' || status === 'missing'
+      ? 'text-danger'
+      : status === 'pending' || status === 'waiting'
+        ? 'text-muted-foreground'
+        : 'text-warning';
+  const Icon = status === 'sent' ? CheckCircle2 : status === 'failed' || status === 'missing' ? XCircle : status === 'pending' || status === 'waiting' ? Clock3 : AlertTriangle;
+
+  return (
+    <span title={cell.reason} className={cn('inline-flex items-center gap-1.5 text-xs font-medium', tone)}>
+      <Icon className="h-3.5 w-3.5" />
+      {CELL_LABELS[status]}
+    </span>
+  );
 }
 
 /** Trusted and nothing to fix: the same rows whose badge reads "Trusted". */
@@ -196,7 +194,6 @@ function deviceMatchesQuery(row: DeviceHealthRow, query: string) {
     row.staff.department || '',
     row.staff.unit || '',
     row.trustedDevice.deviceLabel || '',
-    row.transfer.latestStatus || '',
     ...row.attentionReasons,
   ].join(' ').toLowerCase().includes(query);
 }
@@ -211,8 +208,8 @@ function SummaryFilter({
   active: boolean;
   label: string;
   onClick: () => void;
-  tone?: 'danger' | 'muted' | 'neutral' | 'success' | 'warning';
-  value: number;
+  tone?: 'danger' | 'muted' | 'neutral' | 'success';
+  value: number | string;
 }) {
   return (
     <button
@@ -220,7 +217,7 @@ function SummaryFilter({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        'min-h-20 rounded-lg border border-border bg-card px-3 py-3 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary/35',
+        'rounded-lg border border-border bg-card px-3 py-2.5 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary/35',
         active && 'border-primary/60 bg-primary/5',
       )}
     >
@@ -228,7 +225,6 @@ function SummaryFilter({
         'font-mono text-xl font-bold leading-none',
         tone === 'success' && 'text-success',
         tone === 'danger' && 'text-danger',
-        tone === 'warning' && 'text-warning',
         tone === 'muted' && 'text-muted-foreground',
       )}>
         {value}
@@ -238,77 +234,49 @@ function SummaryFilter({
   );
 }
 
-function DeviceStatusBadge({ row }: { row: DeviceHealthRow }) {
-  if (row.transfer.pending > 0) {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-warning/25 bg-warning/10 px-2.5 py-1 text-xs font-semibold text-warning">
-        <ArrowLeftRight className="h-3.5 w-3.5" />
-        Transfer pending
-      </span>
-    );
-  }
+// The device badge says the main state; extra issues not already covered by it get a small tag.
+const DEVICE_BADGE_COVERS = new Set(['No trusted attendance device', 'Device transfer pending']);
 
-  if (!row.trustedDevice.registered) {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-danger/25 bg-danger/10 px-2.5 py-1 text-xs font-semibold text-danger">
-        <AlertTriangle className="h-3.5 w-3.5" />
-        No trusted device
-      </span>
-    );
-  }
+function shortIssue(reason: string) {
+  if (reason.startsWith('Legacy trusted device')) return { help: 'Ask them to open Check-In on that phone. Reset if they no longer have it.', label: 'Refresh session' };
+  if (reason === 'Multiple notification devices') return { help: 'Reset, then turn reminders on again on the trusted phone.', label: 'Several phones' };
+  if (reason === 'Recent device security alert') return { help: 'Someone tried this phone for another account. See the Audit Trail.', label: 'Security alert' };
+  return { help: reason, label: reason };
+}
 
-  if (!row.trustedDevice.sessionTracked) {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-warning/25 bg-warning/10 px-2.5 py-1 text-xs font-semibold text-warning">
-        <Clock3 className="h-3.5 w-3.5" />
-        Session needs refresh
-      </span>
-    );
-  }
+function DeviceCell({ row }: { row: DeviceHealthRow }) {
+  const [label, className] = row.transfer.pending > 0
+    ? ['Transfer pending', 'border-warning/25 bg-warning/10 text-warning']
+    : !row.trustedDevice.registered
+      ? ['No device', 'border-danger/25 bg-danger/10 text-danger']
+      : !row.trustedDevice.sessionTracked
+        ? ['Refresh session', 'border-warning/25 bg-warning/10 text-warning']
+        : ['Trusted', 'border-success/25 bg-success/10 text-success'];
+  const title = row.transfer.pending > 0
+    ? 'Approve or reject it on Attendance Overview.'
+    : !row.trustedDevice.registered
+      ? 'They need to link a phone at the office.'
+      : row.trustedDevice.lastSeenAt ? `Last seen ${formatDisplayDateTime(row.trustedDevice.lastSeenAt)}` : undefined;
+  const extraIssues = row.attentionReasons
+    .filter((reason) => !DEVICE_BADGE_COVERS.has(reason) && !reason.startsWith('Legacy trusted device'))
+    .map(shortIssue);
 
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-success/25 bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">
-      <CheckCircle2 className="h-3.5 w-3.5" />
-      Trusted
-    </span>
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span title={title} className={cn('rounded-full border px-2 py-0.5 text-xs font-medium', className)}>{label}</span>
+      {extraIssues.map((issue) => (
+        <span key={issue.label} title={issue.help} className="rounded-full border border-warning/25 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
+          {issue.label}
+        </span>
+      ))}
+    </div>
   );
 }
-
-function issueHelpText(reason: string) {
-  if (reason.startsWith('Legacy trusted device')) {
-    return 'Ask the staff member to open Check-In on that trusted device. Reset if they no longer have it.';
-  }
-
-  if (reason === 'Multiple notification devices') {
-    return 'Reset the device to disable old notification devices, then enable reminders again on the trusted device.';
-  }
-
-  if (reason === 'No trusted attendance device') {
-    return 'No device is linked. Staff must register a trusted device at the office before attendance and reminders will work.';
-  }
-
-  if (reason === 'Device transfer pending') {
-    return 'Approve or reject it on Attendance Overview before the staff member can use the new device.';
-  }
-
-  if (reason === 'Recent device security alert') {
-    return 'Review the recent blocked attempt in the Audit Trail.';
-  }
-
-  return '';
-}
-
-interface ReminderStatusMaps {
-  signIn: Map<string, ReminderMonitorRowStatus>;
-  signOut: Map<string, ReminderMonitorRowStatus>;
-}
-
-const EMPTY_REMINDER_MAPS: ReminderStatusMaps = { signIn: new Map(), signOut: new Map() };
 
 export default function DeviceSessionHealthPage() {
   const [data, setData] = useState<DeviceHealthResponse | null>(null);
   const [reminderMaps, setReminderMaps] = useState<ReminderStatusMaps>(EMPTY_REMINDER_MAPS);
-  const [reminderRuns, setReminderRuns] = useState<ReminderRunInfo[]>([]);
+  const [reminderRuns, setReminderRuns] = useState<ReminderRun[]>([]);
   const [cannotReceive, setCannotReceive] = useState<CannotReceiveRow[]>([]);
   const [reminderLoadFailed, setReminderLoadFailed] = useState(false);
   const [error, setError] = useState('');
@@ -325,22 +293,15 @@ export default function DeviceSessionHealthPage() {
   const appliedLoadRef = useRef(0);
 
   const applyReminders = useCallback((payload: ReminderMonitorApiResponse) => {
-    const signIn = new Map<string, ReminderMonitorRowStatus>();
-    const signOut = new Map<string, ReminderMonitorRowStatus>();
-    for (const row of payload.sections?.signIn?.rows ?? []) signIn.set(row.staff.id, row.status);
-    for (const row of payload.sections?.signOut?.rows ?? []) signOut.set(row.staff.id, row.status);
+    const toMap = (rows: ReminderMonitorApiRow[] = []) => new Map(rows.map((row) => [row.staff.id, { reason: row.reason || '', status: row.status }]));
     const noRemindersReason = payload.day?.isWeekend
       ? 'weekend'
       : payload.day?.isHoliday ? (payload.day.holidayName || 'holiday') : null;
-    setReminderMaps({ signIn, signOut });
-    setReminderRuns([payload.sections?.signIn, payload.sections?.signOut].filter(Boolean).map((section) => ({
-      label: section.label,
-      lastRunAt: section.lastRunAt,
-      missedRun: section.missedRun,
-      noRemindersReason,
-      scheduledPassed: section.scheduledPassed,
-      sentByApp: section.sentByApp,
-    })));
+    setReminderMaps({ signIn: toMap(payload.sections?.signIn?.rows), signOut: toMap(payload.sections?.signOut?.rows) });
+    setReminderRuns([
+      ...(payload.sections?.signIn ? [toReminderRun(payload.sections.signIn, 'Sign-in reminder', '8:15 AM', noRemindersReason)] : []),
+      ...(payload.sections?.signOut ? [toReminderRun(payload.sections.signOut, 'Sign-out reminder', '4:30 PM', noRemindersReason)] : []),
+    ]);
     setCannotReceive(Array.isArray(payload.cannotReceive) ? payload.cannotReceive : []);
   }, []);
 
@@ -368,7 +329,7 @@ export default function DeviceSessionHealthPage() {
         setError('');
       } else if (options?.silent) {
         // A background refresh failed: keep the rows already on screen.
-        setError('Could not refresh device health. Showing the last loaded data.');
+        setError('Could not refresh. Showing the last loaded data.');
       } else {
         setError(health.reason instanceof Error ? health.reason.message : 'Failed to load device health');
         setData(null);
@@ -445,12 +406,12 @@ export default function DeviceSessionHealthPage() {
 
   // Per person: Failed if either reminder failed or went missing; Sent only when nothing failed.
   const rowReminderFailed = useCallback((row: DeviceHealthRow) => (
-    [reminderMaps.signIn.get(row.staff.id), reminderMaps.signOut.get(row.staff.id)]
+    [reminderMaps.signIn.get(row.staff.id)?.status, reminderMaps.signOut.get(row.staff.id)?.status]
       .some((status) => status === 'failed' || status === 'missing')
   ), [reminderMaps]);
   const rowReminderSent = useCallback((row: DeviceHealthRow) => (
     !rowReminderFailed(row) &&
-    (reminderMaps.signIn.get(row.staff.id) === 'sent' || reminderMaps.signOut.get(row.staff.id) === 'sent')
+    (reminderMaps.signIn.get(row.staff.id)?.status === 'sent' || reminderMaps.signOut.get(row.staff.id)?.status === 'sent')
   ), [reminderMaps, rowReminderFailed]);
 
   const filteredRows = useMemo(() => {
@@ -484,10 +445,7 @@ export default function DeviceSessionHealthPage() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Could not reset device');
 
-      const disabledCount = Number(body.disabledPushSubscriptions || 0);
-      const revokedCount = Number(body.revokedSessions || 0);
-      const resetCopy = body.reset === false ? 'No trusted attendance device was registered.' : 'Attendance device reset.';
-      setNotice(`${resetTarget.staff.fullName}: ${resetCopy} ${disabledCount} notification device${disabledCount === 1 ? '' : 's'} disabled and ${revokedCount} login session${revokedCount === 1 ? '' : 's'} revoked.`);
+      setNotice(`${resetTarget.staff.fullName}'s device was reset. They'll link a phone and turn reminders on again.`);
       setResetTarget(null);
       await loadData();
     } catch (err) {
@@ -501,217 +459,161 @@ export default function DeviceSessionHealthPage() {
 
   return (
     <DashboardLayout title="Devices">
-      <div className="space-y-5">
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search staff"
+              aria-label="Search staff"
+              className="h-10 pl-9"
+            />
+          </div>
+          {data?.generatedAt && (
+            <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">Updated {accraTime(data.generatedAt)}</span>
+          )}
+          <Button
+            className="h-10 shrink-0 gap-2"
+            variant="outline"
+            onClick={() => setRefreshKey((value) => value + 1)}
+            disabled={loading}
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+            Refresh
+          </Button>
+        </div>
+
         {data && (
-          <div className="grid auto-cols-[minmax(8rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-5 xl:overflow-visible xl:pb-0">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
             <SummaryFilter active={healthFilter === 'all'} label="Staff" value={data.summary.staff} onClick={() => setHealthFilter('all')} />
             <SummaryFilter active={healthFilter === 'trusted'} label="Trusted" value={derivedCounts.trusted} tone="success" onClick={() => setHealthFilter('trusted')} />
             <SummaryFilter active={healthFilter === 'attention'} label="Attention" value={data.summary.attention} tone={data.summary.attention ? 'danger' : 'muted'} onClick={() => setHealthFilter('attention')} />
-            <SummaryFilter active={healthFilter === 'reminder_sent'} label="Reminder Sent" value={derivedCounts.reminderSent} tone="success" onClick={() => setHealthFilter('reminder_sent')} />
-            <SummaryFilter active={healthFilter === 'reminder_failed'} label="Reminder Failed" value={derivedCounts.reminderFailed} tone={derivedCounts.reminderFailed ? 'danger' : 'muted'} onClick={() => setHealthFilter('reminder_failed')} />
+            <SummaryFilter active={healthFilter === 'reminder_sent'} label="Reminded" value={reminderLoadFailed ? '—' : derivedCounts.reminderSent} tone="success" onClick={() => setHealthFilter('reminder_sent')} />
+            <SummaryFilter active={healthFilter === 'reminder_failed'} label="Failed" value={reminderLoadFailed ? '—' : derivedCounts.reminderFailed} tone={derivedCounts.reminderFailed ? 'danger' : 'muted'} onClick={() => setHealthFilter('reminder_failed')} />
           </div>
         )}
-
-        <Card>
-          <div className="flex items-end gap-4 p-5">
-            <div className="min-w-0 flex-1">
-              <label className="mb-1.5 block text-xs font-medium uppercase text-muted-foreground">Search</label>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Search staff, email, device, or issue"
-                  className="h-10 pl-9"
-                />
-              </div>
-            </div>
-            <Button
-              className="h-10 shrink-0 gap-2"
-              variant="outline"
-              onClick={() => setRefreshKey((value) => value + 1)}
-              disabled={loading}
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-              Refresh
-            </Button>
-          </div>
-        </Card>
 
         {reminderRuns.length > 0 && (
-          <div className="flex flex-wrap gap-2" aria-label="Reminder runs today">
-            {reminderRuns.map((run) => (
-              <span
-                key={run.label}
-                className={cn(
-                  'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium',
-                  run.noRemindersReason
-                    ? 'border-border bg-card text-muted-foreground'
-                    : run.missedRun
-                      ? 'border-danger/30 bg-danger/10 text-danger'
-                      : run.lastRunAt
-                        ? 'border-success/25 bg-success/10 text-success'
-                        : 'border-border bg-card text-muted-foreground',
-                )}
-              >
-                {run.noRemindersReason
-                  ? <Clock3 className="h-3.5 w-3.5" />
-                  : run.missedRun ? <AlertTriangle className="h-3.5 w-3.5" /> : run.lastRunAt ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Clock3 className="h-3.5 w-3.5" />}
-                {run.label}
-                {' · '}
-                {runChipText(run)}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {reminderLoadFailed && (
-          <div role="alert" className="rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
-            Could not load today&apos;s reminder status, so the reminder chips and counts may be out of date. Refresh to try again.
-          </div>
-        )}
-
-        {cannotReceive.length > 0 && (
-          <Card>
-            <div className="px-5 py-4">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-warning" />
-                <h2 className="text-sm font-semibold">Won&apos;t get reminders · {cannotReceive.length}</h2>
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Ask them to open LateWatch on their attendance phone and turn on reminders when the pop-up appears.
-              </p>
-              <ul className="mt-3 grid gap-x-10 gap-y-1.5 lg:grid-cols-2">
-                {cannotReceive.map((row) => (
-                  <li key={row.staffId} className="flex min-w-0 items-center justify-between gap-3 text-sm">
-                    <span className="truncate font-medium">{row.fullName}</span>
-                    <span
-                      className={cn(
-                        'shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium',
-                        row.status === 'failing' ? 'border-danger/25 bg-danger/10 text-danger' : 'border-warning/25 bg-warning/10 text-warning',
-                      )}
-                    >
-                      {row.label}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+          <Card className="grid divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0" aria-label="Today's reminders">
+            {reminderRuns.map((run) => {
+              const status = reminderRunStatus(run);
+              const Icon = status.tone === 'success' ? CheckCircle2 : status.tone === 'danger' ? AlertTriangle : Clock3;
+              return (
+                <div key={run.title} className="flex items-center justify-between gap-3 px-4 py-3">
+                  <span className="text-sm font-medium">{run.title}</span>
+                  <span className={cn(
+                    'inline-flex items-center gap-1.5 text-sm',
+                    status.tone === 'success' && 'text-success',
+                    status.tone === 'danger' && 'font-medium text-danger',
+                    status.tone === 'muted' && 'text-muted-foreground',
+                  )}>
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {status.text}
+                  </span>
+                </div>
+              );
+            })}
           </Card>
         )}
 
+        {reminderLoadFailed && (
+          <div role="alert" className="rounded-md border border-warning/30 bg-warning/10 px-4 py-2.5 text-sm text-warning">
+            Couldn&apos;t load today&apos;s reminders. Refresh to try again.
+          </div>
+        )}
         {error && (
-          <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+          <div role="alert" className="rounded-md border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
             {error}
           </div>
         )}
         {notice && (
-          <div className="rounded-md border border-success/30 bg-success/10 px-4 py-3 text-sm text-success">
+          <div className="rounded-md border border-success/30 bg-success/10 px-4 py-2.5 text-sm text-success">
             {notice}
           </div>
         )}
 
+        {cannotReceive.length > 0 && (
+          <Card className="px-4 py-3">
+            <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <AlertTriangle className="h-4 w-4 text-warning" />
+              Can&apos;t get reminders · {cannotReceive.length}
+            </h2>
+            <ul className="mt-2 grid gap-x-10 gap-y-1.5 lg:grid-cols-2">
+              {cannotReceive.map((row) => (
+                <li key={row.staffId} className="flex min-w-0 items-center justify-between gap-3 text-sm">
+                  <span className="truncate">{row.fullName}</span>
+                  <span className={cn('shrink-0 text-xs font-medium', row.status === 'failing' ? 'text-danger' : 'text-warning')}>
+                    {row.label}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+
         {loading && !data ? (
           <Card className="flex h-52 items-center justify-center">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading device health
-            </div>
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-label="Loading devices" />
           </Card>
         ) : data ? (
-          <>
-            <Card className="overflow-hidden">
-              {data.generatedAt && (
-                <div className="border-b border-border px-5 py-3 text-xs text-muted-foreground">
-                  Last updated {formatDisplayDateTime(data.generatedAt)}
-                </div>
-              )}
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[880px] text-sm">
-                  <thead className="border-b border-border bg-card text-left text-xs uppercase tracking-wide text-muted-foreground">
+          <Card className="overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] text-sm">
+                <thead className="border-b border-border bg-card text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Staff</th>
+                    <th className="px-4 py-3 font-medium">Device</th>
+                    <th className="w-28 px-4 py-3 font-medium">Sign-in</th>
+                    <th className="w-28 px-4 py-3 font-medium">Sign-out</th>
+                    <th className="w-24 px-4 py-3" aria-label="Actions" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filteredRows.length === 0 ? (
                     <tr>
-                      <th className="px-4 py-3 font-medium">Staff</th>
-                      <th className="px-4 py-3 font-medium">Trusted Device</th>
-                      <th className="px-4 py-3 font-medium">Reminders</th>
-                      <th className="px-4 py-3 font-medium">Issues</th>
-                      <th className="px-4 py-3 font-medium">Action</th>
+                      <td className="px-4 py-8 text-center text-muted-foreground" colSpan={5}>
+                        No one here.
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {filteredRows.length === 0 ? (
-                      <tr>
-                        <td className="px-4 py-8 text-center text-muted-foreground" colSpan={5}>
-                          No staff device rows in this filter.
-                        </td>
-                      </tr>
-                    ) : filteredRows.map((row) => (
-                      <tr key={row.staff.id} className="transition-colors hover:bg-card/50">
-                        <td className="px-4 py-3 align-top">
-                          <div className="font-medium">{row.staff.fullName}</div>
-                          <div className="mt-1 text-xs text-muted-foreground">{staffMeta(row)}</div>
-                        </td>
-                        <td className="px-4 py-3 align-top">
-                          <DeviceStatusBadge row={row} />
-                          <div className="mt-2 text-xs text-muted-foreground">
-                            Last seen: {row.trustedDevice.lastSeenAt ? formatDisplayDateTime(row.trustedDevice.lastSeenAt) : '-'}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 align-top">
-                          <div className="flex flex-wrap gap-1.5">
-                            <ReminderChip kind="Sign-in" status={reminderMaps.signIn.get(row.staff.id) ?? null} />
-                            <ReminderChip kind="Sign-out" status={reminderMaps.signOut.get(row.staff.id) ?? null} />
-                          </div>
-                        </td>
-                        <td className="max-w-xs px-4 py-3 align-top">
-                          {row.attentionReasons.length > 0 ? (
-                            <div className="space-y-1.5">
-                              {row.attentionReasons.map((reason) => (
-                                <div key={reason}>
-                                  <span className="inline-flex items-center gap-1.5 rounded-full border border-warning/25 bg-warning/10 px-2 py-1 text-xs font-medium text-warning">
-                                    <Shield className="h-3 w-3" />
-                                    {reason}
-                                  </span>
-                                  {issueHelpText(reason) && (
-                                    <div className="mt-1 text-xs text-muted-foreground">{issueHelpText(reason)}</div>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 align-top">
-                          {/* Nothing to reset without a linked device. */}
-                          {row.trustedDevice.registered ? (
-                            <Button
-                              className="h-8 gap-1.5 px-2"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setResetError('');
-                                setResetTarget(row);
-                              }}
-                              disabled={resettingStaffId === row.staff.id}
-                            >
-                              {resettingStaffId === row.staff.id ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <RotateCcw className="h-3.5 w-3.5" />
-                              )}
-                              Reset
-                            </Button>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </>
+                  ) : filteredRows.map((row) => (
+                    <tr key={row.staff.id} className="transition-colors hover:bg-card/50">
+                      <td className="px-4 py-2.5">
+                        <div className="font-medium">{row.staff.fullName}</div>
+                        {row.staff.department && <div className="text-xs text-muted-foreground">{row.staff.department}</div>}
+                      </td>
+                      <td className="px-4 py-2.5"><DeviceCell row={row} /></td>
+                      <td className="px-4 py-2.5"><ReminderStatusCell cell={reminderMaps.signIn.get(row.staff.id)} /></td>
+                      <td className="px-4 py-2.5"><ReminderStatusCell cell={reminderMaps.signOut.get(row.staff.id)} /></td>
+                      <td className="px-4 py-2.5 text-right">
+                        {/* Nothing to reset without a linked device. */}
+                        {row.trustedDevice.registered && (
+                          <Button
+                            className="h-8 gap-1.5 px-2"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setResetError('');
+                              setResetTarget(row);
+                            }}
+                            disabled={resettingStaffId === row.staff.id}
+                          >
+                            {resettingStaffId === row.staff.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <RotateCcw className="h-3.5 w-3.5" />
+                            )}
+                            Reset
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         ) : null}
 
         <Dialog
@@ -722,14 +624,11 @@ export default function DeviceSessionHealthPage() {
         >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Reset attendance device</DialogTitle>
+              <DialogTitle>Reset {resetTarget?.staff.fullName || 'device'}?</DialogTitle>
               <DialogDescription>
-                {resetTarget?.staff.fullName || 'This staff member'} will be signed out of old sessions, old notification devices will be disabled, and reminders must be enabled again on the trusted device.
+                They&apos;re signed out everywhere and reminders switch off. They link a phone again at the office.
               </DialogDescription>
             </DialogHeader>
-            <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
-              This is a security action. Use it only when the staff member should start fresh on a trusted device.
-            </div>
             {resetError && (
               <div role="alert" className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
                 {resetError}
@@ -741,7 +640,7 @@ export default function DeviceSessionHealthPage() {
               </Button>
               <Button className="gap-2" onClick={resetDevice} disabled={Boolean(resettingStaffId)}>
                 {resettingStaffId ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-                Reset Device
+                Reset
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -352,13 +352,15 @@ test('admin reminder delivery monitor is protected and explains delivery outcome
   // 502b6f5 removed the standalone /attendance/reminders page. The monitor is now a column
   // on the devices dashboard, so only the data feed and the per-staff statuses are asserted
   // here — the old page's internals (needsAttention, activeTab, showAll) are gone with it.
-  assert.match(page, /<th className="px-4 py-3 font-medium">Reminders<\/th>/);
+  assert.match(page, /<th className="w-28 px-4 py-3 font-medium">Sign-in<\/th>/);
   assert.match(page, /\/api\/attendance\/reminder-monitor\?date=/);
-  assert.match(page, /Search/);
-  assert.match(page, /No trusted device/);
-  assert.match(page, /Not registered/);
-  // Status labels were shortened for the column: 'reminder_off' renders as "Off".
-  assert.match(page, /'reminder_off'/);
+  assert.match(page, /Search staff/);
+  // One word per status, full reason on hover; 'reminder_off' renders as "Off".
+  assert.match(page, /reminder_off: 'Off'/);
+  assert.match(page, /no_trusted_device: 'No phone'/);
+  assert.match(page, /notifications_not_registered: 'Not on'/);
+  // "Sent" is the first run of the day (when reminders went out), not the last catch-up run.
+  assert.match(page, /firstRunAt: section\.firstRunAt \?\? section\.lastRunAt \?\? null/);
   assert.match(page, /subscribeRealtimeChannel/);
   // Reminders are sent by cron only; no admin-triggered resend from this dashboard.
   assert.doesNotMatch(page, /send test reminder|resend reminder|manual resend/i);

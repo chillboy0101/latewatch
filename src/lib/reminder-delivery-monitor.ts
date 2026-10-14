@@ -351,6 +351,8 @@ export async function getReminderDeliveryMonitor(date: string) {
   // Any run (cron or the app's fallback) for "last ran"; only cron runs count as "the job ran",
   // the same rule as the dashboard banner.
   const lastRunAtByType = new Map<string, string>();
+  // The first run is when reminders actually went out; later catch-up runs only top it up.
+  const firstRunAtByType = new Map<string, string>();
   const cronRanTypes = new Set<string>();
   const appRanTypes = new Set<string>();
   for (const row of cronRunRows) {
@@ -360,6 +362,10 @@ export async function getReminderDeliveryMonitor(date: string) {
     const existing = lastRunAtByType.get(row.reminderType);
     if (!existing || ranAt.toISOString() > existing) {
       lastRunAtByType.set(row.reminderType, ranAt.toISOString());
+    }
+    const first = firstRunAtByType.get(row.reminderType);
+    if (!first || ranAt.toISOString() < first) {
+      firstRunAtByType.set(row.reminderType, ranAt.toISOString());
     }
   }
 
@@ -500,6 +506,7 @@ export async function getReminderDeliveryMonitor(date: string) {
 
     return {
       alerts,
+      firstRunAt: firstRunAtByType.get(reminderType) || null,
       label: REMINDER_SCHEDULES[reminderType].label,
       lastRunAt,
       missedRun,
@@ -522,19 +529,19 @@ export async function getReminderDeliveryMonitor(date: string) {
     let label = '';
     if (!trustedDeviceStaffIds.has(member.id)) {
       status = 'no_device';
-      label = 'No attendance phone';
+      label = 'No phone';
     } else if (subscriptions.length === 0) {
       status = 'not_registered';
-      label = disabledSubscriptionStaffIds.has(member.id) ? 'Reminders need turning on again' : 'Reminders never turned on';
+      label = disabledSubscriptionStaffIds.has(member.id) ? 'Turn on again' : 'Never turned on';
     } else if (subscriptions.some((subscription) => failingSubscriptionIds.has(subscription.id))) {
       status = 'failing';
-      label = 'Phone not accepting reminders';
+      label = 'Phone rejecting';
     } else if (!signIn && !signOut) {
       status = 'reminders_off';
-      label = 'Reminders switched off';
+      label = 'Switched off';
     } else if (!signIn || !signOut) {
       status = 'partly_off';
-      label = signIn ? 'Sign-out reminder off' : 'Sign-in reminder off';
+      label = signIn ? 'Sign-out off' : 'Sign-in off';
     }
     return status ? [{ fullName: member.fullName, label, staffId: member.id, status }] : [];
   });
