@@ -1,123 +1,26 @@
 // app/api/calendar/sync/route.ts
+import { currentUser } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { workCalendar } from '@/db/schema';
-import { fetchGhanaHolidaysForYear } from '@/lib/google-calendar';
-import { and, eq, inArray } from 'drizzle-orm';
-import { publishRealtime } from '@/lib/realtime';
-import { writeAuditEvent } from '@/lib/audit';
-import { getSuppressedGhanaHolidayDatesForScope } from '@/lib/ghana-holidays';
+import { syncGhanaHolidays } from '@/lib/holiday-sync';
 
+// POST - Sync the holiday calendar now (admins; the monthly cron does the same).
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
-    const years = body.years || [body.year || new Date().getFullYear()];
-
-    let totalAdded = 0;
-    let totalSkipped = 0;
-    let totalUpdated = 0;
-
-    for (const year of years) {
-      // Fetch holidays from Google Calendar for this year
-      const googleHolidays = await fetchGhanaHolidaysForYear(year);
-
-      if (googleHolidays.length === 0) {
-        continue;
-      }
-
-      let added = 0;
-      let skipped = 0;
-      let updated = 0;
-      const suppressedDates = getSuppressedGhanaHolidayDatesForScope({ year });
-
-      if (suppressedDates.length > 0) {
-        const removed = await db.update(workCalendar)
-          .set({
-            isHoliday: false,
-            isRemoved: true,
-            updatedAt: new Date(),
-          })
-          .where(and(
-            inArray(workCalendar.date, suppressedDates),
-            eq(workCalendar.source, 'google'),
-            eq(workCalendar.isHoliday, true),
-          ))
-          .returning({ id: workCalendar.id });
-
-        updated += removed.length;
-      }
-
-      for (const holiday of googleHolidays) {
-        // Check if this date already exists
-        const existing = await db.query.workCalendar.findFirst({
-          where: (cal, { eq }) => eq(cal.date, holiday.date),
-        });
-
-        if (existing) {
-          // User manually removed this holiday → skip it
-          if (existing.isRemoved) {
-            skipped++;
-            continue;
-          }
-
-          // User manually added this date (not from Google) → skip it
-          if (existing.source === 'manual') {
-            skipped++;
-            continue;
-          }
-
-          // Google-sourced holiday: update name if changed
-          if (existing.holidayNote !== holiday.name) {
-            await db.update(workCalendar)
-              .set({
-                holidayNote: holiday.name,
-                updatedAt: new Date(),
-              })
-              .where(eq(workCalendar.id, existing.id));
-            updated++;
-          }
-
-          skipped++;
-        } else {
-          // Add new holiday from Google
-          await db.insert(workCalendar).values({
-            date: holiday.date,
-            isHoliday: true,
-            holidayNote: holiday.name,
-            source: 'google',
-            isRemoved: false,
-          });
-
-          added++;
-        }
-      }
-
-      totalAdded += added;
-      totalSkipped += skipped;
-      totalUpdated += updated;
-    }
-
-    if (totalAdded > 0 || totalUpdated > 0) {
-      publishRealtime('dashboard', 'invalidate', { reason: 'calendar' });
-    }
-
-    // Audit log for bulk sync (summary entry)
-    if (totalAdded > 0 || totalUpdated > 0 || totalSkipped > 0) {
-      await writeAuditEvent({
-        entityType: 'calendar',
-        entityId: `sync-${Date.now()}`,
-        action: 'SYNC',
-        before: null,
-        after: { years, totalAdded, totalUpdated, totalSkipped },
-        reason: 'calendar',
-      });
-    }
+    const years: number[] = Array.isArray(body.years) ? body.years.map(Number) : [Number(body.year) || new Date().getFullYear()];
+    const user = await currentUser();
+    const { results } = await syncGhanaHolidays({
+      actorEmail: user?.primaryEmailAddress?.emailAddress || user?.emailAddresses[0]?.emailAddress || undefined,
+      years: years.filter((year) => Number.isInteger(year) && year >= 2020 && year <= 2100),
+    });
+    const changes = results.flatMap((result) => result.changes);
 
     return NextResponse.json({
       success: true,
-      message: `Added ${totalAdded}, updated ${totalUpdated}, skipped ${totalSkipped} across ${years.length} year${years.length > 1 ? 's' : ''}.`,
-      synced: totalAdded,
-      years,
+      message: `${changes.length} change${changes.length === 1 ? '' : 's'} across ${results.length} year${results.length === 1 ? '' : 's'}.`,
+      changes,
+      years: results.map((result) => result.year),
       syncedAt: new Date().toISOString(),
     });
   } catch (error) {

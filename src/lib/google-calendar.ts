@@ -1,15 +1,9 @@
 // lib/google-calendar.ts
-import { google } from 'googleapis';
 import { applyGhanaHolidayOverrides } from '@/lib/ghana-holidays';
 
-// Ghana public holidays calendar ID (official Google calendar)
-const GHANA_HOLIDAYS_CALENDAR_ID = 'en.gh#holiday@group.v.calendar.google.com';
-
-interface GoogleCalendarEvent {
-  summary: string;
-  start: { date: string };
-  end: { date: string };
-}
+// Google's public "Holidays in Ghana" calendar as an iCal feed. It needs no API key.
+export const GHANA_HOLIDAYS_FEED_URL =
+  'https://calendar.google.com/calendar/ical/en.gh%23holiday%40group.v.calendar.google.com/public/basic.ics';
 
 export interface GhanaHoliday {
   date: string; // YYYY-MM-DD
@@ -17,65 +11,84 @@ export interface GhanaHoliday {
   source: 'google';
 }
 
-export async function fetchGhanaHolidays(
-  year?: number,
-  month?: number
-): Promise<GhanaHoliday[]> {
-  const apiKey = process.env.GOOGLE_CALENDAR_API_KEY;
+export type HolidayFeedEvent = {
+  date: string;
+  name: string;
+  /** Google labels each day "Public holiday" or "Observance"; only public holidays close the office. */
+  observance: boolean;
+};
 
-  if (!apiKey) {
-    console.warn('GOOGLE_CALENDAR_API_KEY not set. Skipping Google Calendar sync.');
-    return [];
+function unescapeIcalText(value: string) {
+  return value
+    .replace(/\\n/gi, '\n')
+    .replace(/\\([,;\\])/g, '$1')
+    .trim();
+}
+
+/** Reads the all-day events of an iCal feed (folded lines and escaped text handled). */
+export function parseHolidayFeed(ics: string): HolidayFeedEvent[] {
+  // Lines that start with a space or tab continue the previous line.
+  const lines = ics.replace(/\r\n/g, '\n').replace(/\n[ \t]/g, '').split('\n');
+  const events: HolidayFeedEvent[] = [];
+  let current: { date?: string; description?: string; name?: string } | null = null;
+
+  for (const line of lines) {
+    if (line === 'BEGIN:VEVENT') {
+      current = {};
+      continue;
+    }
+    if (line === 'END:VEVENT') {
+      if (current?.date && current.name) {
+        events.push({
+          date: current.date,
+          name: current.name,
+          observance: /^observance/i.test(current.description || ''),
+        });
+      }
+      current = null;
+      continue;
+    }
+    if (!current) continue;
+
+    const separator = line.indexOf(':');
+    if (separator < 0) continue;
+    const key = line.slice(0, separator).split(';')[0].toUpperCase();
+    const value = line.slice(separator + 1);
+
+    if (key === 'DTSTART') {
+      const match = value.match(/^(\d{4})(\d{2})(\d{2})/);
+      if (match) current.date = `${match[1]}-${match[2]}-${match[3]}`;
+    } else if (key === 'SUMMARY') {
+      current.name = unescapeIcalText(value);
+    } else if (key === 'DESCRIPTION') {
+      current.description = unescapeIcalText(value);
+    }
   }
 
+  return events.sort((left, right) => left.date.localeCompare(right.date));
+}
+
+/** The whole public feed (it spans about a year either side of today). Throws if Google can't be reached. */
+export async function fetchGhanaHolidayFeed(): Promise<HolidayFeedEvent[]> {
+  const response = await fetch(GHANA_HOLIDAYS_FEED_URL, { cache: 'no-store', signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) throw new Error(`Holiday feed returned ${response.status}`);
+  return parseHolidayFeed(await response.text());
+}
+
+/** Public holidays (observances left out) for a year or one month, with the Ghana overrides applied. */
+export function publicHolidaysFrom(events: HolidayFeedEvent[], year: number, month?: number): GhanaHoliday[] {
+  const prefix = month === undefined ? `${year}-` : `${year}-${String(month + 1).padStart(2, '0')}-`;
+  return applyGhanaHolidayOverrides(
+    events
+      .filter((event) => !event.observance && event.date.startsWith(prefix))
+      .map((event) => ({ date: event.date, name: event.name, source: 'google' as const })),
+    { month, year },
+  );
+}
+
+export async function fetchGhanaHolidays(year?: number, month?: number): Promise<GhanaHoliday[]> {
   try {
-    const calendar = google.calendar({ version: 'v3', auth: apiKey });
-
-    // Build date range
-    let timeMin: string;
-    let timeMax: string;
-
-    if (year !== undefined && month !== undefined) {
-      // Specific month
-      const startDate = new Date(year, month, 1);
-      const endDate = new Date(year, month + 1, 0);
-      timeMin = startDate.toISOString();
-      timeMax = endDate.toISOString();
-    } else if (year !== undefined) {
-      // Specific year
-      timeMin = new Date(year, 0, 1).toISOString();
-      timeMax = new Date(year, 11, 31, 23, 59, 59).toISOString();
-    } else {
-      // Default: current year
-      const now = new Date();
-      timeMin = new Date(now.getFullYear(), 0, 1).toISOString();
-      timeMax = new Date(now.getFullYear(), 11, 31, 23, 59, 59).toISOString();
-    }
-
-    const response = await calendar.events.list({
-      calendarId: GHANA_HOLIDAYS_CALENDAR_ID,
-      timeMin,
-      timeMax,
-      singleEvents: true,
-      orderBy: 'startTime',
-    });
-
-    const events = response.data.items || [];
-
-    return applyGhanaHolidayOverrides(events
-      // Google marks observances (Christmas Eve, Ramadan Start, Mothers' Day...) "Observance";
-      // only public holidays close the office.
-      .filter((event): event is GoogleCalendarEvent =>
-        !!(event.summary && event.start?.date) && !/^observance/i.test(event.description?.trim() || '')
-      )
-      .map((event) => ({
-        date: event.start.date,
-        name: event.summary,
-        source: 'google' as const,
-      })), {
-        month,
-        year: year ?? new Date().getFullYear(),
-      });
+    return publicHolidaysFrom(await fetchGhanaHolidayFeed(), year ?? new Date().getFullYear(), month);
   } catch (error) {
     console.error('Failed to fetch Ghana holidays from Google Calendar:', error);
     return [];
@@ -99,11 +112,10 @@ export async function fetchGhanaHolidaysForMonth(
  */
 export async function fetchGhanaHolidaysForYears(years: number[]): Promise<Map<number, GhanaHoliday[]>> {
   const results = new Map<number, GhanaHoliday[]>();
-  await Promise.all(
-    years.map(async (year) => {
-      const holidays = await fetchGhanaHolidaysForYear(year);
-      results.set(year, holidays);
-    })
-  );
+  const events = await fetchGhanaHolidayFeed().catch((error) => {
+    console.error('Failed to fetch Ghana holidays from Google Calendar:', error);
+    return [] as HolidayFeedEvent[];
+  });
+  for (const year of years) results.set(year, publicHolidaysFrom(events, year));
   return results;
 }
