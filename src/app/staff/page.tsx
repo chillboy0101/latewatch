@@ -372,10 +372,10 @@ export default function StaffPage() {
     ? staff.filter((s) => {
         if (staffFilter === 'active') return s.active && !s.archived;
         if (staffFilter === 'onLeave') return s.onLeave && !s.archived;
-        if (staffFilter === 'inactive') return !s.active && !s.archived;
+        if (staffFilter === 'inactive') return !s.active && !s.archived && !s.onLeave;
         if (staffFilter === 'former') return s.archived;
-        if (staffFilter === 'nss') return s.isNssPersonnel === true;
-        if (staffFilter === 'attendanceOnly') return s.isAttendanceOnly === true;
+        if (staffFilter === 'nss') return s.isNssPersonnel === true && !s.archived;
+        if (staffFilter === 'attendanceOnly') return s.isAttendanceOnly === true && !s.archived;
         return true;
       })
     : [];
@@ -405,8 +405,9 @@ export default function StaffPage() {
   const onLeaveCount = staff.filter((s) => s.onLeave && !s.archived).length;
   const inactiveCount = staff.filter((s) => !s.active && !s.archived && !s.onLeave).length;
   const formerCount = staff.filter((s) => s.archived).length;
-  const nssCount = staff.filter((s) => s.isNssPersonnel === true).length;
-  const attendanceOnlyCount = staff.filter((s) => s.isAttendanceOnly === true).length;
+  // Cards and their filters count the same people; NSS and Special are current staff only.
+  const nssCount = staff.filter((s) => s.isNssPersonnel === true && !s.archived).length;
+  const attendanceOnlyCount = staff.filter((s) => s.isAttendanceOnly === true && !s.archived).length;
   const totalDisplay = loading ? '-' : staff.length.toString();
   const activeDisplay = loading ? '-' : activeCount.toString();
   const onLeaveDisplay = loading ? '-' : onLeaveCount.toString();
@@ -1034,11 +1035,13 @@ export default function StaffPage() {
 
 function getStaffStatusLabel(member: StaffMember) {
   if (member.archived) return 'Former';
+  if (member.onLeave) return 'On leave';
   return member.active ? 'Active' : 'Inactive';
 }
 
 function getStaffStatusClass(member: StaffMember) {
   if (member.archived) return 'bg-warning/10 text-warning';
+  if (member.onLeave) return 'bg-primary/10 text-primary';
   return member.active ? 'bg-success/10 text-success' : 'bg-muted/10 text-muted-foreground';
 }
 

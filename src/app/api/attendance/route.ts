@@ -4,9 +4,10 @@ import { db } from '@/db';
 import { attendanceAttempt, attendancePermission, attendanceRecord, deviceTransferRequest, staff, staffDevice } from '@/db/schema';
 import { getAccraClock, getActiveOfficeNetwork, getOfficeLocationsForAttendance, isOfficeIp, resolveClientIpInfo } from '@/lib/attendance';
 import { syncLatenessEntriesFromAttendanceForDate } from '@/lib/attendance-lateness-sync';
-import { isGeneralPardonReason, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
+import { isGeneralPardonReason, isPermissionWindowActive, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
+import { attendanceStatusFor } from '@/lib/manual-attendance-correction';
 import { getStaffLeavePeriodsForRange } from '@/lib/staff-leave-service';
-import { getActiveLeavePeriod, isStaffLeaveDate } from '@/lib/staff-leave';
+import { getActiveLeavePeriod } from '@/lib/staff-leave';
 import { getAttendanceStatusFlags, primaryAttendanceStatus, type AttendanceStatus } from '@/lib/attendance-status';
 import { resolveOfficeLocationForDate } from '@/lib/office-location-policy';
 import { isOnTimeCheckIn, shouldAlertNoSignOut } from '@/lib/work-hours';
@@ -167,12 +168,22 @@ export async function GET(request: NextRequest) {
         if (isPermissionWindowOverdue(permission, date, clock.dateKey, clock.timeKey)) return 'permission_overdue';
         return 'expected_late';
       })();
+      const absencePermission = Boolean(
+        permission?.generalPardonType === 'absence' ||
+        (permission?.status === 'approved' && permission.permissionType === 'absence'),
+      );
+      const lateArrivalApproved = Boolean(
+        permission &&
+        attendance?.checkInTime &&
+        (permission.generalPardonType === 'late_arrival' || (permission.status === 'approved' && permission.permissionType === 'late_arrival')) &&
+        isPermissionWindowActive(permission, attendance.checkInTime),
+      );
       const statuses = getAttendanceStatusFlags({
-        absencePermission: Boolean(
-          permission?.generalPardonType === 'absence' ||
-          (permission?.status === 'approved' && permission.permissionType === 'absence'),
-        ),
-        attendanceStatus: attendance?.status,
+        absencePermission,
+        // From the check-in time and permission, never the fee (a GHC 2 no-sign-out isn't "late").
+        attendanceStatus: attendance
+          ? attendanceStatusFor({ arrivalTime: attendance.checkInTime, excusedAbsence: absencePermission, lateArrivalApproved })
+          : null,
         fallbackStatus,
         hasAttendance: Boolean(attendance),
         noSignOut,

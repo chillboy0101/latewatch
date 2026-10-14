@@ -1,6 +1,24 @@
 import { computePenalty } from '@/lib/penalty-calculator';
 import { formatAbsencePermissionReason, getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/attendance-permissions';
-import { WORKDAY_START_TIME } from '@/lib/work-hours';
+import { isOnTimeCheckIn, WORKDAY_START_TIME } from '@/lib/work-hours';
+
+export type AttendanceDayStatus = 'absent' | 'excused' | 'late' | 'present';
+
+/**
+ * A day's status comes from the clock and permissions, never from the fee: a GHC 2 no-sign-out
+ * doesn't make an 08:10 arrival late, and NSS or attendance-only staff who arrive late are late
+ * even when their fee is smaller or nil. An approved late arrival is excused, as on Entries.
+ */
+export function attendanceStatusFor(input: {
+  arrivalTime: string | null;
+  excusedAbsence?: boolean;
+  lateArrivalApproved?: boolean;
+}): AttendanceDayStatus {
+  if (input.excusedAbsence) return 'excused';
+  if (!input.arrivalTime) return 'absent';
+  if (isOnTimeCheckIn(input.arrivalTime)) return 'present';
+  return input.lateArrivalApproved ? 'excused' : 'late';
+}
 
 type AttendanceLike = {
   checkInAt: Date | string | null;
@@ -19,7 +37,7 @@ type ManualAttendanceCorrection = {
   reason: string | null;
   signOutAt?: Date | null;
   signOutTime?: string | null;
-  status: 'excused' | 'late' | 'present';
+  status: AttendanceDayStatus;
 };
 
 type ManualPermissionLike = {
@@ -140,7 +158,7 @@ export function resolveManualPenalty(input: {
       amount: signOutPenalty.amount,
       didNotSignOut: input.didNotSignOut,
       reason: signOutPenalty.amount > 0 ? `${signOutPenalty.reason}; ${permissionReason}` : permissionReason,
-      status: signOutPenalty.amount > 0 ? 'late' as const : 'present' as const,
+      status: attendanceStatusFor({ arrivalTime: input.arrivalTime, lateArrivalApproved: true }),
     };
   }
 
@@ -157,7 +175,7 @@ export function resolveManualPenalty(input: {
     amount: penalty.amount,
     didNotSignOut: input.didNotSignOut,
     reason: penalty.reason || null,
-    status: penalty.amount > 0 ? 'late' as const : 'present' as const,
+    status: attendanceStatusFor({ arrivalTime: input.arrivalTime }),
   };
 }
 

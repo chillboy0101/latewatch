@@ -308,3 +308,28 @@ test('former staff can pay, and a payment is recorded once, atomically', () => {
   assert.match(post, /status: 409/);
   assert.doesNotMatch(post, /for \(const allocation of allocationPlan\.allocations\) \{\n\s+const \[createdAllocation\] = await db\.insert/);
 });
+
+test('dashboard week is worked out in Accra time and day rows say what really happened', () => {
+  const api = fs.readFileSync(dashboardApiPath, 'utf8');
+  const page = fs.readFileSync(path.join(root, 'src/app/dashboard/page.tsx'), 'utf8');
+  assert.match(api, /const today = getAccraDateKey\(\);/);
+  assert.match(api, /gt\(latenessEntry\.computedAmount, '0'\)/);
+  assert.match(api, /const holidayDates = await getHolidayDatesForRange\(weekStartStr, weekEndStr\);/);
+  assert.match(api, /: dateStr > today\s+\? 'upcoming'\s+: dateStr === today \? 'today' : 'clear';/);
+  assert.match(page, /stats\?\.weekStart && stats\.weekEnd/);
+  assert.doesNotMatch(page, /startOfWeek/);
+  assert.match(page, /status === 'clear' \? 'text-success'/);
+});
+
+test('offence book counts former staff, and the payments dialog separates pardons', () => {
+  const roster = fs.readFileSync(path.join(root, 'src/lib/offence-book-roster.ts'), 'utf8');
+  const items = fs.readFileSync(path.join(root, 'src/app/api/payments/offence-book-items/route.ts'), 'utf8');
+  const exportRoute = fs.readFileSync(path.join(root, 'src/app/api/export/offence-book/route.ts'), 'utf8');
+  const page = fs.readFileSync(paymentsPagePath, 'utf8');
+  assert.match(roster, /or\(and\(eq\(staff\.active, true\), eq\(staff\.archived, false\)\), inArray\(staff\.id, chargedStaff\)\)/);
+  assert.match(items, /\.where\(offenceBookRosterWhere\(monthEnd\)\)/);
+  assert.match(exportRoute, /\.where\(offenceBookRosterWhere\(monthEnd\)\)/);
+  assert.match(page, /<BalanceStat label="Penalties"/);
+  assert.match(page, /label="Pardoned"/);
+  assert.doesNotMatch(page, /label="Owed"/);
+});

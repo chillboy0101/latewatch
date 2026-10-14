@@ -256,8 +256,8 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
           read,
           'Entries submitted',
           entryCount > 0
-            ? `${entryCount} lateness record${entryCount === 1 ? '' : 's'} saved for ${dateLabel}.`
-            : `Lateness entries for ${dateLabel} were submitted with no late arrivals.`,
+            ? `${entryCount} record${entryCount === 1 ? '' : 's'} changed for ${dateLabel}.`
+            : `Entries for ${dateLabel} were submitted with no changes.`,
           'success',
           'normal',
         );
@@ -412,8 +412,8 @@ function formatNotification(event: AuditNotificationEvent, read = false): Notifi
           read,
           'Entries updated',
           entryCount > 0
-            ? `${entryCount} lateness record${entryCount === 1 ? '' : 's'} saved for ${dateLabel}.`
-            : `Lateness entries for ${dateLabel} were updated with no late arrivals.`,
+            ? `${entryCount} record${entryCount === 1 ? '' : 's'} changed for ${dateLabel}.`
+            : `Entries for ${dateLabel} were updated with no changes.`,
           'success',
           'normal',
         );

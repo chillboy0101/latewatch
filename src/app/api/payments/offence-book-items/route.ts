@@ -2,6 +2,7 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { and, asc, eq, inArray, lt, lte } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
+import { offenceBookRosterWhere } from '@/lib/offence-book-roster';
 import { latenessDebtPardon, latenessDebtPardonEntry, latenessEntry, latenessPaymentAllocation, offenceBookItem, staff } from '@/db/schema';
 import { getAccraClock } from '@/lib/attendance';
 import { writeAuditEvent } from '@/lib/audit';
@@ -180,11 +181,7 @@ async function loadFinancialSummary(input: { month: number; monthKey: string; ye
     id: staff.id,
   })
     .from(staff)
-    .where(and(
-      eq(staff.active, true),
-      eq(staff.archived, false),
-      eq(staff.isAttendanceOnly, false),
-    ))
+    .where(offenceBookRosterWhere(monthEnd))
     .orderBy(asc(staff.displayOrder), asc(staff.fullName));
   const staffIds = staffRows.map((member) => member.id);
   const entryRows = staffIds.length === 0

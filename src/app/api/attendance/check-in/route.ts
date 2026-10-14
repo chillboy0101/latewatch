@@ -24,6 +24,7 @@ import {
 import { formatAbsencePermissionReason, getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/attendance-permissions';
 import { getAuditActor, writeAuditEvent } from '@/lib/audit';
 import { computePenalty } from '@/lib/penalty-calculator';
+import { attendanceStatusFor } from '@/lib/manual-attendance-correction';
 import { syncStaffEmailIdentity } from '@/lib/clerk-organization';
 import { getDeviceTokenFromRequest } from '@/lib/device-binding';
 import { resolveDeviceHash } from '@/lib/device-rekey';
@@ -1364,7 +1365,11 @@ export async function POST(request: NextRequest) {
             reason: `Approved late arrival (${permissionWindow.label}): ${permission?.reason || ''}`.trim(),
           }
         : rawPenalty;
-    const status = hasAbsencePermission ? 'excused' : penalty.amount > 0 ? 'late' : 'present';
+    const status = attendanceStatusFor({
+      arrivalTime: checkInTime,
+      excusedAbsence: hasAbsencePermission,
+      lateArrivalApproved: hasActiveLatePermission,
+    });
     const now = clock.now;
 
     const [createdAttendance] = await db.insert(attendanceRecord).values({

@@ -269,7 +269,7 @@ function describeDebtPardon(verb: string, data: Record<string, unknown> | null |
       }
       if (event.entityType === 'entry_submission') {
         const count = Number(afterData?.entryCount || 0);
-        return `Entries submitted for ${displayAuditDate(afterData?.date)} (${count} late record${count === 1 ? '' : 's'})`;
+        return `Entries submitted for ${displayAuditDate(afterData?.date)} (${count} record${count === 1 ? '' : 's'} changed)`;
       }
       if (event.entityType === 'attendance') {
         const name = afterData?.staff?.fullName || 'Staff member';
@@ -318,7 +318,7 @@ function describeDebtPardon(verb: string, data: Record<string, unknown> | null |
       }
       if (event.entityType === 'entry_submission') {
         const count = Number(afterData?.entryCount || 0);
-        return `Entries updated for ${displayAuditDate(afterData?.date)} (${count} late record${count === 1 ? '' : 's'})`;
+        return `Entries updated for ${displayAuditDate(afterData?.date)} (${count} record${count === 1 ? '' : 's'} changed)`;
       }
       if (event.entityType === 'attendance_permission') {
         return `Permission updated for ${afterData?.staffName || beforeData?.staffName || 'staff member'}`;

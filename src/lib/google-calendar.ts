@@ -63,8 +63,10 @@ export async function fetchGhanaHolidays(
     const events = response.data.items || [];
 
     return applyGhanaHolidayOverrides(events
+      // Google marks observances (Christmas Eve, Ramadan Start, Mothers' Day...) "Observance";
+      // only public holidays close the office.
       .filter((event): event is GoogleCalendarEvent =>
-        !!(event.summary && event.start?.date)
+        !!(event.summary && event.start?.date) && !/^observance/i.test(event.description?.trim() || '')
       )
       .map((event) => ({
         date: event.start.date,

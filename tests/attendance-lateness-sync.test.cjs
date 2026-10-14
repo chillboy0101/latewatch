@@ -239,6 +239,9 @@ Module._load = function patchedLoad(request, ...args) {
   if (request === '@/db/schema') return schema;
   if (request === '@/lib/attendance') {
     return {
+      getHolidayDatesForRange: async (startDate, endDate) => new Set(fixture.workCalendar
+        .filter((row) => row.date >= startDate && row.date <= endDate && row.isHoliday && !row.isRemoved)
+        .map((row) => row.date)),
       getAccraClock: () => ({
         dateKey: '2026-07-09',
         now: new Date('2026-07-09T12:00:00.000Z'),
@@ -296,7 +299,7 @@ test('sync clears stale attendance penalty when a general pardon clears late arr
 
   assert.equal(fixture.latenessEntry.length, 0);
   assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
-  assert.equal(fixture.attendanceRecord[0].status, 'present');
+  assert.equal(fixture.attendanceRecord[0].status, 'excused');
   assert.match(fixture.attendanceRecord[0].reason, /general pardon/);
 });
 
@@ -318,7 +321,7 @@ test('sync deletes an existing positive lateness entry when a general pardon cle
 
   assert.equal(fixture.latenessEntry.length, 0);
   assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
-  assert.equal(fixture.attendanceRecord[0].status, 'present');
+  assert.equal(fixture.attendanceRecord[0].status, 'excused');
   assert.match(fixture.attendanceRecord[0].reason, /general pardon/);
 });
 
@@ -392,7 +395,7 @@ test('sync keeps only the no-sign-out amount for a late-only general pardon', as
   assert.match(fixture.latenessEntry[0].reason, /DID NOT SIGN OUT/);
   assert.match(fixture.latenessEntry[0].reason, /general pardon/);
   assert.equal(fixture.attendanceRecord[0].computedAmount, '2.00');
-  assert.equal(fixture.attendanceRecord[0].status, 'late');
+  assert.equal(fixture.attendanceRecord[0].status, 'excused');
   assert.match(fixture.attendanceRecord[0].reason, /DID NOT SIGN OUT/);
   assert.match(fixture.attendanceRecord[0].reason, /general pardon/);
 });
@@ -422,7 +425,7 @@ test('sync creates no-sign-out penalties for past attendance without sign-out', 
   assert.equal(fixture.latenessEntry[0].reason, 'DID NOT SIGN OUT');
   assert.equal(fixture.attendanceRecord[0].computedAmount, '2.00');
   assert.equal(fixture.attendanceRecord[0].reason, 'DID NOT SIGN OUT');
-  assert.equal(fixture.attendanceRecord[0].status, 'late');
+  assert.equal(fixture.attendanceRecord[0].status, 'present');
 });
 
 test('sync clears stale no-sign-out penalties after a sign-out is recorded', async () => {

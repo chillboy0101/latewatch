@@ -62,7 +62,7 @@ test('manual attendance correction keeps an on-time check-in but adds the no-sig
     checkInTime: '08:05',
     computedAmount: '2.00',
     reason: 'DID NOT SIGN OUT',
-    status: 'late',
+    status: 'present',
   });
 });
 
@@ -162,7 +162,7 @@ test('manual attendance correction clears penalties for attendance monitoring on
     checkInTime: '10:31',
     computedAmount: '0.00',
     reason: null,
-    status: 'present',
+    status: 'late',
   });
 });
 
@@ -193,7 +193,7 @@ test('manual attendance correction keeps approved general late pardons at zero p
     checkInTime: '10:31',
     computedAmount: '0.00',
     reason: 'Approved late arrival (Any time today): general pardon',
-    status: 'present',
+    status: 'excused',
   });
 });
 
@@ -222,5 +222,18 @@ test('date-wide late pardon preserves an existing permission and waives late che
 
   assert.equal(correction.computedAmount, '0.00');
   assert.equal(correction.reason, 'Approved late arrival (Any time today): general pardon');
-  assert.equal(correction.status, 'present');
+  assert.equal(correction.status, 'excused');
+});
+
+test('a day is late, on time or excused by the clock and permissions, never by the fee', () => {
+  const { attendanceStatusFor } = require('../src/lib/manual-attendance-correction.ts');
+  assert.equal(attendanceStatusFor({ arrivalTime: '08:10' }), 'present'); // even with a GHC 2 no-sign-out
+  assert.equal(attendanceStatusFor({ arrivalTime: '08:30:59' }), 'present');
+  assert.equal(attendanceStatusFor({ arrivalTime: '09:40' }), 'late'); // attendance-only or NSS too
+  assert.equal(attendanceStatusFor({ arrivalTime: '09:40', lateArrivalApproved: true }), 'excused');
+  assert.equal(attendanceStatusFor({ arrivalTime: '09:40', excusedAbsence: true }), 'excused');
+  assert.equal(attendanceStatusFor({ arrivalTime: null }), 'absent');
+
+  const overview = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'src/app/api/attendance/route.ts'), 'utf8');
+  assert.match(overview, /attendanceStatusFor\(\{ arrivalTime: attendance\.checkInTime, excusedAbsence: absencePermission, lateArrivalApproved \}\)/);
 });

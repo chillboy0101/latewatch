@@ -145,7 +145,7 @@ test('marking staff as attendance monitoring only clears stored penalties and la
     computedAmount: '0.00',
     id: 'attendance-1',
     reason: null,
-    status: 'present',
+    status: 'late',
   }]);
   assert.deepEqual(plan.latenessUpdates, []);
   assert.deepEqual(plan.latenessCreates, []);
@@ -175,7 +175,7 @@ test('staff penalty recalculation creates missing no-sign-out penalties from att
     computedAmount: '2.00',
     id: 'attendance-1',
     reason: 'DID NOT SIGN OUT',
-    status: 'late',
+    status: 'present',
   }]);
   assert.deepEqual(plan.latenessCreates, [{
     arrivalTime: '08:05',
@@ -346,12 +346,8 @@ test('staff penalty recalculation does not create no-show sign-in penalties befo
   });
 
   assert.deepEqual(plan.latenessCreates, []);
-  assert.deepEqual(plan.attendanceUpdates, [{
-    computedAmount: '0.00',
-    id: 'attendance-no-show',
-    reason: null,
-    status: 'present',
-  }]);
+  // Nobody signed in, so the day stays absent (it used to be flipped to "present").
+  assert.deepEqual(plan.attendanceUpdates, []);
 });
 
 test('changing a staff flag never touches paid or pardoned entries, or leave days', () => {

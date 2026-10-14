@@ -1,4 +1,4 @@
-import { resolveManualPenalty } from '@/lib/manual-attendance-correction';
+import { type AttendanceDayStatus, resolveManualPenalty } from '@/lib/manual-attendance-correction';
 import {
   NO_SHOW_SIGN_IN_EFFECTIVE_DATE,
   NO_SHOW_SIGN_IN_REASON,
@@ -44,7 +44,7 @@ type PenaltyState = {
   amountText: string;
   didNotSignOut: boolean;
   reason: string | null;
-  status: 'excused' | 'late' | 'present';
+  status: AttendanceDayStatus;
 };
 
 export type StaffPenaltyRecalculationPlan = {
@@ -52,7 +52,7 @@ export type StaffPenaltyRecalculationPlan = {
     computedAmount: string;
     id: string;
     reason: string | null;
-    status: 'excused' | 'late' | 'present';
+    status: AttendanceDayStatus;
   }>;
   latenessCreates: Array<{
     arrivalTime: string | null;

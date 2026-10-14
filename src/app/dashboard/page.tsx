@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { addDays, startOfWeek } from 'date-fns';
 import {
   Activity,
   AlertCircle,
@@ -26,7 +25,7 @@ interface WeekDayData {
   day: string;
   entries: number;
   amount: number;
-  status: 'complete' | 'holiday' | 'empty';
+  status: 'penalties' | 'clear' | 'today' | 'upcoming' | 'holiday';
 }
 
 interface DashboardStats {
@@ -37,6 +36,8 @@ interface DashboardStats {
   prevWeekTotal: number;
   prevWeekEntryCount: number;
   weekDays: WeekDayData[];
+  weekEnd?: string;
+  weekStart?: string;
   recentActivity: {
     actionLabel: string;
     actorEmail: string;
@@ -127,12 +128,10 @@ export default function DashboardPage() {
     );
   }
 
-  const weekRange = (() => {
-    const today = new Date();
-    const start = startOfWeek(today, { weekStartsOn: 1 });
-    const end = addDays(start, 4);
-    return `${formatShortDisplayDate(start)} - ${formatShortDisplayDate(end)}`;
-  })();
+  // The server works the week out in Accra time, so the label matches the rows whatever the laptop's time zone.
+  const weekRange = stats?.weekStart && stats.weekEnd
+    ? `${formatShortDisplayDate(stats.weekStart)} - ${formatShortDisplayDate(stats.weekEnd)}`
+    : '';
 
   const penaltyChange = stats && stats.prevWeekTotal > 0
     ? (((stats.weekTotal - stats.prevWeekTotal) / stats.prevWeekTotal) * 100).toFixed(0)
@@ -313,13 +312,15 @@ function WeekDayRow({ day, entries, amount, status }: WeekDayData) {
     <div className="flex items-center justify-between gap-3 text-sm">
       <span className="font-medium">{day}</span>
       <span className={
-        status === 'complete' ? 'text-success' :
-        status === 'holiday' ? 'text-muted-foreground' :
-        'text-warning'
+        status === 'penalties' ? 'text-warning' :
+        status === 'clear' ? 'text-success' :
+        'text-muted-foreground'
       }>
-        {status === 'complete' ? `${entries} entries` :
+        {status === 'penalties' ? `${entries} ${entries === 1 ? 'penalty' : 'penalties'}` :
          status === 'holiday' ? 'Holiday' :
-         'No entries'}
+         status === 'upcoming' ? 'Upcoming' :
+         status === 'today' ? 'None yet' :
+         'No penalties'}
       </span>
       <span className="font-mono">{amount > 0 ? `GHC ${amount}` : '-'}</span>
     </div>

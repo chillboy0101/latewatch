@@ -73,7 +73,7 @@ test('excused absence lets staff check in without a penalty', () => {
 
   assert.doesNotMatch(route, /PERMISSION_ABSENCE/);
   assert.match(route, /const penalty = hasAbsencePermission\s*\?\s*\{\s*amount: 0,/);
-  assert.match(route, /const status = hasAbsencePermission \? 'excused'/);
+  assert.match(route, /const status = attendanceStatusFor\(\{\s*arrivalTime: checkInTime,\s*excusedAbsence: hasAbsencePermission,/);
 });
 
 test('admin-entered sign-outs are kept, including 17:00', () => {

@@ -913,9 +913,14 @@ export default function PenaltyPaymentsPage() {
                   <div className="text-xs text-muted-foreground">{staffKind(selectedRow)}</div>
                 </DialogHeader>
 
-                <div className="grid grid-cols-3 divide-x divide-border border-b border-border bg-background">
-                  <BalanceStat label="Owed" value={currency(selectedRow.totalPenalty)} />
+                {/* Penalties - Paid - Pardoned = Balance, so a pardoned debt doesn't read as owed. */}
+                <div className="grid grid-cols-4 divide-x divide-border border-b border-border bg-background">
+                  <BalanceStat label="Penalties" value={currency(selectedRow.totalPenalty)} />
                   <BalanceStat label="Paid" value={currency(selectedRow.paidAmount)} />
+                  <BalanceStat
+                    label="Pardoned"
+                    value={currency(selectedRow.entries.reduce((sum, entry) => sum + moneyNumber(entry.pardonedAmount), 0))}
+                  />
                   <BalanceStat label="Balance" value={currency(selectedRow.outstandingBalance)} highlight />
                 </div>
 

@@ -689,7 +689,7 @@ test('checking no-sign-out from entries clears sign-out and removes an existing 
   assert.equal(fixture.attendanceRecord[0].noSignOutWaivedReason, null);
   assert.equal(fixture.attendanceRecord[0].computedAmount, '2.00');
   assert.equal(fixture.attendanceRecord[0].reason, 'DID NOT SIGN OUT');
-  assert.equal(fixture.attendanceRecord[0].status, 'late');
+  assert.equal(fixture.attendanceRecord[0].status, 'present');
   assert.equal(fixture.latenessEntry.length, 1);
   assert.equal(fixture.latenessEntry[0].didNotSignOut, true);
 });
@@ -832,5 +832,5 @@ test('saving lateness entries respects an approved general pardon', async () => 
   assert.equal(fixture.attendanceRecord[0].checkInTime, '10:31');
   assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
   assert.equal(fixture.attendanceRecord[0].reason, 'Approved late arrival (Any time today): general pardon');
-  assert.equal(fixture.attendanceRecord[0].status, 'present');
+  assert.equal(fixture.attendanceRecord[0].status, 'excused');
 });

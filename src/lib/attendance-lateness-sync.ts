@@ -2,9 +2,8 @@ import 'server-only';
 
 import { and, eq, gte, inArray, isNotNull, lte, or } from 'drizzle-orm';
 import { db } from '@/db';
-import { attendancePermission, attendanceRecord, latenessEntry, staff, workCalendar } from '@/db/schema';
-import { getAccraClock, getHolidayForDate, isWeekendDate } from '@/lib/attendance';
-import { getObservedGhanaHolidayForDate, isSuppressedGhanaHolidayDate } from '@/lib/ghana-holidays';
+import { attendancePermission, attendanceRecord, latenessEntry, staff } from '@/db/schema';
+import { getAccraClock, getHolidayDatesForRange, getHolidayForDate, isWeekendDate } from '@/lib/attendance';
 import { resolveManualPenalty } from '@/lib/manual-attendance-correction';
 import {
   getFinanciallyProtectedLeaveEntryIds,
@@ -65,25 +64,6 @@ function rowKey(staffId: string, date: string) {
 /** The first day a staff member can be charged a no-show: the Accra day their record was created. */
 function chargeableFromDate(createdAt: Date | null | undefined) {
   return createdAt instanceof Date && !Number.isNaN(createdAt.getTime()) ? getAccraDateKey(createdAt) : '';
-}
-
-/** Holidays in the range, by the same rules as getHolidayForDate (calendar rows, removals, observed Ghana holidays). */
-async function getHolidayDatesInRange(startDate: string, endDate: string) {
-  const calendarRows = await db.select({
-    date: workCalendar.date,
-    isHoliday: workCalendar.isHoliday,
-    isRemoved: workCalendar.isRemoved,
-  })
-    .from(workCalendar)
-    .where(and(gte(workCalendar.date, startDate), lte(workCalendar.date, endDate)));
-  const calendarByDate = new Map(calendarRows.map((row) => [normalizeDateKey(row.date), row]));
-
-  return new Set(enumerateDateKeys(startDate, endDate).filter((date) => {
-    if (isSuppressedGhanaHolidayDate(date)) return false;
-    const calendarDay = calendarByDate.get(date);
-    if (calendarDay) return Boolean(calendarDay.isHoliday && !calendarDay.isRemoved);
-    return Boolean(getObservedGhanaHolidayForDate(date));
-  }));
 }
 
 async function clearUnprotectedLeavePenalty(input: {
@@ -320,7 +300,7 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
     return { deleted: 0, inserted: 0, skipped: 0, updated: 0 };
   }
 
-  const holidayDates = await getHolidayDatesInRange(startDate, endDate);
+  const holidayDates = await getHolidayDatesForRange(startDate, endDate);
   const workingDates = candidateDates.filter((date) => !holidayDates.has(date));
 
   if (workingDates.length === 0) {
@@ -523,7 +503,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
   const existingEntryIds = existingRows.map((entry) => entry.id);
   // Paid and pardoned entries are settled: the sync never rewrites or deletes them.
   const protectedEntryIds = await getFinanciallyProtectedLeaveEntryIds(existingEntryIds);
-  const holidayDates = await getHolidayDatesInRange(startDate, endDate);
+  const holidayDates = await getHolidayDatesForRange(startDate, endDate);
   const existingByStaffDate = new Map<string, typeof existingRows>();
   for (const entry of existingRows) {
     const key = rowKey(entry.staffId, normalizeDateKey(entry.date));
@@ -594,6 +574,13 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     processedKeys.add(key);
 
     if (existingEntriesForKey.some((entry) => protectedEntryIds.has(entry.id))) {
+      // The money is settled; only the day's status (late / on time) may still need correcting.
+      if ((row.status || null) !== penalty.status) {
+        await db.update(attendanceRecord)
+          .set({ status: penalty.status, updatedAt: new Date() })
+          .where(eq(attendanceRecord.id, row.id));
+        attendanceUpdated += 1;
+      }
       skipped += 1;
       continue;
     }

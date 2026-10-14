@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, desc, eq, ilike, isNotNull, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, isNotNull, isNull, lte, or } from 'drizzle-orm';
 import { db } from '@/db';
 import { attendanceAttempt, attendancePermission, officeLocation, officeNetwork, staff, workCalendar } from '@/db/schema';
 import { getObservedGhanaHolidayForDate, isSuppressedGhanaHolidayDate } from '@/lib/ghana-holidays';
@@ -168,6 +168,34 @@ export async function getHolidayForDate(dateKey: string) {
   return observedHoliday
     ? { id: `ghana-holiday:${observedHoliday.date}`, holidayNote: observedHoliday.name }
     : null;
+}
+
+/** Holidays between two dates (inclusive), by the same rules as getHolidayForDate, in one query. */
+export async function getHolidayDatesForRange(startDate: string, endDate: string) {
+  const calendarRows = await db.select({
+    date: workCalendar.date,
+    isHoliday: workCalendar.isHoliday,
+    isRemoved: workCalendar.isRemoved,
+  })
+    .from(workCalendar)
+    .where(and(gte(workCalendar.date, startDate), lte(workCalendar.date, endDate)));
+  const calendarByDate = new Map(calendarRows.map((row) => [String(row.date).slice(0, 10), row]));
+  const holidays = new Set<string>();
+
+  for (let date = startDate; date <= endDate;) {
+    const calendarDay = calendarByDate.get(date);
+    const isHoliday = isSuppressedGhanaHolidayDate(date)
+      ? false
+      : calendarDay
+        ? Boolean(calendarDay.isHoliday && !calendarDay.isRemoved)
+        : Boolean(getObservedGhanaHolidayForDate(date));
+    if (isHoliday) holidays.add(date);
+    const next = new Date(`${date}T00:00:00.000Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    date = next.toISOString().slice(0, 10);
+  }
+
+  return holidays;
 }
 
 export async function getApprovedAttendancePermission(staffId: string, dateKey: string) {

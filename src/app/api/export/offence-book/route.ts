@@ -2,6 +2,7 @@ import { and, asc, eq, inArray, lte } from 'drizzle-orm';
 import { endOfMonth, format, startOfMonth } from 'date-fns';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
+import { offenceBookRosterWhere } from '@/lib/offence-book-roster';
 import { latenessDebtPardon, latenessDebtPardonEntry, latenessEntry, latenessPaymentAllocation, offenceBookItem, staff } from '@/db/schema';
 import { getAccraClock } from '@/lib/attendance';
 import { getAuditActor, tryWriteAuditEvent } from '@/lib/audit';
@@ -49,11 +50,7 @@ export async function buildOffenceBookExportWorkbook(input: {
     id: staff.id,
   })
     .from(staff)
-    .where(and(
-      eq(staff.active, true),
-      eq(staff.archived, false),
-      eq(staff.isAttendanceOnly, false),
-    ))
+    .where(offenceBookRosterWhere(monthEnd))
     .orderBy(asc(staff.displayOrder), asc(staff.fullName));
 
   const staffIds = staffRows.map((member) => member.id);

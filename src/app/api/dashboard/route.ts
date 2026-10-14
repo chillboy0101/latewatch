@@ -1,28 +1,29 @@
 // app/api/dashboard/route.ts
 import { after, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { auditEvent, latenessEntry, staff, workCalendar } from '@/db/schema';
-import { gte, lte, and, desc, count, eq } from 'drizzle-orm';
-import { startOfWeek, addDays, subWeeks, format } from 'date-fns';
+import { auditEvent, latenessEntry, staff } from '@/db/schema';
+import { gt, gte, lte, and, desc, count, eq } from 'drizzle-orm';
+import { getHolidayDatesForRange } from '@/lib/attendance';
 import { getAuditActivityLabel, getAuditSummary, getAuditTargetName } from '@/lib/audit-display';
+import { getAccraDateKey } from '@/lib/date-key';
+import { getWeekBoundsForDate } from '@/lib/lateness-payments';
 import { getMissedReminderRuns, maybeRunMissedReminderBatch } from '@/lib/reminder-fallback';
+
+function shiftDateKey(dateKey: string, days: number) {
+  const date = new Date(`${dateKey}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
 
 export async function GET() {
   // If a reminder cron missed its slot today, send that batch after this response.
   after(() => maybeRunMissedReminderBatch());
 
   try {
-    const today = new Date();
-    const weekStart = startOfWeek(today, { weekStartsOn: 1 }); // Monday
-    const weekEnd = addDays(weekStart, 4); // Friday
-    const weekStartStr = format(weekStart, 'yyyy-MM-dd');
-    const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
-
-    // Previous week for comparison
-    const prevWeekStart = subWeeks(weekStart, 1);
-    const prevWeekEnd = addDays(prevWeekStart, 4);
-    const prevWeekStartStr = format(prevWeekStart, 'yyyy-MM-dd');
-    const prevWeekEndStr = format(prevWeekEnd, 'yyyy-MM-dd');
+    // Weeks run Monday to Friday in Accra time, whatever the server's clock zone.
+    const today = getAccraDateKey();
+    const { weekEnd: weekEndStr, weekStart: weekStartStr } = getWeekBoundsForDate(today);
+    const { weekEnd: prevWeekEndStr, weekStart: prevWeekStartStr } = getWeekBoundsForDate(shiftDateKey(weekStartStr, -7));
 
     // Fetch current week entries - use db.select with proper where clause
     const weekEntriesResult = await db.select({
@@ -36,7 +37,8 @@ export async function GET() {
       createdAt: latenessEntry.createdAt,
     })
     .from(latenessEntry)
-    .where(and(gte(latenessEntry.date, weekStartStr), lte(latenessEntry.date, weekEndStr)))
+    // Charged entries only: GHC 0 rows (waived no-shows, cleared days) aren't penalties.
+    .where(and(gte(latenessEntry.date, weekStartStr), lte(latenessEntry.date, weekEndStr), gt(latenessEntry.computedAmount, '0')))
     .orderBy(desc(latenessEntry.createdAt));
 
     // Fetch previous week entries for comparison
@@ -44,7 +46,7 @@ export async function GET() {
       computedAmount: latenessEntry.computedAmount,
     })
     .from(latenessEntry)
-    .where(and(gte(latenessEntry.date, prevWeekStartStr), lte(latenessEntry.date, prevWeekEndStr)));
+    .where(and(gte(latenessEntry.date, prevWeekStartStr), lte(latenessEntry.date, prevWeekEndStr), gt(latenessEntry.computedAmount, '0')));
 
     // Fetch active staff count
     const staffCountResult = await db.select({ count: count() })
@@ -52,33 +54,29 @@ export async function GET() {
       .where(and(eq(staff.active, true), eq(staff.archived, false)));
     const staffCount = Number(staffCountResult[0]?.count || 0);
 
-    // Fetch holidays for this week
-    const holidaysResult = await db.select({ date: workCalendar.date })
-      .from(workCalendar)
-      .where(and(gte(workCalendar.date, weekStartStr), lte(workCalendar.date, weekEndStr), eq(workCalendar.isHoliday, true)));
-    const holidayDates = new Set(holidaysResult.map(h => h.date));
+    // Same holiday rules as charging (removed days and observed Ghana holidays included).
+    const holidayDates = await getHolidayDatesForRange(weekStartStr, weekEndStr);
 
     // Calculate totals
     const weekTotal = weekEntriesResult.reduce((sum, e) => sum + parseFloat(e.computedAmount || '0'), 0);
     const prevWeekTotal = prevWeekEntriesResult.reduce((sum, e) => sum + parseFloat(e.computedAmount || '0'), 0);
 
-    // Build daily data
+    // One row per workday: holiday, still to come, penalties charged, or none (yet, if today).
     const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-    const weekDays = [];
-    for (let i = 0; i < 5; i++) {
-      const date = addDays(weekStart, i);
-      const dateStr = format(date, 'yyyy-MM-dd');
+    const weekDays = dayNames.map((dayName, index) => {
+      const dateStr = shiftDateKey(weekStartStr, index);
+      const day = `${dayName} ${dateStr.slice(8, 10)}`;
       const dayEntries = weekEntriesResult.filter((e) => e.date === dateStr);
-      const dayTotal = dayEntries.reduce((sum, e) => sum + parseFloat(e.computedAmount || '0'), 0);
-
-      if (holidayDates.has(dateStr)) {
-        weekDays.push({ day: `${dayNames[i]} ${format(date, 'dd')}`, entries: 0, amount: 0, status: 'holiday' });
-      } else if (dayEntries.length > 0) {
-        weekDays.push({ day: `${dayNames[i]} ${format(date, 'dd')}`, entries: dayEntries.length, amount: dayTotal, status: 'complete' });
-      } else {
-        weekDays.push({ day: `${dayNames[i]} ${format(date, 'dd')}`, entries: 0, amount: 0, status: 'empty' });
-      }
-    }
+      const amount = dayEntries.reduce((sum, e) => sum + parseFloat(e.computedAmount || '0'), 0);
+      const status = holidayDates.has(dateStr)
+        ? 'holiday'
+        : dayEntries.length > 0
+          ? 'penalties'
+          : dateStr > today
+            ? 'upcoming'
+            : dateStr === today ? 'today' : 'clear';
+      return { amount, day, entries: dayEntries.length, status };
+    });
 
     // Build recent entries
     const recentEvents = await db.select({
@@ -120,6 +118,8 @@ export async function GET() {
       prevWeekTotal,
       prevWeekEntryCount: prevWeekEntriesResult.length,
       weekDays,
+      weekEnd: weekEndStr,
+      weekStart: weekStartStr,
       recentActivity,
     }, {
       headers: {
