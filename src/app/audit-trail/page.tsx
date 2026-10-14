@@ -357,6 +357,11 @@ function describeDebtPardon(verb: string, data: Record<string, unknown> | null |
       if (event.entityType === 'attendance_permission') {
         return `Removed permission for ${beforeData?.staffName || afterData?.staffName || 'staff member'}`;
       }
+      if (event.entityType === 'lateness_payment') {
+        const amount = Number(beforeData?.amount || 0).toFixed(2);
+        const why = typeof afterData?.reason === 'string' ? `: ${afterData.reason}` : '';
+        return `Undid GHC ${amount} payment for ${beforeData?.staffName || 'staff member'}${why}`;
+      }
       return `Deleted ${getEntityLabel(event.entityType).toLowerCase()}`;
     }
 

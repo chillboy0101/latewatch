@@ -1,5 +1,5 @@
 import { auth, currentUser } from '@clerk/nextjs/server';
-import { and, asc, eq, gte, inArray, lte, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lte, or } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { latenessDebtPardon, latenessDebtPardonEntry, latenessEntry, latenessPayment, latenessPaymentAllocation, staff } from '@/db/schema';
@@ -9,7 +9,6 @@ import { sendLatenessPaymentReceiptPush } from '@/lib/lateness-payment-receipt-p
 import {
   allocateLatenessPayment,
   getWeekBoundsForDate,
-  summarizeLatenessPaymentCredits,
   summarizeLatenessPaymentEntries,
   summarizeLatenessPaymentsByMonth,
   type LatenessPaymentEntryLike,
@@ -180,28 +179,25 @@ export async function GET(request: NextRequest) {
       allocationsByStaff.set(allocationStaffId, list);
     }
 
-    // Cash kept for days later cancelled (or above a charge later lowered): the person's credit,
-    // counted in the month it was received. Only the all-time view shows it.
+    // Each person's recorded payments, newest first, so a mistaken one can be undone.
     const paymentRows = hasDateFilter || staffIds.length === 0
       ? []
-      : await db.select({ amount: latenessPayment.amount, id: latenessPayment.id, recordedAt: latenessPayment.recordedAt, staffId: latenessPayment.staffId })
+      : await db.select({
+        amount: latenessPayment.amount,
+        id: latenessPayment.id,
+        note: latenessPayment.note,
+        recordedAt: latenessPayment.recordedAt,
+        recordedByEmail: latenessPayment.recordedByEmail,
+        staffId: latenessPayment.staffId,
+      })
         .from(latenessPayment)
-        .where(inArray(latenessPayment.staffId, staffIds));
-    const paymentAllocations = paymentRows.length === 0
-      ? []
-      : await db.select({ allocatedAmount: latenessPaymentAllocation.allocatedAmount, entryId: latenessPaymentAllocation.entryId, paymentId: latenessPaymentAllocation.paymentId })
-        .from(latenessPaymentAllocation)
-        .where(inArray(latenessPaymentAllocation.paymentId, paymentRows.map((payment) => payment.id)));
-    const credits = summarizeLatenessPaymentCredits({
-      allocations: paymentAllocations,
-      entryCharges: new Map(entryRows.map((entry) => [entry.id, entry.computedAmount])),
-      payments: paymentRows,
-    });
-    const creditCentsByStaff = new Map<string, number>();
-    const creditCentsByMonth = new Map<string, number>();
-    for (const credit of credits) {
-      creditCentsByStaff.set(credit.staffId, (creditCentsByStaff.get(credit.staffId) || 0) + credit.creditCents);
-      creditCentsByMonth.set(credit.month, (creditCentsByMonth.get(credit.month) || 0) + credit.creditCents);
+        .where(inArray(latenessPayment.staffId, staffIds))
+        .orderBy(desc(latenessPayment.recordedAt));
+    const paymentsByStaff = new Map<string, typeof paymentRows>();
+    for (const payment of paymentRows) {
+      const list = paymentsByStaff.get(payment.staffId) || [];
+      list.push(payment);
+      paymentsByStaff.set(payment.staffId, list);
     }
 
     const rows = staffRows.map((member) => {
@@ -214,7 +210,6 @@ export async function GET(request: NextRequest) {
       const outstandingBalance = sumAmount(entries.map((entry) => entry.outstandingAmount));
 
       return {
-        creditAmount: amountString((creditCentsByStaff.get(member.id) || 0) / 100),
         email: member.email,
         entries,
         fullName: member.fullName,
@@ -223,6 +218,13 @@ export async function GET(request: NextRequest) {
         isNssPersonnel: member.isNssPersonnel,
         outstandingBalance: amountString(outstandingBalance),
         paidAmount: amountString(paidAmount),
+        payments: (paymentsByStaff.get(member.id) || []).map((payment) => ({
+          amount: payment.amount,
+          id: payment.id,
+          note: payment.note,
+          recordedAt: payment.recordedAt,
+          recordedByEmail: payment.recordedByEmail,
+        })),
         totalPenalty: amountString(totalPenalty),
       };
     });
@@ -241,10 +243,7 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json({
-      monthlyBreakdown: monthlyBreakdown.map((month) => ({
-        ...month,
-        creditAmount: amountString((creditCentsByMonth.get(month.month) || 0) / 100),
-      })),
+      monthlyBreakdown,
       staff: rows,
       scope: hasDateFilter ? 'week' : 'all',
       weekEnd: hasDateFilter ? weekEnd : null,

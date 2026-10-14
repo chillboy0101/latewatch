@@ -148,52 +148,6 @@ export function summarizeLatenessPaymentsByMonth(input: {
   });
 }
 
-export type LatenessPaymentCreditInput = {
-  allocations: Array<{ allocatedAmount: number | string | null; entryId: string; paymentId: string }>;
-  /** Current charge per entry; an entry that no longer exists counts as charging nothing. */
-  entryCharges: Map<string, number | string | null>;
-  payments: Array<{ amount: number | string | null; id: string; recordedAt: Date | string | null; staffId: string }>;
-};
-
-/**
- * Cash that was received but no longer pays for any charge: money for a day that was later
- * cancelled, or the part of a payment above a charge that was later lowered. It was collected,
- * so it is shown as the person's credit and counted in the month it was received.
- */
-export function summarizeLatenessPaymentCredits(input: LatenessPaymentCreditInput) {
-  const paymentById = new Map(input.payments.map((payment) => [payment.id, payment]));
-  const recordedTime = (paymentId: string) => {
-    const value = paymentById.get(paymentId)?.recordedAt;
-    return value ? new Date(value).getTime() : 0;
-  };
-  const countedByPayment = new Map<string, number>();
-  const allocationsByEntry = new Map<string, LatenessPaymentCreditInput['allocations']>();
-  for (const allocation of input.allocations) {
-    const list = allocationsByEntry.get(allocation.entryId) || [];
-    list.push(allocation);
-    allocationsByEntry.set(allocation.entryId, list);
-  }
-
-  // Earlier payments fill a charge first; whatever goes past the charge is credit.
-  for (const [entryId, allocations] of allocationsByEntry) {
-    let remainingCents = Math.max(0, cents(input.entryCharges.get(entryId) ?? 0));
-    for (const allocation of [...allocations].sort((left, right) => recordedTime(left.paymentId) - recordedTime(right.paymentId))) {
-      const countedCents = Math.min(remainingCents, cents(allocation.allocatedAmount));
-      remainingCents -= countedCents;
-      countedByPayment.set(allocation.paymentId, (countedByPayment.get(allocation.paymentId) || 0) + countedCents);
-    }
-  }
-
-  return input.payments
-    .map((payment) => ({
-      creditCents: Math.max(0, cents(payment.amount) - (countedByPayment.get(payment.id) || 0)),
-      month: payment.recordedAt ? new Date(payment.recordedAt).toISOString().slice(0, 7) : '',
-      paymentId: payment.id,
-      staffId: payment.staffId,
-    }))
-    .filter((credit) => credit.creditCents > 0);
-}
-
 function addDays(date: Date, days: number) {
   return new Date(date.getTime() + days * MS_PER_DAY);
 }

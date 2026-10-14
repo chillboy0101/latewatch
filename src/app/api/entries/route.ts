@@ -345,6 +345,18 @@ export async function POST(request: NextRequest) {
       ) {
         return NextResponse.json({ error: 'Invalid sign-out time format' }, { status: 400 });
       }
+
+      // A sign-out has to come after the sign-in (24-hour times, so 4:15 PM is 16:15, not 04:15).
+      const submittedSignOut = hasOwn(entry, 'signOutTime') ? normalizeEntryTime(entry.signOutTime) : null;
+      const signIn = (typeof entry.arrivalTime === 'string' && normalizeEntryTime(entry.arrivalTime))
+        || normalizeEntryTime(attendanceByStaffId.get(entry.staffId)?.checkInTime);
+      if (submittedSignOut && signIn && submittedSignOut <= signIn) {
+        const staffName = staffMap.get(entry.staffId) || 'This staff member';
+        return NextResponse.json(
+          { error: `${staffName}: sign-out ${submittedSignOut} is not after sign-in ${signIn}. Use 24-hour time (4:15 PM is 16:15).` },
+          { status: 400 },
+        );
+      }
     }
 
     const results = [];

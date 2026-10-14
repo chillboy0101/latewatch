@@ -834,3 +834,23 @@ test('saving lateness entries respects an approved general pardon', async () => 
   assert.equal(fixture.attendanceRecord[0].reason, 'Approved late arrival (Any time today): general pardon');
   assert.equal(fixture.attendanceRecord[0].status, 'excused');
 });
+
+test('a sign-out earlier than the sign-in is refused before anything is saved', async () => {
+  resetFixture();
+  fixture.attendanceRecord[0] = { ...fixture.attendanceRecord[0], checkInTime: '07:26:00', signOutTime: null };
+  const before = JSON.stringify(fixture);
+
+  const response = await POST(new Request('http://localhost/api/entries', {
+    body: JSON.stringify({
+      date: '2026-05-06',
+      entries: [{ arrivalTime: '07:26', signOutTime: '04:15', staffId: 'staff-1' }],
+    }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  }));
+  const body = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.match(body.error, /sign-out 04:15 is not after sign-in 07:26\. Use 24-hour time \(4:15 PM is 16:15\)/);
+  assert.equal(JSON.stringify(fixture), before);
+});

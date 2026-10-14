@@ -334,30 +334,16 @@ test('offence book counts former staff, and the payments dialog separates pardon
   assert.doesNotMatch(page, /label="Owed"/);
 });
 
-test('cash kept for a cancelled or lowered charge is credit, counted in the month received', () => {
-  require('tsx/cjs');
-  const { summarizeLatenessPaymentCredits } = require('../src/lib/lateness-payments.ts');
-  const credits = summarizeLatenessPaymentCredits({
-    allocations: [
-      { allocatedAmount: '2.00', entryId: 'cancelled-day', paymentId: 'p1' },
-      { allocatedAmount: '15.00', entryId: 'lowered-day', paymentId: 'p2' },
-      { allocatedAmount: '2.00', entryId: 'lowered-day', paymentId: 'p3' },
-      { allocatedAmount: '10.00', entryId: 'normal-day', paymentId: 'p4' },
-    ],
-    entryCharges: new Map([['lowered-day', '15.00'], ['normal-day', '10.00']]),
-    payments: [
-      { amount: '2.00', id: 'p1', recordedAt: '2026-05-22T09:00:00Z', staffId: 'a' },
-      { amount: '15.00', id: 'p2', recordedAt: '2026-06-01T09:00:00Z', staffId: 'b' },
-      { amount: '4.00', id: 'p3', recordedAt: '2026-06-19T09:00:00Z', staffId: 'b' },
-      { amount: '10.00', id: 'p4', recordedAt: '2026-07-01T09:00:00Z', staffId: 'c' },
-    ],
-  });
-  // p1: its day was cancelled. p3: 2 went past a lowered charge, 2 was never allocated.
-  assert.deepEqual(credits.map((credit) => [credit.paymentId, credit.creditCents, credit.month]), [
-    ['p1', 200, '2026-05'],
-    ['p3', 400, '2026-06'],
-  ]);
-  const route = fs.readFileSync(paymentsApiPath, 'utf8');
-  assert.match(route, /creditAmount: amountString\(\(creditCentsByStaff\.get\(member\.id\) \|\| 0\) \/ 100\)/);
-  assert.match(fs.readFileSync(paymentsPagePath, 'utf8'), /<PaymentToolbarTotal label="Credit"/);
+test('an admin can undo a mistaken payment, with a reason that is audited', () => {
+  const route = fs.readFileSync(path.join(root, 'src/app/api/payments/lateness/[paymentId]/route.ts'), 'utf8');
+  const page = fs.readFileSync(paymentsPagePath, 'utf8');
+  const audit = fs.readFileSync(path.join(root, 'src/app/audit-trail/page.tsx'), 'utf8');
+  assert.match(route, /const authError = await enforceRole\(\['admin'\]\);/);
+  assert.match(route, /if \(!reason\) \{\s*return NextResponse\.json\(\{ error: 'Say why this payment is being undone' \}, \{ status: 400 \}\);/);
+  assert.match(route, /await db\.delete\(latenessPayment\)\.where\(eq\(latenessPayment\.id, payment\.id\)\);/);
+  assert.match(route, /before: \{ \.\.\.payment, allocations, staffName: member\?\.fullName \|\| null \},\s*after: \{ reason, undone: true \}/);
+  assert.match(page, /disabled=\{undoing \|\| !undoReason\.trim\(\)\}/);
+  assert.match(audit, /Undid GHC \$\{amount\} payment for/);
+  // Credits are not a thing: kept cash is corrected, not carried.
+  assert.doesNotMatch(fs.readFileSync(paymentsApiPath, 'utf8'), /credit/i);
 });

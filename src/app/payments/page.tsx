@@ -51,9 +51,15 @@ interface PaymentEntry {
   status: PaymentStatus;
 }
 
+interface PaymentRecord {
+  amount: string;
+  id: string;
+  note: string | null;
+  recordedAt: string | null;
+  recordedByEmail: string;
+}
+
 interface PaymentStaffRow {
-  /** Cash kept for days later cancelled (or above a charge later lowered). */
-  creditAmount?: string;
   email: string | null;
   entries: PaymentEntry[];
   fullName: string;
@@ -62,12 +68,11 @@ interface PaymentStaffRow {
   isNssPersonnel: boolean | null;
   outstandingBalance: string;
   paidAmount: string;
+  payments?: PaymentRecord[];
   totalPenalty: string;
 }
 
 interface MonthlyPaymentBalance {
-  /** Credit received this month (see PaymentStaffRow.creditAmount). */
-  creditAmount?: string;
   month: string;
   paidAmount: string;
   pardonedAmount: string;
@@ -211,6 +216,10 @@ export default function PenaltyPaymentsPage() {
   const [data, setData] = useState<PaymentsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingAction, setSavingAction] = useState<string | null>(null);
+  const [undoTarget, setUndoTarget] = useState<PaymentRecord | null>(null);
+  const [undoReason, setUndoReason] = useState('');
+  const [undoError, setUndoError] = useState('');
+  const [undoing, setUndoing] = useState(false);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -638,6 +647,30 @@ export default function PenaltyPaymentsPage() {
     }
   }
 
+  // Undo a payment recorded by mistake: its days count as unpaid again, and the reason is audited.
+  async function undoPayment() {
+    if (!undoTarget || !undoReason.trim()) return;
+    setUndoing(true);
+    setUndoError('');
+    try {
+      const response = await fetch(`/api/payments/lateness/${undoTarget.id}`, {
+        body: JSON.stringify({ reason: undoReason.trim() }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'DELETE',
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || `Undo failed (${response.status})`);
+      setUndoTarget(null);
+      setUndoReason('');
+      setMessage({ type: 'success', text: `Payment of ${currency(undoTarget.amount)} undone.` });
+      await loadPayments();
+    } catch (error) {
+      setUndoError(error instanceof Error ? error.message : 'Could not undo the payment');
+    } finally {
+      setUndoing(false);
+    }
+  }
+
   const manualAmount = moneyNumber(amount);
   const offenceBookReady = !offenceBookLoading
     && loadedOffenceBookKey === `${offenceBookYear}-${offenceBookMonth}`;
@@ -807,9 +840,6 @@ export default function PenaltyPaymentsPage() {
                 <PaymentToolbarTotal label="Paid" value={currency(selectedMonthBalance?.paidAmount)} tone="paid" />
                 <PaymentToolbarTotal label="Pardoned" value={currency(selectedMonthBalance?.pardonedAmount)} tone="month" />
                 <PaymentToolbarTotal label="Unpaid" value={currency(selectedMonthBalance?.unpaidAmount)} tone="unpaid" />
-                {moneyNumber(selectedMonthBalance?.creditAmount) > 0 && (
-                  <PaymentToolbarTotal label="Credit" value={currency(selectedMonthBalance?.creditAmount)} tone="paid" />
-                )}
               </div>
               <div className="flex w-full items-center gap-2 md:max-w-sm">
                 <div className="relative w-full">
@@ -930,11 +960,6 @@ export default function PenaltyPaymentsPage() {
                   />
                   <BalanceStat label="Balance" value={currency(selectedRow.outstandingBalance)} highlight />
                 </div>
-                {moneyNumber(selectedRow.creditAmount) > 0 && (
-                  <div className="border-b border-border px-5 py-2 text-xs text-muted-foreground">
-                    Credit <span className="font-mono font-semibold text-success">{currency(selectedRow.creditAmount)}</span>: paid for days later cancelled.
-                  </div>
-                )}
 
                 <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">
                   <div className="space-y-2">
@@ -1005,6 +1030,37 @@ export default function PenaltyPaymentsPage() {
                         </div>
                       )}
                   </div>
+                  {(selectedRow.payments || []).length > 0 && (
+                    <div className="mt-4">
+                      <h3 className="mb-1.5 text-xs font-medium uppercase text-muted-foreground">Payments</h3>
+                      <div className="divide-y divide-border rounded-md border border-border">
+                        {(selectedRow.payments || []).map((payment) => (
+                          <div key={payment.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                            <div className="min-w-0">
+                              <span className="font-mono font-semibold">{currency(payment.amount)}</span>
+                              <span className="ml-2 text-xs text-muted-foreground">
+                                {payment.recordedAt ? formatDisplayDate(payment.recordedAt.slice(0, 10)) : '-'}
+                                {payment.note ? ` · ${payment.note}` : ''}
+                              </span>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 shrink-0 px-2 text-danger hover:bg-danger/10 hover:text-danger"
+                              onClick={() => {
+                                setUndoReason('');
+                                setUndoError('');
+                                setUndoTarget(payment);
+                              }}
+                            >
+                              Undo
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-3 border-t border-border bg-background p-4">
@@ -1187,6 +1243,35 @@ export default function PenaltyPaymentsPage() {
               >
                 {debtPardonApplying && <Loader2 className="h-4 w-4 animate-spin" />}
                 {debtPardonConfirmed ? 'Tap again to confirm' : 'Pardon'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={Boolean(undoTarget)} onOpenChange={(open) => { if (!open && !undoing) setUndoTarget(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Undo {undoTarget ? currency(undoTarget.amount) : ''} payment?</DialogTitle>
+              <DialogDescription>
+                The days it paid count as unpaid again. Use this only for a payment recorded by mistake.
+              </DialogDescription>
+            </DialogHeader>
+            <Input
+              value={undoReason}
+              onChange={(event) => setUndoReason(event.target.value)}
+              placeholder="Reason (required)"
+              aria-label="Reason for undoing the payment"
+              maxLength={300}
+              disabled={undoing}
+            />
+            {undoError && (
+              <div role="alert" className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{undoError}</div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setUndoTarget(null)} disabled={undoing}>Cancel</Button>
+              <Button className="gap-2" onClick={undoPayment} disabled={undoing || !undoReason.trim()}>
+                {undoing && <Loader2 className="h-4 w-4 animate-spin" />}
+                Undo payment
               </Button>
             </DialogFooter>
           </DialogContent>
