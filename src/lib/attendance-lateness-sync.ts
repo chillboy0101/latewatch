@@ -6,6 +6,7 @@ import { attendancePermission, attendanceRecord, latenessEntry, staff } from '@/
 import { getAccraClock, getHolidayDatesForRange, getHolidayForDate, isWeekendDate } from '@/lib/attendance';
 import { resolveManualPenalty } from '@/lib/manual-attendance-correction';
 import {
+  getFinanciallyAllocatedEntryIds,
   getFinanciallyProtectedLeaveEntryIds,
   getStaffLeavePeriodsForRange,
 } from '@/lib/staff-leave-service';
@@ -66,12 +67,15 @@ function chargeableFromDate(createdAt: Date | null | undefined) {
   return createdAt instanceof Date && !Number.isNaN(createdAt.getTime()) ? getAccraDateKey(createdAt) : '';
 }
 
+// Nobody is charged for a day on approved leave (leave is often entered after the fact). A paid
+// day is never touched; a pardoned one is set to no charge (the pardon ledger keeps the history).
 async function clearUnprotectedLeavePenalty(input: {
   attendance?: { computedAmount: string | number | null; id: string } | null;
-  entries: Array<{ id: string }>;
+  entries: Array<{ computedAmount?: string | number | null; id: string }>;
+  paidEntryIds: Set<string>;
   protectedEntryIds: Set<string>;
 }) {
-  if (input.entries.some((entry) => input.protectedEntryIds.has(entry.id))) {
+  if (input.entries.some((entry) => input.paidEntryIds.has(entry.id))) {
     return { attendanceUpdated: 0, deleted: 0 };
   }
 
@@ -83,11 +87,21 @@ async function clearUnprotectedLeavePenalty(input: {
     attendanceUpdated = 1;
   }
 
+  let deleted = 0;
   for (const entry of input.entries) {
+    if (input.protectedEntryIds.has(entry.id)) {
+      if (amountNumber(entry.computedAmount) > 0) {
+        await db.update(latenessEntry)
+          .set({ computedAmount: '0.00', didNotSignOut: false, reason: 'On approved leave', updatedAt: new Date() })
+          .where(eq(latenessEntry.id, entry.id));
+      }
+      continue;
+    }
     await db.delete(latenessEntry).where(eq(latenessEntry.id, entry.id));
+    deleted += 1;
   }
 
-  return { attendanceUpdated, deleted: input.entries.length };
+  return { attendanceUpdated, deleted };
 }
 
 function shouldApplyNoSignOutPenalty(input: {
@@ -178,6 +192,7 @@ export async function applyNoShowSignInPenaltiesForDate(dateKey: string) {
     startDate: dateKey,
   });
   const protectedEntryIds = await getFinanciallyProtectedLeaveEntryIds(existingRows.map((entry) => entry.id));
+  const paidEntryIds = await getFinanciallyAllocatedEntryIds(existingRows.map((entry) => entry.id));
   const existingByStaffId = new Map(existingRows.map((entry) => [entry.staffId, entry]));
 
   let deleted = 0;
@@ -191,6 +206,7 @@ export async function applyNoShowSignInPenaltiesForDate(dateKey: string) {
       const result = await clearUnprotectedLeavePenalty({
         attendance: attendanceByStaffId.get(member.id) || null,
         entries: existing ? [existing] : [],
+        paidEntryIds,
         protectedEntryIds,
       });
       deleted += result.deleted;
@@ -347,6 +363,7 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
     .where(and(gte(latenessEntry.date, startDate), lte(latenessEntry.date, endDate)));
   const leavePeriods = await getStaffLeavePeriodsForRange({ endDate, staffIds: staffRows.map((member) => member.id), startDate });
   const protectedEntryIds = await getFinanciallyProtectedLeaveEntryIds(existingRows.map((entry) => entry.id));
+  const paidEntryIds = await getFinanciallyAllocatedEntryIds(existingRows.map((entry) => entry.id));
   const existingByKey = new Map(
     existingRows.map((row) => [rowKey(row.staffId, normalizeDateKey(row.date)), row]),
   );
@@ -362,6 +379,7 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
         const existing = existingByKey.get(rowKey(member.id, date));
         const result = await clearUnprotectedLeavePenalty({
           entries: existing ? [existing] : [],
+          paidEntryIds,
           protectedEntryIds,
         });
         deleted += result.deleted;
@@ -503,6 +521,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
   const existingEntryIds = existingRows.map((entry) => entry.id);
   // Paid and pardoned entries are settled: the sync never rewrites or deletes them.
   const protectedEntryIds = await getFinanciallyProtectedLeaveEntryIds(existingEntryIds);
+  const paidEntryIds = await getFinanciallyAllocatedEntryIds(existingEntryIds);
   const holidayDates = await getHolidayDatesForRange(startDate, endDate);
   const existingByStaffDate = new Map<string, typeof existingRows>();
   for (const entry of existingRows) {
@@ -527,21 +546,22 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     const key = rowKey(row.staffId, date);
     const existingEntriesForKey = existingByStaffDate.get(key) || [];
     const existing = existingEntriesForKey[0] || null;
-    // No check-in and a no-show charge (or waiver): that belongs to the no-show pass below.
-    if (!arrivalTime && existingEntriesForKey.some((entry) => entry.reason === NO_SHOW_SIGN_IN_REASON || entry.reason === NO_SHOW_SIGN_IN_WAIVED_REASON)) {
-      processedKeys.add(key);
-      skipped += 1;
-      continue;
-    }
     if (isStaffLeaveDate(leavePeriods, row.staffId, date)) {
       processedKeys.add(key);
       const result = await clearUnprotectedLeavePenalty({
         attendance: row,
         entries: existingEntriesForKey,
+        paidEntryIds,
         protectedEntryIds,
       });
       deleted += result.deleted;
       attendanceUpdated += result.attendanceUpdated;
+      continue;
+    }
+    // No check-in and a no-show charge (or waiver): that belongs to the no-show pass below.
+    if (!arrivalTime && existingEntriesForKey.some((entry) => entry.reason === NO_SHOW_SIGN_IN_REASON || entry.reason === NO_SHOW_SIGN_IN_WAIVED_REASON)) {
+      processedKeys.add(key);
+      skipped += 1;
       continue;
     }
     const activePermission = permissionsByStaffDate.get(key) || null;
@@ -696,6 +716,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     if (isStaffLeaveDate(leavePeriods, existing.staffId, date)) {
       const result = await clearUnprotectedLeavePenalty({
         entries: [existing],
+        paidEntryIds,
         protectedEntryIds,
       });
       deleted += result.deleted;

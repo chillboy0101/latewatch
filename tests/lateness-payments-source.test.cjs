@@ -333,3 +333,31 @@ test('offence book counts former staff, and the payments dialog separates pardon
   assert.match(page, /label="Pardoned"/);
   assert.doesNotMatch(page, /label="Owed"/);
 });
+
+test('cash kept for a cancelled or lowered charge is credit, counted in the month received', () => {
+  require('tsx/cjs');
+  const { summarizeLatenessPaymentCredits } = require('../src/lib/lateness-payments.ts');
+  const credits = summarizeLatenessPaymentCredits({
+    allocations: [
+      { allocatedAmount: '2.00', entryId: 'cancelled-day', paymentId: 'p1' },
+      { allocatedAmount: '15.00', entryId: 'lowered-day', paymentId: 'p2' },
+      { allocatedAmount: '2.00', entryId: 'lowered-day', paymentId: 'p3' },
+      { allocatedAmount: '10.00', entryId: 'normal-day', paymentId: 'p4' },
+    ],
+    entryCharges: new Map([['lowered-day', '15.00'], ['normal-day', '10.00']]),
+    payments: [
+      { amount: '2.00', id: 'p1', recordedAt: '2026-05-22T09:00:00Z', staffId: 'a' },
+      { amount: '15.00', id: 'p2', recordedAt: '2026-06-01T09:00:00Z', staffId: 'b' },
+      { amount: '4.00', id: 'p3', recordedAt: '2026-06-19T09:00:00Z', staffId: 'b' },
+      { amount: '10.00', id: 'p4', recordedAt: '2026-07-01T09:00:00Z', staffId: 'c' },
+    ],
+  });
+  // p1: its day was cancelled. p3: 2 went past a lowered charge, 2 was never allocated.
+  assert.deepEqual(credits.map((credit) => [credit.paymentId, credit.creditCents, credit.month]), [
+    ['p1', 200, '2026-05'],
+    ['p3', 400, '2026-06'],
+  ]);
+  const route = fs.readFileSync(paymentsApiPath, 'utf8');
+  assert.match(route, /creditAmount: amountString\(\(creditCentsByStaff\.get\(member\.id\) \|\| 0\) \/ 100\)/);
+  assert.match(fs.readFileSync(paymentsPagePath, 'utf8'), /<PaymentToolbarTotal label="Credit"/);
+});

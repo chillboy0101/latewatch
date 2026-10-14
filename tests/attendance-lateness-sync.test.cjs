@@ -286,6 +286,7 @@ require('tsx/cjs');
 const {
   applyNoShowSignInPenaltiesForDate,
   syncLatenessEntriesFromAttendanceForDate,
+  syncLatenessEntriesFromAttendanceForRange,
 } = require('../src/lib/attendance-lateness-sync.ts');
 
 test.after(() => {
@@ -751,4 +752,22 @@ test('a holiday declared after the day started clears its late and no-show charg
 
   assert.deepEqual(fixture.latenessEntry, []);
   assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
+});
+
+test('a pardoned charge on an approved leave day is set to no charge; a paid one is left alone', async () => {
+  resetFixture();
+  fixture.attendanceRecord = [];
+  fixture.attendancePermission = [];
+  fixture.leavePeriods = [{ endDate: '2026-07-08', source: 'attendance_permission', staffId: 'staff-1', startDate: '2026-07-07' }];
+  const noShow = (id, date) => ({ arrivalTime: null, computedAmount: '10.00', date, didNotSignOut: false, id, reason: "DIDN'T SIGN IN BEFORE 4:30PM", staffId: 'staff-1' });
+  fixture.latenessEntry = [noShow('entry-pardoned', '2026-07-07'), noShow('entry-paid', '2026-07-08')];
+  fixture.latenessDebtPardonEntry = [{ entryDate: '2026-07-07', entryId: 'entry-pardoned' }];
+  fixture.latenessPaymentAllocation = [{ allocatedAmount: '10.00', entryId: 'entry-paid' }];
+
+  await syncLatenessEntriesFromAttendanceForRange('2026-07-07', '2026-07-08');
+
+  const byId = new Map(fixture.latenessEntry.map((entry) => [entry.id, entry]));
+  assert.equal(byId.get('entry-pardoned').computedAmount, '0.00');
+  assert.equal(byId.get('entry-pardoned').reason, 'On approved leave');
+  assert.equal(byId.get('entry-paid').computedAmount, '10.00');
 });

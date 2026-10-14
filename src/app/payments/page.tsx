@@ -52,6 +52,8 @@ interface PaymentEntry {
 }
 
 interface PaymentStaffRow {
+  /** Cash kept for days later cancelled (or above a charge later lowered). */
+  creditAmount?: string;
   email: string | null;
   entries: PaymentEntry[];
   fullName: string;
@@ -64,6 +66,8 @@ interface PaymentStaffRow {
 }
 
 interface MonthlyPaymentBalance {
+  /** Credit received this month (see PaymentStaffRow.creditAmount). */
+  creditAmount?: string;
   month: string;
   paidAmount: string;
   pardonedAmount: string;
@@ -803,6 +807,9 @@ export default function PenaltyPaymentsPage() {
                 <PaymentToolbarTotal label="Paid" value={currency(selectedMonthBalance?.paidAmount)} tone="paid" />
                 <PaymentToolbarTotal label="Pardoned" value={currency(selectedMonthBalance?.pardonedAmount)} tone="month" />
                 <PaymentToolbarTotal label="Unpaid" value={currency(selectedMonthBalance?.unpaidAmount)} tone="unpaid" />
+                {moneyNumber(selectedMonthBalance?.creditAmount) > 0 && (
+                  <PaymentToolbarTotal label="Credit" value={currency(selectedMonthBalance?.creditAmount)} tone="paid" />
+                )}
               </div>
               <div className="flex w-full items-center gap-2 md:max-w-sm">
                 <div className="relative w-full">
@@ -923,6 +930,11 @@ export default function PenaltyPaymentsPage() {
                   />
                   <BalanceStat label="Balance" value={currency(selectedRow.outstandingBalance)} highlight />
                 </div>
+                {moneyNumber(selectedRow.creditAmount) > 0 && (
+                  <div className="border-b border-border px-5 py-2 text-xs text-muted-foreground">
+                    Credit <span className="font-mono font-semibold text-success">{currency(selectedRow.creditAmount)}</span>: paid for days later cancelled.
+                  </div>
+                )}
 
                 <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">
                   <div className="space-y-2">
