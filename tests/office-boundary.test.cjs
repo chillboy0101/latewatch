@@ -8,7 +8,7 @@ require('tsx/cjs');
 
 const root = path.join(__dirname, '..');
 const read = (...parts) => fs.readFileSync(path.join(root, ...parts), 'utf8');
-const { boundaryCircle, boundaryContour, metersBeyondBoundary, nearestEdgeIndex, parseOfficeBoundary } = require('../src/lib/office-boundary.ts');
+const { boundaryCircle, boundaryContour, metersBeyondBoundary, nearestEdgeIndex, outlineCrossesItself, parseOfficeBoundary } = require('../src/lib/office-boundary.ts');
 const { validateAttendanceLocation } = require('../src/lib/geo-location.ts');
 
 // Points given in metres east/north of an origin near the office.
@@ -123,4 +123,18 @@ test('a corner clicked on the map goes into the nearest edge', () => {
   assert.equal(nearestEdgeIndex(outline, at(65, 60)), 1, 'east edge: after corner 2');
   assert.equal(nearestEdgeIndex(outline, at(-5, 60)), 3, 'west edge: after the last corner');
   assert.equal(nearestEdgeIndex(outline.slice(0, 2), at(0, 0)), 1, 'fewer than 3 corners: at the end');
+});
+
+test('an outline whose sides cross is not an area', () => {
+  const [a, b, c, d] = grounds.outline;
+  assert.equal(outlineCrossesItself(grounds.outline), false);
+  assert.equal(outlineCrossesItself([a, c, b, d]), true, 'corners out of order make a bow-tie');
+  assert.equal(parseOfficeBoundary({ ...grounds, outline: [a, c, b, d] }), null);
+});
+
+test('the first area saved where no office exists yet creates the office from it', () => {
+  const route = read('src', 'app', 'api', 'attendance', 'location', 'boundary', 'route.ts');
+  assert.match(route, /const firstArea = action === 'save' \? parseOfficeBoundary\(body\?\.boundary\) : null;/);
+  assert.match(route, /if \(!firstArea\) return NextResponse\.json\(\{ error: 'Draw the office area first' \}, \{ status: 409 \}\);/);
+  assert.match(route, /\.\.\.pinFromBoundary\(firstArea\),\n\s+\}\)\.returning\(\);/);
 });
