@@ -588,7 +588,8 @@ export const userThemePreference = pgTable('user_theme_preference', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-// Live location shared by an admin while walking the office grounds; kept for 24 hours.
+// Live location an admin shared while walking the office grounds (October 2026). Nothing writes
+// to it any more: the boundary is drawn on the map on the Office Location page.
 export const locationTrace = pgTable('location_trace', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: text('user_id').notNull(),

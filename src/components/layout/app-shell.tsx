@@ -24,14 +24,11 @@ export function getWorkspaceTitle(pathname: string | null) {
   return WORKSPACE_TITLES[firstSegment] ?? null;
 }
 
-// Admin pages meant for a phone (walking the grounds) render without the desktop-only shell.
-const PHONE_ADMIN_PAGES = new Set(['/location/measure']);
-
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const title = getWorkspaceTitle(pathname);
 
-  if (!title || PHONE_ADMIN_PAGES.has(pathname || '')) return <>{children}</>;
+  if (!title) return <>{children}</>;
 
   return <DashboardLayout title={title}>{children}</DashboardLayout>;
 }

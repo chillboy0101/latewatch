@@ -25,7 +25,6 @@ import { formatAbsencePermissionReason, getPermissionWindowBounds, isPermissionW
 import { getAuditActor, writeAuditEvent } from '@/lib/audit';
 import { computePenalty } from '@/lib/penalty-calculator';
 import { attendanceStatusFor } from '@/lib/manual-attendance-correction';
-import { isAdminUser } from '@/lib/auth/roles';
 import { findStaffForEmails, verifiedEmailAddresses } from '@/lib/auth/signed-in-staff';
 import { getDeviceTokenFromRequest } from '@/lib/device-binding';
 import { resolveDeviceHash } from '@/lib/device-rekey';
@@ -598,34 +597,30 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      ...responsePayload({
-        attendance: existingAttendance || null,
-        currentIp,
-        currentIpSource: currentIpInfo.source,
-        date: clock.dateKey,
-        device: serializeDevice(resolvedDevice, deviceHash),
-        holidayName: holiday?.holidayNote || null,
-        isHoliday: Boolean(holiday),
-        isAfterWorkdayEnd: isSignInClosed(clock.timeKey),
-        isWeekend,
-        locationConfigured: Boolean(office),
-        locationPolicy: serializeLocationPolicy(office),
-        networkConfigured: Boolean(office),
-        permission: serializePermission(permission),
-        staff: member ? { id: member.id, fullName: member.fullName, email: member.email } : null,
-        time: clock.timeKey,
-        transferRequest: statusTransfer
-          ? {
-              id: statusTransfer.id,
-              requestedAt: statusTransfer.requestedAt,
-              status: statusTransfer.status,
-            }
-          : null,
-      }),
-      // Admins get a small shortcut to Measure grounds (the installed app opens on this page).
-      isAdmin: isAdminUser(user, session.sessionClaims),
-    }, {
+    return NextResponse.json(responsePayload({
+      attendance: existingAttendance || null,
+      currentIp,
+      currentIpSource: currentIpInfo.source,
+      date: clock.dateKey,
+      device: serializeDevice(resolvedDevice, deviceHash),
+      holidayName: holiday?.holidayNote || null,
+      isHoliday: Boolean(holiday),
+      isAfterWorkdayEnd: isSignInClosed(clock.timeKey),
+      isWeekend,
+      locationConfigured: Boolean(office),
+      locationPolicy: serializeLocationPolicy(office),
+      networkConfigured: Boolean(office),
+      permission: serializePermission(permission),
+      staff: member ? { id: member.id, fullName: member.fullName, email: member.email } : null,
+      time: clock.timeKey,
+      transferRequest: statusTransfer
+        ? {
+            id: statusTransfer.id,
+            requestedAt: statusTransfer.requestedAt,
+            status: statusTransfer.status,
+          }
+        : null,
+    }), {
       headers: { 'Cache-Control': 'no-store' },
     });
   } catch (error) {

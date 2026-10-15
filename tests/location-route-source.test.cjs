@@ -28,17 +28,21 @@ test('office location admin page uses the location route with a protected wifi r
   assert.match(legacyWifiPage, /redirect\('\/location'\)/);
 });
 
-test('location page keeps location APIs and core actions intact', () => {
+test('location page is the map: sign-in area, draw a boundary, and the pin and circle tucked away', () => {
   const locationPage = fs.readFileSync(locationPagePath, 'utf8');
 
   assert.match(locationPage, /fetch\(`\/api\/attendance\/location\?date=\$\{dateKey\(\)\}`/);
-  assert.match(locationPage, /fetch\('\/api\/attendance\/location'/);
-  assert.match(locationPage, /Detect\s*<\/Button>/);
-  assert.match(locationPage, /Save\s*<\/Button>/);
-  assert.match(locationPage, />\s*Default\s*</);
-  assert.match(locationPage, />\s*Program\s*</);
-  assert.match(locationPage, />\s*Options\s*</);
-  assert.match(locationPage, /StatusBadge/);
+  assert.match(locationPage, /fetch\('\/api\/attendance\/location', \{/);
+  assert.match(locationPage, /<OfficeMap\n/);
+  assert.match(locationPage, /<h2 className="text-base font-semibold">Sign-in area<\/h2>/);
+  assert.match(locationPage, /<h2 className="text-base font-semibold">Draw a boundary<\/h2>/);
+  assert.match(locationPage, /<details className="group rounded-lg border border-border bg-card">\n\s+<summary[^>]*>\n\s+Pin and circle/);
+  assert.match(locationPage, /\{mode === 'default' \? 'Office' : 'Program'\}/);
+  assert.match(locationPage, /Pick on map/);
+  // The phone-only measuring page and the check-in shortcut to it are gone.
+  assert.equal(fs.existsSync(path.join(root, 'src/app/location/measure')), false);
+  assert.doesNotMatch(fs.readFileSync(appShellPath, 'utf8'), /PHONE_ADMIN_PAGES/);
+  assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/app/check-in/page.tsx'), 'utf8'), /location\/measure|isAdmin/);
 });
 
 test('location page uses ultra-minimal copy instead of the old instruction panel', () => {

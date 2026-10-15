@@ -42,7 +42,6 @@ interface CheckInStatus {
   date: string;
   holidayName: string | null;
   isHoliday: boolean;
-  isAdmin?: boolean;
   isAfterWorkdayEnd: boolean;
   isOfficeNetwork: boolean;
   isWeekend: boolean;
@@ -1272,18 +1271,6 @@ export default function CheckInPage() {
               <span>Portals</span>
             </Link>
           </Button>
-          {status?.isAdmin && (
-            // Admins only: a quiet dot in the empty middle of the header (justify-between keeps the
-            // buttons where they are) that opens Measure grounds on this phone.
-            <Link
-              href="/location/measure"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-              aria-label="Measure office grounds"
-              title="Measure office grounds"
-            >
-              <span className="h-2 w-2 rounded-full bg-primary/60" />
-            </Link>
-          )}
           <div className="flex items-center gap-2">
             <ThemePicker buttonVariant="glass" buttonClassName="h-10 w-10 rounded-full" iconClassName="h-5 w-5" />
 

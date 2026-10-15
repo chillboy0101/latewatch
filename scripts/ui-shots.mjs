@@ -109,47 +109,30 @@ async function phoneShots(browser) {
   await context.close();
 }
 
-// Measure grounds on a phone: corners recorded while walking the grounds, then one more recorded live.
+// Office Location on a desktop: the map with a proposed boundary, then a new outline being drawn.
 async function locationShots(browser) {
-  const corners = [[5.566610, -0.177190], [5.566540, -0.177690], [5.565060, -0.177900], [5.564880, -0.177330], [5.565700, -0.177050]]
-    .map(([latitude, longitude], index) => ({ accuracy: 3 + index, latitude, longitude, note: index === 2 ? 'Car park' : '', readings: 6, recordedAt: `2026-01-01T00:0${index}:00.000Z` }));
-  const context = await browser.newContext({ ...PHONE, geolocation: { accuracy: 4, latitude: 5.566200, longitude: -0.176990 }, permissions: ['geolocation'] });
-  await context.addInitScript((stored) => localStorage.setItem('latewatch.measure-grounds.v1', stored), JSON.stringify(corners));
+  const context = await browser.newContext(DESKTOP);
   await mockApi(context);
   const page = await context.newPage();
-  await page.goto(`${baseUrl}/location/measure`, { waitUntil: 'load' });
-  await page.getByRole('heading', { name: 'Measure grounds' }).waitFor({ timeout: 60_000 });
-  // Satellite tiles may not load in the harness; the overlays and tapped corners still show.
+  await page.goto(`${baseUrl}/location`, { waitUntil: 'load' });
+  // Satellite tiles may not load in the harness; the overlays and clicked corners still show.
   const map = page.getByRole('application', { name: 'Satellite map of the office grounds' });
   await map.waitFor({ timeout: 60_000 });
-  await page.waitForTimeout(1500);
-  for (const [x, y] of [[0.3, 0.25], [0.75, 0.2], [0.8, 0.75], [0.25, 0.8]]) {
+  await page.waitForTimeout(2000);
+  await shoot(page, 'desktop-location');
+  for (const [x, y] of [[0.42, 0.2], [0.6, 0.22], [0.62, 0.7], [0.4, 0.75]]) {
     const box = await map.boundingBox();
     await page.mouse.click(box.x + box.width * x, box.y + box.height * y);
     await page.waitForTimeout(200);
   }
-  await shoot(page, 'phone-location-map');
-  await page.getByRole('region', { name: 'Office boundary' }).scrollIntoViewIfNeeded();
-  await shoot(page, 'phone-location-boundary');
-  await map.scrollIntoViewIfNeeded();
-  await page.getByRole('button', { name: 'Save corners' }).first().click();
-  await page.waitForTimeout(800);
-  await page.getByText(/Saved 4 corners/).scrollIntoViewIfNeeded();
-  await shoot(page, 'phone-location-map-saved');
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await page.getByRole('button', { name: 'Start' }).click();
-  await page.getByLabel('What is this spot?').fill('Gate');
-  await page.getByRole('button', { name: 'Mark this spot' }).click();
-  await page.waitForTimeout(6000);
-  await shoot(page, 'phone-location-sharing');
-  await page.getByRole('button', { name: 'Stop' }).click();
-  await page.getByRole('heading', { name: 'Measure grounds' }).scrollIntoViewIfNeeded();
-  await shoot(page, 'phone-location-measure');
-  await page.getByRole('button', { name: 'Record corner' }).click();
-  await page.waitForTimeout(2500);
-  await shoot(page, 'phone-location-recording');
-  await page.getByRole('button', { name: 'Record corner' }).waitFor({ timeout: 20_000 });
-  await shoot(page, 'phone-location-recorded');
+  await page.getByRole('button', { name: /^Road edge/ }).click();
+  for (const [x, y] of [[0.35, 0.82], [0.66, 0.8]]) {
+    const box = await map.boundingBox();
+    await page.mouse.click(box.x + box.width * x, box.y + box.height * y);
+    await page.waitForTimeout(200);
+  }
+  await page.locator('summary', { hasText: 'Pin and circle' }).click();
+  await shoot(page, 'desktop-location-drawing');
   await context.close();
 }
 

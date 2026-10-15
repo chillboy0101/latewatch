@@ -49,11 +49,6 @@ function resolveRole(user: ClerkUser, sessionClaims: unknown) {
   return metadataRole || 'viewer';
 }
 
-/** Whether this already-loaded user is an admin (same rules as {@link requireRole}, no extra lookup). */
-export function isAdminUser(user: ClerkUser, sessionClaims: unknown) {
-  return resolveRole(user, sessionClaims) === 'admin';
-}
-
 export async function requireRole(allowedRoles: string[]): Promise<UserInfo> {
   const session = await auth();
   const allowed = new Set(allowedRoles.map((allowedRole) => allowedRole.toLowerCase()));

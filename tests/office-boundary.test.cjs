@@ -95,7 +95,7 @@ test('a boundary is proposed, then approved by an admin, all in the audit trail'
   assert.match(location, /return boundary && metersBeyondBoundary\(boundary, \{ latitude, longitude \}\) <= 0 \? boundary : null;/);
   assert.match(location, /boundaryJson: keptBoundary\(before\?\.boundaryJson\),/);
 
-  const map = read('src', 'components', 'location', 'grounds-map.tsx');
-  assert.match(map, /fetch\('\/api\/attendance\/location\/boundary'/);
-  assert.match(map, /'Use this boundary for every sign-in from now on\?'/);
+  const page = read('src', 'app', 'location', 'page.tsx');
+  assert.match(page, /fetch\('\/api\/attendance\/location\/boundary', \{ cache: 'no-store' \}\)/);
+  assert.match(page, /'Use this boundary for every sign-in from now on\?'/);
 });

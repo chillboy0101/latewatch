@@ -61,7 +61,7 @@ test('overview: the penalty column shows the day charge, and removing a permissi
 
 test('location, staff and emergency contacts keep what is on screen and show errors', () => {
   const location = read('src', 'app', 'location', 'page.tsx');
-  assert.match(location, /if \(incomingDefault && !limitsEditedRef\.current\) \{/);
+  assert.match(location, /if \(incoming && !limitsEditedRef\.current\) \{/);
   const staff = read('src', 'app', 'staff', 'page.tsx');
   assert.match(staff, /if \(!response\.ok\) throw new Error\(data\?\.error \|\| `Staff could not be loaded/);
   assert.match(staff, /setEditError\(error instanceof Error \? error\.message : 'Changes could not be saved'\);/);
