@@ -20,7 +20,8 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  const isHashedStatic = url.pathname.startsWith('/_next/static/');
+  // Next's build files and Esri's map library (/esri, names hashed by scripts/build-esri.mjs).
+  const isHashedStatic = url.pathname.startsWith('/_next/static/') || url.pathname.startsWith('/esri/');
   const isStaticAsset = STATIC_ASSET_RE.test(url.pathname);
   if (!isHashedStatic && !isStaticAsset) return;
 
