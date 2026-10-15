@@ -100,7 +100,7 @@ export default function LocationPage() {
   const [busy, setBusy] = useState<Action | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  // Where the map opens (and "Show the office" returns): framed on the first area or pin to load.
+  // Where the map opens (and Esri's Home button returns): framed on the first area or pin to load.
   const [fitTo, setFitTo] = useState<LatLng[]>([]);
   // What editing started from, to tell whether anything changed.
   const startedFromRef = useRef('');
@@ -298,7 +298,6 @@ export default function LocationPage() {
             roadPoints={roadPoints}
           >
             <div className="pointer-events-none absolute left-3 top-3 z-[1000] flex max-h-[calc(100%-4rem)] w-[min(27rem,calc(100%-5rem))] flex-col gap-2 overflow-y-auto">
-
               {editing ? (
                 <Panel>
                   <div className="flex flex-wrap items-center justify-between gap-2">

@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { formatDisplayDate } from '@/lib/date-format';
 import { getAccraYesterdayKey } from '@/lib/date-key';
+import { pardonCutoffForMonth, rowForMonth } from '@/lib/payment-months';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 
@@ -38,6 +39,8 @@ type DebtPardonPreview = {
 type PaymentStatus = 'paid' | 'partially_paid' | 'unpaid' | 'pardoned' | 'partially_pardoned';
 type StaffPaymentStatus = 'paid' | 'unpaid';
 type PaymentFilter = 'all' | StaffPaymentStatus;
+// The staff table shows everyone's balance across all months, or one month's.
+type TableView = 'total' | 'month';
 
 interface PaymentEntry {
   arrivalTime: string | null;
@@ -54,6 +57,8 @@ interface PaymentEntry {
 interface PaymentRecord {
   amount: string;
   id: string;
+  // The months whose penalty days it paid.
+  months?: string[];
   note: string | null;
   recordedAt: string | null;
   recordedByEmail: string;
@@ -186,7 +191,7 @@ function compactPenaltyLine(entry: PaymentEntry) {
   return `${currency(entry.penaltyAmount)} | paid ${currency(entry.paidAmount)} | pardoned ${currency(entry.pardonedAmount)} | bal ${currency(entry.outstandingAmount)}`;
 }
 
-function sortPaymentRowsByBalance(rows: PaymentStaffRow[]) {
+function sortPaymentRowsByBalance<Row extends PaymentStaffRow>(rows: Row[]) {
   return rows
     .map((row, index) => ({ index, row }))
     .sort((left, right) => {
@@ -224,6 +229,7 @@ export default function PenaltyPaymentsPage() {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<PaymentFilter>('all');
+  const [tableView, setTableView] = useState<TableView>('total');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'error' | 'success' } | null>(null);
@@ -277,6 +283,11 @@ export default function PenaltyPaymentsPage() {
   const offenceBookRequestRef = useRef<{ key: string; promise: Promise<void> } | null>(null);
   const offenceBookSelectionRef = useRef(`${offenceBookYear}-${offenceBookMonth}`);
   offenceBookSelectionRef.current = `${offenceBookYear}-${offenceBookMonth}`;
+  // The month picked under Offence book inputs: its totals, and the staff table in month view.
+  const selectedMonthKey = `${offenceBookYear}-${String(offenceBookMonth + 1).padStart(2, '0')}`;
+  const selectedMonthName = new Date(offenceBookYear, offenceBookMonth, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+  const selectedMonthShort = new Date(offenceBookYear, offenceBookMonth, 1).toLocaleString('en-GB', { month: 'short', year: 'numeric' });
+  const monthView = tableView === 'month';
 
   const loadPayments = useCallback(async () => {
     if (paymentsRequestRef.current) return paymentsRequestRef.current;
@@ -425,9 +436,16 @@ export default function PenaltyPaymentsPage() {
     };
   }, [loadOffenceBookItems, loadPayments]);
 
+  const monthRows = useMemo(() => {
+    return (data?.staff || []).map((row) => rowForMonth(row, selectedMonthKey));
+  }, [data?.staff, selectedMonthKey]);
+  const totalRows = useMemo(() => {
+    return (data?.staff || []).map((row) => ({ ...row, allMonthsBalance: row.outstandingBalance }));
+  }, [data?.staff]);
+  const viewRows = monthView ? monthRows : totalRows;
   const matchingRows = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const rows = data?.staff || [];
+    const rows = viewRows;
     const searchedRows = query
       ? rows.filter((row) => [
         row.fullName,
@@ -439,7 +457,7 @@ export default function PenaltyPaymentsPage() {
     return statusFilter === 'all'
       ? searchedRows
       : searchedRows.filter((row) => staffPaymentStatusForRow(row) === statusFilter);
-  }, [data?.staff, search, statusFilter]);
+  }, [viewRows, search, statusFilter]);
   const filteredRows = useMemo(() => sortPaymentRowsByBalance(matchingRows), [matchingRows]);
   const paymentTotals = useMemo(() => {
     return (data?.staff || []).reduce(
@@ -447,7 +465,6 @@ export default function PenaltyPaymentsPage() {
       0,
     );
   }, [data?.staff]);
-  const selectedMonthKey = `${offenceBookYear}-${String(offenceBookMonth + 1).padStart(2, '0')}`;
   const selectedMonthBalance = data?.monthlyBreakdown?.find((month) => month.month === selectedMonthKey);
   const paymentRosterSections = useMemo(() => {
     return [
@@ -463,8 +480,8 @@ export default function PenaltyPaymentsPage() {
   }, [filteredRows]);
 
   const selectedRow = useMemo(() => {
-    return (data?.staff || []).find((row) => row.id === selectedStaffId) || null;
-  }, [data?.staff, selectedStaffId]);
+    return viewRows.find((row) => row.id === selectedStaffId) || null;
+  }, [viewRows, selectedStaffId]);
   const selectedEntries = useMemo(() => {
     return selectedRow ? sortPaymentEntriesNewestFirst(selectedRow.entries) : [];
   }, [selectedRow]);
@@ -577,9 +594,9 @@ export default function PenaltyPaymentsPage() {
   }, [data?.staff]);
   const debtPardonStaffName = debtPardonStaffOptions.find((option) => option.id === debtPardonStaffId)?.fullName || null;
 
-  function openDebtPardonDialog(staffId = '') {
+  function openDebtPardonDialog(staffId = '', cutoff = getAccraYesterdayKey()) {
     setDebtPardonStaffId(staffId);
-    setDebtPardonCutoff(getAccraYesterdayKey());
+    setDebtPardonCutoff(cutoff);
     setDebtPardonReason('');
     setDebtPardonShowStaff(false);
     setDebtPardonConfirmed(false);
@@ -633,6 +650,8 @@ export default function PenaltyPaymentsPage() {
     actionKey: string;
     amount: number;
     entryId?: string;
+    // Limits the payment to this month's penalty days.
+    month?: string;
     note?: string | null;
   }) {
     if (!selectedRow || input.amount <= 0) return;
@@ -647,6 +666,7 @@ export default function PenaltyPaymentsPage() {
         body: JSON.stringify({
           amount: input.amount,
           entryId: input.entryId,
+          month: input.month,
           note: input.note,
           staffId: selectedRow.id,
         }),
@@ -691,6 +711,7 @@ export default function PenaltyPaymentsPage() {
   }
 
   const manualAmount = moneyNumber(amount);
+  const manualAmountTooHigh = monthView && Boolean(selectedRow) && manualAmount > moneyNumber(selectedRow?.outstandingBalance);
   const offenceBookReady = !offenceBookLoading
     && loadedOffenceBookKey === `${offenceBookYear}-${offenceBookMonth}`;
 
@@ -727,7 +748,10 @@ export default function PenaltyPaymentsPage() {
                     <select
                       className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
                       value={offenceBookMonth}
-                      onChange={(event) => setOffenceBookMonth(parseInt(event.target.value, 10))}
+                      onChange={(event) => {
+                        setOffenceBookMonth(parseInt(event.target.value, 10));
+                        setTableView('month');
+                      }}
                     >
                       {Array.from({ length: 12 }, (_, index) => (
                         <option key={index} value={index}>
@@ -741,7 +765,10 @@ export default function PenaltyPaymentsPage() {
                     <select
                       className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
                       value={offenceBookYear}
-                      onChange={(event) => setOffenceBookYear(parseInt(event.target.value, 10))}
+                      onChange={(event) => {
+                        setOffenceBookYear(parseInt(event.target.value, 10));
+                        setTableView('month');
+                      }}
                     >
                       {Array.from({ length: 11 }, (_, index) => {
                         const year = 2024 + index;
@@ -845,33 +872,51 @@ export default function PenaltyPaymentsPage() {
 
         <Card className="overflow-hidden">
           <div className="border-b border-border p-4">
-            <div className="grid gap-3 lg:grid-cols-[auto_1fr_minmax(240px,24rem)] lg:items-center">
-              <div className="flex w-full rounded-md border border-border bg-background p-1 md:w-auto">
-                {paymentFilterOptions.map((option) => (
-                  <Button
-                    key={option.value}
-                    type="button"
-                    variant={statusFilter === option.value ? 'default' : 'ghost'}
-                    size="sm"
-                    className="h-8 flex-1 md:flex-none"
-                    onClick={() => setStatusFilter(option.value)}
-                  >
-                    {option.label}
-                  </Button>
-                ))}
+            {/* Wide screens: switches and search on one row, the totals on the row below. */}
+            <div className="grid gap-3 lg:grid-cols-[1fr_minmax(240px,24rem)] lg:items-center">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Total: everyone's balance across all months. The month: that month only (picking a
+                    month under Offence book inputs switches to it). */}
+                <div className="flex w-full rounded-md border border-border bg-background p-1 md:w-auto">
+                  {(['total', 'month'] as const).map((view) => (
+                    <Button
+                      key={view}
+                      type="button"
+                      variant={tableView === view ? 'default' : 'ghost'}
+                      size="sm"
+                      className="h-8 flex-1 md:flex-none"
+                      aria-pressed={tableView === view}
+                      onClick={() => setTableView(view)}
+                    >
+                      {view === 'total' ? 'Total' : selectedMonthShort}
+                    </Button>
+                  ))}
+                </div>
+                <div className="flex w-full rounded-md border border-border bg-background p-1 md:w-auto">
+                  {paymentFilterOptions.map((option) => (
+                    <Button
+                      key={option.value}
+                      type="button"
+                      variant={statusFilter === option.value ? 'default' : 'ghost'}
+                      size="sm"
+                      className="h-8 flex-1 md:flex-none"
+                      onClick={() => setStatusFilter(option.value)}
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2 lg:justify-center">
+              <div className="flex flex-wrap items-center gap-2 lg:order-last lg:col-span-2">
                 <PaymentToolbarTotal label="Live outstanding" value={currency(paymentTotals)} tone="live" />
                 {/* The four totals below are for the month picked under Offence book inputs. */}
-                <span className="text-xs font-medium text-muted-foreground">
-                  {new Date(offenceBookYear, offenceBookMonth, 1).toLocaleString('en-GB', { month: 'short', year: 'numeric' })}
-                </span>
+                <span className="text-xs font-medium text-muted-foreground">{selectedMonthShort}</span>
                 <PaymentToolbarTotal label="Penalties" value={currency(selectedMonthBalance?.penaltyAmount)} tone="month" />
                 <PaymentToolbarTotal label="Paid" value={currency(selectedMonthBalance?.paidAmount)} tone="paid" />
                 <PaymentToolbarTotal label="Pardoned" value={currency(selectedMonthBalance?.pardonedAmount)} tone="month" />
                 <PaymentToolbarTotal label="Unpaid" value={currency(selectedMonthBalance?.unpaidAmount)} tone="unpaid" />
               </div>
-              <div className="flex w-full items-center gap-2 md:max-w-sm">
+              <div className="flex w-full items-center gap-2 md:max-w-sm lg:justify-self-end">
                 <div className="relative w-full">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -906,6 +951,7 @@ export default function PenaltyPaymentsPage() {
                   <tr>
                     <th className="px-4 py-3 font-medium">Staff</th>
                     <th className="px-4 py-3 font-medium">Status</th>
+                    {monthView && <th className="px-4 py-3 text-right font-medium">Penalties</th>}
                     <th className="px-4 py-3 text-right font-medium">Balance</th>
                     <th className="px-4 py-3 text-right font-medium">Action</th>
                   </tr>
@@ -914,7 +960,7 @@ export default function PenaltyPaymentsPage() {
                   {paymentRosterSections.map((section) => (
                     <Fragment key={section.title}>
                       <tr className="border-b border-border bg-muted/10">
-                        <td className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground" colSpan={4}>
+                        <td className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground" colSpan={monthView ? 5 : 4}>
                           {section.title}
                           <span className="ml-2 rounded-full bg-background px-2 py-0.5 font-normal normal-case tracking-normal">
                             {section.rows.length}
@@ -934,6 +980,14 @@ export default function PenaltyPaymentsPage() {
                           <td className="px-4 py-3">
                             <StaffPaymentStatusBadge status={staffPaymentStatusForRow(row)} />
                           </td>
+                          {monthView && (
+                            <td className={cn(
+                              'px-4 py-3 text-right font-mono',
+                              moneyNumber(row.totalPenalty) > 0 ? 'text-foreground' : 'text-muted-foreground',
+                            )}>
+                              {currency(row.totalPenalty)}
+                            </td>
+                          )}
                           <td className={cn(
                             'px-4 py-3 text-right font-mono font-semibold',
                             moneyNumber(row.outstandingBalance) > 0 ? 'text-warning' : 'text-success',
@@ -959,7 +1013,7 @@ export default function PenaltyPaymentsPage() {
                   ))}
                   {filteredRows.length === 0 && (
                     <tr>
-                      <td className="px-4 py-8 text-center text-muted-foreground" colSpan={4}>
+                      <td className="px-4 py-8 text-center text-muted-foreground" colSpan={monthView ? 5 : 4}>
                         No staff balances found.
                       </td>
                     </tr>
@@ -979,7 +1033,12 @@ export default function PenaltyPaymentsPage() {
                   <DialogDescription className="sr-only">
                     Manage lateness payments for the selected staff member.
                   </DialogDescription>
-                  <div className="text-xs text-muted-foreground">{staffKind(selectedRow)}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {staffKind(selectedRow)}
+                    {monthView && ` · ${selectedMonthName}`}
+                    {monthView && moneyNumber(selectedRow.allMonthsBalance) > moneyNumber(selectedRow.outstandingBalance)
+                      && ` · ${currency(selectedRow.allMonthsBalance)} owed in total`}
+                  </div>
                 </DialogHeader>
 
                 {/* Penalties - Paid - Pardoned = Balance, so a pardoned debt doesn't read as owed. */}
@@ -1058,7 +1117,7 @@ export default function PenaltyPaymentsPage() {
                       ))}
                       {selectedEntries.length === 0 && (
                         <div className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
-                          No penalty days found.
+                          {monthView ? `No penalties in ${selectedMonthName}.` : 'No penalty days found.'}
                         </div>
                       )}
                   </div>
@@ -1114,6 +1173,11 @@ export default function PenaltyPaymentsPage() {
                       placeholder="Note"
                     />
                   </div>
+                  {manualAmountTooHigh && (
+                    <p className="text-xs text-danger">
+                      More than the {selectedMonthName} balance ({currency(selectedRow.outstandingBalance)}).
+                    </p>
+                  )}
                   {paymentNotice && (
                     <div
                       role={paymentNotice.type === 'error' ? 'alert' : 'status'}
@@ -1136,7 +1200,7 @@ export default function PenaltyPaymentsPage() {
                         disabled={Boolean(savingAction)}
                         onClick={() => {
                           setPaymentDialogOpen(false);
-                          openDebtPardonDialog(selectedRow.id);
+                          openDebtPardonDialog(selectedRow.id, monthView ? pardonCutoffForMonth(selectedMonthKey, getAccraYesterdayKey()) : undefined);
                         }}
                         title={`Pardon ${selectedRow.fullName}'s unpaid penalties`}
                       >
@@ -1151,19 +1215,21 @@ export default function PenaltyPaymentsPage() {
                       onClick={() => recordPayment({
                         actionKey: 'week',
                         amount: moneyNumber(selectedRow.outstandingBalance),
-                        note: 'Marked balance paid',
+                        month: monthView ? selectedMonthKey : undefined,
+                        note: monthView ? `Marked ${selectedMonthName} paid` : 'Marked balance paid',
                       })}
-                      title="Pay the full outstanding balance"
+                      title={monthView ? `Pay the ${selectedMonthName} balance` : 'Pay the full outstanding balance'}
                     >
                       {savingAction === 'week' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       Pay full balance
                     </Button>
                     <Button
                       type="button"
-                      disabled={Boolean(savingAction) || manualAmount <= 0}
+                      disabled={Boolean(savingAction) || manualAmount <= 0 || manualAmountTooHigh}
                       onClick={() => recordPayment({
                         actionKey: 'manual',
                         amount: manualAmount,
+                        month: monthView ? selectedMonthKey : undefined,
                         note,
                       })}
                       title="Record the amount typed above"
