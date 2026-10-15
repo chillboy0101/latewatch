@@ -12,6 +12,7 @@ import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { formatDisplayDateTime, formatShortDisplayDate } from '@/lib/date-format';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
 import type { OfficeBoundary } from '@/lib/office-boundary';
+import { CLEAR_READING_METERS, CLEAR_READING_WAIT_MS, pickReading, rememberReading } from '@/lib/location-readings';
 import { RECEIPT_NOTIFICATION_AUTO_DISMISS_MS, type LatenessPaymentReceiptNotification } from '@/lib/lateness-payment-receipt-notifications';
 import { useSwipeToDismiss } from '@/lib/use-swipe-to-dismiss';
 import { ReceiptDetailView, useReceiptDetail } from '@/components/receipts/receipt-detail-view';
@@ -557,6 +558,15 @@ function validateLiveLocation(locationPolicy: CheckInStatus['locationPolicy'], e
   }));
 }
 
+function evidenceFromPosition(position: GeolocationPosition): LocationEvidence {
+  return {
+    accuracy: position.coords.accuracy,
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude,
+    timestamp: new Date(position.timestamp).toISOString(),
+  };
+}
+
 async function getCurrentLocationEvidence(): Promise<LocationEvidence> {
   if (!navigator.geolocation) {
     throw new Error('This device does not support location access.');
@@ -570,12 +580,31 @@ async function getCurrentLocationEvidence(): Promise<LocationEvidence> {
     });
   });
 
-  return {
-    accuracy: position.coords.accuracy,
-    latitude: position.coords.latitude,
-    longitude: position.coords.longitude,
-    timestamp: new Date(position.timestamp).toISOString(),
-  };
+  return evidenceFromPosition(position);
+}
+
+// The reading a check-in sends: the clear one the screen already has, at once. Only when the phone
+// has nothing clear does it wait (up to 2 s) for a clear reading, then send the best it has.
+async function locationForAction(readings: LocationEvidence[]): Promise<LocationEvidence> {
+  const ready = pickReading(readings);
+  if (ready && ready.accuracy <= CLEAR_READING_METERS) return ready;
+  if (!navigator.geolocation) return getCurrentLocationEvidence();
+
+  let askFailed = false;
+  navigator.geolocation.getCurrentPosition(
+    (position) => rememberReading(readings, evidenceFromPosition(position)),
+    () => {
+      askFailed = true;
+    },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: CLEAR_READING_WAIT_MS },
+  );
+  const deadline = Date.now() + CLEAR_READING_WAIT_MS;
+  while (Date.now() < deadline && !(askFailed && readings.length === 0)) {
+    await new Promise((resolve) => window.setTimeout(resolve, 200));
+    const next = pickReading(readings);
+    if (next && next.accuracy <= CLEAR_READING_METERS) return next;
+  }
+  return pickReading(readings) || getCurrentLocationEvidence();
 }
 
 export default function CheckInPage() {
@@ -614,6 +643,8 @@ export default function CheckInPage() {
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
   const clearMessage = useCallback(() => setMessage(null), []);
   const [forcedSessionNotice, setForcedSessionNotice] = useState<string | null>(null);
+  // This phone's readings from the last minute (see lib/location-readings).
+  const readingsRef = useRef<LocationEvidence[]>([]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDark);
@@ -954,12 +985,10 @@ export default function CheckInPage() {
 
     const onPosition = (position: GeolocationPosition) => {
       if (!active) return;
-      setLiveLocation(validateLiveLocation(locationPolicy, {
-        accuracy: position.coords.accuracy,
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        timestamp: new Date(position.timestamp).toISOString(),
-      }));
+      const evidence = evidenceFromPosition(position);
+      rememberReading(readingsRef.current, evidence);
+      // A momentary vague reading does not undo a clear one from a few seconds before.
+      setLiveLocation(validateLiveLocation(locationPolicy, pickReading(readingsRef.current) || evidence));
     };
     const onError = (error: GeolocationPositionError) => {
       if (!active) return;
@@ -986,7 +1015,7 @@ export default function CheckInPage() {
     setMessage(null);
 
     try {
-      const location = await getCurrentLocationEvidence();
+      const location = await locationForAction(readingsRef.current);
       const response = await fetch('/api/attendance/check-in', {
         body: JSON.stringify({
           action,
@@ -1169,7 +1198,7 @@ export default function CheckInPage() {
     setMessage(null);
 
     try {
-      const location = await getCurrentLocationEvidence();
+      const location = await locationForAction(readingsRef.current);
       const response = await fetch('/api/attendance/check-in', {
         body: JSON.stringify({
           action: 'request_device_transfer',
