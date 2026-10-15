@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { crc32, deflateSync } from 'node:zlib';
 import { chromium } from 'playwright-core';
 import { buildFixtures } from '../tests/ui/fixtures.mjs';
+import { buildEsri } from './build-esri.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = path.join(root, 'output', 'ui-shots');
@@ -491,6 +492,8 @@ async function desktopShots(browser) {
   await context.close();
 }
 
+// The Office Location map loads Esri's library from public/esri, as in production.
+await buildEsri();
 const server = startServer();
 let exitCode = 0;
 try {

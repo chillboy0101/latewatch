@@ -4,7 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "predev": "node scripts/build-esri.mjs",
     "build": "next build",
+    "prebuild": "node scripts/build-esri.mjs",
+    "esri": "node scripts/build-esri.mjs",
     "start": "next start",
     "lint": "eslint",
     "test": "node --test tests/*.test.cjs",
@@ -64,6 +67,7 @@
     "dotenv": "^17.4.1",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
+    "esbuild": "^0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
     "exceljs": "^4.4.0",

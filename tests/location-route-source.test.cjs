@@ -49,14 +49,27 @@ test('the office map is Esri\'s own map and tools; LateWatch only draws the offi
   const officeMap = fs.readFileSync(path.join(root, 'src/components/location/office-map.tsx'), 'utf8');
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 
+  const sdk = fs.readFileSync(path.join(root, 'src/components/location/esri-sdk.ts'), 'utf8');
   assert.match(officeMap, /<arcgis-map\n/);
+  // Esri's library is bundled on its own before dev and build, and loaded in the browser: the app's
+  // build never bundles the SDK (it ran out of memory doing so).
+  assert.match(officeMap, /fetch\('\/esri\/manifest\.json', \{ cache: 'no-store' \}\)/);
+  assert.match(officeMap, /const importInBrowser = new Function\('url', 'return import\(url\)'\)/);
+  assert.match(officeMap, /const sdk = await importInBrowser\(script\) as Core;/);
+  assert.match(officeMap, /type Core = typeof import\('\.\/esri-sdk'\);/);
+  assert.doesNotMatch(officeMap, /import\('@arcgis|from '@arcgis\/core|import '@/);
+  assert.match(sdk, /import '@arcgis\/map-components\/components\/arcgis-map';/);
+  assert.match(sdk, /export \{ default as LocatorSearchSource \} from '@arcgis\/core\/widgets\/Search\/LocatorSearchSource';/);
+  assert.equal(packageJson.scripts.prebuild, 'node scripts/build-esri.mjs');
+  assert.equal(packageJson.scripts.predev, 'node scripts/build-esri.mjs');
+  assert.match(fs.readFileSync(path.join(root, '.gitignore'), 'utf8'), /^\/public\/esri\/$/m);
   for (const tool of ['arcgis-search', 'arcgis-zoom', 'arcgis-home', 'arcgis-locate', 'arcgis-fullscreen', 'arcgis-basemap-gallery', 'arcgis-scale-bar']) {
     assert.match(officeMap, new RegExp(`<${tool}[ />]`), tool);
   }
   // Search goes to Esri's World Geocoding Service, which needs no key; no ArcGIS sign-in ever pops up.
   assert.match(officeMap, /new LocatorSearchSource\(\{/);
   assert.match(officeMap, /'https:\/\/geocode\.arcgis\.com\/arcgis\/rest\/services\/World\/GeocodeServer'/);
-  assert.match(officeMap, /esriConfig\.request\.useIdentity = false;/);
+  assert.match(officeMap, /sdk\.esriConfig\.request\.useIdentity = false;/);
   // Corners are pictures, not text symbols that need font downloads; the map keeps its projection
   // so the area still shows if the imagery can't load.
   assert.match(officeMap, /type: 'picture-marker', url: cornerIcon\(String\(index \+ 1\)\)/);
