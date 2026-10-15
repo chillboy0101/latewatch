@@ -119,6 +119,21 @@ async function locationShots(browser) {
   const page = await context.newPage();
   await page.goto(`${baseUrl}/location/measure`, { waitUntil: 'load' });
   await page.getByRole('heading', { name: 'Measure grounds' }).waitFor({ timeout: 60_000 });
+  // Satellite tiles may not load in the harness; the overlays and tapped corners still show.
+  const map = page.getByRole('application', { name: 'Satellite map of the office grounds' });
+  await map.waitFor({ timeout: 60_000 });
+  await page.waitForTimeout(1500);
+  for (const [x, y] of [[0.3, 0.25], [0.75, 0.2], [0.8, 0.75], [0.25, 0.8]]) {
+    const box = await map.boundingBox();
+    await page.mouse.click(box.x + box.width * x, box.y + box.height * y);
+    await page.waitForTimeout(200);
+  }
+  await shoot(page, 'phone-location-map');
+  await page.getByRole('button', { name: 'Save corners' }).first().click();
+  await page.waitForTimeout(800);
+  await page.getByText(/Saved 4 corners/).scrollIntoViewIfNeeded();
+  await shoot(page, 'phone-location-map-saved');
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.getByRole('button', { name: 'Start' }).click();
   await page.getByLabel('What is this spot?').fill('Gate');
   await page.getByRole('button', { name: 'Mark this spot' }).click();

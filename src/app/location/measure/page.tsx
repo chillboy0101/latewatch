@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
+import { GroundsMapCard } from '@/components/location/grounds-map';
 import { LiveLocationShare } from '@/components/location/live-location-share';
 import { MeasureGroundsCard } from '@/components/location/measure-grounds';
 
@@ -43,6 +44,7 @@ export default function MeasureGroundsPage() {
             Portal
           </Link>
         </div>
+        <GroundsMapCard office={office} />
         <LiveLocationShare />
         <MeasureGroundsCard office={office} />
       </div>

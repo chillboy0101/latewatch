@@ -158,6 +158,10 @@ export function buildFixtures(now = new Date()) {
       })),
     },
     '/api/attendance/check-in': checkInStatus,
+    '/api/attendance/location/trace': {
+      readings: [[5.56630, -0.17735], [5.56610, -0.17742], [5.56585, -0.17748], [5.56560, -0.17755], [5.56540, -0.17762]]
+        .map(([latitude, longitude], index) => ({ accuracy: 6, capturedAt: `${today}T09:2${index}:00.000Z`, latitude, longitude, note: index === 4 ? 'Car park' : null })),
+    },
     '/api/attendance/location': {
       configured: true,
       currentIp: '127.0.0.1',

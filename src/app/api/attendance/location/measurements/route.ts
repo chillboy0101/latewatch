@@ -17,6 +17,13 @@ type MeasuredPoint = {
   recordedAt: string | null;
 };
 
+// A corner tapped on the satellite map: a position only (no phone readings behind it).
+type MapPoint = {
+  latitude: number;
+  longitude: number;
+  note: string | null;
+};
+
 function finiteNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
@@ -44,7 +51,21 @@ function parsePoint(value: unknown): MeasuredPoint | null {
   };
 }
 
-// Corners of the office grounds measured on site (Location page → Measure grounds). They are kept
+function parseMapPoint(value: unknown): MapPoint | null {
+  if (!value || typeof value !== 'object') return null;
+  const point = value as Record<string, unknown>;
+  const latitude = finiteNumber(point.latitude);
+  const longitude = finiteNumber(point.longitude);
+  if (latitude === null || longitude === null) return null;
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+  return {
+    latitude: Math.round(latitude * 1e7) / 1e7,
+    longitude: Math.round(longitude * 1e7) / 1e7,
+    note: typeof point.note === 'string' && point.note.trim() ? point.note.trim().slice(0, MAX_NOTE_LENGTH) : null,
+  };
+}
+
+// Corners of the office grounds measured on site or tapped on the satellite map (Measure grounds). Kept
 // in the audit trail for working out the office boundary; the office location itself is unchanged.
 export async function POST(request: NextRequest) {
   const authError = await enforceRole(['admin']);
@@ -55,8 +76,9 @@ export async function POST(request: NextRequest) {
   if (rawPoints.length === 0 || rawPoints.length > MAX_POINTS) {
     return NextResponse.json({ error: `Record between 1 and ${MAX_POINTS} corners` }, { status: 400 });
   }
-  const points = rawPoints.map(parsePoint);
-  if (points.some((point: MeasuredPoint | null) => point === null)) {
+  const source = body?.source === 'map' ? 'map' : 'walk';
+  const points: (MeasuredPoint | MapPoint | null)[] = rawPoints.map(source === 'map' ? parseMapPoint : parsePoint);
+  if (points.some((point) => point === null)) {
     return NextResponse.json({ error: 'One of the corners is not a valid reading' }, { status: 400 });
   }
 
@@ -71,6 +93,7 @@ export async function POST(request: NextRequest) {
         device: request.headers.get('user-agent')?.slice(0, 200) || null,
         pointCount: points.length,
         points,
+        source,
       },
       reason: 'office-grounds-measured',
     });
