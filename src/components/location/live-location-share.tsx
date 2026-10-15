@@ -141,12 +141,15 @@ export function LiveLocationShare() {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [keepScreenOn, sharing]);
 
+  // Leaving the page ends sharing: send what is left and let the screen sleep again.
   useEffect(() => () => {
     const timers = timersRef.current;
     if (timers.watch !== undefined) navigator.geolocation.clearWatch(timers.watch);
     for (const id of [timers.poll, timers.send, timers.tick]) if (id !== undefined) window.clearInterval(id);
     if (timers.autoStop !== undefined) window.clearTimeout(timers.autoStop);
-  }, []);
+    void wakeLockRef.current?.release().catch(() => undefined);
+    void send();
+  }, [send]);
 
   function markSpot() {
     const label = note.trim().slice(0, 60) || 'Marked spot';
