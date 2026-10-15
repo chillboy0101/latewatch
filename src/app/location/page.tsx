@@ -434,6 +434,10 @@ export default function LocationPage() {
           </div>
         )}
 
+        <p className="text-center text-sm text-muted-foreground">
+          Walking the grounds? Open <span className="font-mono text-foreground">/location/measure</span> on your phone to record the corners.
+        </p>
+
         {error && (
           <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
             <div className="flex items-start gap-2">

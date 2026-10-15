@@ -109,6 +109,26 @@ async function phoneShots(browser) {
   await context.close();
 }
 
+// Measure grounds on a phone: corners recorded while walking the grounds, then one more recorded live.
+async function locationShots(browser) {
+  const corners = [[5.566610, -0.177190], [5.566540, -0.177690], [5.565060, -0.177900], [5.564880, -0.177330], [5.565700, -0.177050]]
+    .map(([latitude, longitude], index) => ({ accuracy: 3 + index, latitude, longitude, note: index === 2 ? 'Car park' : '', readings: 6, recordedAt: `2026-01-01T00:0${index}:00.000Z` }));
+  const context = await browser.newContext({ ...PHONE, geolocation: { accuracy: 4, latitude: 5.566200, longitude: -0.176990 }, permissions: ['geolocation'] });
+  await context.addInitScript((stored) => localStorage.setItem('latewatch.measure-grounds.v1', stored), JSON.stringify(corners));
+  await mockApi(context);
+  const page = await context.newPage();
+  await page.goto(`${baseUrl}/location/measure`, { waitUntil: 'load' });
+  await page.getByRole('heading', { name: 'Measure grounds' }).waitFor({ timeout: 60_000 });
+  await page.getByRole('heading', { name: 'Measure grounds' }).scrollIntoViewIfNeeded();
+  await shoot(page, 'phone-location-measure');
+  await page.getByRole('button', { name: 'Record corner' }).click();
+  await page.waitForTimeout(2500);
+  await shoot(page, 'phone-location-recording');
+  await page.getByRole('button', { name: 'Record corner' }).waitFor({ timeout: 20_000 });
+  await shoot(page, 'phone-location-recorded');
+  await context.close();
+}
+
 async function desktopShots(browser) {
   const context = await browser.newContext(DESKTOP);
   await mockApi(context);
@@ -130,6 +150,7 @@ try {
   const browser = await chromium.launch();
   try {
     await phoneShots(browser);
+    await locationShots(browser);
     await desktopShots(browser);
   } finally {
     await browser.close();

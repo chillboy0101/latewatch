@@ -126,6 +126,25 @@ export function buildFixtures(now = new Date()) {
     };
   });
 
+  const officeLocation = {
+    archivedAt: null,
+    formattedAddress: null,
+    googlePlaceId: null,
+    id: 'office-1',
+    isActive: true,
+    latitude: '5.5658293',
+    locationKind: 'default',
+    longitude: '-0.1775282',
+    maxAccuracyMeters: 100,
+    name: 'Office Location',
+    radiusMeters: 90,
+    scheduleEndDate: null,
+    scheduleStartDate: null,
+    source: 'detected',
+    updatedAt: now.toISOString(),
+    updatedByEmail: 'test.admin@latewatch.test',
+  };
+
   return {
     '/api/account/theme': {},
     '/api/admin/backups': {
@@ -138,6 +157,16 @@ export function buildFixtures(now = new Date()) {
       })),
     },
     '/api/attendance/check-in': checkInStatus,
+    '/api/attendance/location': {
+      configured: true,
+      currentIp: '127.0.0.1',
+      currentIpSource: 'local',
+      date: today,
+      defaultLocation: officeLocation,
+      location: officeLocation,
+      scheduledLocations: [],
+      storageAvailable: true,
+    },
     '/api/attendance/check-in/penalty-history': {
       currentWeek: week(0, historyEntries.slice(0, 4)),
       receipts,
