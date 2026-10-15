@@ -40,8 +40,11 @@ export function publishRealtime(channel: string, event: string, data?: unknown) 
   const clients = state.clientsByChannel.get(channel);
 
   // Publish via Ably when configured (Vercel-safe serverless)
-  // Fire-and-forget; in-memory SSE below still supports local/dev.
-  void ablyPublish(`latewatch:${channel}`, event, data);
+  // Fire-and-forget; in-memory SSE below still supports local/dev. Live updates are best-effort:
+  // an Ably timeout must never become an unhandled rejection that ends the request early.
+  void ablyPublish(`latewatch:${channel}`, event, data).catch((error) => {
+    console.warn('Realtime publish failed:', error);
+  });
 
   if (!clients || clients.size === 0) return;
 

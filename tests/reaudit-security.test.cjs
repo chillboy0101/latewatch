@@ -112,3 +112,8 @@ test('a failed reminder is retried for an hour, claimed by one run only, with th
   assert.match(source, /lt\(pushReminderDelivery\.createdAt, new Date\(Date\.now\(\) - STALE_PENDING_DELIVERY_MS\)\)/);
   assert.match(source, /error: pushErrorText\(error\),/);
 });
+
+test('a failed live update is caught, so it can never end a request early', () => {
+  const source = read('src', 'lib', 'realtime.ts');
+  assert.match(source, /void ablyPublish\(`latewatch:\$\{channel\}`, event, data\)\.catch\(\(error\) => \{\s*console\.warn\('Realtime publish failed:', error\);/);
+});
