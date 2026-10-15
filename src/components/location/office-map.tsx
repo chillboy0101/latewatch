@@ -1,278 +1,401 @@
 'use client';
 
-import 'leaflet/dist/leaflet.css';
-import { useEffect, useRef, useState } from 'react';
+import '@esri/calcite-components/main.css';
+import '@arcgis/map-components/main.css';
+import '@arcgis/core/assets/esri/themes/light/view.css';
+import type {} from '@arcgis/map-components/types/react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import type * as Leaflet from 'leaflet';
 import { Loader2 } from 'lucide-react';
-import { boundaryCircle, boundaryContour, type LatLng, type OfficeBoundary } from '@/lib/office-boundary';
+import { boundaryCircle, boundaryRings, type LatLng, type OfficeBoundary } from '@/lib/office-boundary';
 import { cn } from '@/lib/utils';
 
-// A full map of the office on Esri imagery: map types (satellite, satellite with labels, streets),
-// zoom, back to the office, my location, full screen and a scale. It draws the sign-in area in
-// force (white) with its pin and backup circle, a proposed or edited area (cyan) with the pin and
-// circle it would bring, a searched place, and while editing the corners and road edge to drag.
-// Panels passed as children float over the map (and come along in full screen).
+// The office map is Esri's own map (ArcGIS Maps SDK components): Esri's basemaps and basemap
+// gallery, Esri search, zoom, home, my location, full screen, scale and attribution. LateWatch only
+// adds the office area on top: the area in force (white) with its pin and backup circle, a proposed
+// or edited area (cyan) with the pin and circle it would bring, and while editing the corners and
+// road edge to drag. Panels passed as children float over the map (and come along in full screen).
 
 export type MapPoint = LatLng & { id: string };
-export type MapFocus = LatLng & { key: number; label: string };
-type Circle = LatLng & { radiusMeters: number };
+export type MapCircle = LatLng & { radiusMeters: number };
 
-type Props = {
+export type OfficeMapProps = {
   area: OfficeBoundary | null;
   children?: ReactNode;
   corners: MapPoint[];
   editing: boolean;
   fitTo: LatLng[];
-  focus: MapFocus | null;
   onMessage: (message: string) => void;
   onMovePoint: (kind: 'corner' | 'road', id: string, point: LatLng) => void;
   onRemovePoint: (kind: 'corner' | 'road', id: string) => void;
   onTap: (point: LatLng) => void;
   overlay: OfficeBoundary | null;
-  pin: Circle | null;
+  pin: MapCircle | null;
   roadPoints: MapPoint[];
 };
 
-const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services';
-const TILES = {
-  imagery: `${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`,
-  places: `${ESRI}/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}`,
-  streets: `${ESRI}/World_Street_Map/MapServer/tile/{z}/{y}/{x}`,
-  transport: `${ESRI}/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}`,
+type Core = {
+  Circle: typeof import('@arcgis/core/geometry/Circle').default;
+  Graphic: typeof import('@arcgis/core/Graphic').default;
+  GraphicsLayer: typeof import('@arcgis/core/layers/GraphicsLayer').default;
+  Multipoint: typeof import('@arcgis/core/geometry/Multipoint').default;
+  Point: typeof import('@arcgis/core/geometry/Point').default;
+  Polygon: typeof import('@arcgis/core/geometry/Polygon').default;
+  Polyline: typeof import('@arcgis/core/geometry/Polyline').default;
+  SpatialReference: typeof import('@arcgis/core/geometry/SpatialReference').default;
 };
-const IMAGERY_CREDIT = 'Powered by Esri | Maxar, Earthstar Geographics';
-const STREETS_CREDIT = 'Powered by Esri | Esri, HERE, Garmin, OpenStreetMap contributors';
+type Layers = { area: InstanceType<Core['GraphicsLayer']>; edit: InstanceType<Core['GraphicsLayer']> };
+type Handle = { id: string; kind: 'corner' | 'road'; point: LatLng };
+
 export const MAP_COLORS = { area: '#ffffff', corners: '#22c55e', overlay: '#22d3ee', pin: '#2563eb', road: '#ef4444' };
-const CORNER_ICON_CLASS = 'flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-primary text-[11px] font-bold text-primary-foreground shadow-md';
-const ROAD_ICON_CLASS = 'block h-4 w-4 rounded-sm border-2 border-white bg-danger shadow-md';
-const FOCUS_ICON = '<svg width="28" height="36" viewBox="0 0 28 36"><path d="M14 0C6.3 0 0 6.2 0 13.9 0 24.3 14 36 14 36s14-11.7 14-22.1C28 6.2 21.7 0 14 0z" fill="#ef4444" stroke="#fff" stroke-width="2"/><circle cx="14" cy="14" r="5" fill="#fff"/></svg>';
-const ICONS = {
-  expand: '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>',
-  home: '<path d="M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',
-  locate: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="7"/>',
-  shrink: '<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>',
-};
-const icon = (paths: string) => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+const ARCGIS_KEY = process.env.NEXT_PUBLIC_ARCGIS_API_KEY || '';
+// Without a key, Esri's public geocoder answers the search.
+const PUBLIC_GEOCODER = 'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer';
+// Esri basemaps that need no key.
+const BASEMAP_IDS = ['hybrid', 'satellite', 'streets-vector', 'streets-navigation-vector', 'topo-vector', 'gray-vector', 'dark-gray-vector', 'streets-night-vector', 'oceans', 'osm'];
+// How close a click or drag must start to a corner to take it: more room for a finger.
+const MOUSE_REACH_PX = 14;
+const TOUCH_REACH_PX = 22;
 const round7 = (value: number) => Math.round(value * 1e7) / 1e7;
-const toLatLng = (point: LatLng) => [point.latitude, point.longitude] as [number, number];
+const rgba = (hex: string, alpha: number) => {
+  const value = Number.parseInt(hex.slice(1), 16);
+  return [(value >> 16) & 255, (value >> 8) & 255, value & 255, alpha];
+};
+
+// A numbered corner drawn as a small SVG picture. Esri's text symbols download fonts first, and if
+// that fails the whole editing layer stays blank; a picture needs nothing from the network.
+function cornerIcon(label: string) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">`
+    + `<circle cx="20" cy="20" r="17" fill="${MAP_COLORS.pin}" stroke="#ffffff" stroke-width="4"/>`
+    + `<text x="20" y="25.5" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700" fill="#ffffff">${label}</text>`
+    + '</svg>';
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
+}
+
+let esriLoading: Promise<Core> | null = null;
+
+// Esri's components and the few core classes the office overlay needs, loaded in the browser only.
+function loadEsri(): Promise<Core> {
+  esriLoading ??= (async () => {
+    const { default: esriConfig } = await import('@arcgis/core/config');
+    if (ARCGIS_KEY) esriConfig.apiKey = ARCGIS_KEY;
+    // Never pop up an ArcGIS sign-in box: a service that needs one just fails quietly.
+    esriConfig.request.useIdentity = false;
+    await Promise.all([
+      import('@arcgis/map-components/components/arcgis-map'),
+      import('@arcgis/map-components/components/arcgis-search'),
+      import('@arcgis/map-components/components/arcgis-zoom'),
+      import('@arcgis/map-components/components/arcgis-home'),
+      import('@arcgis/map-components/components/arcgis-locate'),
+      import('@arcgis/map-components/components/arcgis-fullscreen'),
+      import('@arcgis/map-components/components/arcgis-expand'),
+      import('@arcgis/map-components/components/arcgis-basemap-gallery'),
+      import('@arcgis/map-components/components/arcgis-scale-bar'),
+    ]);
+    const [Circle, Graphic, GraphicsLayer, Multipoint, Point, Polygon, Polyline, SpatialReference] = await Promise.all([
+      import('@arcgis/core/geometry/Circle'),
+      import('@arcgis/core/Graphic'),
+      import('@arcgis/core/layers/GraphicsLayer'),
+      import('@arcgis/core/geometry/Multipoint'),
+      import('@arcgis/core/geometry/Point'),
+      import('@arcgis/core/geometry/Polygon'),
+      import('@arcgis/core/geometry/Polyline'),
+      import('@arcgis/core/geometry/SpatialReference'),
+    ]);
+    return {
+      Circle: Circle.default,
+      Graphic: Graphic.default,
+      GraphicsLayer: GraphicsLayer.default,
+      Multipoint: Multipoint.default,
+      Point: Point.default,
+      Polygon: Polygon.default,
+      Polyline: Polyline.default,
+      SpatialReference: SpatialReference.default,
+    };
+  })();
+  return esriLoading;
+}
 
 export function OfficeMap({
-  area, children, corners, editing, fitTo, focus, onMessage, onMovePoint, onRemovePoint, onTap, overlay, pin, roadPoints,
-}: Props) {
+  area, children, corners, editing, fitTo, onMessage, onMovePoint, onRemovePoint, onTap, overlay, pin, roadPoints,
+}: OfficeMapProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const leafletRef = useRef<typeof Leaflet | null>(null);
-  const mapRef = useRef<Leaflet.Map | null>(null);
-  const areaLayerRef = useRef<Leaflet.LayerGroup | null>(null);
-  const editLayerRef = useRef<Leaflet.LayerGroup | null>(null);
-  const extraLayerRef = useRef<Leaflet.LayerGroup | null>(null);
-  const homeRef = useRef<LatLng[]>(fitTo);
+  const mapRef = useRef<HTMLArcgisMapElement>(null);
+  const searchRef = useRef<HTMLArcgisSearchElement>(null);
+  const galleryRef = useRef<HTMLArcgisBasemapGalleryElement>(null);
+  const homeRef = useRef<HTMLArcgisHomeElement>(null);
+  const fullscreenRef = useRef<HTMLArcgisFullscreenElement>(null);
+  const coreRef = useRef<Core | null>(null);
+  const layersRef = useRef<Layers | null>(null);
+  const handlesRef = useRef<Handle[]>([]);
+  const dragRef = useRef<Handle | null>(null);
   const editingRef = useRef(editing);
   const handlersRef = useRef({ onMessage, onMovePoint, onRemovePoint, onTap });
+  const fitRef = useRef(fitTo);
+  const [core, setCore] = useState<Core | null>(null);
   const [ready, setReady] = useState(false);
-  const hasView = fitTo.length > 0;
+  // The view starts over the office in the basemaps' projection, so the office area still shows if
+  // Esri's imagery can't load. Set once: after that the map is the user's to move.
+  const [start] = useState(() => (fitTo.length > 0
+    ? {
+      center: [
+        fitTo.reduce((sum, point) => sum + point.longitude, 0) / fitTo.length,
+        fitTo.reduce((sum, point) => sum + point.latitude, 0) / fitTo.length,
+      ],
+      zoom: 17,
+    }
+    : null));
+  const webMercator = useMemo(() => core?.SpatialReference.WebMercator, [core]);
 
   useEffect(() => {
     handlersRef.current = { onMessage, onMovePoint, onRemovePoint, onTap };
     editingRef.current = editing;
-    if (fitTo.length > 0) homeRef.current = fitTo;
+    if (fitTo.length > 0) fitRef.current = fitTo;
   }, [editing, fitTo, onMessage, onMovePoint, onRemovePoint, onTap]);
 
-  // Created once there is something to show, framed on it. (Leaflet owns the container's classes:
-  // React never changes them, or the map loses its styling.)
   useEffect(() => {
-    if (!hasView || !containerRef.current || mapRef.current) return;
     let cancelled = false;
-    void import('leaflet').then((L) => {
-      if (cancelled || !containerRef.current || mapRef.current) return;
-      leafletRef.current = L;
-      const map = L.map(containerRef.current, { zoomControl: false, zoomDelta: 0.5, zoomSnap: 0.25 });
-      const frameHome = () => map.fitBounds(L.latLngBounds(homeRef.current.map(toLatLng)), { maxZoom: 19, padding: [40, 40] });
-      frameHome();
-      map.attributionControl.setPrefix(false);
-
-      const tiles = (url: string, attribution?: string) => L.tileLayer(url, { attribution, maxNativeZoom: 19, maxZoom: 21 });
-      const baseLayers = {
-        'Satellite with labels': L.layerGroup([tiles(TILES.imagery, IMAGERY_CREDIT), tiles(TILES.transport), tiles(TILES.places)]),
-        Satellite: tiles(TILES.imagery, IMAGERY_CREDIT),
-        Streets: tiles(TILES.streets, STREETS_CREDIT),
-      };
-      baseLayers['Satellite with labels'].addTo(map);
-      L.control.layers(baseLayers, undefined, { position: 'topright' }).addTo(map);
-      L.control.zoom({ position: 'topright' }).addTo(map);
-
-      // Back to the office, my location and full screen, as map buttons.
-      const Tools = L.Control.extend({
-        onAdd() {
-          const bar = L.DomUtil.create('div', 'leaflet-bar');
-          const add = (label: string, paths: string, onClick: (button: HTMLAnchorElement) => void) => {
-            const button = L.DomUtil.create('a', '', bar) as HTMLAnchorElement;
-            button.href = '#';
-            button.title = label;
-            button.setAttribute('role', 'button');
-            button.setAttribute('aria-label', label);
-            button.style.display = 'flex';
-            button.style.alignItems = 'center';
-            button.style.justifyContent = 'center';
-            button.innerHTML = icon(paths);
-            L.DomEvent.on(button, 'click', (event) => {
-              L.DomEvent.preventDefault(event);
-              onClick(button);
-            });
-          };
-          add('Show the office', ICONS.home, frameHome);
-          add('Show my location', ICONS.locate, () => map.locate({ enableHighAccuracy: true, maxZoom: 19, setView: true, timeout: 20_000 }));
-          add('Full screen', ICONS.expand, (button) => {
-            const wrapper = wrapperRef.current;
-            if (!wrapper) return;
-            if (document.fullscreenElement) void document.exitFullscreen();
-            else if (wrapper.requestFullscreen) void wrapper.requestFullscreen().catch(() => handlersRef.current.onMessage('Full screen is not available in this browser.'));
-            const update = () => {
-              const full = Boolean(document.fullscreenElement);
-              button.innerHTML = icon(full ? ICONS.shrink : ICONS.expand);
-              button.title = full ? 'Leave full screen' : 'Full screen';
-              if (!full) document.removeEventListener('fullscreenchange', update);
-            };
-            document.addEventListener('fullscreenchange', update);
-          });
-          L.DomEvent.disableClickPropagation(bar);
-          return bar;
-        },
-      });
-      new Tools({ position: 'topright' }).addTo(map);
-      L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
-
-      areaLayerRef.current = L.layerGroup().addTo(map);
-      extraLayerRef.current = L.layerGroup().addTo(map);
-      editLayerRef.current = L.layerGroup().addTo(map);
-      const located = L.layerGroup().addTo(map);
-      map.on('locationfound', (event: Leaflet.LocationEvent) => {
-        located.clearLayers();
-        L.circle(event.latlng, { color: MAP_COLORS.pin, fillOpacity: 0.12, interactive: false, radius: event.accuracy, weight: 1 }).addTo(located);
-        L.circleMarker(event.latlng, { color: '#ffffff', fillColor: MAP_COLORS.pin, fillOpacity: 1, interactive: false, radius: 7, weight: 3 }).addTo(located);
-      });
-      map.on('locationerror', () => handlersRef.current.onMessage('Your location is not available. Allow location for this site and try again.'));
-      map.on('click', (event: Leaflet.LeafletMouseEvent) => {
-        const point = { latitude: round7(event.latlng.lat), longitude: round7(event.latlng.lng) };
-        if (editingRef.current) {
-          handlersRef.current.onTap(point);
-          return;
-        }
-        // Outside editing a click shows where it is, like any map.
-        L.popup({ closeButton: false }).setLatLng(event.latlng).setContent(`<span style="font-family:ui-monospace,monospace">${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}</span>`).openOn(map);
-      });
-      mapRef.current = map;
-      setReady(true);
-    });
+    loadEsri()
+      .then((loaded) => {
+        if (cancelled) return;
+        coreRef.current = loaded;
+        setCore(loaded);
+      })
+      .catch(() => handlersRef.current.onMessage('The Esri map could not load. Check the connection and refresh the page.'));
     return () => {
       cancelled = true;
     };
-  }, [hasView]);
-
-  // The layout (and full screen) can change the map's size: redraw to fit.
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!ready || !container || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => mapRef.current?.invalidateSize());
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, [ready]);
-
-  useEffect(() => () => {
-    mapRef.current?.remove();
-    mapRef.current = null;
   }, []);
+
+  // Esri's own controls, set up once the components exist: the search source, the basemaps to
+  // choose from, and full screen taking the panels along.
+  useEffect(() => {
+    if (!core) return;
+    let cancelled = false;
+    void (async () => {
+      const [{ default: Basemap }, { default: LocalBasemapsSource }, { default: LocatorSearchSource }] = await Promise.all([
+        import('@arcgis/core/Basemap'),
+        import('@arcgis/core/widgets/BasemapGallery/support/LocalBasemapsSource'),
+        import('@arcgis/core/widgets/Search/LocatorSearchSource'),
+      ]);
+      if (cancelled) return;
+      if (galleryRef.current) {
+        galleryRef.current.source = new LocalBasemapsSource({
+          basemaps: BASEMAP_IDS.map((id) => Basemap.fromId(id)).filter((basemap): basemap is NonNullable<typeof basemap> => Boolean(basemap)),
+        });
+      }
+      if (searchRef.current && !ARCGIS_KEY) {
+        searchRef.current.includeDefaultSourcesDisabled = true;
+        searchRef.current.sources.removeAll();
+        searchRef.current.sources.add(new LocatorSearchSource({
+          maxResults: 6,
+          maxSuggestions: 6,
+          name: 'ArcGIS World Geocoding Service',
+          placeholder: 'Search places or addresses',
+          singleLineFieldName: 'SingleLine',
+          url: PUBLIC_GEOCODER,
+        }));
+      }
+      if (fullscreenRef.current && wrapperRef.current) fullscreenRef.current.element = wrapperRef.current;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [core]);
+
+  // The view is ready: add LateWatch's layers and frame the office.
+  async function onViewReady() {
+    const map = mapRef.current;
+    const loaded = coreRef.current;
+    if (!map?.view || !map.map || !loaded || layersRef.current) return;
+    const areaLayer = new loaded.GraphicsLayer({ title: 'Office area' });
+    const editLayer = new loaded.GraphicsLayer({ title: 'Editing' });
+    map.map.addMany([areaLayer, editLayer]);
+    layersRef.current = { area: areaLayer, edit: editLayer };
+    const points = fitRef.current;
+    if (points.length > 0) {
+      const target = new loaded.Multipoint({ points: points.map((point) => [point.longitude, point.latitude]), spatialReference: { wkid: 4326 } });
+      await map.goTo({ target }, { animate: false }).catch(() => undefined);
+      await map.goTo({ zoom: Math.min(map.zoom, 19) }, { animate: false }).catch(() => undefined);
+      if (homeRef.current && map.viewpoint) homeRef.current.viewpoint = map.viewpoint.clone();
+    }
+    setReady(true);
+  }
+
+  // The nearest handle within reach of a screen point (synchronous, so a drag can claim it at once).
+  function handleAt(x: number, y: number) {
+    const view = mapRef.current?.view;
+    const loaded = coreRef.current;
+    if (!view || !loaded) return null;
+    let nearest: Handle | null = null;
+    let best = window.matchMedia('(pointer: coarse)').matches ? TOUCH_REACH_PX : MOUSE_REACH_PX;
+    for (const handle of handlesRef.current) {
+      const screen = view.toScreen(new loaded.Point({ latitude: handle.point.latitude, longitude: handle.point.longitude }));
+      if (!screen) continue;
+      const distance = Math.hypot(screen.x - x, screen.y - y);
+      if (distance <= best) {
+        best = distance;
+        nearest = handle;
+      }
+    }
+    return nearest;
+  }
+
+  function onViewClick(event: { detail: { mapPoint?: { latitude?: number | null; longitude?: number | null } | null; stopPropagation: () => void; x: number; y: number } }) {
+    const { mapPoint, x, y } = event.detail;
+    if (mapPoint?.latitude == null || mapPoint.longitude == null) return;
+    // The click is handled here: Esri's own popup handling would close the popup again, finding no
+    // features to show.
+    event.detail.stopPropagation();
+    const point = { latitude: round7(mapPoint.latitude), longitude: round7(mapPoint.longitude) };
+    if (editingRef.current) {
+      const handle = handleAt(x, y);
+      if (handle) handlersRef.current.onRemovePoint(handle.kind, handle.id);
+      else handlersRef.current.onTap(point);
+      return;
+    }
+    // Outside editing a click shows where it is, like any map.
+    void mapRef.current?.openPopup({
+      content: `${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}`,
+      location: mapRef.current.toMap({ x, y }) ?? undefined,
+      title: 'This spot',
+    });
+  }
+
+  function onViewDrag(event: { detail: { action: string; stopPropagation: () => void; x: number; y: number } }) {
+    if (!editingRef.current) return;
+    const { action, x, y } = event.detail;
+    if (action === 'start') dragRef.current = handleAt(x, y);
+    const dragging = dragRef.current;
+    if (!dragging) return;
+    // A handle is being dragged: the map stays still.
+    event.detail.stopPropagation();
+    const mapPoint = mapRef.current?.toMap({ x, y });
+    if (mapPoint?.latitude == null || mapPoint.longitude == null) return;
+    const point = { latitude: round7(mapPoint.latitude), longitude: round7(mapPoint.longitude) };
+    if (action === 'update') {
+      const graphics = layersRef.current?.edit.graphics.filter((graphic) => graphic.attributes?.handleId === dragging.id);
+      graphics?.forEach((graphic) => {
+        graphic.geometry = mapPoint.clone();
+      });
+    }
+    if (action === 'end') {
+      dragRef.current = null;
+      handlersRef.current.onMovePoint(dragging.kind, dragging.id, point);
+    }
+  }
 
   // What is in force, and a proposed or edited area with the pin and circle it would bring.
   useEffect(() => {
-    const L = leafletRef.current;
-    const layer = areaLayerRef.current;
-    if (!ready || !L || !layer) return;
-    layer.clearLayers();
+    const layer = layersRef.current?.area;
+    if (!ready || !core || !layer) return;
+    layer.removeAll();
+    const wgs84 = { wkid: 4326 };
     const dim = editing || Boolean(overlay) ? 0.45 : 1;
     const drawArea = (boundary: OfficeBoundary, color: string, opacity: number) => {
-      L.polygon(boundary.outline.map(toLatLng), { color, fillOpacity: 0.06 * opacity, interactive: false, opacity, weight: 1 }).addTo(layer);
-      L.polyline(boundaryContour(boundary).map(([a, b]) => [toLatLng(a), toLatLng(b)]), { color, interactive: false, opacity, weight: 3 }).addTo(layer);
+      layer.add(new core.Graphic({
+        geometry: new core.Polygon({ rings: [boundary.outline.map((point) => [point.longitude, point.latitude])], spatialReference: wgs84 }),
+        symbol: { color: rgba(color, 0.06 * opacity), outline: { color: rgba(color, opacity), width: 1 }, type: 'simple-fill' },
+      }));
+      layer.add(new core.Graphic({
+        geometry: new core.Polyline({ paths: boundaryRings(boundary).map((ring) => ring.map((point) => [point.longitude, point.latitude])), spatialReference: wgs84 }),
+        symbol: { color: rgba(color, opacity), type: 'simple-line', width: 2.5 },
+      }));
       if (boundary.road) {
-        L.polyline([toLatLng(boundary.road.from), toLatLng(boundary.road.to)], { color: MAP_COLORS.road, interactive: false, opacity, weight: 2 }).addTo(layer);
+        layer.add(new core.Graphic({
+          geometry: new core.Polyline({ paths: [[[boundary.road.from.longitude, boundary.road.from.latitude], [boundary.road.to.longitude, boundary.road.to.latitude]]], spatialReference: wgs84 }),
+          symbol: { color: rgba(MAP_COLORS.road, opacity), type: 'simple-line', width: 2 },
+        }));
       }
     };
-    const drawPin = (circle: Circle, color: string, opacity: number, circleWeight: number) => {
-      L.circle(toLatLng(circle), {
-        color, dashArray: '6 6', fill: false, interactive: false, opacity, radius: circle.radiusMeters, weight: circleWeight,
-      }).addTo(layer);
-      L.circleMarker(toLatLng(circle), {
-        color: '#ffffff', fillColor: color === MAP_COLORS.area ? MAP_COLORS.pin : color, fillOpacity: opacity, interactive: false, opacity, radius: 5, weight: 2,
-      }).addTo(layer);
+    const drawPin = (circle: MapCircle, color: string, opacity: number, width: number) => {
+      layer.add(new core.Graphic({
+        geometry: new core.Circle({ center: new core.Point({ latitude: circle.latitude, longitude: circle.longitude }), geodesic: true, numberOfPoints: 120, radius: circle.radiusMeters, radiusUnit: 'meters' }),
+        symbol: { color: [0, 0, 0, 0], outline: { color: rgba(color, opacity), style: 'dash', width }, type: 'simple-fill' },
+      }));
+      layer.add(new core.Graphic({
+        geometry: new core.Point({ latitude: circle.latitude, longitude: circle.longitude }),
+        symbol: { color: rgba(color === MAP_COLORS.area ? MAP_COLORS.pin : color, opacity), outline: { color: [255, 255, 255, opacity], width: 1.5 }, size: 9, type: 'simple-marker' },
+      }));
     };
-
     if (area) drawArea(area, MAP_COLORS.area, dim);
     // With an area on, the circle is only its backup: drawn faint. Without one, it is the rule.
-    if (pin) drawPin(pin, MAP_COLORS.area, area ? 0.45 * dim : dim, area ? 1 : 2);
+    if (pin) drawPin(pin, MAP_COLORS.area, area ? 0.45 * dim : dim, area ? 1 : 1.5);
     if (overlay) {
       drawArea(overlay, MAP_COLORS.overlay, 1);
       drawPin(boundaryCircle(overlay), MAP_COLORS.overlay, 0.75, 1);
     }
-  }, [area, editing, overlay, pin, ready]);
-
-  // A searched place: fly there and mark it.
-  useEffect(() => {
-    const L = leafletRef.current;
-    const map = mapRef.current;
-    const layer = extraLayerRef.current;
-    if (!ready || !L || !map || !layer) return;
-    layer.clearLayers();
-    if (!focus) return;
-    L.marker(toLatLng(focus), {
-      icon: L.divIcon({ className: '', html: FOCUS_ICON, iconAnchor: [14, 36], iconSize: [28, 36], tooltipAnchor: [0, -32] }),
-      interactive: false,
-      keyboard: false,
-    }).bindTooltip(focus.label, { direction: 'top', permanent: true }).addTo(layer);
-    map.flyTo(toLatLng(focus), Math.max(map.getZoom(), 17), { duration: 0.8 });
-  }, [focus, ready]);
+  }, [area, core, editing, overlay, pin, ready]);
 
   // While editing: numbered corners and the road edge. Drag to move; click to remove.
   useEffect(() => {
-    const L = leafletRef.current;
-    const layer = editLayerRef.current;
-    if (!ready || !L || !layer) return;
-    layer.clearLayers();
+    const layer = layersRef.current?.edit;
+    if (!ready || !core || !layer) return;
+    layer.removeAll();
+    handlesRef.current = [];
     if (!editing) return;
     mapRef.current?.closePopup();
+    const wgs84 = { wkid: 4326 };
     if (corners.length >= 2) {
-      const line = corners.map(toLatLng);
-      (corners.length >= 3
-        ? L.polygon(line, { color: MAP_COLORS.corners, fill: false, interactive: false, weight: 2 })
-        : L.polyline(line, { color: MAP_COLORS.corners, interactive: false, weight: 2 })).addTo(layer);
+      const line = corners.map((corner) => [corner.longitude, corner.latitude]);
+      layer.add(new core.Graphic({
+        geometry: new core.Polyline({ paths: [corners.length >= 3 ? [...line, line[0]] : line], spatialReference: wgs84 }),
+        symbol: { color: rgba(MAP_COLORS.corners, 1), type: 'simple-line', width: 2 },
+      }));
     }
     if (roadPoints.length === 2) {
-      L.polyline(roadPoints.map(toLatLng), { color: MAP_COLORS.road, dashArray: '4 4', interactive: false, weight: 3 }).addTo(layer);
+      layer.add(new core.Graphic({
+        geometry: new core.Polyline({ paths: [roadPoints.map((point) => [point.longitude, point.latitude])], spatialReference: wgs84 }),
+        symbol: { color: rgba(MAP_COLORS.road, 1), style: 'dash', type: 'simple-line', width: 2.5 },
+      }));
     }
-    const addHandle = (kind: 'corner' | 'road', point: MapPoint, html: string, size: number, title: string) => {
-      const marker = L.marker(toLatLng(point), {
-        draggable: true,
-        icon: L.divIcon({ className: '', html, iconAnchor: [size / 2, size / 2], iconSize: [size, size] }),
-        keyboard: false,
-        title,
-      });
-      marker.on('dragend', () => {
-        const position = marker.getLatLng();
-        handlersRef.current.onMovePoint(kind, point.id, { latitude: round7(position.lat), longitude: round7(position.lng) });
-      });
-      marker.on('click', () => handlersRef.current.onRemovePoint(kind, point.id));
-      marker.addTo(layer);
-    };
-    corners.forEach((corner, index) => addHandle('corner', corner, `<span class="${CORNER_ICON_CLASS}">${index + 1}</span>`, 24, `Corner ${index + 1}: drag to move, click to remove`));
-    roadPoints.forEach((point) => addHandle('road', point, `<span class="${ROAD_ICON_CLASS}"></span>`, 16, 'Road edge: drag to move, click to remove'));
-  }, [corners, editing, ready, roadPoints]);
+    corners.forEach((corner, index) => {
+      layer.add(new core.Graphic({
+        attributes: { handleId: corner.id },
+        geometry: new core.Point({ latitude: corner.latitude, longitude: corner.longitude }),
+        symbol: { height: 20, type: 'picture-marker', url: cornerIcon(String(index + 1)), width: 20 },
+      }));
+      handlesRef.current.push({ id: corner.id, kind: 'corner', point: corner });
+    });
+    roadPoints.forEach((point) => {
+      layer.add(new core.Graphic({
+        attributes: { handleId: point.id },
+        geometry: new core.Point({ latitude: point.latitude, longitude: point.longitude }),
+        symbol: { color: rgba(MAP_COLORS.road, 1), outline: { color: [255, 255, 255, 1], width: 2 }, size: 13, style: 'square', type: 'simple-marker' },
+      }));
+      handlesRef.current.push({ id: point.id, kind: 'road', point });
+    });
+  }, [core, corners, editing, ready, roadPoints]);
 
   return (
     // isolate: the map's own layers stay under the page's menus and popups.
-    <div ref={wrapperRef} className={cn('relative isolate h-full w-full overflow-hidden bg-muted', editing && '[&_.leaflet-container]:cursor-crosshair')}>
-      <div ref={containerRef} role="application" aria-label="Satellite map of the office grounds" className="absolute inset-0" />
+    <div ref={wrapperRef} className={cn('relative isolate h-full w-full overflow-hidden bg-muted', editing && '[&_.esri-view-surface]:cursor-crosshair')}>
+      {core ? (
+        <arcgis-map
+          ref={mapRef}
+          aria-label="Map of the office grounds"
+          basemap="hybrid"
+          center={start?.center}
+          className="absolute inset-0 block"
+          spatialReference={webMercator}
+          zoom={start?.zoom}
+          onarcgisViewClick={onViewClick}
+          onarcgisViewDrag={onViewDrag}
+          onarcgisViewReadyChange={() => void onViewReady()}
+        >
+          <arcgis-search ref={searchRef} slot="top-right" />
+          <arcgis-zoom slot="top-right" />
+          <arcgis-home ref={homeRef} slot="top-right" />
+          <arcgis-locate slot="top-right" />
+          <arcgis-fullscreen ref={fullscreenRef} slot="top-right" />
+          <arcgis-expand slot="top-right" expandTooltip="Basemaps">
+            <arcgis-basemap-gallery ref={galleryRef} />
+          </arcgis-expand>
+          <arcgis-scale-bar slot="bottom-left" unit="metric" />
+        </arcgis-map>
+      ) : null}
       {!ready && (
-        <div className="absolute inset-0 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading map…
         </div>

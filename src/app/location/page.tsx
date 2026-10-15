@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import type { FormEvent, ReactNode } from 'react';
-import { AlertCircle, Loader2, Pencil, Search, Undo2, X } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { AlertCircle, Loader2, Pencil, Undo2, X } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
-import { MAP_COLORS, OfficeMap, type MapFocus, type MapPoint } from '@/components/location/office-map';
+import { MAP_COLORS, OfficeMap, type MapPoint } from '@/components/location/office-map';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
@@ -37,7 +37,6 @@ type DrawingAction =
   | { type: 'change'; update: (drawing: Drawing) => Drawing }
   | { type: 'reset'; drawing: Drawing }
   | { type: 'undo' };
-type Place = LatLng & { detail: string; label: string };
 
 const NOTICES: Record<Action, string> = {
   approve: 'The office area is on. Sign-ins follow it from now.',
@@ -49,8 +48,6 @@ const EMPTY_DRAWING: Drawing = { corners: [], roadPoints: [] };
 const MAX_UNDO = 50;
 // Until an office is set, the map opens on Accra.
 const FIRST_VIEW: Pin = { latitude: 5.6037, longitude: -0.187, radiusMeters: 2000 };
-// Search prefers places in Ghana (west, north, east, south) but finds others too.
-const GHANA_VIEWBOX = '-3.26,11.17,1.2,4.74';
 
 const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 const withId = (point: LatLng): MapPoint => ({ id: newId(), latitude: point.latitude, longitude: point.longitude });
@@ -103,7 +100,6 @@ export default function LocationPage() {
   const [busy, setBusy] = useState<Action | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [focus, setFocus] = useState<MapFocus | null>(null);
   // Where the map opens (and "Show the office" returns): framed on the first area or pin to load.
   const [fitTo, setFitTo] = useState<LatLng[]>([]);
   // What editing started from, to tell whether anything changed.
@@ -293,7 +289,6 @@ export default function LocationPage() {
             corners={corners}
             editing={editing}
             fitTo={fitTo}
-            focus={focus}
             onMessage={showMessage}
             onMovePoint={handleMove}
             onRemovePoint={handleRemove}
@@ -303,7 +298,6 @@ export default function LocationPage() {
             roadPoints={roadPoints}
           >
             <div className="pointer-events-none absolute left-3 top-3 z-[1000] flex max-h-[calc(100%-4rem)] w-[min(27rem,calc(100%-5rem))] flex-col gap-2 overflow-y-auto">
-              <PlaceSearch onError={showMessage} onPick={setFocus} />
 
               {editing ? (
                 <Panel>
@@ -403,97 +397,6 @@ export default function LocationPage() {
         </div>
       )}
     </DashboardLayout>
-  );
-}
-
-// Find a place by name (OpenStreetMap search, on Enter) or jump to typed coordinates.
-function PlaceSearch({ onError, onPick }: { onError: (message: string) => void; onPick: (place: MapFocus) => void }) {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Place[] | null>(null);
-  const [searching, setSearching] = useState(false);
-
-  function pick(place: LatLng & { label: string }) {
-    onPick({ ...place, key: Date.now() });
-    setResults(null);
-  }
-
-  async function search(event: FormEvent) {
-    event.preventDefault();
-    const text = query.trim();
-    if (!text) return;
-    const typed = text.match(/^(-?\d{1,2}(?:\.\d+)?)\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)$/);
-    if (typed) {
-      const latitude = Number(typed[1]);
-      const longitude = Number(typed[2]);
-      if (Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180) {
-        pick({ label: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`, latitude, longitude });
-        return;
-      }
-    }
-    setSearching(true);
-    try {
-      const url = new URL('https://nominatim.openstreetmap.org/search');
-      url.search = new URLSearchParams({ 'accept-language': 'en', format: 'jsonv2', limit: '6', q: text, viewbox: GHANA_VIEWBOX }).toString();
-      const response = await fetch(url, { headers: { Accept: 'application/json' } });
-      if (!response.ok) throw new Error(`Search failed (${response.status})`);
-      const found = (await response.json()) as Array<{ display_name?: string; lat?: string; lon?: string; name?: string }>;
-      setResults(found
-        .map((item) => ({
-          detail: item.display_name || '',
-          label: item.name || (item.display_name || '').split(',')[0] || 'Place',
-          latitude: Number(item.lat),
-          longitude: Number(item.lon),
-        }))
-        .filter((place) => Number.isFinite(place.latitude) && Number.isFinite(place.longitude)));
-    } catch {
-      onError('Place search is not available right now. Try again, or type coordinates such as 5.5658, -0.1773.');
-    } finally {
-      setSearching(false);
-    }
-  }
-
-  return (
-    <div className="pointer-events-auto overflow-hidden rounded-lg border border-border bg-card/95 shadow-lg backdrop-blur">
-      <form onSubmit={search} className="flex items-center gap-2 px-3">
-        {searching ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" /> : <Search className="h-4 w-4 shrink-0 text-muted-foreground" />}
-        <input
-          aria-label="Search places"
-          className="h-11 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-          placeholder="Search a place, or type coordinates"
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            if (results) setResults(null);
-          }}
-        />
-        {query && (
-          <button
-            type="button"
-            aria-label="Clear search"
-            className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:text-foreground"
-            onClick={() => {
-              setQuery('');
-              setResults(null);
-            }}
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
-      </form>
-      {results && (
-        <ul className="max-h-72 overflow-y-auto border-t border-border">
-          {results.length === 0 && <li className="px-4 py-3 text-sm text-muted-foreground">No places found.</li>}
-          {results.map((place) => (
-            <li key={`${place.latitude},${place.longitude},${place.detail}`}>
-              <button type="button" className="block w-full px-4 py-2.5 text-left hover:bg-muted/40" onClick={() => pick(place)}>
-                <span className="block truncate text-sm font-medium">{place.label}</span>
-                <span className="block truncate text-xs text-muted-foreground">{place.detail}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
   );
 }
 

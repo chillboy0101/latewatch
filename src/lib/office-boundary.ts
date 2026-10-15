@@ -335,3 +335,33 @@ function smallestCircle(points: Point[]) {
   }
   return circle;
 }
+
+/**
+ * The boundary line as joined-up paths (the contour's short segments chained end to end), for
+ * maps that draw one line per path.
+ */
+export function boundaryRings(boundary: OfficeBoundary, stepMeters = 2): LatLng[][] {
+  const segments = boundaryContour(boundary, stepMeters);
+  const key = (point: LatLng) => `${point.latitude.toFixed(8)},${point.longitude.toFixed(8)}`;
+  const byEnd = new Map<string, number[]>();
+  segments.forEach(([a, b], index) => {
+    for (const end of [key(a), key(b)]) byEnd.set(end, [...(byEnd.get(end) || []), index]);
+  });
+  const used = new Set<number>();
+  const rings: LatLng[][] = [];
+  segments.forEach((segment, start) => {
+    if (used.has(start)) return;
+    used.add(start);
+    const ring = [segment[0], segment[1]];
+    for (;;) {
+      const tail = ring[ring.length - 1];
+      const next = (byEnd.get(key(tail)) || []).find((index) => !used.has(index));
+      if (next === undefined) break;
+      used.add(next);
+      const [a, b] = segments[next];
+      ring.push(key(a) === key(tail) ? b : a);
+    }
+    rings.push(ring);
+  });
+  return rings;
+}

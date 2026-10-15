@@ -45,6 +45,27 @@ test('location page is the map with one line on top: the sign-in area and Edit',
   assert.doesNotMatch(fs.readFileSync(path.join(root, 'src/app/check-in/page.tsx'), 'utf8'), /location\/measure|isAdmin/);
 });
 
+test('the office map is Esri\'s own map and tools; LateWatch only draws the office area', () => {
+  const officeMap = fs.readFileSync(path.join(root, 'src/components/location/office-map.tsx'), 'utf8');
+  const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+
+  assert.match(officeMap, /<arcgis-map\n/);
+  for (const tool of ['arcgis-search', 'arcgis-zoom', 'arcgis-home', 'arcgis-locate', 'arcgis-fullscreen', 'arcgis-basemap-gallery', 'arcgis-scale-bar']) {
+    assert.match(officeMap, new RegExp(`<${tool}[ />]`), tool);
+  }
+  // Search goes to Esri's World Geocoding Service, which needs no key; no ArcGIS sign-in ever pops up.
+  assert.match(officeMap, /new LocatorSearchSource\(\{/);
+  assert.match(officeMap, /'https:\/\/geocode\.arcgis\.com\/arcgis\/rest\/services\/World\/GeocodeServer'/);
+  assert.match(officeMap, /esriConfig\.request\.useIdentity = false;/);
+  // Corners are pictures, not text symbols that need font downloads; the map keeps its projection
+  // so the area still shows if the imagery can't load.
+  assert.match(officeMap, /type: 'picture-marker', url: cornerIcon\(String\(index \+ 1\)\)/);
+  assert.doesNotMatch(officeMap, /type: 'text'/);
+  assert.match(officeMap, /spatialReference=\{webMercator\}/);
+  assert.equal(packageJson.dependencies.leaflet, undefined);
+  assert.equal(packageJson.devDependencies['@types/leaflet'], undefined);
+});
+
 test('location page uses ultra-minimal copy instead of the old instruction panel', () => {
   const locationPage = fs.readFileSync(locationPagePath, 'utf8');
 
