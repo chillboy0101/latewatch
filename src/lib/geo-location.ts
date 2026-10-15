@@ -1,3 +1,5 @@
+import { metersBeyondBoundary, parseOfficeBoundary } from '@/lib/office-boundary';
+
 export const DEFAULT_OFFICE_RADIUS_METERS = 80;
 export const DEFAULT_MAX_LOCATION_ACCURACY_METERS = 75;
 export const DEFAULT_MAX_LOCATION_AGE_MS = 60_000;
@@ -22,6 +24,8 @@ export type LocationEvidenceInput = {
 };
 
 export type OfficeLocationPolicy = {
+  /** The grounds as a shape (see office-boundary.ts); when set it replaces the circle. */
+  boundary?: unknown;
   latitude?: number | string | null;
   longitude?: number | string | null;
   maxAccuracyMeters?: number | string | null;
@@ -114,6 +118,7 @@ function configuredOfficeLocation(office: OfficeLocationPolicy | null | undefine
   const maxAccuracyMeters = toFiniteNumber(office?.maxAccuracyMeters) || DEFAULT_MAX_LOCATION_ACCURACY_METERS;
 
   return {
+    boundary: parseOfficeBoundary(office?.boundary),
     latitude,
     longitude,
     maxAccuracyMeters: Math.max(1, maxAccuracyMeters),
@@ -188,7 +193,17 @@ export function validateAttendanceLocation({
     };
   }
 
-  if (distanceMeters > configuredOffice.radiusMeters) {
+  if (configuredOffice.boundary) {
+    const beyondMeters = metersBeyondBoundary(configuredOffice.boundary, normalized);
+    if (beyondMeters > 0) {
+      return {
+        ...base,
+        message: `You appear to be ${Math.max(1, Math.round(beyondMeters))}m outside the office grounds.`,
+        ok: false,
+        result: 'OUTSIDE_OFFICE_LOCATION',
+      };
+    }
+  } else if (distanceMeters > configuredOffice.radiusMeters) {
     return {
       ...base,
       message: `You appear to be ${Math.round(distanceMeters)}m from the office location.`,

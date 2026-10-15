@@ -9,6 +9,7 @@ import {
   DEFAULT_MAX_LOCATION_ACCURACY_METERS,
   DEFAULT_OFFICE_RADIUS_METERS,
 } from '@/lib/geo-location';
+import { metersBeyondBoundary, parseOfficeBoundary } from '@/lib/office-boundary';
 import { isValidDateKey, overlapsOfficeLocationSchedule, resolveOfficeLocationForDate } from '@/lib/office-location-policy';
 import { publishRealtime } from '@/lib/realtime';
 
@@ -144,6 +145,12 @@ export async function POST(request: NextRequest) {
         new Date().toISOString().slice(0, 10),
       );
     const now = new Date();
+    // Re-saving the office pin on the grounds keeps the grounds shape; a pin elsewhere (a new
+    // office) starts again with the circle.
+    const keptBoundary = (value: unknown) => {
+      const boundary = mode === 'default' ? parseOfficeBoundary(value) : null;
+      return boundary && metersBeyondBoundary(boundary, { latitude, longitude }) <= 0 ? boundary : null;
+    };
 
     if (mode === 'scheduled') {
       if (!isValidDateKey(scheduleStartDate) || !isValidDateKey(scheduleEndDate)) {
@@ -174,6 +181,8 @@ export async function POST(request: NextRequest) {
 
     const [createdLocation] = await db.insert(officeLocation)
       .values({
+        boundaryDraftJson: keptBoundary(before?.boundaryDraftJson),
+        boundaryJson: keptBoundary(before?.boundaryJson),
         formattedAddress: optionalText(body?.formattedAddress, 500),
         googlePlaceId: optionalText(body?.googlePlaceId, 160),
         isActive: true,

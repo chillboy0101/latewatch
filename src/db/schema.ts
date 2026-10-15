@@ -285,6 +285,10 @@ export const officeLocation = pgTable('office_location', {
   source: text('source').notNull().default('manual'),
   scheduleStartDate: date('schedule_start_date'),
   scheduleEndDate: date('schedule_end_date'),
+  // The grounds as a shape (lib/office-boundary.ts); when set it replaces the radius for sign-in.
+  boundaryJson: jsonb('boundary_json'),
+  // A proposed shape waiting for an admin's approval on the map; it changes nothing until approved.
+  boundaryDraftJson: jsonb('boundary_draft_json'),
   isActive: boolean('is_active').default(true),
   archivedAt: timestamp('archived_at'),
   updatedByUserId: text('updated_by_user_id'),

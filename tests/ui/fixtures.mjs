@@ -158,6 +158,17 @@ export function buildFixtures(now = new Date()) {
       })),
     },
     '/api/attendance/check-in': checkInStatus,
+    '/api/attendance/location/boundary': {
+      active: null,
+      // A proposed shape waiting for approval: grounds about 60 m x 120 m with the road in front.
+      draft: {
+        outline: [[5.5655786, -0.177758], [5.5653811, -0.1773798], [5.5659724, -0.1772504], [5.5664288, -0.1772337], [5.5664669, -0.1773456], [5.5661285, -0.1774576], [5.5660751, -0.1776669]]
+          .map(([latitude, longitude]) => ({ latitude, longitude })),
+        road: { allowanceMeters: 12, from: { latitude: 5.5653971, longitude: -0.177863 }, to: { latitude: 5.5651823, longitude: -0.1774743 } },
+        roomMeters: 25,
+      },
+      locationId: 'office-1',
+    },
     '/api/attendance/location/trace': {
       readings: [[5.56630, -0.17735], [5.56610, -0.17742], [5.56585, -0.17748], [5.56560, -0.17755], [5.56540, -0.17762]]
         .map(([latitude, longitude], index) => ({ accuracy: 6, capturedAt: `${today}T09:2${index}:00.000Z`, latitude, longitude, note: index === 4 ? 'Car park' : null })),

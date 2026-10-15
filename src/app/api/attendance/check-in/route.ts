@@ -30,6 +30,7 @@ import { findStaffForEmails, verifiedEmailAddresses } from '@/lib/auth/signed-in
 import { getDeviceTokenFromRequest } from '@/lib/device-binding';
 import { resolveDeviceHash } from '@/lib/device-rekey';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
+import { type OfficeBoundary, parseOfficeBoundary } from '@/lib/office-boundary';
 import { allowRequest } from '@/lib/rate-limit';
 import { maybeRunMissedReminderBatch } from '@/lib/reminder-fallback';
 import { publishRealtime } from '@/lib/realtime';
@@ -121,6 +122,7 @@ function signOutLocationValues(location: LocationValidationResult, officeLocatio
 function serializeLocationPolicy(location: typeof officeLocationTable.$inferSelect | null | undefined) {
   return location
     ? {
+        boundary: parseOfficeBoundary(location.boundaryJson),
         formattedAddress: location.formattedAddress,
         id: location.id,
         latitude: location.latitude,
@@ -146,6 +148,7 @@ function responsePayload(input: {
   isWeekend: boolean;
   locationConfigured: boolean;
   locationPolicy?: {
+    boundary?: OfficeBoundary | null;
     formattedAddress?: string | null;
     id?: string;
     latitude: string;
@@ -800,6 +803,7 @@ export async function POST(request: NextRequest) {
       now: clock.now,
       office: officeLocation
         ? {
+            boundary: officeLocation.boundaryJson,
             latitude: officeLocation.latitude,
             longitude: officeLocation.longitude,
             maxAccuracyMeters: officeLocation.maxAccuracyMeters,

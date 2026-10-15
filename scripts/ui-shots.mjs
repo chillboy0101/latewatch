@@ -129,6 +129,9 @@ async function locationShots(browser) {
     await page.waitForTimeout(200);
   }
   await shoot(page, 'phone-location-map');
+  await page.getByRole('region', { name: 'Office boundary' }).scrollIntoViewIfNeeded();
+  await shoot(page, 'phone-location-boundary');
+  await map.scrollIntoViewIfNeeded();
   await page.getByRole('button', { name: 'Save corners' }).first().click();
   await page.waitForTimeout(800);
   await page.getByText(/Saved 4 corners/).scrollIntoViewIfNeeded();

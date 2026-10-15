@@ -11,6 +11,7 @@ import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerNested, D
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { formatDisplayDateTime, formatShortDisplayDate } from '@/lib/date-format';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
+import type { OfficeBoundary } from '@/lib/office-boundary';
 import { RECEIPT_NOTIFICATION_AUTO_DISMISS_MS, type LatenessPaymentReceiptNotification } from '@/lib/lateness-payment-receipt-notifications';
 import { useSwipeToDismiss } from '@/lib/use-swipe-to-dismiss';
 import { ReceiptDetailView, useReceiptDetail } from '@/components/receipts/receipt-detail-view';
@@ -46,6 +47,7 @@ interface CheckInStatus {
   isWeekend: boolean;
   locationConfigured: boolean;
   locationPolicy: {
+    boundary?: OfficeBoundary | null;
     formattedAddress?: string | null;
     id?: string;
     latitude: string;
@@ -546,6 +548,7 @@ function validateLiveLocation(locationPolicy: CheckInStatus['locationPolicy'], e
     evidence,
     now: new Date(),
     office: {
+      boundary: locationPolicy.boundary,
       latitude: locationPolicy.latitude,
       longitude: locationPolicy.longitude,
       maxAccuracyMeters: locationPolicy.maxAccuracyMeters,
