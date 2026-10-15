@@ -129,6 +129,7 @@ export function parseOfficeBoundary(value: unknown): OfficeBoundary | null {
     road = { allowanceMeters: clampMeters(rawRoad.allowanceMeters, DEFAULT_ROAD_ALLOWANCE_METERS), from, to };
   }
 
+  if (outlineCrossesItself(outline as LatLng[])) return null;
   const boundary: OfficeBoundary = {
     outline: outline as LatLng[],
     road,
@@ -143,6 +144,28 @@ export function parseOfficeBoundary(value: unknown): OfficeBoundary | null {
   if (area < 1) return null;
   if (road && geometry.outline.some((point) => geometry.pastRoad(point) > road.allowanceMeters)) return null;
   return boundary;
+}
+
+/** True when two sides of the outline cross (corners out of order), which makes no clear area. */
+export function outlineCrossesItself(outline: LatLng[]) {
+  if (outline.length < 4) return false;
+  const { toPoint } = projector(outline[0]);
+  const points = outline.map(toPoint);
+  const cross = (o: Point, a: Point, b: Point) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const sidesCross = (a: Point, b: Point, c: Point, d: Point) => {
+    const d1 = cross(c, d, a);
+    const d2 = cross(c, d, b);
+    const d3 = cross(a, b, c);
+    const d4 = cross(a, b, d);
+    return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+  };
+  for (let i = 0; i < points.length; i += 1) {
+    for (let j = i + 2; j < points.length; j += 1) {
+      if (i === 0 && j === points.length - 1) continue; // first and last sides meet at corner 1
+      if (sidesCross(points[i], points[(i + 1) % points.length], points[j], points[(j + 1) % points.length])) return true;
+    }
+  }
+  return false;
 }
 
 /** How far a reading is beyond the boundary, in metres: 0 or less means inside. */

@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
-import { AlertCircle, Loader2, Pencil } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import type { FormEvent, ReactNode } from 'react';
+import { AlertCircle, Loader2, Pencil, Search, Undo2, X } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
-import { MAP_COLORS, OfficeMap, type MapPoint } from '@/components/location/office-map';
+import { MAP_COLORS, OfficeMap, type MapFocus, type MapPoint } from '@/components/location/office-map';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
@@ -14,6 +14,7 @@ import {
   DEFAULT_ROAD_ALLOWANCE_METERS,
   MAX_BOUNDARY_CORNERS,
   nearestEdgeIndex,
+  outlineCrossesItself,
   parseOfficeBoundary,
   type LatLng,
   type OfficeBoundary,
@@ -21,14 +22,22 @@ import {
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 
-// Office Location: where staff can sign in, drawn on the satellite map. The area is the office
-// grounds plus spare room for phone error, stopping a little past the road in front. The office
-// pin and circle are made from it, so there is nothing else to set.
+// Office Location: where staff can sign in, on a full-page map. The area is the office grounds
+// plus spare room for phone error, stopping a little past the road in front. The office pin and
+// circle are made from it (pin in the middle, circle covering every edge), so there is nothing
+// else to set. Search, map types, my location and full screen work like any map.
 
 type Pin = LatLng & { radiusMeters: number };
 type State = { active: OfficeBoundary | null; draft: OfficeBoundary | null; pin: Pin | null };
 type Action = 'approve' | 'discard' | 'remove' | 'save';
 type EditMode = 'corner' | 'road';
+type Drawing = { corners: MapPoint[]; roadPoints: MapPoint[] };
+type DrawingState = { past: Drawing[]; present: Drawing };
+type DrawingAction =
+  | { type: 'change'; update: (drawing: Drawing) => Drawing }
+  | { type: 'reset'; drawing: Drawing }
+  | { type: 'undo' };
+type Place = LatLng & { detail: string; label: string };
 
 const NOTICES: Record<Action, string> = {
   approve: 'The office area is on. Sign-ins follow it from now.',
@@ -36,12 +45,27 @@ const NOTICES: Record<Action, string> = {
   remove: 'Sign-in uses the circle again.',
   save: 'Saved. Sign-ins follow the new area from now.',
 };
+const EMPTY_DRAWING: Drawing = { corners: [], roadPoints: [] };
+const MAX_UNDO = 50;
+// Until an office is set, the map opens on Accra.
+const FIRST_VIEW: Pin = { latitude: 5.6037, longitude: -0.187, radiusMeters: 2000 };
+// Search prefers places in Ghana (west, north, east, south) but finds others too.
+const GHANA_VIEWBOX = '-3.26,11.17,1.2,4.74';
 
 const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 const withId = (point: LatLng): MapPoint => ({ id: newId(), latitude: point.latitude, longitude: point.longitude });
 
+function drawingReducer(state: DrawingState, action: DrawingAction): DrawingState {
+  if (action.type === 'reset') return { past: [], present: action.drawing };
+  if (action.type === 'undo') {
+    return state.past.length > 0 ? { past: state.past.slice(0, -1), present: state.past[state.past.length - 1] } : state;
+  }
+  const next = action.update(state.present);
+  return next === state.present ? state : { past: [...state.past.slice(-(MAX_UNDO - 1)), state.present], present: next };
+}
+
 // Four points round a circle, to frame the map on everything it covers.
-function aroundCircle(circle: LatLng & { radiusMeters: number }): LatLng[] {
+function aroundCircle(circle: Pin): LatLng[] {
   const degrees = circle.radiusMeters / 111_195;
   const across = degrees / Math.cos((circle.latitude * Math.PI) / 180);
   return [
@@ -52,13 +76,20 @@ function aroundCircle(circle: LatLng & { radiusMeters: number }): LatLng[] {
   ];
 }
 
-function framePoints(area: OfficeBoundary | null, pin: (LatLng & { radiusMeters: number }) | null): LatLng[] {
-  if (area) return aroundCircle(boundaryCircle(area));
-  return pin ? aroundCircle(pin) : [];
-}
-
 function describe(area: OfficeBoundary) {
   return `${area.outline.length} corners · ${area.roomMeters} m spare${area.road ? ` · stops ${area.road.allowanceMeters} m past the road` : ''}`;
+}
+
+// A fingerprint of an edit, to tell whether anything changed since editing started.
+function snapshotOf(drawing: Drawing, room: string, road: string) {
+  const points = (list: MapPoint[]) => list.map(({ latitude, longitude }) => [latitude, longitude]);
+  return JSON.stringify([points(drawing.corners), points(drawing.roadPoints), room, road]);
+}
+
+function metersValue(value: string) {
+  if (!/^\d{1,3}$/.test(value)) return null;
+  const meters = Number(value);
+  return meters <= 100 ? meters : null;
 }
 
 export default function LocationPage() {
@@ -66,23 +97,31 @@ export default function LocationPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [mode, setMode] = useState<EditMode>('corner');
-  const [corners, setCorners] = useState<MapPoint[]>([]);
-  const [roadPoints, setRoadPoints] = useState<MapPoint[]>([]);
+  const [{ past, present: drawing }, dispatch] = useReducer(drawingReducer, { past: [], present: EMPTY_DRAWING });
   const [roomMeters, setRoomMeters] = useState(String(DEFAULT_BOUNDARY_ROOM_METERS));
   const [roadMeters, setRoadMeters] = useState(String(DEFAULT_ROAD_ALLOWANCE_METERS));
   const [busy, setBusy] = useState<Action | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  // Where the map opens: framed once, on the first area (or pin) that loads.
+  const [focus, setFocus] = useState<MapFocus | null>(null);
+  // Where the map opens (and "Show the office" returns): framed on the first area or pin to load.
   const [fitTo, setFitTo] = useState<LatLng[]>([]);
+  // What editing started from, to tell whether anything changed.
+  const startedFromRef = useRef('');
+  const { corners, roadPoints } = drawing;
 
   const load = useCallback(async () => {
     try {
       const response = await fetch('/api/attendance/location/boundary', { cache: 'no-store' });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || `Could not load the office location (${response.status})`);
-      setState({ active: body.active ?? null, draft: body.draft ?? null, pin: body.pin ?? null });
-      setFitTo((current) => (current.length > 0 ? current : framePoints(body.active || body.draft || null, body.pin || null)));
+      const next: State = { active: body.active ?? null, draft: body.draft ?? null, pin: body.pin ?? null };
+      setState(next);
+      setFitTo((current) => {
+        if (current.length > 0) return current;
+        const area = next.active || next.draft;
+        return aroundCircle(area ? boundaryCircle(area) : next.pin || FIRST_VIEW);
+      });
       setLoadError(null);
     } catch (loadFailure) {
       setLoadError(loadFailure instanceof Error ? loadFailure.message : 'Could not load the office location.');
@@ -107,55 +146,107 @@ export default function LocationPage() {
     };
   }, [load]);
 
-  // What the edit would save, drawn live on the map.
-  const preview = useMemo(() => (editing
-    ? parseOfficeBoundary({
-        outline: corners,
-        road: roadPoints.length === 2 ? { allowanceMeters: Number(roadMeters), from: roadPoints[0], to: roadPoints[1] } : null,
-        roomMeters: Number(roomMeters),
-      })
-    : null), [corners, editing, roadMeters, roadPoints, roomMeters]);
+  const room = metersValue(roomMeters);
+  const pastRoad = metersValue(roadMeters);
 
-  const previewProblem = !editing
-    ? null
-    : corners.length < 3
-      ? `Click the map to add corners (${corners.length} of at least 3).`
-      : !preview ? 'The road edge must be in front of the grounds, not across them.' : null;
+  // What the edit would save, drawn live on the map.
+  const preview = useMemo(() => {
+    if (!editing || room === null || roadPoints.length === 1 || (roadPoints.length === 2 && pastRoad === null)) return null;
+    return parseOfficeBoundary({
+      outline: corners,
+      road: roadPoints.length === 2 ? { allowanceMeters: pastRoad, from: roadPoints[0], to: roadPoints[1] } : null,
+      roomMeters: room,
+    });
+  }, [corners, editing, pastRoad, roadPoints, room]);
+
+  const problem = !editing ? null
+    : corners.length < 3 ? `Click the map to add corners (${corners.length} of at least 3).`
+      : outlineCrossesItself(corners) ? 'Two sides cross. Drag the corners so the outline goes round the grounds in order.'
+        : roadPoints.length === 1 ? 'Add a second road edge point, or click the one you placed to remove it.'
+          : room === null ? 'Spare room must be 0 to 100 m.'
+            : roadPoints.length === 2 && pastRoad === null ? 'Past the road must be 0 to 100 m.'
+              : !preview ? 'The road edge must be in front of the grounds, not across them.'
+                : null;
+
+  const dirty = editing && snapshotOf(drawing, roomMeters, roadMeters) !== startedFromRef.current;
+
+  // Unsaved edits: ask before the page is closed or reloaded.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
 
   function startEditing(from: OfficeBoundary | null) {
-    setCorners(from ? from.outline.map(withId) : []);
-    setRoadPoints(from?.road ? [withId(from.road.from), withId(from.road.to)] : []);
-    setRoomMeters(String(from?.roomMeters ?? DEFAULT_BOUNDARY_ROOM_METERS));
-    setRoadMeters(String(from?.road?.allowanceMeters ?? DEFAULT_ROAD_ALLOWANCE_METERS));
+    const start: Drawing = {
+      corners: from ? from.outline.map(withId) : [],
+      roadPoints: from?.road ? [withId(from.road.from), withId(from.road.to)] : [],
+    };
+    const startRoom = String(from?.roomMeters ?? DEFAULT_BOUNDARY_ROOM_METERS);
+    const startRoad = String(from?.road?.allowanceMeters ?? DEFAULT_ROAD_ALLOWANCE_METERS);
+    dispatch({ drawing: start, type: 'reset' });
+    setRoomMeters(startRoom);
+    setRoadMeters(startRoad);
+    startedFromRef.current = snapshotOf(start, startRoom, startRoad);
     setMode('corner');
     setError(null);
     setNotice(null);
     setEditing(true);
   }
 
+  const stopEditing = useCallback(() => {
+    if (dirty && !window.confirm('Discard your changes to the area?')) return;
+    setEditing(false);
+    setError(null);
+  }, [dirty]);
+
+  // Keyboard: Ctrl/Cmd+Z undoes, Escape leaves editing.
+  useEffect(() => {
+    if (!editing) return;
+    const onKey = (event: KeyboardEvent) => {
+      const typing = event.target instanceof HTMLInputElement;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !typing) {
+        event.preventDefault();
+        dispatch({ type: 'undo' });
+      } else if (event.key === 'Escape' && !typing) {
+        stopEditing();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [editing, stopEditing]);
+
   const handleTap = useCallback((point: LatLng) => {
     if (!editing) return;
+    const added = withId(point);
     if (mode === 'road') {
-      setRoadPoints((current) => [...current, withId(point)].slice(-2));
+      dispatch({ type: 'change', update: (current) => ({ ...current, roadPoints: [...current.roadPoints, added].slice(-2) }) });
       return;
     }
-    setCorners((current) => {
-      if (current.length >= MAX_BOUNDARY_CORNERS) return current;
-      const at = nearestEdgeIndex(current, point) + 1;
-      return [...current.slice(0, at), withId(point), ...current.slice(at)];
+    dispatch({
+      type: 'change',
+      update: (current) => {
+        if (current.corners.length >= MAX_BOUNDARY_CORNERS) return current;
+        const at = nearestEdgeIndex(current.corners, point) + 1;
+        return { ...current, corners: [...current.corners.slice(0, at), added, ...current.corners.slice(at)] };
+      },
     });
   }, [editing, mode]);
 
   const handleMove = useCallback((kind: 'corner' | 'road', id: string, point: LatLng) => {
-    const update = (current: MapPoint[]) => current.map((item) => (item.id === id ? { ...item, ...point } : item));
-    if (kind === 'road') setRoadPoints(update);
-    else setCorners(update);
+    const move = (list: MapPoint[]) => list.map((item) => (item.id === id ? { ...item, ...point } : item));
+    dispatch({ type: 'change', update: (current) => (kind === 'road' ? { ...current, roadPoints: move(current.roadPoints) } : { ...current, corners: move(current.corners) }) });
   }, []);
 
   const handleRemove = useCallback((kind: 'corner' | 'road', id: string) => {
-    const remove = (current: MapPoint[]) => current.filter((item) => item.id !== id);
-    if (kind === 'road') setRoadPoints(remove);
-    else setCorners(remove);
+    const remove = (list: MapPoint[]) => list.filter((item) => item.id !== id);
+    dispatch({ type: 'change', update: (current) => (kind === 'road' ? { ...current, roadPoints: remove(current.roadPoints) } : { ...current, corners: remove(current.corners) }) });
+  }, []);
+
+  const showMessage = useCallback((message: string) => {
+    setNotice(null);
+    setError(message);
   }, []);
 
   async function run(action: Action) {
@@ -186,103 +277,231 @@ export default function LocationPage() {
 
   const active = state?.active || null;
   const draft = state?.draft || null;
+  const draftCircle = useMemo(() => (draft ? boundaryCircle(draft) : null), [draft]);
+  const overlay = editing ? preview : draft;
+  const showsRoad = editing ? roadPoints.length > 0 : Boolean(active?.road || draft?.road);
 
   return (
     <DashboardLayout title="Office Location">
       {!state ? (
         loadError ? <Message tone="error">{loadError}</Message> : <LoadingBuffer variant="section" />
       ) : (
-        <div className="space-y-3">
-          {editing ? (
-            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">
-              <div className="inline-flex rounded-md border border-border p-0.5 text-sm" role="group" aria-label="What a click adds">
-                {(['corner', 'road'] as const).map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    aria-pressed={mode === item}
-                    className={cn('rounded px-3 py-1.5 font-medium', mode === item ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}
-                    onClick={() => setMode(item)}
-                  >
-                    {item === 'corner' ? `Corners (${corners.length})` : `Road edge (${roadPoints.length}/2)`}
-                  </button>
-                ))}
-              </div>
-              <MetersField label="Spare" value={roomMeters} onChange={setRoomMeters} />
-              <MetersField label="Past road" value={roadMeters} onChange={setRoadMeters} />
-              <p className="min-w-0 flex-1 text-sm text-muted-foreground">
-                {previewProblem || (mode === 'road'
-                  ? 'Click 2 points along the road edge in front.'
-                  : 'Click to add a corner · drag to move · click a corner to remove it.')}
-              </p>
-              <Button variant="outline" className="h-9" onClick={() => setEditing(false)} disabled={busy !== null}>Cancel</Button>
-              <Button className="h-9 gap-2" onClick={() => run('save')} disabled={busy !== null || !preview}>
-                {busy === 'save' && <Loader2 className="h-4 w-4 animate-spin" />}
-                Save area
-              </Button>
-            </div>
-          ) : (
-            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">
-              <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', active ? 'bg-success' : 'bg-warning')} aria-hidden />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold">{active ? 'Sign-in area: the office grounds' : 'Sign-in area: a circle around the office pin'}</p>
-                <p className="text-sm text-muted-foreground">
-                  {active ? describe(active) : state.pin ? `${state.pin.radiusMeters} m around the pin` : 'Not set yet'}
-                </p>
-              </div>
-              <Button variant="outline" className="h-9 gap-2" onClick={() => startEditing(active || draft)}>
-                <Pencil className="h-4 w-4" />
-                {active ? 'Edit area' : 'Draw area'}
-              </Button>
-            </div>
-          )}
+        // The map fills the page (the layout's padding is taken back).
+        <div className="-m-6 h-[calc(100dvh-4rem)]">
+          <OfficeMap
+            area={active}
+            corners={corners}
+            editing={editing}
+            fitTo={fitTo}
+            focus={focus}
+            onMessage={showMessage}
+            onMovePoint={handleMove}
+            onRemovePoint={handleRemove}
+            onTap={handleTap}
+            overlay={overlay}
+            pin={state.pin}
+            roadPoints={roadPoints}
+          >
+            <div className="pointer-events-none absolute left-3 top-3 z-[1000] flex max-h-[calc(100%-4rem)] w-[min(27rem,calc(100%-5rem))] flex-col gap-2 overflow-y-auto">
+              <PlaceSearch onError={showMessage} onPick={setFocus} />
 
-          {!editing && draft && (
-            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[#22d3ee]/40 bg-[#22d3ee]/10 px-4 py-3">
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#22d3ee]" aria-hidden />
-              <p className="min-w-0 flex-1 text-sm"><span className="font-semibold">Proposed area</span> <span className="text-muted-foreground">(cyan on the map): {describe(draft)}</span></p>
-              <Button variant="outline" className="h-9" onClick={() => run('discard')} disabled={busy !== null}>Discard</Button>
-              <Button className="h-9 gap-2" onClick={() => run('approve')} disabled={busy !== null}>
-                {busy === 'approve' && <Loader2 className="h-4 w-4 animate-spin" />}
-                Use it
-              </Button>
+              {editing ? (
+                <Panel>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="inline-flex rounded-md border border-border p-0.5 text-sm" role="group" aria-label="What a click adds">
+                      {(['corner', 'road'] as const).map((item) => (
+                        <button
+                          key={item}
+                          type="button"
+                          aria-pressed={mode === item}
+                          className={cn('rounded px-3 py-1.5 font-medium', mode === item ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}
+                          onClick={() => setMode(item)}
+                        >
+                          {item === 'corner' ? `Corners (${corners.length})` : `Road edge (${roadPoints.length}/2)`}
+                        </button>
+                      ))}
+                    </div>
+                    <Button variant="ghost" size="sm" className="h-8 gap-1.5" onClick={() => dispatch({ type: 'undo' })} disabled={past.length === 0 || busy !== null}>
+                      <Undo2 className="h-4 w-4" />
+                      Undo
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <MetersField label="Spare" value={roomMeters} onChange={setRoomMeters} />
+                    <MetersField label="Past road" value={roadMeters} onChange={setRoadMeters} />
+                  </div>
+                  <p className={cn('text-sm', problem && corners.length >= 3 ? 'text-warning' : 'text-muted-foreground')}>
+                    {problem || (mode === 'road'
+                      ? 'Click 2 points along the road edge in front.'
+                      : 'Click to add a corner · drag to move · click a corner to remove it.')}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button variant="outline" className="h-9" onClick={stopEditing} disabled={busy !== null}>Cancel</Button>
+                    <Button className="h-9 gap-2" onClick={() => run('save')} disabled={busy !== null || !preview}>
+                      {busy === 'save' && <Loader2 className="h-4 w-4 animate-spin" />}
+                      Save area
+                    </Button>
+                  </div>
+                </Panel>
+              ) : (
+                <Panel>
+                  <div className="flex items-start gap-3">
+                    <span className={cn('mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full', active ? 'bg-success' : 'bg-warning')} aria-hidden />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold">
+                        {active ? 'Sign-in area: the office grounds' : state.pin ? 'Sign-in area: a circle around the office pin' : 'No office location yet'}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {active
+                          ? `${describe(active)}${state.pin ? ` · pin in the middle, backup circle ${state.pin.radiusMeters} m` : ''}`
+                          : state.pin ? `${state.pin.radiusMeters} m around the pin` : 'Draw the office area on the map to set it.'}
+                      </p>
+                    </div>
+                    <Button variant="outline" size="sm" className="h-8 shrink-0 gap-1.5" onClick={() => startEditing(active || draft)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                      {active ? 'Edit area' : 'Draw area'}
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      {active && <Swatch color={MAP_COLORS.area} label="Sign-in area" />}
+                      {state.pin && <Swatch color={MAP_COLORS.area} dashed label={active ? 'Backup circle' : 'Circle'} />}
+                      {draft && <Swatch color={MAP_COLORS.overlay} label="Proposed" />}
+                      {showsRoad && <Swatch color={MAP_COLORS.road} label="Road edge" />}
+                    </div>
+                    {active && (
+                      <button type="button" className="underline-offset-2 hover:text-foreground hover:underline" onClick={() => run('remove')} disabled={busy !== null}>
+                        Use a circle instead
+                      </button>
+                    )}
+                  </div>
+                </Panel>
+              )}
+
+              {!editing && draft && (
+                <Panel className="border-[#22d3ee]/50">
+                  <p className="text-sm">
+                    <span className="font-semibold">Proposed area</span>{' '}
+                    <span className="text-muted-foreground">
+                      (cyan): {describe(draft)}{draftCircle ? ` · pin moves to the middle, backup circle ${draftCircle.radiusMeters} m` : ''}
+                    </span>
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button variant="outline" className="h-9" onClick={() => run('discard')} disabled={busy !== null}>Discard</Button>
+                    <Button className="h-9 gap-2" onClick={() => run('approve')} disabled={busy !== null}>
+                      {busy === 'approve' && <Loader2 className="h-4 w-4 animate-spin" />}
+                      Use it
+                    </Button>
+                  </div>
+                </Panel>
+              )}
+
+              {notice && !error && <Message tone="success" onClose={() => setNotice(null)}>{notice}</Message>}
+              {error && <Message tone="error" onClose={() => setError(null)}>{error}</Message>}
             </div>
-          )}
-
-          {notice && !error && <Message tone="success">{notice}</Message>}
-          {error && <Message tone="error">{error}</Message>}
-
-          <div className={cn('min-h-[24rem]', !editing && draft ? 'h-[calc(100dvh-19.5rem)]' : 'h-[calc(100dvh-15.5rem)]')}>
-            <OfficeMap
-              area={active}
-              circle={state.pin}
-              corners={corners}
-              editing={editing}
-              fitTo={fitTo}
-              onMovePoint={handleMove}
-              onRemovePoint={handleRemove}
-              onTap={handleTap}
-              overlay={editing ? preview : draft}
-              roadPoints={roadPoints}
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              {!editing && <Swatch color={MAP_COLORS.area} dashed={!active} label={active ? 'Sign-in area' : 'Circle'} />}
-              {(editing || draft) && <Swatch color={MAP_COLORS.overlay} label={editing ? 'New area' : 'Proposed'} />}
-              {editing && <Swatch color={MAP_COLORS.corners} label="Your corners" />}
-              <Swatch color={MAP_COLORS.road} label="Road edge" />
-            </div>
-            {active && !editing && (
-              <button type="button" className="underline-offset-2 hover:text-foreground hover:underline" onClick={() => run('remove')} disabled={busy !== null}>
-                Use a circle instead
-              </button>
-            )}
-          </div>
+          </OfficeMap>
         </div>
       )}
     </DashboardLayout>
+  );
+}
+
+// Find a place by name (OpenStreetMap search, on Enter) or jump to typed coordinates.
+function PlaceSearch({ onError, onPick }: { onError: (message: string) => void; onPick: (place: MapFocus) => void }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Place[] | null>(null);
+  const [searching, setSearching] = useState(false);
+
+  function pick(place: LatLng & { label: string }) {
+    onPick({ ...place, key: Date.now() });
+    setResults(null);
+  }
+
+  async function search(event: FormEvent) {
+    event.preventDefault();
+    const text = query.trim();
+    if (!text) return;
+    const typed = text.match(/^(-?\d{1,2}(?:\.\d+)?)\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)$/);
+    if (typed) {
+      const latitude = Number(typed[1]);
+      const longitude = Number(typed[2]);
+      if (Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180) {
+        pick({ label: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`, latitude, longitude });
+        return;
+      }
+    }
+    setSearching(true);
+    try {
+      const url = new URL('https://nominatim.openstreetmap.org/search');
+      url.search = new URLSearchParams({ 'accept-language': 'en', format: 'jsonv2', limit: '6', q: text, viewbox: GHANA_VIEWBOX }).toString();
+      const response = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error(`Search failed (${response.status})`);
+      const found = (await response.json()) as Array<{ display_name?: string; lat?: string; lon?: string; name?: string }>;
+      setResults(found
+        .map((item) => ({
+          detail: item.display_name || '',
+          label: item.name || (item.display_name || '').split(',')[0] || 'Place',
+          latitude: Number(item.lat),
+          longitude: Number(item.lon),
+        }))
+        .filter((place) => Number.isFinite(place.latitude) && Number.isFinite(place.longitude)));
+    } catch {
+      onError('Place search is not available right now. Try again, or type coordinates such as 5.5658, -0.1773.');
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  return (
+    <div className="pointer-events-auto overflow-hidden rounded-lg border border-border bg-card/95 shadow-lg backdrop-blur">
+      <form onSubmit={search} className="flex items-center gap-2 px-3">
+        {searching ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" /> : <Search className="h-4 w-4 shrink-0 text-muted-foreground" />}
+        <input
+          aria-label="Search places"
+          className="h-11 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+          placeholder="Search a place, or type coordinates"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            if (results) setResults(null);
+          }}
+        />
+        {query && (
+          <button
+            type="button"
+            aria-label="Clear search"
+            className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+            onClick={() => {
+              setQuery('');
+              setResults(null);
+            }}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </form>
+      {results && (
+        <ul className="max-h-72 overflow-y-auto border-t border-border">
+          {results.length === 0 && <li className="px-4 py-3 text-sm text-muted-foreground">No places found.</li>}
+          {results.map((place) => (
+            <li key={`${place.latitude},${place.longitude},${place.detail}`}>
+              <button type="button" className="block w-full px-4 py-2.5 text-left hover:bg-muted/40" onClick={() => pick(place)}>
+                <span className="block truncate text-sm font-medium">{place.label}</span>
+                <span className="block truncate text-xs text-muted-foreground">{place.detail}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function Panel({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={cn('pointer-events-auto space-y-3 rounded-lg border border-border bg-card/95 p-3 shadow-lg backdrop-blur', className)}>
+      {children}
+    </div>
   );
 }
 
@@ -312,17 +531,22 @@ function Swatch({ color, dashed, label }: { color: string; dashed?: boolean; lab
   );
 }
 
-function Message({ children, tone }: { children: ReactNode; tone: 'error' | 'success' }) {
+function Message({ children, onClose, tone }: { children: ReactNode; onClose?: () => void; tone: 'error' | 'success' }) {
   return (
     <div
       role={tone === 'error' ? 'alert' : 'status'}
       className={cn(
-        'flex items-start gap-2 rounded-lg border px-4 py-2.5 text-sm',
-        tone === 'error' ? 'border-danger/30 bg-danger/10 text-danger' : 'border-success/30 bg-success/10 font-medium text-success',
+        'pointer-events-auto flex items-start gap-2 rounded-lg border px-3 py-2.5 text-sm shadow-lg backdrop-blur',
+        tone === 'error' ? 'border-danger/30 bg-card/95 text-danger' : 'border-success/30 bg-card/95 font-medium text-success',
       )}
     >
       {tone === 'error' && <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />}
-      {children}
+      <span className="min-w-0 flex-1">{children}</span>
+      {onClose && (
+        <button type="button" aria-label="Dismiss" className="text-muted-foreground hover:text-foreground" onClick={onClose}>
+          <X className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
 }

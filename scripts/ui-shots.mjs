@@ -111,21 +111,97 @@ async function phoneShots(browser) {
 
 // Office Location on a desktop: the map with a proposed area, then editing it.
 async function locationShots(browser) {
+  const check = (condition, message) => {
+    if (!condition) throw new Error(`Office Location check failed: ${message}`);
+  };
   const context = await browser.newContext(DESKTOP);
   await mockApi(context);
   const page = await context.newPage();
+  const saved = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().endsWith('/api/attendance/location/boundary')) saved.push(request.postDataJSON());
+  });
+  // Place search goes to OpenStreetMap; here it answers with one made-up place.
+  await context.route('https://nominatim.openstreetmap.org/**', (route) => route.fulfill({
+    body: JSON.stringify([{ display_name: 'Alisa Hotel, North Ridge, Accra, Ghana', lat: '5.5662', lon: '-0.1990', name: 'Alisa Hotel' }]),
+    contentType: 'application/json',
+  }));
   await page.goto(`${baseUrl}/location`, { waitUntil: 'load' });
   // Satellite tiles may not load in the harness; the lines and corners still show.
   const map = page.getByRole('application', { name: 'Satellite map of the office grounds' });
   await map.waitFor({ timeout: 60_000 });
   await page.waitForTimeout(2000);
+  check(await map.evaluate((node) => node.classList.contains('leaflet-container')), 'the map loads');
+  check(await page.getByText(/pin moves to the middle, backup circle \d+ m/).count() === 1, 'the proposal says where the pin and circle go');
+  // The map fills the page under the header, and its layers stay under the side menu.
+  const mapBox = await map.boundingBox();
+  check(mapBox.width > 1100 && mapBox.height > 700, `the map fills the page (${Math.round(mapBox.width)}x${Math.round(mapBox.height)})`);
+  check(await map.evaluate((node) => getComputedStyle(node.parentElement).isolation === 'isolate'), 'map layers stay under the side menu');
+  for (const label of ['Show the office', 'Show my location', 'Full screen', 'Zoom in']) {
+    check(await page.locator(`.leaflet-control a[title="${label}"]`).count() === 1, `map button: ${label}`);
+  }
+  check(await page.locator('.leaflet-control-layers').count() === 1 && await page.locator('.leaflet-control-scale').count() === 1, 'map types and scale');
   await shoot(page, 'desktop-location');
+
+  // Search: a place by name, and typed coordinates.
+  const searchBox = page.getByLabel('Search places');
+  await searchBox.fill('Alisa Hotel');
+  await searchBox.press('Enter');
+  await page.getByRole('button', { name: /Alisa Hotel/ }).click();
+  await page.waitForTimeout(1200);
+  check(await page.locator('.leaflet-tooltip', { hasText: 'Alisa Hotel' }).count() === 1, 'a found place is marked on the map');
+  await searchBox.fill('5.5658, -0.1773');
+  await searchBox.press('Enter');
+  await page.waitForTimeout(1200);
+  check(await page.locator('.leaflet-tooltip', { hasText: '5.565800, -0.177300' }).count() === 1, 'typed coordinates are marked');
+  await page.locator('.leaflet-control a[title="Show the office"]').click();
+  await page.waitForTimeout(800);
+
+  // Editing keeps the map (Leaflet's own classes stay on its container) and shows the 7 corners.
   await page.getByRole('button', { name: 'Draw area' }).click();
   await page.waitForTimeout(500);
+  check(await map.evaluate((node) => node.classList.contains('leaflet-container') && Boolean(node.querySelector('.leaflet-tile-pane'))), 'the map stays while editing');
+  const cornerButton = page.getByRole('button', { name: /^Corners \(/ });
+  const cornerCount = async () => Number((await cornerButton.textContent()).match(/\d+/)[0]);
+  check(await cornerCount() === 7, 'editing starts from the proposed corners');
   const box = await map.boundingBox();
   await page.mouse.click(box.x + box.width * 0.75, box.y + box.height * 0.45);
   await page.waitForTimeout(300);
+  check(await cornerCount() === 8, 'a click adds a corner');
   await shoot(page, 'desktop-location-editing');
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  check(await cornerCount() === 7, 'Undo takes the corner back');
+  await page.locator('.leaflet-marker-icon[title^="Corner 3"]').click();
+  check(await cornerCount() === 6, 'clicking a corner removes it');
+  await page.keyboard.press('Control+z');
+  check(await cornerCount() === 7, 'Ctrl+Z undoes too');
+
+  // One road point, or a spare room over 100 m, cannot be saved.
+  await page.locator('.leaflet-marker-icon[title^="Road edge"]').first().click();
+  check(await page.getByText('Add a second road edge point').count() === 1, 'one road point is explained');
+  check(await page.getByRole('button', { name: 'Save area' }).isDisabled(), 'one road point cannot be saved');
+  await page.keyboard.press('Control+z');
+  const spare = page.getByLabel('Spare');
+  await spare.fill('150');
+  check(await page.getByText('Spare room must be 0 to 100 m.').count() === 1, 'spare over 100 m is explained');
+  check(await page.getByRole('button', { name: 'Save area' }).isDisabled(), 'spare over 100 m cannot be saved');
+  await spare.fill('25');
+
+  // Cancel with changes asks first; Save sends the drawn area.
+  await page.mouse.click(box.x + box.width * 0.75, box.y + box.height * 0.45);
+  let asked = '';
+  page.once('dialog', (dialog) => {
+    asked = dialog.message();
+    void dialog.dismiss();
+  });
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  check(asked === 'Discard your changes to the area?', 'Cancel asks before throwing away changes');
+  check(await page.getByRole('button', { name: 'Save area' }).isVisible(), 'dismissing keeps editing');
+  page.once('dialog', (dialog) => void dialog.accept());
+  await page.getByRole('button', { name: 'Save area' }).click();
+  await page.waitForTimeout(800);
+  const sent = saved.find((body) => body.action === 'save');
+  check(sent && sent.boundary.outline.length === 8 && sent.boundary.road && sent.boundary.roomMeters === 25, 'Save sends the area as drawn');
   await context.close();
 }
 

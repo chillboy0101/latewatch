@@ -1,3 +1,4 @@
+import { currentUser } from '@clerk/nextjs/server';
 import { eq } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
@@ -5,6 +6,7 @@ import { officeLocation } from '@/db/schema';
 import { getAccraClock, getOfficeLocationsForAttendance } from '@/lib/attendance';
 import { writeAuditEvent } from '@/lib/audit';
 import { enforceRole } from '@/lib/auth/roles';
+import { DEFAULT_MAX_LOCATION_ACCURACY_METERS } from '@/lib/geo-location';
 import { boundaryCircle, type OfficeBoundary, parseOfficeBoundary } from '@/lib/office-boundary';
 import { resolveOfficeLocationForDate } from '@/lib/office-location-policy';
 import { publishRealtime } from '@/lib/realtime';
@@ -67,7 +69,33 @@ export async function POST(request: NextRequest) {
 
   try {
     const row = await readDefaultLocation();
-    if (!row) return NextResponse.json({ error: 'Set the office location first' }, { status: 409 });
+    if (!row) {
+      // No office yet: saving the first area creates it, with the pin and circle made from it.
+      const firstArea = action === 'save' ? parseOfficeBoundary(body?.boundary) : null;
+      if (!firstArea) return NextResponse.json({ error: 'Draw the office area first' }, { status: 409 });
+      const user = await currentUser();
+      const [created] = await db.insert(officeLocation).values({
+        boundaryJson: firstArea,
+        isActive: true,
+        locationKind: 'default',
+        maxAccuracyMeters: DEFAULT_MAX_LOCATION_ACCURACY_METERS,
+        name: 'Office Location',
+        source: 'map',
+        updatedByEmail: user?.emailAddresses[0]?.emailAddress || 'unknown',
+        updatedByUserId: user?.id || null,
+        ...pinFromBoundary(firstArea),
+      }).returning();
+      await writeAuditEvent({
+        entityType: 'office_location',
+        entityId: created.id,
+        action: 'CREATE',
+        before: null,
+        after: { boundary: firstArea, ...pinFromBoundary(firstArea) },
+        reason: 'office-boundary-save',
+      });
+      publishRealtime('attendance', 'invalidate', { reason: 'attendance-office-location' });
+      return NextResponse.json(serialize(created));
+    }
     const active = parseOfficeBoundary(row.boundaryJson);
     const draft = parseOfficeBoundary(row.boundaryDraftJson);
 
