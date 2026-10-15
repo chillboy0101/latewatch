@@ -909,8 +909,7 @@ export default function PenaltyPaymentsPage() {
               </div>
               <div className="flex flex-wrap items-center gap-2 lg:order-last lg:col-span-2">
                 <PaymentToolbarTotal label="Live outstanding" value={currency(paymentTotals)} tone="live" />
-                {/* The four totals below are for the month picked under Offence book inputs. */}
-                <span className="text-xs font-medium text-muted-foreground">{selectedMonthShort}</span>
+                {/* The four totals below are for the month picked under Offence book inputs (named on the switch). */}
                 <PaymentToolbarTotal label="Penalties" value={currency(selectedMonthBalance?.penaltyAmount)} tone="month" />
                 <PaymentToolbarTotal label="Paid" value={currency(selectedMonthBalance?.paidAmount)} tone="paid" />
                 <PaymentToolbarTotal label="Pardoned" value={currency(selectedMonthBalance?.pardonedAmount)} tone="month" />
