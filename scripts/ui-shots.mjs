@@ -132,7 +132,7 @@ async function locationShots(browser) {
   await map.waitFor({ timeout: 60_000 });
   await page.waitForTimeout(2000);
   check(await map.evaluate((node) => node.classList.contains('leaflet-container')), 'the map loads');
-  check(await page.getByText(/pin moves to the middle, backup circle \d+ m/).count() === 1, 'the proposal says where the pin and circle go');
+  check(await page.getByText(/The pin moves to its centre, with a \d+ m backup circle round every edge\./).count() === 1, 'the proposal says where the pin and circle go');
   // The map fills the page under the header, and its layers stay under the side menu.
   const mapBox = await map.boundingBox();
   check(mapBox.width > 1100 && mapBox.height > 700, `the map fills the page (${Math.round(mapBox.width)}x${Math.round(mapBox.height)})`);

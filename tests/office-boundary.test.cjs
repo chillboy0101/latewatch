@@ -110,9 +110,13 @@ test('the office pin and circle made from an area sit in its middle and cover ev
     (a.longitude - b.longitude) * metersPerDegree * Math.cos((a.latitude * Math.PI) / 180),
     (a.latitude - b.latitude) * metersPerDegree,
   );
-  for (const [a, b] of boundaryContour(boundary, 2)) {
-    assert.ok(metersBetween(circle, a) <= circle.radiusMeters && metersBetween(circle, b) <= circle.radiusMeters);
+  let farthest = 0;
+  for (const [a, b] of boundaryContour(boundary, 0.5)) {
+    farthest = Math.max(farthest, metersBetween(circle, a), metersBetween(circle, b));
   }
+  // Covers every edge, and no bigger than it needs to be (rounded up to the next metre, plus 1 m).
+  assert.ok(farthest <= circle.radiusMeters, `${farthest} <= ${circle.radiusMeters}`);
+  assert.ok(circle.radiusMeters - farthest <= 2.2, `tight: ${circle.radiusMeters} vs ${farthest}`);
   // Grounds 110 m x 157 m once the room and road allowance are added: about 96 m across the corner.
   assert.ok(circle.radiusMeters >= 90 && circle.radiusMeters <= 100, String(circle.radiusMeters));
 });

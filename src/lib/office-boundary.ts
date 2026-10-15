@@ -232,10 +232,55 @@ export function boundaryContour(boundary: OfficeBoundary, stepMeters = 2): [LatL
  */
 export function boundaryCircle(boundary: OfficeBoundary): LatLng & { radiusMeters: number } {
   const geometry = boundaryGeometry(boundary);
-  const points = boundaryContour(boundary, 2).flatMap((segment) => segment.map(geometry.toPoint));
-  if (points.length === 0) points.push(...geometry.outline);
-  const circle = smallestCircle(points);
-  return { ...geometry.toLatLng(circle.centre), radiusMeters: Math.ceil(circle.radius + 2) };
+  // The spare room round the outline reaches furthest at the corners: circles of that size round
+  // every corner (to within a millimetre), wrapped in their convex hull.
+  const ring: Point[] = [];
+  for (const corner of geometry.outline) {
+    if (boundary.roomMeters === 0) ring.push(corner);
+    else {
+      for (let degree = 0; degree < 360; degree += 1) {
+        const angle = (degree * Math.PI) / 180;
+        ring.push({ x: corner.x + boundary.roomMeters * Math.cos(angle), y: corner.y + boundary.roomMeters * Math.sin(angle) });
+      }
+    }
+  }
+  const hull = convexHull(ring);
+  // Then cut at the road: the hull's points on the grounds side, and where its sides cross the line.
+  let points = hull;
+  if (boundary.road) {
+    const allowance = boundary.road.allowanceMeters;
+    points = [];
+    hull.forEach((point, index) => {
+      const next = hull[(index + 1) % hull.length];
+      const here = geometry.pastRoad(point) - allowance;
+      const there = geometry.pastRoad(next) - allowance;
+      if (here <= 0) points.push(point);
+      if ((here < 0 && there > 0) || (here > 0 && there < 0)) {
+        const t = here / (here - there);
+        points.push({ x: point.x + (next.x - point.x) * t, y: point.y + (next.y - point.y) * t });
+      }
+    });
+  }
+  const circle = smallestCircle(points.length > 0 ? points : geometry.outline);
+  return { ...geometry.toLatLng(circle.centre), radiusMeters: Math.ceil(circle.radius + 1) };
+}
+
+// Andrew's monotone chain: the convex hull, counter-clockwise.
+function convexHull(points: Point[]) {
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  if (sorted.length < 3) return sorted;
+  const cross = (o: Point, a: Point, b: Point) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: Point[] = [];
+  for (const point of sorted) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0) lower.pop();
+    lower.push(point);
+  }
+  const upper: Point[] = [];
+  for (const point of [...sorted].reverse()) {
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], point) <= 0) upper.pop();
+    upper.push(point);
+  }
+  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
 }
 
 /** Where a new corner clicked on the map belongs: after this index (the nearest edge). */

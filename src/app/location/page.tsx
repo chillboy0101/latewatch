@@ -353,7 +353,7 @@ export default function LocationPage() {
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {active
-                          ? `${describe(active)}${state.pin ? ` · pin in the middle, backup circle ${state.pin.radiusMeters} m` : ''}`
+                          ? `${describe(active)}. Sign-in is checked against this area only.`
                           : state.pin ? `${state.pin.radiusMeters} m around the pin` : 'Draw the office area on the map to set it.'}
                       </p>
                     </div>
@@ -365,7 +365,7 @@ export default function LocationPage() {
                   <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                       {active && <Swatch color={MAP_COLORS.area} label="Sign-in area" />}
-                      {state.pin && <Swatch color={MAP_COLORS.area} dashed label={active ? 'Backup circle' : 'Circle'} />}
+                      {state.pin && <Swatch color={MAP_COLORS.area} dashed label={active ? `Backup circle ${state.pin.radiusMeters} m (not used while the area is on)` : 'Circle'} />}
                       {draft && <Swatch color={MAP_COLORS.overlay} label="Proposed" />}
                       {showsRoad && <Swatch color={MAP_COLORS.road} label="Road edge" />}
                     </div>
@@ -383,7 +383,7 @@ export default function LocationPage() {
                   <p className="text-sm">
                     <span className="font-semibold">Proposed area</span>{' '}
                     <span className="text-muted-foreground">
-                      (cyan): {describe(draft)}{draftCircle ? ` · pin moves to the middle, backup circle ${draftCircle.radiusMeters} m` : ''}
+                      (cyan): {describe(draft)}{draftCircle ? `. The pin moves to its centre, with a ${draftCircle.radiusMeters} m backup circle round every edge.` : ''}
                     </span>
                   </p>
                   <div className="grid grid-cols-2 gap-2">
