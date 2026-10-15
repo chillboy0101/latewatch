@@ -8,7 +8,7 @@ require('tsx/cjs');
 
 const root = path.join(__dirname, '..');
 const read = (...parts) => fs.readFileSync(path.join(root, ...parts), 'utf8');
-const { boundaryContour, metersBeyondBoundary, parseOfficeBoundary } = require('../src/lib/office-boundary.ts');
+const { boundaryCircle, boundaryContour, metersBeyondBoundary, nearestEdgeIndex, parseOfficeBoundary } = require('../src/lib/office-boundary.ts');
 const { validateAttendanceLocation } = require('../src/lib/geo-location.ts');
 
 // Points given in metres east/north of an origin near the office.
@@ -77,10 +77,9 @@ test('the boundary line drawn on the map follows the rule', () => {
 test('a boundary is proposed, then approved by an admin, all in the audit trail', () => {
   const route = read('src', 'app', 'api', 'attendance', 'location', 'boundary', 'route.ts');
   assert.equal(route.match(/const authError = await enforceRole\(\['admin'\]\);/g).length, 2);
-  assert.match(route, /const ACTIONS = \['propose', 'approve', 'discard', 'remove'\] as const;/);
+  assert.match(route, /const ACTIONS = \['save', 'propose', 'approve', 'discard', 'remove'\] as const;/);
   assert.match(route, /changes = \{ boundaryDraftJson: proposed \};/);
   assert.match(route, /if \(!draft\) return NextResponse\.json\(\{ error: 'There is no proposed boundary to approve' \}, \{ status: 409 \}\);/);
-  assert.match(route, /changes = \{ boundaryDraftJson: null, boundaryJson: draft \};/);
   assert.match(route, /reason: `office-boundary-\$\{action\}`/);
   assert.match(read('drizzle', '0036_office_boundary.sql'), /ADD COLUMN IF NOT EXISTS boundary_json jsonb;\nALTER TABLE office_location ADD COLUMN IF NOT EXISTS boundary_draft_json jsonb;/);
 
@@ -97,5 +96,31 @@ test('a boundary is proposed, then approved by an admin, all in the audit trail'
 
   const page = read('src', 'app', 'location', 'page.tsx');
   assert.match(page, /fetch\('\/api\/attendance\/location\/boundary', \{ cache: 'no-store' \}\)/);
-  assert.match(page, /'Use this boundary for every sign-in from now on\?'/);
+  assert.match(page, /'Use this area for every sign-in from now on\?'/);
+  // Saving or approving an area also moves the pin to its middle, with a circle covering every edge.
+  assert.match(route, /changes = \{ boundaryDraftJson: null, boundaryJson: saved, \.\.\.pin \};/);
+  assert.match(route, /changes = \{ boundaryDraftJson: null, boundaryJson: draft, \.\.\.pin \};/);
+});
+
+test('the office pin and circle made from an area sit in its middle and cover every edge', () => {
+  const boundary = parseOfficeBoundary(grounds);
+  const circle = boundaryCircle(boundary);
+  assert.ok(metersBeyondBoundary(boundary, circle) <= 0, 'the pin is inside the area');
+  const metersBetween = (a, b) => Math.hypot(
+    (a.longitude - b.longitude) * metersPerDegree * Math.cos((a.latitude * Math.PI) / 180),
+    (a.latitude - b.latitude) * metersPerDegree,
+  );
+  for (const [a, b] of boundaryContour(boundary, 2)) {
+    assert.ok(metersBetween(circle, a) <= circle.radiusMeters && metersBetween(circle, b) <= circle.radiusMeters);
+  }
+  // Grounds 110 m x 157 m once the room and road allowance are added: about 96 m across the corner.
+  assert.ok(circle.radiusMeters >= 90 && circle.radiusMeters <= 100, String(circle.radiusMeters));
+});
+
+test('a corner clicked on the map goes into the nearest edge', () => {
+  const outline = grounds.outline; // (0,0) (60,0) (60,120) (0,120)
+  assert.equal(nearestEdgeIndex(outline, at(30, -5)), 0, 'south edge: after corner 1');
+  assert.equal(nearestEdgeIndex(outline, at(65, 60)), 1, 'east edge: after corner 2');
+  assert.equal(nearestEdgeIndex(outline, at(-5, 60)), 3, 'west edge: after the last corner');
+  assert.equal(nearestEdgeIndex(outline.slice(0, 2), at(0, 0)), 1, 'fewer than 3 corners: at the end');
 });

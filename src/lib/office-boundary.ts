@@ -201,3 +201,69 @@ export function boundaryContour(boundary: OfficeBoundary, stepMeters = 2): [LatL
   }
   return segments;
 }
+
+/**
+ * The smallest circle that covers the whole sign-in area (outline, room and road allowance
+ * included). With a boundary on, the office pin and circle are made from it: the pin sits in the
+ * middle of the grounds and the circle covers every edge.
+ */
+export function boundaryCircle(boundary: OfficeBoundary): LatLng & { radiusMeters: number } {
+  const geometry = boundaryGeometry(boundary);
+  const points = boundaryContour(boundary, 2).flatMap((segment) => segment.map(geometry.toPoint));
+  if (points.length === 0) points.push(...geometry.outline);
+  const circle = smallestCircle(points);
+  return { ...geometry.toLatLng(circle.centre), radiusMeters: Math.ceil(circle.radius + 2) };
+}
+
+/** Where a new corner clicked on the map belongs: after this index (the nearest edge). */
+export function nearestEdgeIndex(outline: LatLng[], point: LatLng) {
+  if (outline.length < 3) return outline.length - 1;
+  const { toPoint } = projector(outline[0]);
+  const corners = outline.map(toPoint);
+  const target = toPoint(point);
+  let best = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  corners.forEach((corner, index) => {
+    const distance = segmentDistance(target, corner, corners[(index + 1) % corners.length]);
+    if (distance < bestDistance) {
+      best = index;
+      bestDistance = distance;
+    }
+  });
+  return best;
+}
+
+// Welzl's smallest enclosing circle, iteratively; points are shuffled the same way every time.
+function smallestCircle(points: Point[]) {
+  const shuffled = [...points].sort((a, b) => ((a.x * 7919 + a.y * 104729) % 1) - ((b.x * 7919 + b.y * 104729) % 1));
+  const contains = (circle: { centre: Point; radius: number }, point: Point) => Math.hypot(point.x - circle.centre.x, point.y - circle.centre.y) <= circle.radius + 1e-7;
+  const fromTwo = (a: Point, b: Point) => {
+    const centre = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    return { centre, radius: Math.hypot(a.x - centre.x, a.y - centre.y) };
+  };
+  const fromThree = (a: Point, b: Point, c: Point) => {
+    const d = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+    if (Math.abs(d) < 1e-12) return null;
+    const a2 = a.x * a.x + a.y * a.y;
+    const b2 = b.x * b.x + b.y * b.y;
+    const c2 = c.x * c.x + c.y * c.y;
+    const centre = {
+      x: (a2 * (b.y - c.y) + b2 * (c.y - a.y) + c2 * (a.y - b.y)) / d,
+      y: (a2 * (c.x - b.x) + b2 * (a.x - c.x) + c2 * (b.x - a.x)) / d,
+    };
+    return { centre, radius: Math.hypot(a.x - centre.x, a.y - centre.y) };
+  };
+  let circle = { centre: shuffled[0], radius: 0 };
+  for (let i = 1; i < shuffled.length; i += 1) {
+    if (contains(circle, shuffled[i])) continue;
+    circle = { centre: shuffled[i], radius: 0 };
+    for (let j = 0; j < i; j += 1) {
+      if (contains(circle, shuffled[j])) continue;
+      circle = fromTwo(shuffled[i], shuffled[j]);
+      for (let k = 0; k < j; k += 1) {
+        if (!contains(circle, shuffled[k])) circle = fromThree(shuffled[i], shuffled[j], shuffled[k]) || circle;
+      }
+    }
+  }
+  return circle;
+}

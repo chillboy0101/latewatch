@@ -167,6 +167,7 @@ export function buildFixtures(now = new Date()) {
         roomMeters: 25,
       },
       locationId: 'office-1',
+      pin: { latitude: 5.5658293, longitude: -0.1775282, radiusMeters: 90 },
     },
     '/api/attendance/location': {
       configured: true,

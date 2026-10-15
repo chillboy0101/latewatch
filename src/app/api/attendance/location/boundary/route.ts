@@ -5,13 +5,13 @@ import { officeLocation } from '@/db/schema';
 import { getAccraClock, getOfficeLocationsForAttendance } from '@/lib/attendance';
 import { writeAuditEvent } from '@/lib/audit';
 import { enforceRole } from '@/lib/auth/roles';
-import { parseOfficeBoundary } from '@/lib/office-boundary';
+import { boundaryCircle, type OfficeBoundary, parseOfficeBoundary } from '@/lib/office-boundary';
 import { resolveOfficeLocationForDate } from '@/lib/office-location-policy';
 import { publishRealtime } from '@/lib/realtime';
 
 export const dynamic = 'force-dynamic';
 
-const ACTIONS = ['propose', 'approve', 'discard', 'remove'] as const;
+const ACTIONS = ['save', 'propose', 'approve', 'discard', 'remove'] as const;
 type BoundaryAction = (typeof ACTIONS)[number];
 
 // The office grounds shape belongs to the default office location (a programme location keeps
@@ -26,6 +26,7 @@ function serialize(row: typeof officeLocation.$inferSelect) {
     active: parseOfficeBoundary(row.boundaryJson),
     draft: parseOfficeBoundary(row.boundaryDraftJson),
     locationId: row.id,
+    pin: { latitude: Number(row.latitude), longitude: Number(row.longitude), radiusMeters: row.radiusMeters },
   };
 }
 
@@ -34,7 +35,7 @@ export async function GET() {
   if (authError) return NextResponse.json({ error: authError.error }, { status: authError.status });
   try {
     const row = await readDefaultLocation();
-    if (!row) return NextResponse.json({ active: null, draft: null, locationId: null });
+    if (!row) return NextResponse.json({ active: null, draft: null, locationId: null, pin: null });
     return NextResponse.json(serialize(row), { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('Failed to load the office boundary:', error);
@@ -42,8 +43,20 @@ export async function GET() {
   }
 }
 
-// propose: keep a shape for review (no effect on sign-in). approve: the proposed shape becomes the
-// office boundary. discard: drop the proposal. remove: back to the circle.
+// The pin and circle made from a boundary: the pin in the middle of the grounds, the circle covering
+// every edge (used if the boundary is ever turned off).
+function pinFromBoundary(boundary: OfficeBoundary) {
+  const circle = boundaryCircle(boundary);
+  return {
+    latitude: circle.latitude.toFixed(7),
+    longitude: circle.longitude.toFixed(7),
+    radiusMeters: Math.min(1000, Math.max(10, circle.radiusMeters)),
+  };
+}
+
+// save: this shape is the office boundary from now on. propose: keep a shape for review (no effect
+// on sign-in). approve: the proposed shape becomes the office boundary. discard: drop the
+// proposal. remove: back to the circle.
 export async function POST(request: NextRequest) {
   const authError = await enforceRole(['admin']);
   if (authError) return NextResponse.json({ error: authError.error }, { status: authError.status });
@@ -61,7 +74,19 @@ export async function POST(request: NextRequest) {
     let changes: Partial<typeof officeLocation.$inferInsert>;
     let before: Record<string, unknown>;
     let after: Record<string, unknown>;
-    if (action === 'propose') {
+    const pinBefore = { latitude: row.latitude, longitude: row.longitude, radiusMeters: row.radiusMeters };
+    if (action === 'save') {
+      const saved = parseOfficeBoundary(body?.boundary);
+      if (!saved) {
+        return NextResponse.json({
+          error: 'This area cannot be used: mark at least 3 corners, with the road edge in front of the grounds.',
+        }, { status: 400 });
+      }
+      const pin = pinFromBoundary(saved);
+      changes = { boundaryDraftJson: null, boundaryJson: saved, ...pin };
+      before = { boundary: active, ...pinBefore };
+      after = { boundary: saved, ...pin };
+    } else if (action === 'propose') {
       const proposed = parseOfficeBoundary(body?.boundary);
       if (!proposed) {
         return NextResponse.json({
@@ -73,9 +98,10 @@ export async function POST(request: NextRequest) {
       after = { proposedBoundary: proposed };
     } else if (action === 'approve') {
       if (!draft) return NextResponse.json({ error: 'There is no proposed boundary to approve' }, { status: 409 });
-      changes = { boundaryDraftJson: null, boundaryJson: draft };
-      before = { boundary: active, radiusMeters: row.radiusMeters };
-      after = { boundary: draft };
+      const pin = pinFromBoundary(draft);
+      changes = { boundaryDraftJson: null, boundaryJson: draft, ...pin };
+      before = { boundary: active, ...pinBefore };
+      after = { boundary: draft, ...pin };
     } else if (action === 'discard') {
       changes = { boundaryDraftJson: null };
       before = { proposedBoundary: draft };
@@ -98,7 +124,7 @@ export async function POST(request: NextRequest) {
       after,
       reason: `office-boundary-${action}`,
     });
-    if (action === 'approve' || action === 'remove') {
+    if (action === 'save' || action === 'approve' || action === 'remove') {
       // Phones re-read the office policy, so their live "At office" check follows the new boundary.
       publishRealtime('attendance', 'invalidate', { reason: 'attendance-office-location' });
       publishRealtime('dashboard', 'invalidate', { reason: 'attendance-office-location' });

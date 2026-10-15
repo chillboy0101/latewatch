@@ -109,30 +109,23 @@ async function phoneShots(browser) {
   await context.close();
 }
 
-// Office Location on a desktop: the map with a proposed boundary, then a new outline being drawn.
+// Office Location on a desktop: the map with a proposed area, then editing it.
 async function locationShots(browser) {
   const context = await browser.newContext(DESKTOP);
   await mockApi(context);
   const page = await context.newPage();
   await page.goto(`${baseUrl}/location`, { waitUntil: 'load' });
-  // Satellite tiles may not load in the harness; the overlays and clicked corners still show.
+  // Satellite tiles may not load in the harness; the lines and corners still show.
   const map = page.getByRole('application', { name: 'Satellite map of the office grounds' });
   await map.waitFor({ timeout: 60_000 });
   await page.waitForTimeout(2000);
   await shoot(page, 'desktop-location');
-  for (const [x, y] of [[0.42, 0.2], [0.6, 0.22], [0.62, 0.7], [0.4, 0.75]]) {
-    const box = await map.boundingBox();
-    await page.mouse.click(box.x + box.width * x, box.y + box.height * y);
-    await page.waitForTimeout(200);
-  }
-  await page.getByRole('button', { name: /^Road edge/ }).click();
-  for (const [x, y] of [[0.35, 0.82], [0.66, 0.8]]) {
-    const box = await map.boundingBox();
-    await page.mouse.click(box.x + box.width * x, box.y + box.height * y);
-    await page.waitForTimeout(200);
-  }
-  await page.locator('summary', { hasText: 'Pin and circle' }).click();
-  await shoot(page, 'desktop-location-drawing');
+  await page.getByRole('button', { name: 'Draw area' }).click();
+  await page.waitForTimeout(500);
+  const box = await map.boundingBox();
+  await page.mouse.click(box.x + box.width * 0.75, box.y + box.height * 0.45);
+  await page.waitForTimeout(300);
+  await shoot(page, 'desktop-location-editing');
   await context.close();
 }
 
