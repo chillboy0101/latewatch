@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { formatDisplayDate } from '@/lib/date-format';
 import { getAccraYesterdayKey } from '@/lib/date-key';
-import { pardonCutoffForMonth, rowForMonth } from '@/lib/payment-months';
+import { pardonCutoffForMonth, rowForMonth, sumMoney } from '@/lib/payment-months';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 
@@ -459,13 +459,18 @@ export default function PenaltyPaymentsPage() {
       : searchedRows.filter((row) => staffPaymentStatusForRow(row) === statusFilter);
   }, [viewRows, search, statusFilter]);
   const filteredRows = useMemo(() => sortPaymentRowsByBalance(matchingRows), [matchingRows]);
-  const paymentTotals = useMemo(() => {
-    return (data?.staff || []).reduce(
-      (total, row) => total + moneyNumber(row.outstandingBalance),
-      0,
-    );
+  const allMonthTotals = useMemo(() => {
+    const rows = data?.staff || [];
+    return {
+      paidAmount: sumMoney(rows.map((row) => row.paidAmount)),
+      pardonedAmount: sumMoney(rows.flatMap((row) => row.entries.map((entry) => entry.pardonedAmount))),
+      penaltyAmount: sumMoney(rows.map((row) => row.totalPenalty)),
+      unpaidAmount: sumMoney(rows.map((row) => row.outstandingBalance)),
+    };
   }, [data?.staff]);
   const selectedMonthBalance = data?.monthlyBreakdown?.find((month) => month.month === selectedMonthKey);
+  // The totals row follows the switch, like the table: every month, or the month on the switch.
+  const shownTotals = monthView ? selectedMonthBalance : allMonthTotals;
   const paymentRosterSections = useMemo(() => {
     return [
       {
@@ -908,12 +913,10 @@ export default function PenaltyPaymentsPage() {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2 lg:order-last lg:col-span-2">
-                <PaymentToolbarTotal label="Live outstanding" value={currency(paymentTotals)} tone="live" />
-                {/* The four totals below are for the month picked under Offence book inputs (named on the switch). */}
-                <PaymentToolbarTotal label="Penalties" value={currency(selectedMonthBalance?.penaltyAmount)} tone="month" />
-                <PaymentToolbarTotal label="Paid" value={currency(selectedMonthBalance?.paidAmount)} tone="paid" />
-                <PaymentToolbarTotal label="Pardoned" value={currency(selectedMonthBalance?.pardonedAmount)} tone="month" />
-                <PaymentToolbarTotal label="Unpaid" value={currency(selectedMonthBalance?.unpaidAmount)} tone="unpaid" />
+                <PaymentToolbarTotal label="Penalties" value={currency(shownTotals?.penaltyAmount)} tone="month" />
+                <PaymentToolbarTotal label="Paid" value={currency(shownTotals?.paidAmount)} tone="paid" />
+                <PaymentToolbarTotal label="Pardoned" value={currency(shownTotals?.pardonedAmount)} tone="month" />
+                <PaymentToolbarTotal label="Unpaid" value={currency(shownTotals?.unpaidAmount)} tone="unpaid" />
               </div>
               <div className="flex w-full items-center gap-2 md:max-w-sm lg:justify-self-end">
                 <div className="relative w-full">

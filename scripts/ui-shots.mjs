@@ -466,7 +466,8 @@ async function paymentsShots(browser) {
   const row = (name) => page.locator('tbody tr', { hasText: name });
   await row('Ama Owusu').waitFor({ timeout: 60_000 });
   const cells = async (name) => (await row(name).locator('td').allTextContents()).map((text) => text.trim());
-  const toolbar = () => page.locator('span', { hasText: /^Penalties$/ }).first().locator('xpath=..').textContent();
+  // The whole totals row (the Penalties chip's row).
+  const toolbar = () => page.locator('span', { hasText: /^Penalties$/ }).first().locator('xpath=../..').textContent();
   const totalButton = page.getByRole('button', { name: 'Total', exact: true });
   const monthButton = totalButton.locator('xpath=following-sibling::button[1]');
   const columns = () => page.locator('thead th').count();
@@ -475,6 +476,8 @@ async function paymentsShots(browser) {
   check(await totalButton.getAttribute('aria-pressed') === 'true' && await columns() === 4, 'the table opens on everyone\'s total');
   check((await cells('Ama Owusu')).slice(1, 3).join('|') === 'Unpaid|GHC 11.00', `Ama in total: ${await cells('Ama Owusu')}`);
   check((await cells('Kofi Boateng')).slice(1, 3).join('|') === 'Unpaid|GHC 10.00', `Kofi in total: ${await cells('Kofi Boateng')}`);
+  const totalsText = await toolbar();
+  check(totalsText.includes('GHC 33.00') && totalsText.includes('GHC 21.00') && !totalsText.includes('Live outstanding'), `the totals row is every month in Total (${totalsText})`);
   await shoot(page, 'desktop-payments-total');
 
   // This month: Kofi owes GHC 10, Ama GHC 2, Esi nothing.
@@ -502,6 +505,7 @@ async function paymentsShots(browser) {
   // From Total, picking a month up top shows that month.
   await totalButton.click();
   check((await cells('Ama Owusu')).slice(1, 3).join('|') === 'Unpaid|GHC 11.00', 'Total goes back to everyone\'s total');
+  check((await toolbar()).includes('GHC 33.00'), 'the totals row goes back to every month');
   await yearSelect.selectOption(String(now.getFullYear()));
   await monthSelect.selectOption(String(now.getMonth()));
   await page.waitForTimeout(500);

@@ -125,8 +125,11 @@ test('the Payments table switches between everyone\'s total and the chosen month
   assert.match(page, /note: monthView \? `Marked \$\{selectedMonthName\} paid` : 'Marked balance paid',/);
   assert.match(page, /monthView \? `No penalties in \$\{selectedMonthName\}\.` : 'No penalty days found\.'/);
   assert.match(page, /owed in total/);
-  // The live total still covers every month.
-  assert.match(page, /const paymentTotals = useMemo\(\(\) => \{\n\s+return \(data\?\.staff \|\| \[\]\)\.reduce/);
+  // The totals row follows the switch: every month in Total, the month on the switch otherwise.
+  assert.match(page, /unpaidAmount: sumMoney\(rows\.map\(\(row\) => row\.outstandingBalance\)\)/);
+  for (const label of ['Penalties', 'Paid', 'Pardoned', 'Unpaid']) {
+    assert.match(page, new RegExp(`<PaymentToolbarTotal label="${label}" value=\\{currency\\(shownTotals\\?\\.`), label);
+  }
   assert.match(api, /const MONTH_KEY_PATTERN = /);
   assert.match(api, /range: hasDateFilter \? \{ end: weekEnd, start: weekStart \} : month \? monthDateRange\(month\) : null/);
   assert.match(api, /months: \[\.\.\.\(monthsByPaymentId\.get\(payment\.id\) \|\| \[\]\)\]\.sort\(\)/);

@@ -180,12 +180,14 @@ test('payments list uses binary paid or unpaid status with toolbar money totals'
   assert.doesNotMatch(page, /\{ label: 'Partial', value: 'partially_paid' \}/);
   assert.match(page, /StaffPaymentStatusBadge status=\{staffPaymentStatusForRow\(row\)\}/);
   assert.match(page, /PaymentStatusBadge status=\{entry\.status\}/);
-  assert.match(page, /const paymentTotals = useMemo/);
-  assert.match(page, /Live outstanding/);
+  // The totals row follows the Total / month switch; Live outstanding was the same as Total's Unpaid.
+  assert.match(page, /const allMonthTotals = useMemo/);
+  assert.match(page, /const shownTotals = monthView \? selectedMonthBalance : allMonthTotals;/);
+  assert.doesNotMatch(page, /Live outstanding/);
   assert.match(page, /selectedMonthKey/);
-  assert.match(page, /selectedMonthBalance\?\.paidAmount/);
-  assert.match(page, /selectedMonthBalance\?\.pardonedAmount/);
-  assert.match(page, /selectedMonthBalance\?\.unpaidAmount/);
+  assert.match(page, /shownTotals\?\.paidAmount/);
+  assert.match(page, /shownTotals\?\.pardonedAmount/);
+  assert.match(page, /shownTotals\?\.unpaidAmount/);
   assert.match(page, /data\?\.monthlyBreakdown\?\.find/);
   assert.match(page, /PaymentToolbarTotal label="Penalties"/);
   assert.match(page, /PaymentToolbarTotal label="Paid"/);
