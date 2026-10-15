@@ -4,10 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "predev": "node scripts/build-esri.mjs",
     "build": "next build",
-    "prebuild": "node scripts/build-esri.mjs",
-    "esri": "node scripts/build-esri.mjs",
     "start": "next start",
     "lint": "eslint",
     "test": "node --test tests/*.test.cjs",
@@ -24,8 +21,6 @@
     "no-show:correct-amount": "node scripts/correct-no-show-sign-in-amount.mjs"
   },
   "dependencies": {
-    "@arcgis/core": "^5.1.27",
-    "@arcgis/map-components": "5.1",
     "@clerk/themes": "^2.4.57",
     "@types/qrcode": "^1.5.6",
     "@upstash/redis": "^1.38.1",
@@ -41,6 +36,8 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@arcgis/core": "^5.1.27",
+    "@arcgis/map-components": "5.1",
     "@aws-sdk/client-s3": "^3.1026.0",
     "@aws-sdk/s3-request-presigner": "^3.1026.0",
     "@clerk/nextjs": "^7.0.11",

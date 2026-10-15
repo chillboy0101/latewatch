@@ -8,13 +8,13 @@
 
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { crc32, deflateSync } from 'node:zlib';
+import { build } from 'esbuild';
 import { chromium } from 'playwright-core';
 import { buildFixtures } from '../tests/ui/fixtures.mjs';
-import { buildEsri } from './build-esri.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = path.join(root, 'output', 'ui-shots');
@@ -114,9 +114,13 @@ async function phoneShots(browser) {
   await context.close();
 }
 
-// Esri's map works here without the internet: its own files (components, styles, icons,
-// translations) come from the same packages in node_modules instead of js.arcgis.com, its raster
-// basemaps get plain tiles, and anything else Esri is unavailable, as when offline.
+// Esri's map works here without the internet. The page loads the SDK from Esri's servers
+// (https://js.arcgis.com/5.1/); here that script is a stand-in that loads Esri's published Calcite and
+// map components from node_modules and answers $arcgis.import from a local build of @arcgis/core.
+// Esri's other files (styles, icons, translations) come from the same packages, its raster basemaps
+// get plain tiles, and anything else Esri is unavailable, as when offline.
+const ESRI_SDK = /^https:\/\/js\.arcgis\.com\/5\.1\/$/;
+const ESRI_CORE_BUILD = /^https:\/\/js\.arcgis\.com\/__ui-harness-core\//;
 const ESRI_FILES = [
   [/^https:\/\/js\.arcgis\.com\/[^/]+\/@arcgis\/core\/assets\//, 'node_modules/@arcgis/core/assets/'],
   [/^https:\/\/js\.arcgis\.com\/[^/]+\/map-components\//, 'node_modules/@arcgis/map-components/dist/cdn/'],
@@ -160,12 +164,71 @@ function tiledService() {
   };
 }
 
+const packageVersion = async (name) => JSON.parse(await readFile(path.join(root, 'node_modules', name, 'package.json'), 'utf8')).version;
+
+// @arcgis/core built once (cached under node_modules/.cache) as one module per public file, which the
+// stand-in's $arcgis.import loads by name, as Esri's servers do.
+async function buildEsriCore() {
+  const outdir = path.join(root, 'node_modules', '.cache', `ui-harness-arcgis-core-${await packageVersion('@arcgis/core')}`);
+  if (existsSync(path.join(outdir, 'registry.js'))) return outdir;
+  const coreDir = path.join(root, 'node_modules', '@arcgis', 'core');
+  const modules = (await readdir(coreDir, { recursive: true }))
+    .map((file) => file.split(path.sep).join('/'))
+    .filter((file) => file.endsWith('.js') && !/^(assets|chunks)\//.test(file));
+  const entry = path.join(root, 'node_modules', '.cache', 'ui-harness-arcgis-core-entry.js');
+  await mkdir(path.dirname(entry), { recursive: true });
+  await writeFile(entry, `export const modules = {\n${modules.map((file) => `  ${JSON.stringify(file.replace(/\.js$/, ''))}: () => import(${JSON.stringify(`@arcgis/core/${file}`)}),`).join('\n')}\n};\n`);
+  await build({
+    absWorkingDir: root,
+    bundle: true,
+    chunkNames: 'chunks/[name]-[hash]',
+    define: { 'process.env.NODE_ENV': '"production"' },
+    entryNames: 'registry',
+    entryPoints: [entry],
+    format: 'esm',
+    logLevel: 'error',
+    outdir,
+    splitting: true,
+    target: 'es2022',
+  });
+  return outdir;
+}
+
+async function esriSdkStandIn() {
+  const [calcite, components] = await Promise.all([packageVersion('@esri/calcite-components'), packageVersion('@arcgis/map-components')]);
+  return `import { modules } from 'https://js.arcgis.com/__ui-harness-core/registry.js';
+const load = async (name) => {
+  const key = name.replace(/^@arcgis\\/core\\//, '').replace(/\\.js$/, '');
+  if (!modules[key]) throw new Error('No such @arcgis/core module: ' + name);
+  const module = await modules[key]();
+  return module.default ?? module;
+};
+if (!globalThis.$arcgis) Object.defineProperty(globalThis, '$arcgis', { enumerable: true, value: {} });
+globalThis.$arcgis.import = (names) => (Array.isArray(names) ? Promise.all(names.map(load)) : load(names));
+for (const href of ['https://js.arcgis.com/calcite-components/${calcite}/main.css', 'https://js.arcgis.com/${components}/map-components/main.css']) {
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = href;
+  document.head.append(link);
+}
+await import('https://js.arcgis.com/calcite-components/${calcite}/index.js');
+await import('https://js.arcgis.com/${components}/map-components/index.js');
+`;
+}
+
 async function serveEsriOffline(context, geocoder) {
   const tile = plainTile();
   const service = JSON.stringify(tiledService());
+  const coreDir = await buildEsriCore();
+  const standIn = await esriSdkStandIn();
   await context.route(ESRI_HOSTS, (route) => {
     const url = new URL(route.request().url());
     const href = `${url.origin}${url.pathname}`;
+    if (ESRI_SDK.test(href)) return route.fulfill({ body: standIn, contentType: 'text/javascript' });
+    if (ESRI_CORE_BUILD.test(href)) {
+      const file = path.join(coreDir, href.replace(ESRI_CORE_BUILD, ''));
+      return existsSync(file) ? route.fulfill({ path: file }) : route.fulfill({ body: 'Not found', status: 404 });
+    }
     for (const [prefix, dir] of ESRI_FILES) {
       if (!prefix.test(href)) continue;
       const file = path.join(root, dir, href.replace(prefix, ''));
@@ -492,8 +555,6 @@ async function desktopShots(browser) {
   await context.close();
 }
 
-// The Office Location map loads Esri's library from public/esri, as in production.
-await buildEsri();
 const server = startServer();
 let exitCode = 0;
 try {

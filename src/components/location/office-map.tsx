@@ -12,8 +12,8 @@ import { cn } from '@/lib/utils';
 // adds the office area on top: the area in force (white) with its pin and backup circle, a proposed
 // or edited area (cyan) with the pin and circle it would bring, and while editing the corners and
 // road edge to drag. Panels passed as children float over the map (and come along in full screen).
-// Esri's library is bundled on its own (scripts/build-esri.mjs, from esri-sdk.ts) and loaded here in
-// the browser; the app's build never bundles it.
+// The whole SDK comes from Esri's own servers (js.arcgis.com) in the browser: LateWatch bundles and
+// hosts none of it.
 
 export type MapPoint = LatLng & { id: string };
 export type MapCircle = LatLng & { radiusMeters: number };
@@ -33,7 +33,39 @@ export type OfficeMapProps = {
   roadPoints: MapPoint[];
 };
 
-type Core = typeof import('./esri-sdk');
+// Esri's classes the office overlay and the map's tools use, loaded from Esri's servers.
+type Core = {
+  Basemap: typeof import('@arcgis/core/Basemap').default;
+  Circle: typeof import('@arcgis/core/geometry/Circle').default;
+  esriConfig: typeof import('@arcgis/core/config').default;
+  Graphic: typeof import('@arcgis/core/Graphic').default;
+  GraphicsLayer: typeof import('@arcgis/core/layers/GraphicsLayer').default;
+  LocalBasemapsSource: typeof import('@arcgis/core/widgets/BasemapGallery/support/LocalBasemapsSource').default;
+  LocatorSearchSource: typeof import('@arcgis/core/widgets/Search/LocatorSearchSource').default;
+  Multipoint: typeof import('@arcgis/core/geometry/Multipoint').default;
+  Point: typeof import('@arcgis/core/geometry/Point').default;
+  Polygon: typeof import('@arcgis/core/geometry/Polygon').default;
+  Polyline: typeof import('@arcgis/core/geometry/Polyline').default;
+  SpatialReference: typeof import('@arcgis/core/geometry/SpatialReference').default;
+};
+const CORE_MODULES: Array<[keyof Core, string]> = [
+  ['Basemap', '@arcgis/core/Basemap.js'],
+  ['Circle', '@arcgis/core/geometry/Circle.js'],
+  ['esriConfig', '@arcgis/core/config.js'],
+  ['Graphic', '@arcgis/core/Graphic.js'],
+  ['GraphicsLayer', '@arcgis/core/layers/GraphicsLayer.js'],
+  ['LocalBasemapsSource', '@arcgis/core/widgets/BasemapGallery/support/LocalBasemapsSource.js'],
+  ['LocatorSearchSource', '@arcgis/core/widgets/Search/LocatorSearchSource.js'],
+  ['Multipoint', '@arcgis/core/geometry/Multipoint.js'],
+  ['Point', '@arcgis/core/geometry/Point.js'],
+  ['Polygon', '@arcgis/core/geometry/Polygon.js'],
+  ['Polyline', '@arcgis/core/geometry/Polyline.js'],
+  ['SpatialReference', '@arcgis/core/geometry/SpatialReference.js'],
+];
+// Esri's one script for the SDK: the map, its components and their styles, and $arcgis.import for
+// the classes.
+const ESRI_SDK_URL = 'https://js.arcgis.com/5.1/';
+const ESRI_ELEMENTS = ['arcgis-map', 'arcgis-search', 'arcgis-zoom', 'arcgis-home', 'arcgis-locate', 'arcgis-fullscreen', 'arcgis-expand', 'arcgis-basemap-gallery', 'arcgis-scale-bar'];
 type Layers = { area: InstanceType<Core['GraphicsLayer']>; edit: InstanceType<Core['GraphicsLayer']> };
 type Handle = { id: string; kind: 'corner' | 'road'; point: LatLng };
 
@@ -63,27 +95,48 @@ function cornerIcon(label: string) {
 }
 
 let esriLoading: Promise<Core> | null = null;
-// The browser's own import(), out of the bundler's sight: the bundle's address is only known here.
-const importInBrowser = new Function('url', 'return import(url)') as (url: string) => Promise<unknown>;
 
-// Esri's library (map components, styles and the classes the office overlay needs), loaded in the
-// browser from the bundle in public/esri. A failed load can be tried again.
+type EsriImport = (modules: string[]) => Promise<unknown[]>;
+const esriImport = () => (globalThis as { $arcgis?: { import?: EsriImport } }).$arcgis?.import;
+
+function addScript(src: string, module: boolean) {
+  return new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script');
+    if (module) script.type = 'module';
+    script.src = src;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Could not load ${src}`));
+    document.head.append(script);
+  });
+}
+
+// Esri's SDK from Esri's servers, then the classes the office overlay needs. A failed load can be
+// tried again.
 function loadEsri(): Promise<Core> {
   esriLoading ??= (async () => {
-    const response = await fetch('/esri/manifest.json', { cache: 'no-store' });
-    if (!response.ok) throw new Error(`Esri map library missing (${response.status})`);
-    const { script, style } = await response.json() as { script: string; style: string };
-    if (!document.querySelector(`link[href="${style}"]`)) {
+    if (!esriImport()) await addScript(ESRI_SDK_URL, true);
+    const load = esriImport();
+    if (!load) throw new Error('Esri\'s map did not start');
+    // Esri's components register once its script has run: wait for them (not forever), so the map is
+    // created as Esri's element with its properties rather than as a plain tag.
+    await Promise.race([
+      Promise.all(ESRI_ELEMENTS.map((tag) => customElements.whenDefined(tag))),
+      new Promise((resolve) => setTimeout(resolve, 15_000)),
+    ]);
+    const classes = await load(CORE_MODULES.map(([, module]) => module));
+    const core = Object.fromEntries(CORE_MODULES.map(([name], index) => [name, classes[index]])) as Core;
+    if (ARCGIS_KEY) core.esriConfig.apiKey = ARCGIS_KEY;
+    // Never pop up an ArcGIS sign-in box: a service that needs one just fails quietly.
+    core.esriConfig.request.useIdentity = false;
+    // The map view's own styles, from the same servers (harmless if Esri's script added them too).
+    const viewStyles = `${core.esriConfig.assetsPath}/esri/themes/light/view.css`;
+    if (!document.querySelector(`link[href="${viewStyles}"]`)) {
       const link = document.createElement('link');
-      link.href = style;
+      link.href = viewStyles;
       link.rel = 'stylesheet';
       document.head.append(link);
     }
-    const sdk = await importInBrowser(script) as Core;
-    if (ARCGIS_KEY) sdk.esriConfig.apiKey = ARCGIS_KEY;
-    // Never pop up an ArcGIS sign-in box: a service that needs one just fails quietly.
-    sdk.esriConfig.request.useIdentity = false;
-    return sdk;
+    return core;
   })();
   esriLoading.catch(() => {
     esriLoading = null;
@@ -147,24 +200,37 @@ export function OfficeMap({
   useEffect(() => {
     if (!core) return;
     const { Basemap, LocalBasemapsSource, LocatorSearchSource } = core;
-    if (galleryRef.current) {
-      galleryRef.current.source = new LocalBasemapsSource({
-        basemaps: BASEMAP_IDS.map((id) => Basemap.fromId(id)).filter((basemap): basemap is NonNullable<typeof basemap> => Boolean(basemap)),
-      });
-    }
-    if (searchRef.current && !ARCGIS_KEY) {
-      searchRef.current.includeDefaultSourcesDisabled = true;
-      searchRef.current.sources.removeAll();
-      searchRef.current.sources.add(new LocatorSearchSource({
-        maxResults: 6,
-        maxSuggestions: 6,
-        name: 'ArcGIS World Geocoding Service',
-        placeholder: 'Search places or addresses',
-        singleLineFieldName: 'SingleLine',
-        url: PUBLIC_GEOCODER,
-      }));
-    }
-    if (fullscreenRef.current && wrapperRef.current) fullscreenRef.current.element = wrapperRef.current;
+    let cancelled = false;
+    void (async () => {
+      // Esri's components load on first use: wait until they are ready before setting them up.
+      const gallery = galleryRef.current;
+      const search = searchRef.current;
+      const fullscreen = fullscreenRef.current;
+      await Promise.all(['arcgis-basemap-gallery', 'arcgis-search', 'arcgis-fullscreen'].map((tag) => customElements.whenDefined(tag)));
+      await Promise.all([gallery?.componentOnReady(), search?.componentOnReady(), fullscreen?.componentOnReady()]);
+      if (cancelled) return;
+      if (gallery) {
+        gallery.source = new LocalBasemapsSource({
+          basemaps: BASEMAP_IDS.map((id) => Basemap.fromId(id)).filter((basemap): basemap is NonNullable<typeof basemap> => Boolean(basemap)),
+        });
+      }
+      if (search && !ARCGIS_KEY) {
+        search.includeDefaultSourcesDisabled = true;
+        search.sources.removeAll();
+        search.sources.add(new LocatorSearchSource({
+          maxResults: 6,
+          maxSuggestions: 6,
+          name: 'ArcGIS World Geocoding Service',
+          placeholder: 'Search places or addresses',
+          singleLineFieldName: 'SingleLine',
+          url: PUBLIC_GEOCODER,
+        }));
+      }
+      if (fullscreen && wrapperRef.current) fullscreen.element = wrapperRef.current;
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [core]);
 
   // The view is ready: add LateWatch's layers and frame the office.

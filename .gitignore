@@ -17,9 +17,6 @@
 /.next/
 /out/
 
-# Esri's map library, bundled by scripts/build-esri.mjs before dev and build
-/public/esri/
-
 # production
 /build
 
