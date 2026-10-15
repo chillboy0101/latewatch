@@ -13,7 +13,6 @@ import { Input } from '@/components/ui/input';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { formatDisplayDate } from '@/lib/date-format';
 import { getAccraYesterdayKey } from '@/lib/date-key';
-import { pardonCutoffForMonth, rowForMonth } from '@/lib/payment-months';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 
@@ -55,8 +54,6 @@ interface PaymentEntry {
 interface PaymentRecord {
   amount: string;
   id: string;
-  // The months whose penalty days it paid.
-  months?: string[];
   note: string | null;
   recordedAt: string | null;
   recordedByEmail: string;
@@ -189,7 +186,7 @@ function compactPenaltyLine(entry: PaymentEntry) {
   return `${currency(entry.penaltyAmount)} | paid ${currency(entry.paidAmount)} | pardoned ${currency(entry.pardonedAmount)} | bal ${currency(entry.outstandingAmount)}`;
 }
 
-function sortPaymentRowsByBalance<Row extends PaymentStaffRow>(rows: Row[]) {
+function sortPaymentRowsByBalance(rows: PaymentStaffRow[]) {
   return rows
     .map((row, index) => ({ index, row }))
     .sort((left, right) => {
@@ -280,9 +277,6 @@ export default function PenaltyPaymentsPage() {
   const offenceBookRequestRef = useRef<{ key: string; promise: Promise<void> } | null>(null);
   const offenceBookSelectionRef = useRef(`${offenceBookYear}-${offenceBookMonth}`);
   offenceBookSelectionRef.current = `${offenceBookYear}-${offenceBookMonth}`;
-  // The staff table and its dialog follow the month picked under Offence book inputs.
-  const selectedMonthKey = `${offenceBookYear}-${String(offenceBookMonth + 1).padStart(2, '0')}`;
-  const selectedMonthName = new Date(offenceBookYear, offenceBookMonth, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
 
   const loadPayments = useCallback(async () => {
     if (paymentsRequestRef.current) return paymentsRequestRef.current;
@@ -431,12 +425,9 @@ export default function PenaltyPaymentsPage() {
     };
   }, [loadOffenceBookItems, loadPayments]);
 
-  const monthRows = useMemo(() => {
-    return (data?.staff || []).map((row) => rowForMonth(row, selectedMonthKey));
-  }, [data?.staff, selectedMonthKey]);
   const matchingRows = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const rows = monthRows;
+    const rows = data?.staff || [];
     const searchedRows = query
       ? rows.filter((row) => [
         row.fullName,
@@ -448,7 +439,7 @@ export default function PenaltyPaymentsPage() {
     return statusFilter === 'all'
       ? searchedRows
       : searchedRows.filter((row) => staffPaymentStatusForRow(row) === statusFilter);
-  }, [monthRows, search, statusFilter]);
+  }, [data?.staff, search, statusFilter]);
   const filteredRows = useMemo(() => sortPaymentRowsByBalance(matchingRows), [matchingRows]);
   const paymentTotals = useMemo(() => {
     return (data?.staff || []).reduce(
@@ -456,6 +447,7 @@ export default function PenaltyPaymentsPage() {
       0,
     );
   }, [data?.staff]);
+  const selectedMonthKey = `${offenceBookYear}-${String(offenceBookMonth + 1).padStart(2, '0')}`;
   const selectedMonthBalance = data?.monthlyBreakdown?.find((month) => month.month === selectedMonthKey);
   const paymentRosterSections = useMemo(() => {
     return [
@@ -471,8 +463,8 @@ export default function PenaltyPaymentsPage() {
   }, [filteredRows]);
 
   const selectedRow = useMemo(() => {
-    return monthRows.find((row) => row.id === selectedStaffId) || null;
-  }, [monthRows, selectedStaffId]);
+    return (data?.staff || []).find((row) => row.id === selectedStaffId) || null;
+  }, [data?.staff, selectedStaffId]);
   const selectedEntries = useMemo(() => {
     return selectedRow ? sortPaymentEntriesNewestFirst(selectedRow.entries) : [];
   }, [selectedRow]);
@@ -585,9 +577,9 @@ export default function PenaltyPaymentsPage() {
   }, [data?.staff]);
   const debtPardonStaffName = debtPardonStaffOptions.find((option) => option.id === debtPardonStaffId)?.fullName || null;
 
-  function openDebtPardonDialog(staffId = '', cutoff = getAccraYesterdayKey()) {
+  function openDebtPardonDialog(staffId = '') {
     setDebtPardonStaffId(staffId);
-    setDebtPardonCutoff(cutoff);
+    setDebtPardonCutoff(getAccraYesterdayKey());
     setDebtPardonReason('');
     setDebtPardonShowStaff(false);
     setDebtPardonConfirmed(false);
@@ -641,8 +633,6 @@ export default function PenaltyPaymentsPage() {
     actionKey: string;
     amount: number;
     entryId?: string;
-    // Limits the payment to this month's penalty days.
-    month?: string;
     note?: string | null;
   }) {
     if (!selectedRow || input.amount <= 0) return;
@@ -657,7 +647,6 @@ export default function PenaltyPaymentsPage() {
         body: JSON.stringify({
           amount: input.amount,
           entryId: input.entryId,
-          month: input.month,
           note: input.note,
           staffId: selectedRow.id,
         }),
@@ -702,7 +691,6 @@ export default function PenaltyPaymentsPage() {
   }
 
   const manualAmount = moneyNumber(amount);
-  const manualAmountTooHigh = Boolean(selectedRow) && manualAmount > moneyNumber(selectedRow?.outstandingBalance);
   const offenceBookReady = !offenceBookLoading
     && loadedOffenceBookKey === `${offenceBookYear}-${offenceBookMonth}`;
 
@@ -874,7 +862,7 @@ export default function PenaltyPaymentsPage() {
               </div>
               <div className="flex flex-wrap items-center gap-2 lg:justify-center">
                 <PaymentToolbarTotal label="Live outstanding" value={currency(paymentTotals)} tone="live" />
-                {/* The four totals below, and the staff rows, are for the month picked under Offence book inputs. */}
+                {/* The four totals below are for the month picked under Offence book inputs. */}
                 <span className="text-xs font-medium text-muted-foreground">
                   {new Date(offenceBookYear, offenceBookMonth, 1).toLocaleString('en-GB', { month: 'short', year: 'numeric' })}
                 </span>
@@ -918,7 +906,6 @@ export default function PenaltyPaymentsPage() {
                   <tr>
                     <th className="px-4 py-3 font-medium">Staff</th>
                     <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 text-right font-medium">Penalties</th>
                     <th className="px-4 py-3 text-right font-medium">Balance</th>
                     <th className="px-4 py-3 text-right font-medium">Action</th>
                   </tr>
@@ -927,7 +914,7 @@ export default function PenaltyPaymentsPage() {
                   {paymentRosterSections.map((section) => (
                     <Fragment key={section.title}>
                       <tr className="border-b border-border bg-muted/10">
-                        <td className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground" colSpan={5}>
+                        <td className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground" colSpan={4}>
                           {section.title}
                           <span className="ml-2 rounded-full bg-background px-2 py-0.5 font-normal normal-case tracking-normal">
                             {section.rows.length}
@@ -946,12 +933,6 @@ export default function PenaltyPaymentsPage() {
                           </td>
                           <td className="px-4 py-3">
                             <StaffPaymentStatusBadge status={staffPaymentStatusForRow(row)} />
-                          </td>
-                          <td className={cn(
-                            'px-4 py-3 text-right font-mono',
-                            moneyNumber(row.totalPenalty) > 0 ? 'text-foreground' : 'text-muted-foreground',
-                          )}>
-                            {currency(row.totalPenalty)}
                           </td>
                           <td className={cn(
                             'px-4 py-3 text-right font-mono font-semibold',
@@ -978,7 +959,7 @@ export default function PenaltyPaymentsPage() {
                   ))}
                   {filteredRows.length === 0 && (
                     <tr>
-                      <td className="px-4 py-8 text-center text-muted-foreground" colSpan={5}>
+                      <td className="px-4 py-8 text-center text-muted-foreground" colSpan={4}>
                         No staff balances found.
                       </td>
                     </tr>
@@ -998,11 +979,7 @@ export default function PenaltyPaymentsPage() {
                   <DialogDescription className="sr-only">
                     Manage lateness payments for the selected staff member.
                   </DialogDescription>
-                  <div className="text-xs text-muted-foreground">
-                    {staffKind(selectedRow)} · {selectedMonthName}
-                    {moneyNumber(selectedRow.allMonthsBalance) > moneyNumber(selectedRow.outstandingBalance)
-                      && ` · ${currency(selectedRow.allMonthsBalance)} owed in total`}
-                  </div>
+                  <div className="text-xs text-muted-foreground">{staffKind(selectedRow)}</div>
                 </DialogHeader>
 
                 {/* Penalties - Paid - Pardoned = Balance, so a pardoned debt doesn't read as owed. */}
@@ -1081,7 +1058,7 @@ export default function PenaltyPaymentsPage() {
                       ))}
                       {selectedEntries.length === 0 && (
                         <div className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
-                          No penalties in {selectedMonthName}.
+                          No penalty days found.
                         </div>
                       )}
                   </div>
@@ -1137,11 +1114,6 @@ export default function PenaltyPaymentsPage() {
                       placeholder="Note"
                     />
                   </div>
-                  {manualAmountTooHigh && (
-                    <p className="text-xs text-danger">
-                      More than the {selectedMonthName} balance ({currency(selectedRow.outstandingBalance)}).
-                    </p>
-                  )}
                   {paymentNotice && (
                     <div
                       role={paymentNotice.type === 'error' ? 'alert' : 'status'}
@@ -1164,7 +1136,7 @@ export default function PenaltyPaymentsPage() {
                         disabled={Boolean(savingAction)}
                         onClick={() => {
                           setPaymentDialogOpen(false);
-                          openDebtPardonDialog(selectedRow.id, pardonCutoffForMonth(selectedMonthKey, getAccraYesterdayKey()));
+                          openDebtPardonDialog(selectedRow.id);
                         }}
                         title={`Pardon ${selectedRow.fullName}'s unpaid penalties`}
                       >
@@ -1179,21 +1151,19 @@ export default function PenaltyPaymentsPage() {
                       onClick={() => recordPayment({
                         actionKey: 'week',
                         amount: moneyNumber(selectedRow.outstandingBalance),
-                        month: selectedMonthKey,
-                        note: `Marked ${selectedMonthName} paid`,
+                        note: 'Marked balance paid',
                       })}
-                      title={`Pay the ${selectedMonthName} balance`}
+                      title="Pay the full outstanding balance"
                     >
                       {savingAction === 'week' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       Pay full balance
                     </Button>
                     <Button
                       type="button"
-                      disabled={Boolean(savingAction) || manualAmount <= 0 || manualAmountTooHigh}
+                      disabled={Boolean(savingAction) || manualAmount <= 0}
                       onClick={() => recordPayment({
                         actionKey: 'manual',
                         amount: manualAmount,
-                        month: selectedMonthKey,
                         note,
                       })}
                       title="Record the amount typed above"

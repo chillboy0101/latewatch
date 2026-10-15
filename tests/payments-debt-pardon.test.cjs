@@ -60,7 +60,6 @@ test('debts can be pardoned for one staff member as well as everyone', () => {
   assert.match(route, /previewLatenessDebtPardon\(resolved\.cutoffDate, target\.staffId\)/);
   assert.match(route, /staffId: target\.staffId,/);
   assert.match(page, /<StaffPicker\n\s+label="Who"\n\s+allLabel="Everyone"/);
-  // From a staff member's month, the pardon covers up to that month's end.
-  assert.match(page, /openDebtPardonDialog\(selectedRow\.id, pardonCutoffForMonth\(selectedMonthKey, getAccraYesterdayKey\(\)\)\)/);
+  assert.match(page, /openDebtPardonDialog\(selectedRow\.id\)/);
   assert.match(page, /staffId: debtPardonStaffId \|\| undefined/);
 });

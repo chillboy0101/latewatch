@@ -205,111 +205,6 @@ async function locationShots(browser) {
   await context.close();
 }
 
-// Payments on a desktop: the staff table, its totals and the staff dialog follow the month picked
-// under Offence book inputs, and paying from a month pays that month.
-async function paymentsShots(browser) {
-  const check = (condition, message) => {
-    if (!condition) throw new Error(`Payments check failed: ${message}`);
-  };
-  const now = new Date();
-  const monthKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const thisMonth = monthKey(now);
-  const lastMonth = monthKey(lastMonthDate);
-  const lastMonthName = lastMonthDate.toLocaleString('en-GB', { month: 'long', year: 'numeric' });
-  const day = (id, date, penalty, paid) => ({
-    arrivalTime: '08:45:00',
-    date,
-    entryId: id,
-    outstandingAmount: (penalty - paid).toFixed(2),
-    pardonedAmount: '0.00',
-    paidAmount: paid.toFixed(2),
-    penaltyAmount: penalty.toFixed(2),
-    reason: 'Late arrival',
-    status: paid >= penalty ? 'paid' : paid > 0 ? 'partially_paid' : 'unpaid',
-  });
-  const payment = (id, amount, month, recordedAt) => ({ amount, id, months: [month], note: null, recordedAt, recordedByEmail: 'admin@latewatch.test' });
-  const person = (id, fullName, entries, payments) => {
-    const sum = (key) => entries.reduce((total, entry) => total + Number(entry[key]), 0).toFixed(2);
-    return {
-      email: `${id}@latewatch.test`, entries, fullName, id, isAttendanceOnly: false, isNssPersonnel: false,
-      outstandingBalance: sum('outstandingAmount'), paidAmount: sum('paidAmount'), payments, totalPenalty: sum('penaltyAmount'),
-    };
-  };
-  // Ama owes for both months; Kofi paid last month and owes this month; Esi was never charged.
-  const data = {
-    monthlyBreakdown: [
-      { month: lastMonth, paidAmount: '7.00', pardonedAmount: '0.00', penaltyAmount: '16.00', unpaidAmount: '9.00' },
-      { month: thisMonth, paidAmount: '5.00', pardonedAmount: '0.00', penaltyAmount: '17.00', unpaidAmount: '12.00' },
-    ],
-    scope: 'all',
-    staff: [
-      person('ama', 'Ama Owusu', [day('a1', `${lastMonth}-08`, 9, 0), day('a2', `${thisMonth}-02`, 5, 3)], [
-        payment('pay-a2', '3.00', thisMonth, `${thisMonth}-03T09:00:00.000Z`),
-      ]),
-      person('kofi', 'Kofi Boateng', [day('k1', `${lastMonth}-12`, 7, 7), day('k2', `${thisMonth}-06`, 12, 2)], [
-        payment('pay-k2', '2.00', thisMonth, `${thisMonth}-07T09:00:00.000Z`),
-        payment('pay-k1', '7.00', lastMonth, `${thisMonth}-01T09:00:00.000Z`),
-      ]),
-      person('esi', 'Esi Mensah', [], []),
-    ],
-  };
-  const context = await browser.newContext(DESKTOP);
-  await mockApi(context);
-  const paid = [];
-  await context.route('**/api/payments/lateness', (route) => {
-    if (route.request().method() === 'POST') {
-      paid.push(route.request().postDataJSON());
-      return route.fulfill({ body: JSON.stringify({ success: true }), contentType: 'application/json' });
-    }
-    return route.fulfill({ body: JSON.stringify(data), contentType: 'application/json' });
-  });
-  const page = await context.newPage();
-  await page.goto(`${baseUrl}/payments`, { waitUntil: 'load' });
-  const row = (name) => page.locator('tbody tr', { hasText: name });
-  await row('Ama Owusu').waitFor({ timeout: 60_000 });
-  const cells = async (name) => (await row(name).locator('td').allTextContents()).map((text) => text.trim());
-  const toolbar = () => page.locator('span', { hasText: /^Penalties$/ }).first().locator('xpath=..').textContent();
-
-  // This month first: Kofi owes GHC 10, Ama GHC 2, Esi nothing.
-  check((await cells('Kofi Boateng')).slice(1, 4).join('|') === 'Unpaid|GHC 12.00|GHC 10.00', `Kofi this month: ${await cells('Kofi Boateng')}`);
-  check((await cells('Ama Owusu')).slice(1, 4).join('|') === 'Unpaid|GHC 5.00|GHC 2.00', `Ama this month: ${await cells('Ama Owusu')}`);
-  check((await cells('Esi Mensah')).slice(1, 4).join('|') === 'Nothing owed|GHC 0.00|GHC 0.00', `Esi this month: ${await cells('Esi Mensah')}`);
-  check((await toolbar()).includes('GHC 17.00'), 'the month totals are this month');
-
-  // Last month: Ama owes GHC 9, Kofi paid his GHC 7.
-  const yearSelect = page.locator('select', { has: page.locator('option[value="2030"]') });
-  const monthSelect = page.locator('select', { has: page.locator('option', { hasText: 'January' }) });
-  await yearSelect.selectOption(String(lastMonthDate.getFullYear()));
-  await monthSelect.selectOption(String(lastMonthDate.getMonth()));
-  await page.waitForTimeout(500);
-  check((await cells('Ama Owusu')).slice(1, 4).join('|') === 'Unpaid|GHC 9.00|GHC 9.00', `Ama last month: ${await cells('Ama Owusu')}`);
-  check((await cells('Kofi Boateng')).slice(1, 4).join('|') === 'Nothing owed|GHC 7.00|GHC 0.00', `Kofi last month: ${await cells('Kofi Boateng')}`);
-  check((await toolbar()).includes('GHC 16.00'), 'the month totals follow the month');
-  await page.getByRole('button', { name: 'Unpaid', exact: true }).click();
-  check(await row('Ama Owusu').count() === 1 && await row('Kofi Boateng').count() === 0, 'Unpaid lists who owes for that month');
-  await page.getByRole('button', { name: 'All', exact: true }).click();
-  await shoot(page, 'desktop-payments-last-month');
-
-  // Ama's dialog shows last month's day, what she owes in all, and pays within the month.
-  await row('Ama Owusu').getByRole('button', { name: 'Manage' }).click();
-  const dialog = page.getByRole('dialog');
-  await dialog.waitFor();
-  check((await dialog.textContent()).includes(`Main Staff · ${lastMonthName} · GHC 11.00 owed in total`), 'the dialog names the month and the total owed');
-  check(await dialog.getByRole('button', { name: 'Mark as paid' }).count() === 1, 'only that month\'s day is listed');
-  check(await dialog.getByText('Payments', { exact: true }).count() === 0, 'no payments paid that month');
-  await dialog.getByLabel('Payment amount').fill('20');
-  check(await dialog.getByText(`More than the ${lastMonthName} balance (GHC 9.00).`).count() === 1, 'too much for the month is explained');
-  check(await dialog.getByRole('button', { name: 'Record amount' }).isDisabled(), 'too much for the month cannot be recorded');
-  await dialog.getByLabel('Payment amount').fill('');
-  await shoot(page, 'desktop-payments-month-dialog');
-  await dialog.getByRole('button', { name: 'Pay full balance' }).click();
-  await page.waitForTimeout(800);
-  const sent = paid[0];
-  check(sent && sent.amount === 9 && sent.month === lastMonth && sent.staffId === 'ama', `Pay full balance pays the month (${JSON.stringify(sent)})`);
-  await context.close();
-}
-
 async function desktopShots(browser) {
   const context = await browser.newContext(DESKTOP);
   await mockApi(context);
@@ -330,12 +225,9 @@ try {
   await waitForServer();
   const browser = await chromium.launch();
   try {
-    // UI_SHOTS_ONLY=payments,location runs just those groups.
-    const only = process.env.UI_SHOTS_ONLY?.split(',');
-    const groups = { phone: phoneShots, location: locationShots, payments: paymentsShots, desktop: desktopShots };
-    for (const [name, run] of Object.entries(groups)) {
-      if (!only || only.includes(name)) await run(browser);
-    }
+    await phoneShots(browser);
+    await locationShots(browser);
+    await desktopShots(browser);
   } finally {
     await browser.close();
   }

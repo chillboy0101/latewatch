@@ -20,7 +20,6 @@ import { getAccraDateKey } from '@/lib/date-key';
 export const dynamic = 'force-dynamic';
 
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const MONTH_KEY_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 const OVERPAYMENT_MESSAGE = 'Payment amount exceeds outstanding balance';
 function isDateKey(value: string | null) {
   return Boolean(value && DATE_KEY_PATTERN.test(value));
@@ -51,25 +50,18 @@ function getActorEmail(user: Awaited<ReturnType<typeof currentUser>>) {
     || 'system';
 }
 
-// The first and last day of a month key such as 2026-10.
-function monthDateRange(month: string) {
-  const [year, monthNumber] = month.split('-').map(Number);
-  return {
-    end: new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10),
-    start: `${month}-01`,
-  };
-}
-
 async function getWeekEntries(input: {
   entryId?: string | null;
-  range: { end: string; start: string } | null;
   staffId: string;
+  hasDateFilter: boolean;
+  weekEnd?: string;
+  weekStart?: string;
 }) {
-  const whereClause = input.range
+  const whereClause = input.hasDateFilter && input.weekStart && input.weekEnd
     ? and(
       eq(latenessEntry.staffId, input.staffId),
-      gte(latenessEntry.date, input.range.start),
-      lte(latenessEntry.date, input.range.end),
+      gte(latenessEntry.date, input.weekStart),
+      lte(latenessEntry.date, input.weekEnd),
     )
     : eq(latenessEntry.staffId, input.staffId);
 
@@ -87,7 +79,6 @@ async function getAllocationsForEntries(entryIds: string[]) {
   return db.select({
     allocatedAmount: latenessPaymentAllocation.allocatedAmount,
     entryId: latenessPaymentAllocation.entryId,
-    paymentId: latenessPaymentAllocation.paymentId,
     recordedAt: latenessPayment.recordedAt,
   })
     .from(latenessPaymentAllocation)
@@ -200,16 +191,6 @@ export async function GET(request: NextRequest) {
         .from(latenessPayment)
         .where(inArray(latenessPayment.staffId, staffIds))
         .orderBy(desc(latenessPayment.recordedAt));
-    // The months whose penalty days each payment paid, so the page can list a month's payments.
-    const monthByEntryId = new Map(penaltyEntries.map((entry) => [entry.id, entry.date.slice(0, 7)]));
-    const monthsByPaymentId = new Map<string, Set<string>>();
-    for (const allocation of allocations) {
-      const month = monthByEntryId.get(allocation.entryId);
-      if (!month) continue;
-      const months = monthsByPaymentId.get(allocation.paymentId) || new Set<string>();
-      months.add(month);
-      monthsByPaymentId.set(allocation.paymentId, months);
-    }
     const paymentsByStaff = new Map<string, typeof paymentRows>();
     for (const payment of paymentRows) {
       const list = paymentsByStaff.get(payment.staffId) || [];
@@ -238,7 +219,6 @@ export async function GET(request: NextRequest) {
         payments: (paymentsByStaff.get(member.id) || []).map((payment) => ({
           amount: payment.amount,
           id: payment.id,
-          months: [...(monthsByPaymentId.get(payment.id) || [])].sort(),
           note: payment.note,
           recordedAt: payment.recordedAt,
           recordedByEmail: payment.recordedByEmail,
@@ -290,9 +270,6 @@ export async function POST(request: NextRequest) {
     const note = typeof body?.note === 'string' && body.note.trim() ? body.note.trim().slice(0, 500) : null;
     const amount = normalizeAmount(body?.amount);
     const hasDateFilter = Boolean(weekStart || weekEnd);
-    // A month (2026-10) limits the payment to that month's penalty days, as the Payments page
-    // shows one month at a time.
-    const month = typeof body?.month === 'string' ? body.month : '';
 
     if (!staffId || amount == null || amount <= 0) {
       return NextResponse.json({ error: 'Valid staff and amount are required' }, { status: 400 });
@@ -300,9 +277,6 @@ export async function POST(request: NextRequest) {
 
     if (hasDateFilter && (!isDateKey(weekStart) || !isDateKey(weekEnd))) {
       return NextResponse.json({ error: 'Valid start and end dates are required when limiting a payment' }, { status: 400 });
-    }
-    if (month && (hasDateFilter || !MONTH_KEY_PATTERN.test(month))) {
-      return NextResponse.json({ error: 'A valid month is required when limiting a payment to a month' }, { status: 400 });
     }
     if (hasDateFilter) {
       await syncLatenessEntriesFromAttendanceForRange(weekStart, weekEnd);
@@ -323,11 +297,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Staff member was not found' }, { status: 404 });
     }
 
-    const entries = await getWeekEntries({
-      entryId,
-      range: hasDateFilter ? { end: weekEnd, start: weekStart } : month ? monthDateRange(month) : null,
-      staffId,
-    });
+    const entries = await getWeekEntries({ entryId, hasDateFilter, staffId, weekEnd, weekStart });
     const penaltyEntries = entries.filter((entry) => Number(entry.computedAmount || 0) > 0);
     const existingAllocations = await getAllocationsForEntries(penaltyEntries.map((entry) => entry.id));
     const pardonRows = penaltyEntries.length === 0
@@ -357,9 +327,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       const message = error instanceof Error ? error.message : OVERPAYMENT_MESSAGE;
       const status = message === OVERPAYMENT_MESSAGE || message === 'Lateness entry was not found' ? 400 : 422;
-      return NextResponse.json({
-        error: month && message === OVERPAYMENT_MESSAGE ? 'Payment amount exceeds this month\'s balance' : message,
-      }, { status });
+      return NextResponse.json({ error: message }, { status });
     }
 
     const dateByEntryId = new Map(payableEntries.map((entry) => [entry.id, entry.date]));
