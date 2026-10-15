@@ -416,10 +416,10 @@ async function paymentsShots(browser) {
 
   // This month: Kofi owes GHC 10, Ama GHC 2, Esi nothing.
   await monthButton.click();
-  check(await columns() === 5, 'the month view adds the month\'s penalties');
-  check((await cells('Kofi Boateng')).slice(1, 4).join('|') === 'Unpaid|GHC 12.00|GHC 10.00', `Kofi this month: ${await cells('Kofi Boateng')}`);
-  check((await cells('Ama Owusu')).slice(1, 4).join('|') === 'Unpaid|GHC 5.00|GHC 2.00', `Ama this month: ${await cells('Ama Owusu')}`);
-  check((await cells('Esi Mensah')).slice(1, 4).join('|') === 'Nothing owed|GHC 0.00|GHC 0.00', `Esi this month: ${await cells('Esi Mensah')}`);
+  check(await columns() === 4, 'the month view keeps the same columns');
+  check((await cells('Kofi Boateng')).slice(1, 3).join('|') === 'Unpaid|GHC 10.00', `Kofi this month: ${await cells('Kofi Boateng')}`);
+  check((await cells('Ama Owusu')).slice(1, 3).join('|') === 'Unpaid|GHC 2.00', `Ama this month: ${await cells('Ama Owusu')}`);
+  check((await cells('Esi Mensah')).slice(1, 3).join('|') === 'Nothing owed|GHC 0.00', `Esi this month: ${await cells('Esi Mensah')}`);
   check((await toolbar()).includes('GHC 17.00'), 'the month totals are this month');
 
   // Last month: Ama owes GHC 9, Kofi paid his GHC 7.
@@ -428,8 +428,8 @@ async function paymentsShots(browser) {
   await yearSelect.selectOption(String(lastMonthDate.getFullYear()));
   await monthSelect.selectOption(String(lastMonthDate.getMonth()));
   await page.waitForTimeout(500);
-  check((await cells('Ama Owusu')).slice(1, 4).join('|') === 'Unpaid|GHC 9.00|GHC 9.00', `Ama last month: ${await cells('Ama Owusu')}`);
-  check((await cells('Kofi Boateng')).slice(1, 4).join('|') === 'Nothing owed|GHC 7.00|GHC 0.00', `Kofi last month: ${await cells('Kofi Boateng')}`);
+  check((await cells('Ama Owusu')).slice(1, 3).join('|') === 'Unpaid|GHC 9.00', `Ama last month: ${await cells('Ama Owusu')}`);
+  check((await cells('Kofi Boateng')).slice(1, 3).join('|') === 'Nothing owed|GHC 0.00', `Kofi last month: ${await cells('Kofi Boateng')}`);
   check((await toolbar()).includes('GHC 16.00'), 'the month totals follow the month');
   await page.getByRole('button', { name: 'Unpaid', exact: true }).click();
   check(await row('Ama Owusu').count() === 1 && await row('Kofi Boateng').count() === 0, 'Unpaid lists who owes for that month');
@@ -443,7 +443,7 @@ async function paymentsShots(browser) {
   await monthSelect.selectOption(String(now.getMonth()));
   await page.waitForTimeout(500);
   check(await monthButton.getAttribute('aria-pressed') === 'true', 'picking a month switches the table to it');
-  check((await cells('Kofi Boateng')).slice(1, 4).join('|') === 'Unpaid|GHC 12.00|GHC 10.00', `Kofi after picking this month: ${await cells('Kofi Boateng')}`);
+  check((await cells('Kofi Boateng')).slice(1, 3).join('|') === 'Unpaid|GHC 10.00', `Kofi after picking this month: ${await cells('Kofi Boateng')}`);
   await yearSelect.selectOption(String(lastMonthDate.getFullYear()));
   await monthSelect.selectOption(String(lastMonthDate.getMonth()));
   await page.waitForTimeout(500);

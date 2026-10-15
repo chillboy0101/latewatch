@@ -950,7 +950,6 @@ export default function PenaltyPaymentsPage() {
                   <tr>
                     <th className="px-4 py-3 font-medium">Staff</th>
                     <th className="px-4 py-3 font-medium">Status</th>
-                    {monthView && <th className="px-4 py-3 text-right font-medium">Penalties</th>}
                     <th className="px-4 py-3 text-right font-medium">Balance</th>
                     <th className="px-4 py-3 text-right font-medium">Action</th>
                   </tr>
@@ -959,7 +958,7 @@ export default function PenaltyPaymentsPage() {
                   {paymentRosterSections.map((section) => (
                     <Fragment key={section.title}>
                       <tr className="border-b border-border bg-muted/10">
-                        <td className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground" colSpan={monthView ? 5 : 4}>
+                        <td className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground" colSpan={4}>
                           {section.title}
                           <span className="ml-2 rounded-full bg-background px-2 py-0.5 font-normal normal-case tracking-normal">
                             {section.rows.length}
@@ -979,14 +978,6 @@ export default function PenaltyPaymentsPage() {
                           <td className="px-4 py-3">
                             <StaffPaymentStatusBadge status={staffPaymentStatusForRow(row)} />
                           </td>
-                          {monthView && (
-                            <td className={cn(
-                              'px-4 py-3 text-right font-mono',
-                              moneyNumber(row.totalPenalty) > 0 ? 'text-foreground' : 'text-muted-foreground',
-                            )}>
-                              {currency(row.totalPenalty)}
-                            </td>
-                          )}
                           <td className={cn(
                             'px-4 py-3 text-right font-mono font-semibold',
                             moneyNumber(row.outstandingBalance) > 0 ? 'text-warning' : 'text-success',
@@ -1012,7 +1003,7 @@ export default function PenaltyPaymentsPage() {
                   ))}
                   {filteredRows.length === 0 && (
                     <tr>
-                      <td className="px-4 py-8 text-center text-muted-foreground" colSpan={monthView ? 5 : 4}>
+                      <td className="px-4 py-8 text-center text-muted-foreground" colSpan={4}>
                         No staff balances found.
                       </td>
                     </tr>

@@ -117,8 +117,10 @@ test('the Payments table switches between everyone\'s total and the chosen month
   assert.match(page, /return viewRows\.find\(\(row\) => row\.id === selectedStaffId\)/);
   // Picking a month or year up top shows that month.
   assert.equal((page.match(/setTableView\('month'\);/g) || []).length, 2);
-  // The month view adds the month's penalties and pays within the month; Total pays as before.
-  assert.match(page, /\{monthView && <th className="px-4 py-3 text-right font-medium">Penalties<\/th>\}/);
+  // Both views keep the same table (Staff, Status, Balance, Action); the month view pays within the
+  // month and Total pays as before.
+  assert.doesNotMatch(page, />Penalties<\/th>/);
+  assert.equal((page.match(/colSpan=\{4\}/g) || []).length, 2);
   assert.equal((page.match(/month: monthView \? selectedMonthKey : undefined,/g) || []).length, 2);
   assert.match(page, /note: monthView \? `Marked \$\{selectedMonthName\} paid` : 'Marked balance paid',/);
   assert.match(page, /monthView \? `No penalties in \$\{selectedMonthName\}\.` : 'No penalty days found\.'/);
