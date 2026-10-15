@@ -119,6 +119,12 @@ async function locationShots(browser) {
   const page = await context.newPage();
   await page.goto(`${baseUrl}/location/measure`, { waitUntil: 'load' });
   await page.getByRole('heading', { name: 'Measure grounds' }).waitFor({ timeout: 60_000 });
+  await page.getByRole('button', { name: 'Start' }).click();
+  await page.getByLabel('What is this spot?').fill('Gate');
+  await page.getByRole('button', { name: 'Mark this spot' }).click();
+  await page.waitForTimeout(6000);
+  await shoot(page, 'phone-location-sharing');
+  await page.getByRole('button', { name: 'Stop' }).click();
   await page.getByRole('heading', { name: 'Measure grounds' }).scrollIntoViewIfNeeded();
   await shoot(page, 'phone-location-measure');
   await page.getByRole('button', { name: 'Record corner' }).click();

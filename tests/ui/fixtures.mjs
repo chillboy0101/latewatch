@@ -64,6 +64,7 @@ export function buildFixtures(now = new Date()) {
   });
 
   const checkInStatus = {
+    isAdmin: true,
     attendance: {
       checkInAt: `${today}T08:12:00.000Z`,
       checkInTime: '08:12:00',

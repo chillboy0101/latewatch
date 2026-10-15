@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
+import { LiveLocationShare } from '@/components/location/live-location-share';
 import { MeasureGroundsCard } from '@/components/location/measure-grounds';
 
 // Measuring the grounds means walking them with a phone, so this admin page (admin-only through
@@ -42,6 +43,7 @@ export default function MeasureGroundsPage() {
             Portal
           </Link>
         </div>
+        <LiveLocationShare />
         <MeasureGroundsCard office={office} />
       </div>
     </div>
