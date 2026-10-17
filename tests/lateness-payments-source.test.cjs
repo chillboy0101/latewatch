@@ -344,7 +344,7 @@ test('an admin can undo a mistaken payment, with a reason that is audited', () =
   const audit = fs.readFileSync(path.join(root, 'src/app/audit-trail/page.tsx'), 'utf8');
   assert.match(route, /const authError = await enforceRole\(\['admin'\]\);/);
   assert.match(route, /if \(!reason\) \{\s*return NextResponse\.json\(\{ error: 'Say why this payment is being undone' \}, \{ status: 400 \}\);/);
-  assert.match(route, /await db\.delete\(latenessPayment\)\.where\(eq\(latenessPayment\.id, payment\.id\)\);/);
+  assert.match(route, /await db\.delete\(latenessPayment\)\.where\(eq\(latenessPayment\.id, payment\.id\)\)\s*\.returning\(\{ id: latenessPayment\.id \}\);/);
   assert.match(route, /before: \{ \.\.\.payment, allocations, staffName: member\?\.fullName \|\| null \},\s*after: \{ reason, undone: true \}/);
   assert.match(page, /disabled=\{undoing \|\| !undoReason\.trim\(\)\}/);
   assert.match(audit, /Undid GHC \$\{amount\} payment for/);

@@ -588,21 +588,6 @@ export const userThemePreference = pgTable('user_theme_preference', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-// Live location an admin shared while walking the office grounds (October 2026). Nothing writes
-// to it any more: the boundary is drawn on the map on the Office Location page.
-export const locationTrace = pgTable('location_trace', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: text('user_id').notNull(),
-  latitude: decimal('latitude', { precision: 10, scale: 7 }).notNull(),
-  longitude: decimal('longitude', { precision: 10, scale: 7 }).notNull(),
-  accuracyMeters: decimal('accuracy_meters', { precision: 10, scale: 2 }).notNull(),
-  capturedAt: timestamp('captured_at').notNull(),
-  note: text('note'),
-  createdAt: timestamp('created_at').defaultNow(),
-}, (table) => [
-  index('location_trace_user_captured_idx').on(table.userId, table.capturedAt),
-]);
-
 export const reminderCronRun = pgTable('reminder_cron_run', {
   id: uuid('id').primaryKey().defaultRandom(),
   reminderType: text('reminder_type').notNull(),

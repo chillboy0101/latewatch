@@ -1,5 +1,5 @@
 -- Live location shared by an admin while walking the office grounds (Location -> Measure grounds).
--- Temporary: the API deletes rows older than 24 hours.
+-- Retired: migration 0037 drops this table and all stored traces; no API cleanup runs.
 CREATE TABLE IF NOT EXISTS location_trace (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id text NOT NULL,

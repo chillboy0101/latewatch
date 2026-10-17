@@ -142,7 +142,11 @@ export async function GET(request: NextRequest) {
         .from(latenessEntry)
         .where(eq(latenessEntry.date, date))),
     ]);
-    const chargeByStaffId = new Map(chargeRows.map((row) => [row.staffId, row.amount]));
+    const chargeByStaffId = new Map<string, string>();
+    for (const row of chargeRows) {
+      const total = Number(chargeByStaffId.get(row.staffId) ?? 0) + Number(row.amount);
+      chargeByStaffId.set(row.staffId, total.toFixed(2));
+    }
 
     const location = resolveOfficeLocationForDate(locationRows, date);
     const attendanceByStaffId = new Map(attendanceRows.map((row) => [row.staffId, row]));

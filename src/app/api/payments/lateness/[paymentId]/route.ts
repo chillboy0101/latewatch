@@ -39,7 +39,11 @@ export async function DELETE(
     ]);
 
     // Allocations go with the payment (on delete cascade), in one statement.
-    await db.delete(latenessPayment).where(eq(latenessPayment.id, payment.id));
+    const [deleted] = await db.delete(latenessPayment).where(eq(latenessPayment.id, payment.id))
+      .returning({ id: latenessPayment.id });
+    if (!deleted) {
+      return NextResponse.json({ error: 'This payment was not found (it may already have been undone)' }, { status: 404 });
+    }
 
     await writeAuditEvent({
       entityType: 'lateness_payment',

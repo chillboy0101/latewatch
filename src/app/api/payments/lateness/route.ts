@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
     // paid history and the totals never change.
     const chargedStaff = historicalStaffIds.length > 0 ? inArray(staff.id, historicalStaffIds) : undefined;
     const staffWhere = staffId
-      ? and(eq(staff.id, staffId), or(eq(staff.isAttendanceOnly, false), chargedStaff))
+      ? and(eq(staff.id, staffId), or(chargeableRoster, chargedStaff))
       : or(chargeableRoster, chargedStaff);
 
     const staffRows = await db.select({
