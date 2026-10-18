@@ -1,9 +1,9 @@
 import 'server-only';
 
-import { and, asc, eq, gt, gte, inArray, or } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, inArray, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
-import { staffTypeChange } from '@/db/schema';
-import { undoableStaffTypeChange, type StaffType, type StaffTypeChange, type StaffTypeOnDate } from '@/lib/staff-type';
+import { staff, staffTypeChange } from '@/db/schema';
+import { flagsForStaffType, undoableStaffTypeChange, type StaffType, type StaffTypeChange, type StaffTypeOnDate } from '@/lib/staff-type';
 
 // Each person's type changes, oldest first. People who never changed type have no rows.
 export async function getStaffTypeChanges(staffIds: string[]) {
@@ -81,8 +81,10 @@ export async function recordStaffTypeChange(input: {
   });
 }
 
-// Undoes the latest type change (see undoableStaffTypeChange). Returns what was undone, or null.
-export async function undoLatestStaffTypeChange(staffId: string) {
+// Undoes the latest type change (see undoableStaffTypeChange), but only the one the admin
+// confirmed. The history change and the staff row update run together in one batch (one
+// transaction), each guarded so a concurrent change makes it a no-op instead of half an undo.
+export async function undoLatestStaffTypeChange(staffId: string, expected: { effectiveFrom: string; staffType: string }) {
   const rows = await db.select({
     effectiveFrom: staffTypeChange.effectiveFrom,
     id: staffTypeChange.id,
@@ -94,15 +96,32 @@ export async function undoLatestStaffTypeChange(staffId: string) {
   const changes = rows.map((row) => ({ ...row, effectiveFrom: String(row.effectiveFrom).slice(0, 10) }));
   const undo = undoableStaffTypeChange(changes);
   const last = changes.at(-1);
-  if (!undo || !last) return null;
-
-  if (undo.revertOnly) {
-    // Restored as the wrong type: they stay back from that date, as the type they had.
-    await db.update(staffTypeChange).set({ staffType: undo.previousType }).where(eq(staffTypeChange.id, last.id));
-  } else {
-    await db.delete(staffTypeChange).where(eq(staffTypeChange.id, last.id));
-    // Only the starting row left: no history is the same as one type on every day.
-    if (changes.length === 2) await db.delete(staffTypeChange).where(eq(staffTypeChange.id, changes[0].id));
+  if (!undo || !last) return { status: 'nothing' as const };
+  if (undo.effectiveFrom !== expected.effectiveFrom || undo.staffType !== expected.staffType) {
+    return { status: 'changed' as const };
   }
-  return undo;
+
+  const lastRow = and(
+    eq(staffTypeChange.id, last.id),
+    eq(staffTypeChange.staffType, undo.staffType),
+    eq(staffTypeChange.effectiveFrom, undo.effectiveFrom),
+  );
+  const historyWrites = undo.revertOnly
+    // Restored as the wrong type: they stay back from that date, as the type they had.
+    ? [db.update(staffTypeChange).set({ staffType: undo.previousType }).where(lastRow)]
+    : [
+      db.delete(staffTypeChange).where(lastRow),
+      // Only the starting row left: no history is the same as one type on every day.
+      ...(changes.length === 2 ? [db.delete(staffTypeChange).where(eq(staffTypeChange.id, changes[0].id))] : []),
+    ];
+  const results = await db.batch([
+    db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`staff-type:${staffId}`}))`),
+    ...historyWrites,
+    db.update(staff)
+      .set({ ...flagsForStaffType(undo.previousType), staffType: undo.previousType, updatedAt: new Date() })
+      .where(and(eq(staff.id, staffId), eq(staff.staffType, undo.staffType)))
+      .returning(),
+  ] as const);
+  const [updated] = results.at(-1) as Array<typeof staff.$inferSelect>;
+  return updated ? { status: 'undone' as const, staff: updated, undo } : { status: 'changed' as const };
 }

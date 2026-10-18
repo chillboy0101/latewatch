@@ -208,16 +208,26 @@ test('type changes are confirmed before saving, and undo is admin-only, audited 
   const undoRoute = read('src/app/api/staff/[id]/type-change/route.ts');
   assert.match(undoRoute, /const authError = await enforceRole\(\['admin'\]\);/);
   assert.match(undoRoute, /Bring this person back \(Activate or Restore\) before undoing a type change\./);
-  assert.match(undoRoute, /const undone = await undoLatestStaffTypeChange\(id\);/);
+  // Only the change the admin confirmed is undone; anything changed meanwhile is a 409.
+  assert.match(undoRoute, /const result = await undoLatestStaffTypeChange\(id, expected\);/);
+  assert.match(undoRoute, /\{ status: 409 \}/);
+  assert.match(undoRoute, /identitySync = sync\.status;/);
   assert.match(undoRoute, /reason: 'staff-type-change-undone',/);
   assert.match(undoRoute, /await recalculateStaffStoredPenalties\(\{/);
   const history = read('src/lib/staff-type-history.ts');
-  assert.match(history, /if \(undo\.revertOnly\) \{/);
-  assert.match(history, /if \(changes\.length === 2\) await db\.delete/);
+  assert.match(history, /const historyWrites = undo\.revertOnly/);
+  // History and staff row change together in one batch, each guarded against a change meanwhile.
+  assert.match(history, /const results = await db\.batch\(\[\n\s+db\.execute\(sql`SELECT pg_advisory_xact_lock/);
+  assert.match(history, /\.where\(and\(eq\(staff\.id, staffId\), eq\(staff\.staffType, undo\.staffType\)\)\)/);
+  assert.match(history, /if \(undo\.effectiveFrom !== expected\.effectiveFrom \|\| undo\.staffType !== expected\.staffType\) \{/);
   const page = read('src/app/staff/page.tsx');
   assert.match(page, /onClick=\{\(\) => \(editStaffType !== editOriginalType \? setConfirmTypeChange\(true\) : handleEdit\(\)\)\}/);
   assert.match(page, /Days before stay \{STAFF_TYPE_LABELS\[editOriginalType\]\}\./);
-  assert.match(page, /fetch\(`\/api\/staff\/\$\{member\.id\}\/type-change`, \{ method: 'DELETE' \}\)/);
+  assert.match(page, /fetch\(`\/api\/staff\/\$\{member\.id\}\/type-change\?\$\{query\}`, \{ method: 'DELETE' \}\)/);
+  assert.match(page, /if \(body\.identitySync === 'sync_failed'\) \{/);
   assert.match(page, /Undo last type change \(/);
-  assert.match(read('src/app/audit-trail/page.tsx'), /type change undone: back to/);
+  // The Audit Trail row summary names the change and its date.
+  const display = read('src/lib/audit-display.ts');
+  assert.match(display, /\$\{typeChange\.from\} → \$\{typeChange\.to\} from/);
+  assert.match(display, /type change undone, back to/);
 });

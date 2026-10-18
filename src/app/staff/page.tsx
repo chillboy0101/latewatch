@@ -394,9 +394,20 @@ export default function StaffPage() {
     setActioningId(member.id);
     setUndoError('');
     try {
-      const response = await fetch(`/api/staff/${member.id}/type-change`, { method: 'DELETE' });
+      const undo = undoableStaffTypeChange(member.typeChanges);
+      if (!undo) throw new Error('There is no type change to undo.');
+      // Names the change confirmed here, so a change made meanwhile is never undone by mistake.
+      const query = new URLSearchParams({ effectiveFrom: undo.effectiveFrom, staffType: undo.staffType });
+      const response = await fetch(`/api/staff/${member.id}/type-change?${query}`, { method: 'DELETE' });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || `Could not undo the type change (${response.status})`);
+      if (body.identitySync === 'sync_failed') {
+        setIdentityNotice({
+          detail: 'The type was undone, but their sign-in details could not be updated. Use Sync / Invite to fix it.',
+          title: `${member.fullName}: Login sync failed`,
+          tone: 'error',
+        });
+      }
       await fetchStaff();
       setUndoTarget(null);
       setEditingId(null);
