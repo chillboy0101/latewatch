@@ -12,7 +12,8 @@ test('entries page live penalty calculation preserves monitoring-only staff rule
   const source = fs.readFileSync(entriesPagePath, 'utf8');
 
   assert.match(source, /isAttendanceOnly\?: boolean \| null/);
-  assert.match(source, /isAttendanceOnly: member\?\.isAttendanceOnly === true/);
+  // The rules for the selected date: the person's type then, not now.
+  assert.match(source, /isAttendanceOnly: \(member\?\.chargeOnDate \?\? member\)\?\.isAttendanceOnly === true/);
 });
 
 test('entries page shows leave for the selected date and excludes it from totals', () => {

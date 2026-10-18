@@ -17,11 +17,26 @@ export const staff = pgTable('staff', {
   unit: text('unit'),
   isNssPersonnel: boolean('is_nss_personnel').default(false).notNull(),
   isAttendanceOnly: boolean('is_attendance_only').default(false).notNull(),
+  // intern, nss, special or main; the two flags above always match it.
+  staffType: text('staff_type').default('main').notNull(),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => [
   index('staff_active_archived_idx').on(table.active, table.archived),
   index('staff_email_idx').on(table.email),
+]);
+
+// A person's type over time (and 'away' while deactivated or archived). Days before the first
+// change use the type it replaced; with no rows the current type applies to every day.
+export const staffTypeChange = pgTable('staff_type_change', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  staffId: uuid('staff_id').notNull().references(() => staff.id, { onDelete: 'cascade' }),
+  staffType: text('staff_type').notNull(),
+  effectiveFrom: date('effective_from', { mode: 'string' }).notNull(),
+  createdByEmail: text('created_by_email'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index('staff_type_change_staff_date_idx').on(table.staffId, table.effectiveFrom),
 ]);
 
 export const staffRelations = relations(staff, ({ many }) => ({

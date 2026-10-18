@@ -129,6 +129,7 @@ export async function POST(request: NextRequest) {
         staffMember: {
           fullName: member.fullName,
           id: member.id,
+          isAttendanceOnly: member.isAttendanceOnly,
           isNssPersonnel: member.isNssPersonnel,
         },
       });

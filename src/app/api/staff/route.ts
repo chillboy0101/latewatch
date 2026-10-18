@@ -11,6 +11,9 @@ import { getAccraDateKey } from '@/lib/date-key';
 import { syncStaffEmailIdentity } from '@/lib/clerk-organization';
 import { enforceRole } from '@/lib/auth/roles';
 import { getActiveLeavePeriod } from '@/lib/staff-leave';
+import { recalculateStaffStoredPenalties } from '@/lib/staff-penalty-recalculation-server';
+import { flagsForStaffType, isStaffType, penaltyFlagsOn, staffTypeChangeError, staffTypeOf, type StaffType } from '@/lib/staff-type';
+import { getStaffTypeChanges, latestStaffTypeChangeDate, recordStaffTypeChange } from '@/lib/staff-type-history';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +48,7 @@ export async function GET(request: NextRequest) {
       unit: staff.unit,
       isNssPersonnel: staff.isNssPersonnel,
       isAttendanceOnly: staff.isAttendanceOnly,
+      staffType: staff.staffType,
       createdAt: staff.createdAt,
       updatedAt: staff.updatedAt,
     })
@@ -74,10 +78,14 @@ export async function GET(request: NextRequest) {
         ))
         .orderBy(desc(staffLeavePeriod.startDate))
       : [];
+    const typeChanges = await getStaffTypeChanges(staffList.map((member) => member.id));
     const responseStaff = staffList.map((member) => {
       const activeLeave = getActiveLeavePeriod(leavePeriods, member.id, currentDate);
       return {
         ...member,
+        // The person's type history and the charge rules for the requested date.
+        typeChanges: typeChanges.get(member.id) || [],
+        chargeOnDate: penaltyFlagsOn(currentDate, typeChanges.get(member.id), member),
         activeLeave: member.archived !== true && activeLeave ? {
           endDate: activeLeave.endDate,
           leaveType: activeLeave.leaveType,
@@ -113,8 +121,10 @@ export async function POST(request: Request) {
     const { fullName, email, department, unit, staffNo, gender, rank } = body;
     const name = typeof fullName === 'string' ? fullName.trim() : '';
     const normalizedEmail = normalizeStaffEmail(email);
-    const isAttendanceOnly = body?.isAttendanceOnly === true;
-    const isNssPersonnel = !isAttendanceOnly && body?.isNssPersonnel === true;
+    const staffType: StaffType = isStaffType(body?.staffType)
+      ? body.staffType
+      : body?.isAttendanceOnly === true ? 'special' : body?.isNssPersonnel === true ? 'nss' : 'main';
+    const { isAttendanceOnly, isNssPersonnel } = flagsForStaffType(staffType);
 
     if (!name) {
       return NextResponse.json({ error: 'Full name is required' }, { status: 400 });
@@ -130,34 +140,47 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Gender is required for staff profiles.' }, { status: 400 });
     }
 
-    if (!isAttendanceOnly && !isNssPersonnel && (!normalizedStaffNo || !normalizedRank)) {
+    if (staffType === 'main' && (!normalizedStaffNo || !normalizedRank)) {
       return NextResponse.json(
         { error: 'Staff No. and Rank are required for main staff profiles.' },
         { status: 400 },
       );
     }
 
-    const [existingStaff] = await db.select()
+    const [existingByName] = await db.select()
       .from(staff)
       .where(eq(sql`lower(${staff.fullName})`, name.toLowerCase()))
       .limit(1);
-
-    if (normalizedEmail) {
-      const [existingEmail] = await db.select()
+    const [existingByEmail] = normalizedEmail
+      ? await db.select()
         .from(staff)
         .where(eq(sql`lower(${staff.email})`, normalizedEmail))
-        .limit(1);
+        .limit(1)
+      : [];
 
-      if (existingEmail && existingEmail.id !== existingStaff?.id) {
-        return NextResponse.json(
-          { error: 'This email is already linked to another staff member.' },
-          { status: 409 },
-        );
-      }
+    if (existingByEmail && existingByName && existingByEmail.id !== existingByName.id) {
+      return NextResponse.json(
+        { error: 'This email is already linked to another staff member.' },
+        { status: 409 },
+      );
     }
+    // The same person comes back on the same profile (same email or name), never a second account.
+    const existingStaff = existingByEmail || existingByName;
 
     if (existingStaff) {
       if (existingStaff.archived) {
+        const previousType = staffTypeOf(existingStaff);
+        const today = getAccraDateKey();
+        const typeError = staffTypeChangeError({
+          effectiveFrom: today,
+          from: previousType,
+          latestChangeDate: await latestStaffTypeChangeDate(existingStaff.id),
+          to: staffType,
+          today,
+        });
+        if (typeError) {
+          return NextResponse.json({ error: `${existingStaff.fullName} is archived. ${typeError}` }, { status: 400 });
+        }
         const [restored] = await db.update(staff)
           .set({
             active: true,
@@ -171,10 +194,31 @@ export async function POST(request: Request) {
             unit: normalizedUnit ?? existingStaff.unit,
             isAttendanceOnly,
             isNssPersonnel,
+            staffType,
             updatedAt: new Date(),
           })
           .where(eq(staff.id, existingStaff.id))
           .returning();
+        const actorEmail = actor?.emailAddresses[0]?.emailAddress || null;
+        await recordStaffTypeChange({
+          actorEmail,
+          effectiveFrom: today,
+          previousType,
+          staffId: restored.id,
+          staffType,
+        });
+        if (staffType !== previousType) {
+          await recalculateStaffStoredPenalties({
+            actor: { email: actorEmail, id: actor?.id },
+            reason: 'staff-type-changed',
+            staffMember: {
+              fullName: restored.fullName,
+              id: restored.id,
+              isAttendanceOnly: restored.isAttendanceOnly,
+              isNssPersonnel: restored.isNssPersonnel,
+            },
+          });
+        }
 
         await writeAuditEvent({
           entityType: 'staff',
@@ -204,7 +248,7 @@ export async function POST(request: Request) {
       }
 
       return NextResponse.json(
-        { error: 'This person already exists. Use Activate, Deactivate, or Archive instead of adding a duplicate.' },
+        { error: `${existingStaff.fullName} already has a profile. Change their type there instead of adding a duplicate.` },
         { status: 409 },
       );
     }
@@ -219,6 +263,7 @@ export async function POST(request: Request) {
       unit: normalizedUnit,
       isAttendanceOnly,
       isNssPersonnel,
+      staffType,
       active: true,
       archived: false,
       archivedAt: null,
