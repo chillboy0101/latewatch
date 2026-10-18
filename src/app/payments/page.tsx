@@ -67,6 +67,7 @@ interface PaymentRecord {
 interface PaymentStaffRow {
   email: string | null;
   entries: PaymentEntry[];
+  former?: boolean;
   fullName: string;
   id: string;
   isAttendanceOnly: boolean | null;
@@ -445,7 +446,8 @@ export default function PenaltyPaymentsPage() {
   const viewRows = monthView ? monthRows : totalRows;
   const matchingRows = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const rows = viewRows;
+    // Former staff who owe nothing are hidden; their past charges and payments stay in the totals.
+    const rows = viewRows.filter((row) => !row.former || moneyNumber(row.allMonthsBalance) > 0);
     const searchedRows = query
       ? rows.filter((row) => [
         row.fullName,
@@ -590,6 +592,7 @@ export default function PenaltyPaymentsPage() {
 
   const debtPardonStaffOptions = useMemo(() => {
     return (data?.staff || [])
+      .filter((row) => !row.former || moneyNumber(row.outstandingBalance) > 0)
       .map((row) => ({
         fullName: row.fullName,
         hint: moneyNumber(row.outstandingBalance) > 0 ? currency(row.outstandingBalance) : undefined,
