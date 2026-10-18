@@ -23,7 +23,8 @@ import { getStaffIdentitySyncCopy, type StaffIdentitySyncTone } from '@/lib/staf
 import { StaffLeaveDialog } from '@/components/attendance/staff-leave-dialog';
 import { StaffTypeField, StaffTypeFromField } from '@/components/staff/staff-type-field';
 import { getAccraDateKey } from '@/lib/date-key';
-import { STAFF_TYPE_LABELS, staffTypeOf, type StaffType } from '@/lib/staff-type';
+import { STAFF_TYPE_LABELS, staffTypeOf, undoableStaffTypeChange, type StaffType } from '@/lib/staff-type';
+import { formatDateInputDisplay } from '@/lib/date-format';
 
 interface StaffMember {
   id: string;
@@ -37,6 +38,7 @@ interface StaffMember {
   isNssPersonnel: boolean;
   isAttendanceOnly: boolean;
   staffType?: string | null;
+  typeChanges?: Array<{ effectiveFrom: string; staffType: string }>;
   active: boolean | null;
   archived: boolean | null;
   onLeave?: boolean;
@@ -102,6 +104,11 @@ export default function StaffPage() {
   const [returnType, setReturnType] = useState<StaffType>('main');
   const [returnFrom, setReturnFrom] = useState('');
   const [returnError, setReturnError] = useState('');
+
+  // A type change is confirmed before saving; the latest one can be undone if it was a mistake.
+  const [confirmTypeChange, setConfirmTypeChange] = useState(false);
+  const [undoTarget, setUndoTarget] = useState<StaffMember | null>(null);
+  const [undoError, setUndoError] = useState('');
 
   const fetchStaff = useCallback(async () => {
     try {
@@ -379,6 +386,25 @@ export default function StaffPage() {
     setEditStaffType(staffTypeOf(member));
     setEditOriginalType(staffTypeOf(member));
     setEditTypeFrom(getAccraDateKey());
+  };
+
+  const handleUndoTypeChange = async () => {
+    if (!undoTarget) return;
+    const member = undoTarget;
+    setActioningId(member.id);
+    setUndoError('');
+    try {
+      const response = await fetch(`/api/staff/${member.id}/type-change`, { method: 'DELETE' });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || `Could not undo the type change (${response.status})`);
+      await fetchStaff();
+      setUndoTarget(null);
+      setEditingId(null);
+    } catch (error) {
+      setUndoError(error instanceof Error ? error.message : 'Could not undo the type change');
+    } finally {
+      setActioningId(null);
+    }
   };
 
   const openReturn = (member: StaffMember, mode: 'activate' | 'restore') => {
@@ -797,13 +823,33 @@ export default function StaffPage() {
                               <StaffTypeFromField value={editTypeFrom} onChange={setEditTypeFrom} previous={editOriginalType} />
                             )}
                           </div>
+                          {(() => {
+                            const undo = member.active && !member.archived ? undoableStaffTypeChange(member.typeChanges) : null;
+                            return undo && editStaffType === editOriginalType ? (
+                              <button
+                                type="button"
+                                className="w-fit text-sm font-medium text-primary underline-offset-4 hover:underline"
+                                onClick={() => {
+                                  setUndoError('');
+                                  setUndoTarget(member);
+                                }}
+                              >
+                                Undo last type change ({STAFF_TYPE_LABELS[undo.staffType]} from {formatDateInputDisplay(undo.effectiveFrom)})
+                              </button>
+                            ) : null;
+                          })()}
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <span className={`inline-flex w-fit items-center rounded-full px-2 py-1 text-xs font-medium ${getStaffStatusClass(member)}`}>
                               {getStaffStatusLabel(member)}
                             </span>
                             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                               {editError && <span role="alert" className="text-sm text-danger">{editError}</span>}
-                              <Button size="sm" onClick={handleEdit} className="h-9 gap-2" disabled={savingEdit}>
+                              <Button
+                                size="sm"
+                                onClick={() => (editStaffType !== editOriginalType ? setConfirmTypeChange(true) : handleEdit())}
+                                className="h-9 gap-2"
+                                disabled={savingEdit}
+                              >
                                 {savingEdit && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                                 Save
                               </Button>
@@ -943,6 +989,57 @@ export default function StaffPage() {
             </>
           )}
         </Card>
+
+        <Dialog open={confirmTypeChange} onOpenChange={setConfirmTypeChange}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Change type?</DialogTitle>
+              <DialogDescription>
+                {editName.trim()} becomes {STAFF_TYPE_LABELS[editStaffType]} from {formatDateInputDisplay(editTypeFrom)}.
+                Days before stay {STAFF_TYPE_LABELS[editOriginalType]}.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setConfirmTypeChange(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  setConfirmTypeChange(false);
+                  void handleEdit();
+                }}
+              >
+                Change type
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={!!undoTarget} onOpenChange={(open) => !open && setUndoTarget(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Undo type change?</DialogTitle>
+              <DialogDescription>
+                {(() => {
+                  const undo = undoTarget ? undoableStaffTypeChange(undoTarget.typeChanges) : null;
+                  return undoTarget && undo
+                    ? `${undoTarget.fullName} goes back to ${STAFF_TYPE_LABELS[undo.previousType]} from ${formatDateInputDisplay(undo.effectiveFrom)}, instead of ${STAFF_TYPE_LABELS[undo.staffType]}. Charges from then are worked out again; paid or pardoned ones stay.`
+                    : '';
+                })()}
+              </DialogDescription>
+            </DialogHeader>
+            {undoError && <p role="alert" className="text-sm text-danger">{undoError}</p>}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setUndoTarget(null)}>
+                Cancel
+              </Button>
+              <Button className="gap-2" onClick={handleUndoTypeChange} disabled={!undoTarget || actioningId === undoTarget.id}>
+                {undoTarget && actioningId === undoTarget.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                Undo
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={!!returnTarget} onOpenChange={(open) => !open && setReturnTarget(null)}>
           <DialogContent>

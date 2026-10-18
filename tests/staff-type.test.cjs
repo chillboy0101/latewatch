@@ -17,6 +17,7 @@ const {
   staffTypeChangeError,
   staffTypeOf,
   staffTypeOn,
+  undoableStaffTypeChange,
 } = require('../src/lib/staff-type.ts');
 const { planStaffPenaltyRecalculation } = require('../src/lib/staff-penalty-recalculation.ts');
 
@@ -179,4 +180,44 @@ test('the API refuses a type change while away and checks returns before saving 
   // Only an away that hasn't started yet is dropped by a return.
   assert.match(read('src/lib/staff-type-history.ts'), /gt\(staffTypeChange\.effectiveFrom, input\.today\),/);
   assert.match(read('src/app/staff/page.tsx'), /disabledNote=\{!member\.active \|\| member\.archived \? 'Change the type when you Activate or Restore them\.' : undefined\}/);
+});
+
+test('only the latest type change can be undone, back to the type before it', () => {
+  // Ama made main staff from 1 Oct by mistake: undo puts NSS back from that date.
+  assert.deepEqual(undoableStaffTypeChange(amaChanges), {
+    effectiveFrom: '2026-10-01', previousType: 'nss', revertOnly: false, staffType: 'main',
+  });
+  // A return as a later type (restored as special staff): the return stays, only the type reverts.
+  assert.deepEqual(undoableStaffTypeChange([
+    { effectiveFrom: '2000-01-01', staffType: 'nss' },
+    { effectiveFrom: '2026-08-01', staffType: 'away' },
+    { effectiveFrom: '2026-10-01', staffType: 'special' },
+  ]), { effectiveFrom: '2026-10-01', previousType: 'nss', revertOnly: true, staffType: 'special' });
+  // Nothing to undo: no history, only the start, a plain return, or away now.
+  assert.equal(undoableStaffTypeChange([]), null);
+  assert.equal(undoableStaffTypeChange([{ effectiveFrom: '2000-01-01', staffType: 'intern' }]), null);
+  assert.equal(undoableStaffTypeChange([
+    { effectiveFrom: '2000-01-01', staffType: 'nss' },
+    { effectiveFrom: '2026-08-01', staffType: 'away' },
+    { effectiveFrom: '2026-10-01', staffType: 'nss' },
+  ]), null);
+  assert.equal(undoableStaffTypeChange([...amaChanges, { effectiveFrom: '2026-10-10', staffType: 'away' }]), null);
+});
+
+test('type changes are confirmed before saving, and undo is admin-only, audited and recharged', () => {
+  const undoRoute = read('src/app/api/staff/[id]/type-change/route.ts');
+  assert.match(undoRoute, /const authError = await enforceRole\(\['admin'\]\);/);
+  assert.match(undoRoute, /Bring this person back \(Activate or Restore\) before undoing a type change\./);
+  assert.match(undoRoute, /const undone = await undoLatestStaffTypeChange\(id\);/);
+  assert.match(undoRoute, /reason: 'staff-type-change-undone',/);
+  assert.match(undoRoute, /await recalculateStaffStoredPenalties\(\{/);
+  const history = read('src/lib/staff-type-history.ts');
+  assert.match(history, /if \(undo\.revertOnly\) \{/);
+  assert.match(history, /if \(changes\.length === 2\) await db\.delete/);
+  const page = read('src/app/staff/page.tsx');
+  assert.match(page, /onClick=\{\(\) => \(editStaffType !== editOriginalType \? setConfirmTypeChange\(true\) : handleEdit\(\)\)\}/);
+  assert.match(page, /Days before stay \{STAFF_TYPE_LABELS\[editOriginalType\]\}\./);
+  assert.match(page, /fetch\(`\/api\/staff\/\$\{member\.id\}\/type-change`, \{ method: 'DELETE' \}\)/);
+  assert.match(page, /Undo last type change \(/);
+  assert.match(read('src/app/audit-trail/page.tsx'), /type change undone: back to/);
 });

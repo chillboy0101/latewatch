@@ -67,6 +67,23 @@ export function sortStaffTypeChanges<T extends StaffTypeChange>(changes: T[]) {
   return [...changes].sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom));
 }
 
+// The latest type change, if it can be undone (a mistake: wrong person, type or date). Only the
+// latest one, and only while the person is here; undoing it puts back the type before it. A
+// change made on a return (restored as a later type) keeps the return and only reverts the type.
+export function undoableStaffTypeChange(changes: StaffTypeChange[] | undefined) {
+  const sorted = sortStaffTypeChanges(changes || []);
+  const last = sorted.at(-1);
+  if (!last || !isStaffType(last.staffType)) return null;
+  const previousType = sorted.slice(0, -1).reverse().find((change) => isStaffType(change.staffType))?.staffType;
+  if (!isStaffType(previousType) || previousType === last.staffType) return null;
+  return {
+    effectiveFrom: last.effectiveFrom,
+    previousType,
+    revertOnly: sorted.at(-2)?.staffType === 'away',
+    staffType: last.staffType,
+  };
+}
+
 // The type on a day: the latest change on or before it. With no changes the current type applies.
 export function staffTypeOn(dateKey: string, changes: StaffTypeChange[] | undefined, current: StaffTypeFields): StaffTypeOnDate {
   let type: StaffTypeOnDate | null = null;

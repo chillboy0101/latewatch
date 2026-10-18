@@ -308,6 +308,11 @@ function describeDebtPardon(verb: string, data: Record<string, unknown> | null |
           if (beforeData.department !== afterData.department) changes.push('department changed');
           if (beforeData.unit !== afterData.unit) changes.push('unit changed');
         }
+        // Type changes and undos carry { from, to, effectiveFrom }.
+        const typeChange = afterData?.typeChange as { effectiveFrom?: string; from?: string; to?: string } | undefined;
+        const typeUndo = afterData?.typeChangeUndone as { effectiveFrom?: string; to?: string } | undefined;
+        if (typeChange) changes.push(`${typeChange.from} → ${typeChange.to} from ${displayAuditDate(typeChange.effectiveFrom)}`);
+        if (typeUndo) changes.push(`type change undone: back to ${typeUndo.to} from ${displayAuditDate(typeUndo.effectiveFrom)}`);
         return changes.length > 0
           ? `${name} — ${changes.join(', ')}`
           : `${name} updated`;
