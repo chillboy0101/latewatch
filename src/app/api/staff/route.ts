@@ -187,6 +187,8 @@ export async function POST(request: Request) {
 
         publishRealtime('dashboard', 'invalidate', { reason: 'staff' });
 
+        publishRealtime('payments', 'invalidate', { reason: 'staff' });
+
         if (restored.email) {
           await syncStaffEmailIdentity({
             actorUserId: actor?.id,
@@ -232,6 +234,8 @@ export async function POST(request: Request) {
     });
 
     publishRealtime('dashboard', 'invalidate', { reason: 'staff' });
+
+    publishRealtime('payments', 'invalidate', { reason: 'staff' });
 
     if (newStaff[0].email) {
       await syncStaffEmailIdentity({

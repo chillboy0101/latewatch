@@ -135,6 +135,12 @@ test('the Payments table switches between everyone\'s total and the chosen month
   assert.match(page, /const rows = viewRows\.filter\(\(row\) => !row\.former \|\| moneyNumber\(row\.allMonthsBalance\) > 0\);/);
   assert.match(page, /\.filter\(\(row\) => !row\.former \|\| moneyNumber\(row\.outstandingBalance\) > 0\)/);
   assert.match(page, /const rows = data\?\.staff \|\| \[\];\n    return \{\n      paidAmount/);
+  // Staff changes refresh an open Payments page, so someone who just left drops off the list.
+  for (const route of ['src/app/api/staff/route.ts', 'src/app/api/staff/[id]/route.ts']) {
+    const source = read(route);
+    const sent = (pattern) => (source.match(pattern) || []).length;
+    assert.equal(sent(/publishRealtime\('payments', 'invalidate', \{ reason: 'staff' \}\);/g), sent(/publishRealtime\('dashboard', 'invalidate', \{ reason: 'staff' \}\);/g), route);
+  }
   assert.match(api, /const MONTH_KEY_PATTERN = /);
   assert.match(api, /range: hasDateFilter \? \{ end: weekEnd, start: weekStart \} : month \? monthDateRange\(month\) : null/);
   assert.match(api, /months: \[\.\.\.\(monthsByPaymentId\.get\(payment\.id\) \|\| \[\]\)\]\.sort\(\)/);

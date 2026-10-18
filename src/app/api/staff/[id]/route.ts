@@ -257,6 +257,8 @@ export async function PUT(
 
     publishRealtime('dashboard', 'invalidate', { reason: 'staff' });
 
+    publishRealtime('payments', 'invalidate', { reason: 'staff' });
+
     return NextResponse.json(updated[0]);
   } catch (error) {
     console.error('Failed to update staff member:', error);
@@ -325,6 +327,8 @@ export async function DELETE(
 
       publishRealtime('dashboard', 'invalidate', { reason: 'staff' });
 
+      publishRealtime('payments', 'invalidate', { reason: 'staff' });
+
       return NextResponse.json({ success: true, deleted: true, purgedEntryCount: purgeRecords ? totalEntries : 0 });
     }
 
@@ -346,6 +350,8 @@ export async function DELETE(
     });
 
     publishRealtime('dashboard', 'invalidate', { reason: 'staff' });
+
+    publishRealtime('payments', 'invalidate', { reason: 'staff' });
 
     return NextResponse.json({ success: true, staff: updated });
   } catch (error) {
