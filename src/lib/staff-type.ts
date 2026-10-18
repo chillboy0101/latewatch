@@ -84,6 +84,13 @@ export function penaltyFlagsOn(dateKey: string, changes: StaffTypeChange[] | und
   return flagsForStaffType(staffTypeOn(dateKey, changes, current));
 }
 
+// A real calendar day in YYYY-MM-DD form (not 2026-02-30).
+export function isValidDateKey(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
 export function nextDateKey(dateKey: string) {
   const date = new Date(`${dateKey}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + 1);
@@ -103,10 +110,29 @@ export function staffTypeChangeError(input: {
   if (!canChangeStaffType(input.from, input.to)) {
     return `${STAFF_TYPE_LABELS[input.from]} can only move on to ${allowedStaffTypes(input.from).filter((type) => type !== input.from).map((type) => STAFF_TYPE_LABELS[type]).join(', ')}.`;
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.effectiveFrom)) return 'Choose the date the new type starts.';
+  if (!isValidDateKey(input.effectiveFrom)) return 'Choose the date the new type starts.';
   if (input.effectiveFrom > input.today) return 'The new type can’t start in the future.';
   if (input.latestChangeDate && input.effectiveFrom < input.latestChangeDate) {
     return `The new type can’t start before ${input.latestChangeDate}, when the last change started.`;
+  }
+  return null;
+}
+
+// Why a return (restore or activate) can't start on this date, or null when it can. Days they
+// were away stay away, and days under an earlier type keep it.
+export function staffReturnDateError(input: {
+  awayStart?: string | null;
+  effectiveFrom: string;
+  latestChangeDate?: string | null;
+  today: string;
+}) {
+  if (!isValidDateKey(input.effectiveFrom)) return 'Choose the date they are back from.';
+  if (input.effectiveFrom > input.today) return 'The return date can’t be in the future.';
+  if (input.awayStart && input.awayStart <= input.today && input.effectiveFrom < input.awayStart) {
+    return `The return date can’t be before ${input.awayStart}, when they left.`;
+  }
+  if (input.latestChangeDate && input.effectiveFrom < input.latestChangeDate) {
+    return `The return date can’t be before ${input.latestChangeDate}, when the last change started.`;
   }
   return null;
 }

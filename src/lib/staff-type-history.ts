@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, asc, eq, gte, inArray, or } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, inArray, or } from 'drizzle-orm';
 import { db } from '@/db';
 import { staffTypeChange } from '@/db/schema';
 import type { StaffType, StaffTypeChange, StaffTypeOnDate } from '@/lib/staff-type';
@@ -36,14 +36,22 @@ export async function latestStaffTypeChangeDate(staffId: string) {
   return changes.filter((change) => change.staffType !== 'away').at(-1)?.effectiveFrom ?? null;
 }
 
+// When their latest time away began (null if they were never away).
+export async function latestAwayStart(staffId: string) {
+  const changes = (await getStaffTypeChanges([staffId])).get(staffId) || [];
+  return changes.filter((change) => change.staffType === 'away').at(-1)?.effectiveFrom ?? null;
+}
+
 // Saves a type (or 'away') from a date. The first change also keeps the earlier type for every
-// day before it; a pending 'away' on or after the date is dropped (restored before it began).
+// day before it. An 'away' that hasn't started yet is dropped (brought back before leaving);
+// one that has started is kept, since returns can't be dated before it.
 export async function recordStaffTypeChange(input: {
   actorEmail?: string | null;
   effectiveFrom: string;
   previousType: StaffType;
   staffId: string;
   staffType: StaffTypeOnDate;
+  today: string;
 }) {
   const existing = (await getStaffTypeChanges([input.staffId])).get(input.staffId) || [];
   if (existing.length === 0) {
@@ -58,7 +66,11 @@ export async function recordStaffTypeChange(input: {
     eq(staffTypeChange.staffId, input.staffId),
     or(
       eq(staffTypeChange.effectiveFrom, input.effectiveFrom),
-      and(eq(staffTypeChange.staffType, 'away'), gte(staffTypeChange.effectiveFrom, input.effectiveFrom)),
+      and(
+        eq(staffTypeChange.staffType, 'away'),
+        gte(staffTypeChange.effectiveFrom, input.effectiveFrom),
+        gt(staffTypeChange.effectiveFrom, input.today),
+      ),
     ),
   ));
   await db.insert(staffTypeChange).values({

@@ -789,6 +789,7 @@ export default function StaffPage() {
                             <StaffTypeField
                               id={`edit-type-${member.id}`}
                               current={editOriginalType}
+                              disabledNote={!member.active || member.archived ? 'Change the type when you Activate or Restore them.' : undefined}
                               value={editStaffType}
                               onChange={setEditStaffType}
                             />
