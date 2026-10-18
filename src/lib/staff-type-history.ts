@@ -3,7 +3,7 @@ import 'server-only';
 import { and, asc, eq, gt, gte, inArray, or } from 'drizzle-orm';
 import { db } from '@/db';
 import { staffTypeChange } from '@/db/schema';
-import type { StaffType, StaffTypeChange, StaffTypeOnDate } from '@/lib/staff-type';
+import { undoableStaffTypeChange, type StaffType, type StaffTypeChange, type StaffTypeOnDate } from '@/lib/staff-type';
 
 // Each person's type changes, oldest first. People who never changed type have no rows.
 export async function getStaffTypeChanges(staffIds: string[]) {
@@ -79,4 +79,30 @@ export async function recordStaffTypeChange(input: {
     staffId: input.staffId,
     staffType: input.staffType,
   });
+}
+
+// Undoes the latest type change (see undoableStaffTypeChange). Returns what was undone, or null.
+export async function undoLatestStaffTypeChange(staffId: string) {
+  const rows = await db.select({
+    effectiveFrom: staffTypeChange.effectiveFrom,
+    id: staffTypeChange.id,
+    staffType: staffTypeChange.staffType,
+  })
+    .from(staffTypeChange)
+    .where(eq(staffTypeChange.staffId, staffId))
+    .orderBy(asc(staffTypeChange.effectiveFrom), asc(staffTypeChange.createdAt));
+  const changes = rows.map((row) => ({ ...row, effectiveFrom: String(row.effectiveFrom).slice(0, 10) }));
+  const undo = undoableStaffTypeChange(changes);
+  const last = changes.at(-1);
+  if (!undo || !last) return null;
+
+  if (undo.revertOnly) {
+    // Restored as the wrong type: they stay back from that date, as the type they had.
+    await db.update(staffTypeChange).set({ staffType: undo.previousType }).where(eq(staffTypeChange.id, last.id));
+  } else {
+    await db.delete(staffTypeChange).where(eq(staffTypeChange.id, last.id));
+    // Only the starting row left: no history is the same as one type on every day.
+    if (changes.length === 2) await db.delete(staffTypeChange).where(eq(staffTypeChange.id, changes[0].id));
+  }
+  return undo;
 }
