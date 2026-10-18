@@ -11,7 +11,9 @@ const read = (...parts) => fs.readFileSync(path.join(root, ...parts), 'utf8');
 const {
   allowedStaffTypes,
   canChangeStaffType,
+  isValidDateKey,
   penaltyFlagsOn,
+  staffReturnDateError,
   staffTypeChangeError,
   staffTypeOf,
   staffTypeOn,
@@ -147,4 +149,34 @@ test('the staff API checks type changes, saves them from a date and marks away d
   const migration = read('drizzle/0038_staff_type_history.sql');
   assert.match(migration, /CREATE TABLE IF NOT EXISTS staff_type_change/);
   assert.match(migration, /SELECT s\.id, 'away'/);
+});
+
+test('returns keep days away and days under an earlier type; impossible dates are refused', () => {
+  const today = '2026-10-18';
+  // Away since 2 Aug: a return dated 1 Aug would charge Aug-Sep as no-shows.
+  assert.match(staffReturnDateError({ awayStart: '2026-08-02', effectiveFrom: '2026-08-01', today }), /before 2026-08-02, when they left/);
+  assert.equal(staffReturnDateError({ awayStart: '2026-08-02', effectiveFrom: '2026-08-02', today }), null);
+  // Deactivated by mistake today (away from tomorrow): activating today is fine.
+  assert.equal(staffReturnDateError({ awayStart: '2026-10-19', effectiveFrom: today, today }), null);
+  // Same type, but dated before their last type change.
+  assert.match(staffReturnDateError({ effectiveFrom: '2026-06-01', latestChangeDate: '2026-06-15', today }), /before 2026-06-15/);
+  assert.match(staffReturnDateError({ effectiveFrom: '2026-10-19', today }), /future/);
+  assert.equal(isValidDateKey('2026-02-30'), false);
+  assert.equal(isValidDateKey('2026-13-01'), false);
+  assert.equal(isValidDateKey('2028-02-29'), true);
+  assert.match(staffReturnDateError({ effectiveFrom: '2026-02-30', today }), /Choose the date/);
+  assert.match(staffTypeChangeError({ effectiveFrom: '2026-02-30', from: 'intern', to: 'nss', today }), /Choose the date/);
+});
+
+test('the API refuses a type change while away and checks returns before saving anything', () => {
+  const update = read('src/app/api/staff/[id]/route.ts');
+  assert.match(update, /if \(typeChanged && wasAway && !comingBack\) \{/);
+  assert.match(update, /Bring this person back \(Activate or Restore\) to change their type\./);
+  assert.match(update, /const returnError = staffReturnDateError\(\{\n\s+awayStart: await latestAwayStart\(id\),/);
+  // Both checks run before the staff row is written.
+  assert.ok(update.indexOf('const returnError') < update.indexOf('const updated = await db.update(staff)'));
+  assert.ok(update.indexOf('const typeError') < update.indexOf('const updated = await db.update(staff)'));
+  // Only an away that hasn't started yet is dropped by a return.
+  assert.match(read('src/lib/staff-type-history.ts'), /gt\(staffTypeChange\.effectiveFrom, input\.today\),/);
+  assert.match(read('src/app/staff/page.tsx'), /disabledNote=\{!member\.active \|\| member\.archived \? 'Change the type when you Activate or Restore them\.' : undefined\}/);
 });

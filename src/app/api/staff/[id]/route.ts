@@ -16,11 +16,12 @@ import {
   isStaffType,
   nextDateKey,
   STAFF_TYPE_LABELS,
+  staffReturnDateError,
   staffTypeChangeError,
   staffTypeOf,
   type StaffType,
 } from '@/lib/staff-type';
-import { latestStaffTypeChangeDate, recordStaffTypeChange } from '@/lib/staff-type-history';
+import { latestAwayStart, latestStaffTypeChangeDate, recordStaffTypeChange } from '@/lib/staff-type-history';
 
 type StaffUpdateBody = {
   active?: boolean;
@@ -144,11 +145,30 @@ export async function PUT(
     const typeEffectiveFrom = typeof body.typeEffectiveFrom === 'string' && body.typeEffectiveFrom
       ? body.typeEffectiveFrom.slice(0, 10)
       : today;
+    const wasAway = before.active !== true || before.archived === true;
+    const nextActive = updateData.active ?? before.active;
+    const nextArchived = updateData.archived ?? before.archived;
+    const goingAway = !wasAway && (nextActive !== true || nextArchived === true);
+    const comingBack = wasAway && nextActive === true && nextArchived !== true;
+    const latestChangeDate = typeChanged || comingBack ? await latestStaffTypeChangeDate(id) : null;
+    if (typeChanged && wasAway && !comingBack) {
+      // Their away days must stay away: the type is picked when they come back.
+      return NextResponse.json({ error: 'Bring this person back (Activate or Restore) to change their type.' }, { status: 400 });
+    }
+    if (comingBack) {
+      const returnError = staffReturnDateError({
+        awayStart: await latestAwayStart(id),
+        effectiveFrom: typeEffectiveFrom,
+        latestChangeDate,
+        today,
+      });
+      if (returnError) return NextResponse.json({ error: returnError }, { status: 400 });
+    }
     if (typeChanged) {
       const typeError = staffTypeChangeError({
         effectiveFrom: typeEffectiveFrom,
         from: beforeType,
-        latestChangeDate: await latestStaffTypeChangeDate(id),
+        latestChangeDate,
         to: nextType,
         today,
       });
@@ -160,14 +180,6 @@ export async function PUT(
       }
       updateData.staffType = nextType;
       Object.assign(updateData, flagsForStaffType(nextType));
-    }
-    const wasAway = before.active !== true || before.archived === true;
-    const nextActive = updateData.active ?? before.active;
-    const nextArchived = updateData.archived ?? before.archived;
-    const goingAway = !wasAway && (nextActive !== true || nextArchived === true);
-    const comingBack = wasAway && nextActive === true && nextArchived !== true;
-    if (comingBack && (!/^\d{4}-\d{2}-\d{2}$/.test(typeEffectiveFrom) || typeEffectiveFrom > today)) {
-      return NextResponse.json({ error: 'Choose a return date that isn’t in the future.' }, { status: 400 });
     }
     if (updateData.email) {
       const [emailOwner] = await db.select({ id: staff.id })
@@ -207,6 +219,7 @@ export async function PUT(
         previousType: beforeType,
         staffId: id,
         staffType: nextType,
+        today,
       });
     } else if (goingAway) {
       // Away from tomorrow: today's sign-in still counts, later days are never charged.
@@ -216,6 +229,7 @@ export async function PUT(
         previousType: beforeType,
         staffId: id,
         staffType: 'away',
+        today,
       });
     }
 
@@ -410,6 +424,7 @@ export async function DELETE(
         previousType: staffTypeOf(before),
         staffId: id,
         staffType: 'away',
+        today: getAccraDateKey(),
       });
     }
 

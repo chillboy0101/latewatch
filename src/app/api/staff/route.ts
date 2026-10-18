@@ -12,8 +12,8 @@ import { syncStaffEmailIdentity } from '@/lib/clerk-organization';
 import { enforceRole } from '@/lib/auth/roles';
 import { getActiveLeavePeriod } from '@/lib/staff-leave';
 import { recalculateStaffStoredPenalties } from '@/lib/staff-penalty-recalculation-server';
-import { flagsForStaffType, isStaffType, penaltyFlagsOn, staffTypeChangeError, staffTypeOf, type StaffType } from '@/lib/staff-type';
-import { getStaffTypeChanges, latestStaffTypeChangeDate, recordStaffTypeChange } from '@/lib/staff-type-history';
+import { flagsForStaffType, isStaffType, penaltyFlagsOn, staffReturnDateError, staffTypeChangeError, staffTypeOf, type StaffType } from '@/lib/staff-type';
+import { getStaffTypeChanges, latestAwayStart, latestStaffTypeChangeDate, recordStaffTypeChange } from '@/lib/staff-type-history';
 
 export const dynamic = 'force-dynamic';
 
@@ -171,11 +171,17 @@ export async function POST(request: Request) {
       if (existingStaff.archived) {
         const previousType = staffTypeOf(existingStaff);
         const today = getAccraDateKey();
+        const latestChangeDate = await latestStaffTypeChangeDate(existingStaff.id);
         const typeError = staffTypeChangeError({
           effectiveFrom: today,
           from: previousType,
-          latestChangeDate: await latestStaffTypeChangeDate(existingStaff.id),
+          latestChangeDate,
           to: staffType,
+          today,
+        }) || staffReturnDateError({
+          awayStart: await latestAwayStart(existingStaff.id),
+          effectiveFrom: today,
+          latestChangeDate,
           today,
         });
         if (typeError) {
@@ -206,6 +212,7 @@ export async function POST(request: Request) {
           previousType,
           staffId: restored.id,
           staffType,
+          today,
         });
         if (staffType !== previousType) {
           await recalculateStaffStoredPenalties({
