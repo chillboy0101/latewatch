@@ -9,12 +9,12 @@ const test = require('node:test');
 // so the rule is now asserted where it actually runs.
 const staffApiPath = path.join(__dirname, '../src/app/api/staff/route.ts');
 
-test('the staff API preserves the attendance monitoring only flag', () => {
+test('the staff API saves one type and keeps the two charge flags in step with it', () => {
   const source = fs.readFileSync(staffApiPath, 'utf8');
 
-  assert.match(source, /const isAttendanceOnly = body\?\.isAttendanceOnly === true/);
-  // Attendance-only staff are never also NSS personnel: the flag forces isNssPersonnel false.
-  assert.match(source, /const isNssPersonnel = !isAttendanceOnly && body\?\.isNssPersonnel === true/);
-  assert.match(source, /isAttendanceOnly,/);
-  assert.match(source, /isNssPersonnel,/);
-});
+  // Intern, NSS, special staff or main; older clients sending the flags still work.
+  assert.match(source, /const staffType: StaffType = isStaffType\(body\?\.staffType\)/);
+  assert.match(source, /: body\?\.isAttendanceOnly === true \? 'special' : body\?\.isNssPersonnel === true \? 'nss' : 'main';/);
+  assert.match(source, /const \{ isAttendanceOnly, isNssPersonnel \} = flagsForStaffType\(staffType\);/);
+  assert.match(source, /staffType,\n\s+active: true,/);
+})

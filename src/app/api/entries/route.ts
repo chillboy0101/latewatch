@@ -29,6 +29,8 @@ import {
   NO_SHOW_SIGN_IN_WAIVED_REASON,
 } from '@/lib/penalty-calculator';
 import { enforceRole } from '@/lib/auth/roles';
+import { penaltyFlagsOn } from '@/lib/staff-type';
+import { getStaffTypeChanges } from '@/lib/staff-type-history';
 
 const MANUAL_SIGN_OUT_MARKER = 'manual_entries';
 
@@ -259,8 +261,10 @@ export async function POST(request: NextRequest) {
       isNssPersonnel: staff.isNssPersonnel,
     }).from(staff);
     const staffMap = new Map(staffList.map(s => [s.id, s.fullName]));
-    const staffPenaltyMap = new Map(staffList.map((s) => [s.id, s.isNssPersonnel === true]));
-    const staffAttendanceOnlyMap = new Map(staffList.map((s) => [s.id, s.isAttendanceOnly === true]));
+    // Charged by each person's type on this date (an intern then is not charged after becoming staff).
+    const staffById = new Map(staffList.map((s) => [s.id, s]));
+    const typeChanges = await getStaffTypeChanges(entries.map((entry: { staffId?: string }) => String(entry?.staffId || '')));
+    const penaltyFlagsFor = (staffId: string) => penaltyFlagsOn(date, typeChanges.get(staffId), staffById.get(staffId) || {});
     const activeStaffIds = new Set(
       staffList
         .filter((s) => s.active === true && s.archived !== true)
@@ -608,8 +612,7 @@ export async function POST(request: NextRequest) {
         activePermission,
         arrivalTime,
         didNotSignOut,
-        isAttendanceOnly: staffAttendanceOnlyMap.get(entry.staffId) === true,
-        isNssPersonnel: staffPenaltyMap.get(entry.staffId) === true,
+        ...penaltyFlagsFor(entry.staffId),
       });
 
       const shouldStoreEntry = penalty.didNotSignOut || penalty.amount > 0;
@@ -651,8 +654,7 @@ export async function POST(request: NextRequest) {
           arrivalTime,
           date,
           didNotSignOut,
-          isAttendanceOnly: staffAttendanceOnlyMap.get(entry.staffId) === true,
-          isNssPersonnel: staffPenaltyMap.get(entry.staffId) === true,
+          ...penaltyFlagsFor(entry.staffId),
           signOutCorrection,
           signOutTime: submittedSignOutTime,
         });

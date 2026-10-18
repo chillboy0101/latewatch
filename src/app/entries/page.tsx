@@ -39,6 +39,8 @@ interface StaffMember {
   email?: string | null;
   isAttendanceOnly?: boolean | null;
   isNssPersonnel?: boolean | null;
+  // The charge rules on the selected date (the person's type then, not now).
+  chargeOnDate?: { isAttendanceOnly: boolean; isNssPersonnel: boolean };
   rank?: string | null;
   staffNo?: string | null;
   unit?: string | null;
@@ -471,8 +473,8 @@ function EntriesPageContent() {
     const penalty = computePenalty({
       arrivalTime: normalizedEntry.arrivalTime || null,
       didNotSignOut,
-      isAttendanceOnly: member?.isAttendanceOnly === true,
-      isNssPersonnel: member?.isNssPersonnel === true,
+      isAttendanceOnly: (member?.chargeOnDate ?? member)?.isAttendanceOnly === true,
+      isNssPersonnel: (member?.chargeOnDate ?? member)?.isNssPersonnel === true,
       isHoliday,
     });
 
@@ -1012,7 +1014,7 @@ function EntriesPageContent() {
                   </tr>
                 ) : visibleEntries.map(({ entry, index }) => {
                   const member = staff.find((s) => s.id === entry.staffId);
-                  const isMonitoringStaff = member?.isAttendanceOnly === true;
+                  const isMonitoringStaff = (member?.chargeOnDate ?? member)?.isAttendanceOnly === true;
                   const isOnLeave = member?.onLeave === true;
                   const leaveSummary = member?.activeLeave ? formatLeaveSummary(member.activeLeave) : null;
                   const rowDisabled = entriesDisabled || isOnLeave;

@@ -10,6 +10,7 @@ import { publishRealtime } from '@/lib/realtime';
 import { planStaffPenaltyRecalculation } from '@/lib/staff-penalty-recalculation';
 import { isStaffLeaveDate } from '@/lib/staff-leave';
 import { getFinanciallyProtectedLeaveEntryIds, getStaffLeavePeriodsForRange } from '@/lib/staff-leave-service';
+import { getStaffTypeChanges } from '@/lib/staff-type-history';
 
 function dateKeyOf(value: Date | string) {
   return value instanceof Date ? value.toISOString().slice(0, 10) : value.slice(0, 10);
@@ -48,12 +49,13 @@ export async function recalculateStaffStoredPenalties(input: {
       )),
   ]);
   const dates = [...attendanceRows.map((row) => dateKeyOf(row.date)), ...latenessRows.map((row) => dateKeyOf(row.date))].sort();
-  const [protectedEntryIds, leavePeriods, holidayDates] = await Promise.all([
+  const [protectedEntryIds, leavePeriods, holidayDates, typeChanges] = await Promise.all([
     getFinanciallyProtectedLeaveEntryIds(latenessRows.map((row) => row.id)),
     dates.length === 0
       ? Promise.resolve([])
       : getStaffLeavePeriodsForRange({ endDate: dates[dates.length - 1], staffIds: [input.staffMember.id], startDate: dates[0] }),
     dates.length === 0 ? Promise.resolve(new Set<string>()) : getHolidayDatesForRange(dates[0], dates[dates.length - 1]),
+    getStaffTypeChanges([input.staffMember.id]),
   ]);
   const leaveDates = new Set(dates.filter((date) => isStaffLeaveDate(leavePeriods, input.staffMember.id, date)));
   const plan = planStaffPenaltyRecalculation({
@@ -66,6 +68,7 @@ export async function recalculateStaffStoredPenalties(input: {
     permissions: permissionRows,
     protectedEntryIds,
     staffId: input.staffMember.id,
+    typeChanges: typeChanges.get(input.staffMember.id),
   });
   const reason = input.reason || 'staff-penalty-recalculation';
   const now = new Date();

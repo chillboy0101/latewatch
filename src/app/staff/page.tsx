@@ -21,6 +21,9 @@ import {
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { getStaffIdentitySyncCopy, type StaffIdentitySyncTone } from '@/lib/staff-identity-sync-copy';
 import { StaffLeaveDialog } from '@/components/attendance/staff-leave-dialog';
+import { StaffTypeField, StaffTypeFromField } from '@/components/staff/staff-type-field';
+import { getAccraDateKey } from '@/lib/date-key';
+import { STAFF_TYPE_LABELS, staffTypeOf, type StaffType } from '@/lib/staff-type';
 
 interface StaffMember {
   id: string;
@@ -33,6 +36,7 @@ interface StaffMember {
   unit: string | null;
   isNssPersonnel: boolean;
   isAttendanceOnly: boolean;
+  staffType?: string | null;
   active: boolean | null;
   archived: boolean | null;
   onLeave?: boolean;
@@ -47,7 +51,7 @@ interface StaffMember {
   archivedAt?: string | null;
 }
 
-type StaffFilter = 'all' | 'active' | 'onLeave' | 'inactive' | 'former' | 'nss' | 'attendanceOnly';
+type StaffFilter = 'all' | 'active' | 'onLeave' | 'inactive' | 'former' | 'nss' | 'intern' | 'special';
 
 export default function StaffPage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
@@ -78,8 +82,7 @@ export default function StaffPage() {
   const [newRank, setNewRank] = useState('');
   const [newDepartment, setNewDepartment] = useState('');
   const [newUnit, setNewUnit] = useState('');
-  const [newIsNssPersonnel, setNewIsNssPersonnel] = useState(false);
-  const [newIsAttendanceOnly, setNewIsAttendanceOnly] = useState(false);
+  const [newStaffType, setNewStaffType] = useState<StaffType>('main');
 
   // Edit form state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -90,8 +93,15 @@ export default function StaffPage() {
   const [editRank, setEditRank] = useState('');
   const [editDepartment, setEditDepartment] = useState('');
   const [editUnit, setEditUnit] = useState('');
-  const [editIsNssPersonnel, setEditIsNssPersonnel] = useState(false);
-  const [editIsAttendanceOnly, setEditIsAttendanceOnly] = useState(false);
+  const [editStaffType, setEditStaffType] = useState<StaffType>('main');
+  const [editOriginalType, setEditOriginalType] = useState<StaffType>('main');
+  const [editTypeFrom, setEditTypeFrom] = useState('');
+
+  // Bringing someone back (restore or activate) on the same profile, as the same or a later type.
+  const [returnTarget, setReturnTarget] = useState<{ member: StaffMember; mode: 'activate' | 'restore' } | null>(null);
+  const [returnType, setReturnType] = useState<StaffType>('main');
+  const [returnFrom, setReturnFrom] = useState('');
+  const [returnError, setReturnError] = useState('');
 
   const fetchStaff = useCallback(async () => {
     try {
@@ -156,8 +166,7 @@ export default function StaffPage() {
           rank: newRank.trim() || null,
           department: newDepartment.trim() || null,
           unit: newUnit.trim() || null,
-          isAttendanceOnly: newIsAttendanceOnly,
-          isNssPersonnel: newIsNssPersonnel,
+          staffType: newStaffType,
         }),
       });
 
@@ -170,8 +179,7 @@ export default function StaffPage() {
         setNewRank('');
         setNewDepartment('');
         setNewUnit('');
-        setNewIsNssPersonnel(false);
-        setNewIsAttendanceOnly(false);
+        setNewStaffType('main');
         setSubmitMessage('');
         setIsAddDialogOpen(false);
       } else {
@@ -293,8 +301,8 @@ export default function StaffPage() {
           rank: editRank.trim() || null,
           department: editDepartment.trim() || null,
           unit: editUnit.trim() || null,
-          isAttendanceOnly: editIsAttendanceOnly,
-          isNssPersonnel: editIsNssPersonnel,
+          staffType: editStaffType,
+          typeEffectiveFrom: editStaffType !== editOriginalType ? editTypeFrom : undefined,
         }),
       });
 
@@ -368,8 +376,42 @@ export default function StaffPage() {
     setEditRank(member.rank || '');
     setEditDepartment(member.department || '');
     setEditUnit(member.unit || '');
-    setEditIsNssPersonnel(member.isNssPersonnel === true);
-    setEditIsAttendanceOnly(member.isAttendanceOnly === true);
+    setEditStaffType(staffTypeOf(member));
+    setEditOriginalType(staffTypeOf(member));
+    setEditTypeFrom(getAccraDateKey());
+  };
+
+  const openReturn = (member: StaffMember, mode: 'activate' | 'restore') => {
+    setReturnError('');
+    setReturnType(staffTypeOf(member));
+    setReturnFrom(getAccraDateKey());
+    setReturnTarget({ member, mode });
+  };
+
+  const handleReturn = async () => {
+    if (!returnTarget) return;
+    const { member, mode } = returnTarget;
+    setActioningId(member.id);
+    setReturnError('');
+    try {
+      const response = await fetch(`/api/staff/${member.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(mode === 'restore' ? { archived: false } : { active: true }),
+          staffType: returnType,
+          typeEffectiveFrom: returnFrom,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || `Could not bring ${member.fullName} back (${response.status})`);
+      setStaff((prev) => prev.map((s) => (s.id === member.id ? { ...s, ...body } : s)));
+      setReturnTarget(null);
+    } catch (error) {
+      setReturnError(error instanceof Error ? error.message : 'Could not bring this person back');
+    } finally {
+      setActioningId(null);
+    }
   };
 
   const searchTokens = searchTerm
@@ -384,8 +426,9 @@ export default function StaffPage() {
         if (staffFilter === 'onLeave') return s.onLeave && !s.archived;
         if (staffFilter === 'inactive') return !s.active && !s.archived && !s.onLeave;
         if (staffFilter === 'former') return s.archived;
-        if (staffFilter === 'nss') return s.isNssPersonnel === true && !s.archived;
-        if (staffFilter === 'attendanceOnly') return s.isAttendanceOnly === true && !s.archived;
+        if (staffFilter === 'nss') return staffTypeOf(s) === 'nss' && !s.archived;
+        if (staffFilter === 'intern') return staffTypeOf(s) === 'intern' && !s.archived;
+        if (staffFilter === 'special') return staffTypeOf(s) === 'special' && !s.archived;
         return true;
       })
     : [];
@@ -404,7 +447,12 @@ export default function StaffPage() {
           s.department || '',
           s.unit || '',
           s.onLeave ? 'on leave leave' : '',
-          s.isAttendanceOnly ? 'attendance monitoring only special staff intern interns no penalty' : s.isNssPersonnel ? 'nss national service personnel' : 'staff',
+          {
+            intern: 'intern interns attendance monitoring only no penalty',
+            main: 'main staff',
+            nss: 'nss national service personnel',
+            special: 'special staff attendance monitoring only no penalty',
+          }[staffTypeOf(s)],
         ].join(' ').toLowerCase();
 
         return searchTokens.every((token) => searchable.includes(token));
@@ -416,15 +464,17 @@ export default function StaffPage() {
   const inactiveCount = staff.filter((s) => !s.active && !s.archived && !s.onLeave).length;
   const formerCount = staff.filter((s) => s.archived).length;
   // Cards and their filters count the same people; NSS and Special are current staff only.
-  const nssCount = staff.filter((s) => s.isNssPersonnel === true && !s.archived).length;
-  const attendanceOnlyCount = staff.filter((s) => s.isAttendanceOnly === true && !s.archived).length;
+  const nssCount = staff.filter((s) => staffTypeOf(s) === 'nss' && !s.archived).length;
+  const internCount = staff.filter((s) => staffTypeOf(s) === 'intern' && !s.archived).length;
+  const specialCount = staff.filter((s) => staffTypeOf(s) === 'special' && !s.archived).length;
   const totalDisplay = loading ? '-' : staff.length.toString();
   const activeDisplay = loading ? '-' : activeCount.toString();
   const onLeaveDisplay = loading ? '-' : onLeaveCount.toString();
   const inactiveDisplay = loading ? '-' : inactiveCount.toString();
   const formerDisplay = loading ? '-' : formerCount.toString();
   const nssDisplay = loading ? '-' : nssCount.toString();
-  const attendanceOnlyDisplay = loading ? '-' : attendanceOnlyCount.toString();
+  const internDisplay = loading ? '-' : internCount.toString();
+  const specialDisplay = loading ? '-' : specialCount.toString();
   const staffFilterCards: Array<{
     key: StaffFilter;
     label: string;
@@ -437,18 +487,17 @@ export default function StaffPage() {
     { key: 'inactive', label: 'Inactive', value: inactiveDisplay, valueClassName: 'text-muted-foreground' },
     { key: 'former', label: 'Former Personnel', value: formerDisplay, valueClassName: 'text-warning' },
     { key: 'nss', label: 'NSS Personnel', value: nssDisplay, valueClassName: 'text-primary' },
-    { key: 'attendanceOnly', label: 'Special Staff & Interns', value: attendanceOnlyDisplay, valueClassName: 'text-success' },
+    { key: 'intern', label: 'Interns', value: internDisplay, valueClassName: 'text-success' },
+    { key: 'special', label: 'Special Staff', value: specialDisplay, valueClassName: 'text-success' },
   ];
   const activeFilterLabel = staffFilterCards.find((card) => card.key === staffFilter)?.label || 'staff';
-  const mainFilteredStaff = filteredStaff.filter((member) => member.isAttendanceOnly !== true && member.isNssPersonnel !== true);
-  const nssFilteredStaff = filteredStaff.filter((member) => member.isAttendanceOnly !== true && member.isNssPersonnel === true);
-  const attendanceOnlyFilteredStaff = filteredStaff.filter((member) => member.isAttendanceOnly === true);
   const tableSections = [
-    { key: 'main', members: mainFilteredStaff, title: 'Main Staff' },
-    { key: 'nss', members: nssFilteredStaff, title: 'NSS Personnel' },
-    { key: 'attendanceOnly', members: attendanceOnlyFilteredStaff, title: 'Attendance Monitoring Only (Special Staff & Interns)' },
+    { key: 'main', members: filteredStaff.filter((member) => staffTypeOf(member) === 'main'), title: 'Main Staff' },
+    { key: 'nss', members: filteredStaff.filter((member) => staffTypeOf(member) === 'nss'), title: 'NSS Personnel' },
+    { key: 'special', members: filteredStaff.filter((member) => staffTypeOf(member) === 'special'), title: 'Special Staff (not charged)' },
+    { key: 'intern', members: filteredStaff.filter((member) => staffTypeOf(member) === 'intern'), title: 'Interns (not charged)' },
   ].filter((section) => section.members.length > 0);
-  const newIsMainStaff = !newIsAttendanceOnly && !newIsNssPersonnel;
+  const newIsMainStaff = newStaffType === 'main';
   const addStaffMissingRequiredMetadata = !newGender.trim()
     || (newIsMainStaff && (!newStaffNo.trim() || !newRank.trim()));
 
@@ -468,7 +517,7 @@ export default function StaffPage() {
           </div>
         )}
         {/* Stats Bar */}
-        <div className="grid auto-cols-[minmax(10.5rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-7 xl:overflow-visible xl:pb-0">
+        <div className="grid auto-cols-[minmax(10.5rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-8 xl:overflow-visible xl:pb-0">
           {staffFilterCards.map((card) => {
             const selected = staffFilter === card.key;
 
@@ -602,37 +651,7 @@ export default function StaffPage() {
                     />
                   </div>
                 </div>
-                <label className="flex items-start gap-3 rounded-md border border-border p-3 text-sm">
-                  <Checkbox
-                    checked={newIsNssPersonnel}
-                    disabled={newIsAttendanceOnly}
-                    onCheckedChange={(checked) => setNewIsNssPersonnel(checked === true)}
-                    className="mt-0.5"
-                  />
-                  <span>
-                    <span className="font-medium">NSS personnel</span>
-                    <span className="mt-1 block text-muted-foreground">
-                      Late arrival penalty stays at GHC 10 for this person.
-                    </span>
-                  </span>
-                </label>
-                <label className="flex items-start gap-3 rounded-md border border-border p-3 text-sm">
-                  <Checkbox
-                    checked={newIsAttendanceOnly}
-                    onCheckedChange={(checked) => {
-                      const isChecked = checked === true;
-                      setNewIsAttendanceOnly(isChecked);
-                      if (isChecked) setNewIsNssPersonnel(false);
-                    }}
-                    className="mt-0.5"
-                  />
-                  <span>
-                    <span className="font-medium">Attendance monitoring only</span>
-                    <span className="mt-1 block text-muted-foreground">
-                      For special staff and interns. Tracks check-in and check-out only &mdash; no late or sign-out penalty is charged.
-                    </span>
-                  </span>
-                </label>
+                <StaffTypeField id="new-staff-type" value={newStaffType} onChange={setNewStaffType} />
                 {submitMessage && (
                   <p className={`text-sm font-medium ${submitMessage.includes('success') ? 'text-success' : 'text-danger'}`}>
                     {submitMessage}
@@ -766,37 +785,17 @@ export default function StaffPage() {
                               />
                             </div>
                           </div>
-                          <label className="flex w-fit items-start gap-3 rounded-md border border-border p-3 text-sm">
-                            <Checkbox
-                              checked={editIsNssPersonnel}
-                              disabled={editIsAttendanceOnly}
-                              onCheckedChange={(checked) => setEditIsNssPersonnel(checked === true)}
-                              className="mt-0.5"
+                          <div className="grid gap-3 sm:grid-cols-2 lg:max-w-xl">
+                            <StaffTypeField
+                              id={`edit-type-${member.id}`}
+                              current={editOriginalType}
+                              value={editStaffType}
+                              onChange={setEditStaffType}
                             />
-                            <span>
-                              <span className="font-medium">NSS personnel</span>
-                              <span className="mt-1 block text-muted-foreground">
-                                Late arrival penalty stays at GHC 10 for this person.
-                              </span>
-                            </span>
-                          </label>
-                          <label className="flex w-fit items-start gap-3 rounded-md border border-border p-3 text-sm">
-                            <Checkbox
-                              checked={editIsAttendanceOnly}
-                              onCheckedChange={(checked) => {
-                                const isChecked = checked === true;
-                                setEditIsAttendanceOnly(isChecked);
-                                if (isChecked) setEditIsNssPersonnel(false);
-                              }}
-                              className="mt-0.5"
-                            />
-                            <span>
-                              <span className="font-medium">Attendance monitoring only</span>
-                              <span className="mt-1 block text-muted-foreground">
-                                For special staff and interns. Tracks attendance only &mdash; no penalties are charged.
-                              </span>
-                            </span>
-                          </label>
+                            {editStaffType !== editOriginalType && (
+                              <StaffTypeFromField value={editTypeFrom} onChange={setEditTypeFrom} previous={editOriginalType} />
+                            )}
+                          </div>
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <span className={`inline-flex w-fit items-center rounded-full px-2 py-1 text-xs font-medium ${getStaffStatusClass(member)}`}>
                               {getStaffStatusLabel(member)}
@@ -822,7 +821,7 @@ export default function StaffPage() {
                           <StaffField label="Rank" value={member.rank || '-'} />
                           <StaffField label="Department" value={member.department || '-'} />
                           <StaffField label="Unit" value={member.unit || '-'} />
-                          <StaffField label="Type" value={member.isAttendanceOnly ? 'Special staff / Intern' : member.isNssPersonnel ? 'NSS' : 'Staff'} />
+                          <StaffField label="Type" value={STAFF_TYPE_LABELS[staffTypeOf(member)]} />
                           <div className="min-w-0">
                             <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground xl:hidden">Status</p>
                             <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getStaffStatusClass(member)}`}>
@@ -856,7 +855,7 @@ export default function StaffPage() {
                                   variant="default"
                                   size="sm"
                                   className="h-8 gap-2"
-                                  onClick={() => handleToggleArchived(member, false)}
+                                  onClick={() => openReturn(member, 'restore')}
                                   disabled={actioningId === member.id}
                                 >
                                   {actioningId === member.id ? (
@@ -896,7 +895,7 @@ export default function StaffPage() {
                                   variant={member.active ? 'outline' : 'default'}
                                   size="sm"
                                   className="h-8 gap-2"
-                                  onClick={() => handleToggleActive(member.id, !!member.active)}
+                                  onClick={() => (member.active ? handleToggleActive(member.id, true) : openReturn(member, 'activate'))}
                                   disabled={actioningId === member.id}
                                 >
                                   {actioningId === member.id ? (
@@ -943,6 +942,38 @@ export default function StaffPage() {
             </>
           )}
         </Card>
+
+        <Dialog open={!!returnTarget} onOpenChange={(open) => !open && setReturnTarget(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{returnTarget?.mode === 'restore' ? 'Restore' : 'Activate'} {returnTarget?.member.fullName}</DialogTitle>
+              <DialogDescription>
+                Same profile, sign-in and history. Days they were away are never charged.
+              </DialogDescription>
+            </DialogHeader>
+            {returnTarget && (
+              <div className="space-y-4 pt-2">
+                <StaffTypeField
+                  id="return-staff-type"
+                  current={staffTypeOf(returnTarget.member)}
+                  value={returnType}
+                  onChange={setReturnType}
+                />
+                <StaffTypeFromField label="Back from" value={returnFrom} onChange={setReturnFrom} />
+                {returnError && <p role="alert" className="text-sm text-danger">{returnError}</p>}
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setReturnTarget(null)}>
+                    Cancel
+                  </Button>
+                  <Button className="gap-2" onClick={handleReturn} disabled={actioningId === returnTarget.member.id || !returnFrom}>
+                    {actioningId === returnTarget.member.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                    {returnTarget.mode === 'restore' ? 'Restore' : 'Activate'}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={!!archiveTarget} onOpenChange={(open) => !open && setArchiveTarget(null)}>
           <DialogContent>

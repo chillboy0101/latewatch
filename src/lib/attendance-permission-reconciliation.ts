@@ -8,6 +8,8 @@ import { applyNoShowSignInPenaltiesForDate } from '@/lib/attendance-lateness-syn
 import { writeAuditEvent } from '@/lib/audit';
 import { deleteUnsettledLatenessEntry, updateUnsettledLatenessEntry } from '@/lib/lateness-entry-writes';
 import { attendanceStatusFor } from '@/lib/manual-attendance-correction';
+import { penaltyFlagsOn } from '@/lib/staff-type';
+import { getStaffTypeChanges } from '@/lib/staff-type-history';
 import { computePenalty, NO_SHOW_SIGN_IN_AMOUNT, NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/penalty-calculator';
 import { publishRealtime } from '@/lib/realtime';
 import { getFinanciallyProtectedLeaveEntryIds } from '@/lib/staff-leave-service';
@@ -175,12 +177,17 @@ export async function reconcileAttendanceForPermission(input: {
 
   const arrivalTime = normalizeTime(attendance?.checkInTime) ?? normalizeTime(existingLateness?.arrivalTime);
 
+  // Charged by the person's type on that day.
+  const typeChanges = await getStaffTypeChanges([input.staffMember.id]);
   const next = resolveNextAttendanceState({
     arrivalTime,
     existingLateness: existingLateness || null,
     noShowSignInWaived: attendance?.noShowSignInWaived === true,
     permission: input.activePermission,
-    staffMember: input.staffMember,
+    staffMember: {
+      ...input.staffMember,
+      ...penaltyFlagsOn(input.date, typeChanges.get(input.staffMember.id), input.staffMember),
+    },
   });
   const nextAmount = amountText(next.amount);
   const now = new Date();

@@ -21,21 +21,22 @@ test('staff page exposes a top-level NSS personnel filter', () => {
   assert.match(source, /label: 'NSS Personnel'/);
 });
 
-test('staff page keeps attendance monitoring only staff in a separate table section', () => {
+test('staff page shows interns and special staff as their own types and sections', () => {
   const source = fs.readFileSync(staffPagePath, 'utf8');
 
   assert.match(source, /isAttendanceOnly: boolean/);
-  assert.match(source, /type StaffFilter = 'all' \| 'active' \| 'onLeave' \| 'inactive' \| 'former' \| 'nss' \| 'attendanceOnly'/);
-  assert.match(source, /label: 'Special Staff & Interns'/);
-  assert.match(source, /grid auto-cols-\[minmax\(10\.5rem,1fr\)\] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-7/);
+  assert.match(source, /type StaffFilter = 'all' \| 'active' \| 'onLeave' \| 'inactive' \| 'former' \| 'nss' \| 'intern' \| 'special'/);
+  assert.match(source, /label: 'Interns'/);
+  assert.match(source, /label: 'Special Staff'/);
+  assert.match(source, /grid auto-cols-\[minmax\(10\.5rem,1fr\)\] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-flow-row xl:grid-cols-8/);
   assert.doesNotMatch(source, /xl:grid-cols-5/);
-  assert.match(source, /Main Staff/);
-  assert.match(source, /NSS Personnel/);
-  assert.match(source, /Attendance Monitoring Only/);
-  assert.match(source, /mainFilteredStaff/);
-  assert.match(source, /nssFilteredStaff/);
-  assert.match(source, /attendanceOnlyFilteredStaff/);
-});
+  assert.match(source, /title: 'Main Staff'/);
+  assert.match(source, /title: 'NSS Personnel'/);
+  assert.match(source, /title: 'Special Staff \(not charged\)'/);
+  assert.match(source, /title: 'Interns \(not charged\)'/);
+  assert.match(source, /<StaffTypeField id="new-staff-type" value=\{newStaffType\} onChange=\{setNewStaffType\} \/>/);
+  assert.match(source, /<StaffField label="Type" value=\{STAFF_TYPE_LABELS\[staffTypeOf\(member\)\]\} \/>/);
+})
 
 test('staff page and API expose attendance export metadata fields', () => {
   const pageSource = fs.readFileSync(staffPagePath, 'utf8');
@@ -127,7 +128,7 @@ test('staff status updates do not mutate independent leave periods', () => {
   assert.doesNotMatch(updateSource, /endLeavePeriod/);
   assert.match(updateSource, /action: auditAction/);
   assert.match(updateSource, /before,/);
-  assert.match(updateSource, /after: updated\[0\]/);
+  assert.match(updateSource, /: updated\[0\],\n\s+reason: 'staff'/);
   assert.match(updateSource, /reason: 'staff'/);
 });
 

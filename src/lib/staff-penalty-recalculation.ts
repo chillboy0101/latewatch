@@ -4,6 +4,7 @@ import {
   NO_SHOW_SIGN_IN_REASON,
   NO_SHOW_SIGN_IN_WAIVED_REASON,
 } from '@/lib/penalty-calculator';
+import { penaltyFlagsOn, type StaffTypeChange } from '@/lib/staff-type';
 import { shouldAlertNoSignOut } from '@/lib/work-hours';
 
 type AttendanceRecordLike = {
@@ -185,6 +186,8 @@ export function planStaffPenaltyRecalculation(input: {
   /** Paid or pardoned entries are settled and never rewritten or deleted. */
   protectedEntryIds?: Set<string>;
   staffId: string;
+  /** The person's type over time: each day is charged by the type on that day. */
+  typeChanges?: StaffTypeChange[];
 }): StaffPenaltyRecalculationPlan {
   const plan: StaffPenaltyRecalculationPlan = {
     attendanceUpdates: [],
@@ -207,6 +210,10 @@ export function planStaffPenaltyRecalculation(input: {
   const currentClock = input.currentDateKey && input.currentTimeKey
     ? { dateKey: input.currentDateKey, timeKey: input.currentTimeKey }
     : getCurrentAccraClock();
+  const flagsOn = (date: string) => penaltyFlagsOn(date, input.typeChanges, {
+    isAttendanceOnly: input.isAttendanceOnly === true,
+    isNssPersonnel: input.isNssPersonnel,
+  });
 
   for (const attendance of input.attendanceRecords) {
     const date = normalizeDateKey(attendance.date);
@@ -236,8 +243,7 @@ export function planStaffPenaltyRecalculation(input: {
     const next = resolvePenaltyState({
       arrivalTime,
       didNotSignOut,
-      isAttendanceOnly: input.isAttendanceOnly === true,
-      isNssPersonnel: input.isNssPersonnel,
+      ...flagsOn(date),
       noSignIn,
       permission: permissionsByDate.get(date) || null,
     });
@@ -315,8 +321,7 @@ export function planStaffPenaltyRecalculation(input: {
     const next = resolvePenaltyState({
       arrivalTime: normalizeTime(entry.arrivalTime),
       didNotSignOut: entry.didNotSignOut === true,
-      isAttendanceOnly: input.isAttendanceOnly === true,
-      isNssPersonnel: input.isNssPersonnel,
+      ...flagsOn(date),
       noSignIn: entry.reason === NO_SHOW_SIGN_IN_REASON,
       permission: permissionsByDate.get(date) || null,
     });

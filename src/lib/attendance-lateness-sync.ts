@@ -10,6 +10,8 @@ import {
   getFinanciallyProtectedLeaveEntryIds,
   getStaffLeavePeriodsForRange,
 } from '@/lib/staff-leave-service';
+import { penaltyFlagsOn } from '@/lib/staff-type';
+import { getStaffTypeChanges } from '@/lib/staff-type-history';
 import { isStaffLeaveDate } from '@/lib/staff-leave';
 import { getAccraDateKey } from '@/lib/date-key';
 import {
@@ -193,6 +195,7 @@ export async function applyNoShowSignInPenaltiesForDate(dateKey: string) {
     staffIds: staffRows.map((member) => member.id),
     startDate: dateKey,
   });
+  const typeChanges = await getStaffTypeChanges(staffRows.map((member) => member.id));
   const protectedEntryIds = await getFinanciallyProtectedLeaveEntryIds(existingRows.map((entry) => entry.id));
   const paidEntryIds = await getFinanciallyAllocatedEntryIds(existingRows.map((entry) => entry.id));
   const existingByStaffId = new Map(existingRows.map((entry) => [entry.staffId, entry]));
@@ -217,7 +220,9 @@ export async function applyNoShowSignInPenaltiesForDate(dateKey: string) {
       continue;
     }
 
-    if (member.isAttendanceOnly === true || dateKey < chargeableFromDate(member.createdAt)) {
+    // The type on that day: someone who was an intern or away then is never charged for it.
+    const flags = penaltyFlagsOn(dateKey, typeChanges.get(member.id), member);
+    if (flags.isAttendanceOnly || dateKey < chargeableFromDate(member.createdAt)) {
       skipped += 1;
       continue;
     }
@@ -244,7 +249,7 @@ export async function applyNoShowSignInPenaltiesForDate(dateKey: string) {
       arrivalTime: null,
       didNotSignOut: false,
       isAttendanceOnly: false,
-      isNssPersonnel: member.isNssPersonnel === true,
+      isNssPersonnel: flags.isNssPersonnel,
       noSignIn: true,
     });
     if (penalty.amount <= 0) {
@@ -361,6 +366,7 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
     .from(latenessEntry)
     .where(and(gte(latenessEntry.date, startDate), lte(latenessEntry.date, endDate)));
   const leavePeriods = await getStaffLeavePeriodsForRange({ endDate, staffIds: staffRows.map((member) => member.id), startDate });
+  const typeChanges = await getStaffTypeChanges(staffRows.map((member) => member.id));
   const protectedEntryIds = await getFinanciallyProtectedLeaveEntryIds(existingRows.map((entry) => entry.id));
   const paidEntryIds = await getFinanciallyAllocatedEntryIds(existingRows.map((entry) => entry.id));
   const existingByKey = new Map(
@@ -386,7 +392,8 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
         continue;
       }
 
-      if (member.isAttendanceOnly === true || date < chargeableFromDate(member.createdAt)) {
+      const flags = penaltyFlagsOn(date, typeChanges.get(member.id), member);
+      if (flags.isAttendanceOnly || date < chargeableFromDate(member.createdAt)) {
         skipped += 1;
         continue;
       }
@@ -416,7 +423,7 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
         arrivalTime: null,
         didNotSignOut: false,
         isAttendanceOnly: false,
-        isNssPersonnel: member.isNssPersonnel === true,
+        isNssPersonnel: flags.isNssPersonnel,
         noSignIn: true,
       });
       if (penalty.amount <= 0) {
@@ -514,6 +521,10 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     .from(latenessEntry)
     .where(and(gte(latenessEntry.date, startDate), lte(latenessEntry.date, endDate)));
   const leavePeriods = await getStaffLeavePeriodsForRange({ endDate, startDate });
+  const typeChanges = await getStaffTypeChanges([
+    ...attendanceRows.map((row) => row.staffId),
+    ...existingRows.map((entry) => entry.staffId),
+  ]);
   const existingEntryIds = existingRows.map((entry) => entry.id);
   // Paid and pardoned entries are settled: the sync never rewrites or deletes them.
   const protectedEntryIds = await getFinanciallyProtectedLeaveEntryIds(existingEntryIds);
@@ -580,8 +591,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
         activePermission,
         arrivalTime,
         didNotSignOut,
-        isAttendanceOnly: row.isAttendanceOnly === true,
-        isNssPersonnel: row.isNssPersonnel === true,
+        ...penaltyFlagsOn(date, typeChanges.get(row.staffId), row),
       });
     const computedAmount = amountText(penalty.amount);
     const attendanceReason = penalty.reason || null;
@@ -727,13 +737,12 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     const activePermission = permissionsByStaffDate.get(key) || null;
     if (!activePermission) continue;
 
-    const flags = staffFlagsById.get(existing.staffId);
+    const flags = penaltyFlagsOn(date, typeChanges.get(existing.staffId), staffFlagsById.get(existing.staffId) || {});
     const penalty = resolveManualPenalty({
       activePermission,
       arrivalTime: normalizeTimeKey(existing.arrivalTime),
       didNotSignOut: existing.didNotSignOut === true,
-      isAttendanceOnly: flags?.isAttendanceOnly === true,
-      isNssPersonnel: flags?.isNssPersonnel === true,
+      ...flags,
     });
     const computedAmount = amountText(penalty.amount);
 

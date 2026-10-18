@@ -10,6 +10,17 @@ import { normalizeStaffEmail } from '@/lib/attendance';
 import { syncStaffEmailIdentity, unlinkStaffEmailIdentity } from '@/lib/clerk-organization';
 import { recalculateStaffStoredPenalties } from '@/lib/staff-penalty-recalculation-server';
 import { enforceRole } from '@/lib/auth/roles';
+import { getAccraDateKey } from '@/lib/date-key';
+import {
+  flagsForStaffType,
+  isStaffType,
+  nextDateKey,
+  STAFF_TYPE_LABELS,
+  staffTypeChangeError,
+  staffTypeOf,
+  type StaffType,
+} from '@/lib/staff-type';
+import { latestStaffTypeChangeDate, recordStaffTypeChange } from '@/lib/staff-type-history';
 
 type StaffUpdateBody = {
   active?: boolean;
@@ -22,8 +33,20 @@ type StaffUpdateBody = {
   isNssPersonnel?: boolean;
   rank?: string | null;
   staffNo?: string | null;
+  staffType?: string;
+  /** The date a new type (or a restore) starts; earlier days keep the old type. */
+  typeEffectiveFrom?: string;
   unit?: string | null;
 };
+
+// The type asked for: staffType, or (older clients) the two flags.
+function requestedStaffType(body: StaffUpdateBody, current: StaffType): StaffType | null {
+  if (isStaffType(body.staffType)) return body.staffType;
+  if (body.isAttendanceOnly === undefined && body.isNssPersonnel === undefined) return null;
+  if (body.isAttendanceOnly === true) return current === 'intern' || current === 'special' ? current : 'special';
+  if (body.isNssPersonnel === true) return 'nss';
+  return 'main';
+}
 
 function normalizeOptionalText(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -90,8 +113,6 @@ export async function PUT(
       rank,
       active,
       archived,
-      isAttendanceOnly,
-      isNssPersonnel,
     } = body;
 
     // Capture before state for audit and metadata-preserving updates.
@@ -109,14 +130,44 @@ export async function PUT(
     applyProfileMetadataUpdate(updateData, 'gender', gender, before.gender);
     applyProfileMetadataUpdate(updateData, 'rank', rank, before.rank);
     if (active !== undefined) updateData.active = active;
-    if (isAttendanceOnly !== undefined) updateData.isAttendanceOnly = isAttendanceOnly === true;
-    if (isNssPersonnel !== undefined || isAttendanceOnly !== undefined) {
-      updateData.isNssPersonnel = isAttendanceOnly === true ? false : isNssPersonnel === true;
-    }
     if (archived !== undefined) {
       updateData.archived = archived;
       updateData.archivedAt = archived ? new Date() : null;
       updateData.active = archived ? false : true;
+    }
+
+    // One profile through every type: intern → NSS → special staff → main staff, from a chosen date.
+    const today = getAccraDateKey();
+    const beforeType = staffTypeOf(before);
+    const nextType = requestedStaffType(body, beforeType) ?? beforeType;
+    const typeChanged = nextType !== beforeType;
+    const typeEffectiveFrom = typeof body.typeEffectiveFrom === 'string' && body.typeEffectiveFrom
+      ? body.typeEffectiveFrom.slice(0, 10)
+      : today;
+    if (typeChanged) {
+      const typeError = staffTypeChangeError({
+        effectiveFrom: typeEffectiveFrom,
+        from: beforeType,
+        latestChangeDate: await latestStaffTypeChangeDate(id),
+        to: nextType,
+        today,
+      });
+      if (typeError) return NextResponse.json({ error: typeError }, { status: 400 });
+      const nextStaffNo = updateData.staffNo !== undefined ? updateData.staffNo : before.staffNo;
+      const nextRank = updateData.rank !== undefined ? updateData.rank : before.rank;
+      if (nextType === 'main' && (!nextStaffNo || !nextRank)) {
+        return NextResponse.json({ error: 'Staff No. and Rank are required for main staff profiles.' }, { status: 400 });
+      }
+      updateData.staffType = nextType;
+      Object.assign(updateData, flagsForStaffType(nextType));
+    }
+    const wasAway = before.active !== true || before.archived === true;
+    const nextActive = updateData.active ?? before.active;
+    const nextArchived = updateData.archived ?? before.archived;
+    const goingAway = !wasAway && (nextActive !== true || nextArchived === true);
+    const comingBack = wasAway && nextActive === true && nextArchived !== true;
+    if (comingBack && (!/^\d{4}-\d{2}-\d{2}$/.test(typeEffectiveFrom) || typeEffectiveFrom > today)) {
+      return NextResponse.json({ error: 'Choose a return date that isn’t in the future.' }, { status: 400 });
     }
     if (updateData.email) {
       const [emailOwner] = await db.select({ id: staff.id })
@@ -137,16 +188,6 @@ export async function PUT(
       ? normalizeStaffEmail(email)
       : previousEmail;
     const emailChanged = email !== undefined && previousEmail !== nextEmail;
-    const nextIsAttendanceOnly = isAttendanceOnly !== undefined
-      ? isAttendanceOnly === true
-      : before.isAttendanceOnly === true;
-    const nextIsNssPersonnel = isNssPersonnel !== undefined || isAttendanceOnly !== undefined
-      ? isAttendanceOnly === true ? false : isNssPersonnel === true
-      : before.isNssPersonnel === true;
-    const penaltyTypeChanged = (
-      (isAttendanceOnly !== undefined && before.isAttendanceOnly !== nextIsAttendanceOnly) ||
-      ((isNssPersonnel !== undefined || isAttendanceOnly !== undefined) && before.isNssPersonnel !== nextIsNssPersonnel)
-    );
 
     const updated = await db.update(staff)
       .set(updateData)
@@ -155,6 +196,27 @@ export async function PUT(
 
     if (!updated.length) {
       return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
+    }
+
+    const actorEmail = actor?.emailAddresses[0]?.emailAddress || null;
+    if (typeChanged || comingBack) {
+      // Back from away (deactivated or archived) or a new type: from the chosen date on.
+      await recordStaffTypeChange({
+        actorEmail,
+        effectiveFrom: typeEffectiveFrom,
+        previousType: beforeType,
+        staffId: id,
+        staffType: nextType,
+      });
+    } else if (goingAway) {
+      // Away from tomorrow: today's sign-in still counts, later days are never charged.
+      await recordStaffTypeChange({
+        actorEmail,
+        effectiveFrom: nextDateKey(today),
+        previousType: beforeType,
+        staffId: id,
+        staffType: 'away',
+      });
     }
 
     const auditAction = typeof archived === 'boolean' && before.archived !== archived
@@ -168,17 +230,19 @@ export async function PUT(
       entityId: id,
       action: auditAction,
       before,
-      after: updated[0],
+      after: typeChanged
+        ? { ...updated[0], typeChange: { from: STAFF_TYPE_LABELS[beforeType], to: STAFF_TYPE_LABELS[nextType], effectiveFrom: typeEffectiveFrom } }
+        : updated[0],
       reason: 'staff',
     });
 
-    if (penaltyTypeChanged) {
+    if (typeChanged) {
       await recalculateStaffStoredPenalties({
         actor: {
           email: actor?.emailAddresses[0]?.emailAddress,
           id: actor?.id,
         },
-        reason: 'staff-nss-status-changed',
+        reason: 'staff-type-changed',
         staffMember: {
           fullName: updated[0].fullName,
           id: updated[0].id,
@@ -336,6 +400,18 @@ export async function DELETE(
       .set({ active: false, archived: true, archivedAt: new Date(), updatedAt: new Date() })
       .where(eq(staff.id, id))
       .returning();
+
+    if (before.active === true && before.archived !== true) {
+      // Away from tomorrow, on the same profile: restoring brings them back from a chosen date.
+      const actor = await currentUser();
+      await recordStaffTypeChange({
+        actorEmail: actor?.emailAddresses[0]?.emailAddress || null,
+        effectiveFrom: nextDateKey(getAccraDateKey()),
+        previousType: staffTypeOf(before),
+        staffId: id,
+        staffType: 'away',
+      });
+    }
 
     // Archiving frees the person's LateWatch sign-in seat; history and login are kept.
     await unlinkStaffEmailIdentity({ email: before.email, releaseSeat: true, staffId: id });

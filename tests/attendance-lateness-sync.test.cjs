@@ -236,6 +236,7 @@ const schema = {
 Module._load = function patchedLoad(request, ...args) {
   if (request === 'server-only') return {};
   if (request === '@/db') return { db: fakeDb };
+  if (request === '@/lib/staff-type-history') return { getStaffTypeChanges: async () => new Map() };
   if (request === '@/db/schema') return schema;
   if (request === '@/lib/attendance') {
     return {
