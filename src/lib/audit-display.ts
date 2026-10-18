@@ -217,6 +217,13 @@ export function getAuditSummary(record: Pick<AuditDisplayRecord, 'action' | 'aft
   const target = getAuditTargetName(record);
 
   if (operation === 'CREATE') return `Created ${getAuditEntityLabel(record.entityType).toLowerCase()} "${target}"`;
+  if (operation === 'UPDATE' && record.entityType === 'staff') {
+    // Type changes and undos carry { from, to, effectiveFrom }.
+    const typeChange = after?.typeChange as { effectiveFrom?: string; from?: string; to?: string } | undefined;
+    const typeUndo = after?.typeChangeUndone as { effectiveFrom?: string; to?: string } | undefined;
+    if (typeChange) return `"${target}": ${typeChange.from} → ${typeChange.to} from ${formatAuditValue(typeChange.effectiveFrom)}`;
+    if (typeUndo) return `"${target}": type change undone, back to ${typeUndo.to} from ${formatAuditValue(typeUndo.effectiveFrom)}`;
+  }
   if (operation === 'UPDATE') return `Updated ${getAuditEntityLabel(record.entityType).toLowerCase()} "${target}"`;
   if (operation === 'DELETE') return `Deleted ${getAuditEntityLabel(record.entityType).toLowerCase()} "${target}"`;
   if (operation === 'ACTIVATE') return `Activated "${target}"`;
