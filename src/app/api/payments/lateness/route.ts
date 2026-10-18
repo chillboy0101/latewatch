@@ -123,6 +123,8 @@ export async function GET(request: NextRequest) {
       : or(chargeableRoster, chargedStaff);
 
     const staffRows = await db.select({
+      active: staff.active,
+      archived: staff.archived,
       email: staff.email,
       fullName: staff.fullName,
       id: staff.id,
@@ -229,6 +231,8 @@ export async function GET(request: NextRequest) {
       return {
         email: member.email,
         entries,
+        // Left, deactivated or attendance-only now: the page lists them only while they still owe.
+        former: !member.active || member.archived || member.isAttendanceOnly,
         fullName: member.fullName,
         id: member.id,
         isAttendanceOnly: member.isAttendanceOnly,
