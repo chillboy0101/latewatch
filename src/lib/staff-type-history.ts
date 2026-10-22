@@ -101,10 +101,14 @@ export async function undoLatestStaffTypeChange(staffId: string, expected: { eff
     return { status: 'changed' as const };
   }
 
+  // One shared check for every write: the person is still the type being undone. If not, the
+  // whole batch changes nothing (the staff update below carries the same condition).
+  const stillUndoable = sql`EXISTS (SELECT 1 FROM ${staff} WHERE ${staff.id} = ${staffId} AND ${staff.staffType} = ${undo.staffType})`;
   const lastRow = and(
     eq(staffTypeChange.id, last.id),
     eq(staffTypeChange.staffType, undo.staffType),
     eq(staffTypeChange.effectiveFrom, undo.effectiveFrom),
+    stillUndoable,
   );
   const historyWrites = undo.revertOnly
     // Restored as the wrong type: they stay back from that date, as the type they had.
@@ -112,7 +116,7 @@ export async function undoLatestStaffTypeChange(staffId: string, expected: { eff
     : [
       db.delete(staffTypeChange).where(lastRow),
       // Only the starting row left: no history is the same as one type on every day.
-      ...(changes.length === 2 ? [db.delete(staffTypeChange).where(eq(staffTypeChange.id, changes[0].id))] : []),
+      ...(changes.length === 2 ? [db.delete(staffTypeChange).where(and(eq(staffTypeChange.id, changes[0].id), stillUndoable))] : []),
     ];
   const results = await db.batch([
     db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`staff-type:${staffId}`}))`),
