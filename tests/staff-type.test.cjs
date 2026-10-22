@@ -222,6 +222,8 @@ test('type changes are confirmed before saving, and undo is admin-only, audited 
   // Every history write shares the staff row's check, so a failed check changes nothing at all.
   assert.match(history, /const stillUndoable = sql`EXISTS \(SELECT 1 FROM \$\{staff\} WHERE/);
   assert.equal((history.match(/stillUndoable/g) || []).length, 3);
+  // Their staff row is locked before any history write, so the check can't change mid-batch.
+  assert.match(history, /pg_advisory_xact_lock[^\n]*\n[^\n]*\n\s+db\.select\(\{ id: staff\.id \}\)\.from\(staff\)\.where\(eq\(staff\.id, staffId\)\)\.for\('update'\),\n\s+\.\.\.historyWrites,/);
   assert.match(history, /if \(undo\.effectiveFrom !== expected\.effectiveFrom \|\| undo\.staffType !== expected\.staffType\) \{/);
   const page = read('src/app/staff/page.tsx');
   assert.match(page, /onClick=\{\(\) => \(editStaffType !== editOriginalType \? setConfirmTypeChange\(true\) : handleEdit\(\)\)\}/);

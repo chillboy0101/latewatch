@@ -120,6 +120,8 @@ export async function undoLatestStaffTypeChange(staffId: string, expected: { eff
     ];
   const results = await db.batch([
     db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`staff-type:${staffId}`}))`),
+    // Locks their staff row first, so no other save can change their type between the writes below.
+    db.select({ id: staff.id }).from(staff).where(eq(staff.id, staffId)).for('update'),
     ...historyWrites,
     db.update(staff)
       .set({ ...flagsForStaffType(undo.previousType), staffType: undo.previousType, updatedAt: new Date() })
