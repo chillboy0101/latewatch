@@ -130,3 +130,25 @@ export function leaveRangesOverlap(input: {
   return existingStartDate <= input.endDate
     && (!existingEndDate || existingEndDate >= input.startDate);
 }
+
+// Database overlap refusals arrive wrapped by the driver (code on error.cause); turn them into a
+// message the admin can act on instead of a generic failure.
+export function leaveOverlapError(error: unknown) {
+  const parts = [error, (error as { cause?: unknown } | null)?.cause];
+  for (const part of parts) {
+    if (!part || typeof part !== 'object') continue;
+    const code = String((part as { code?: unknown }).code || '');
+    const message = String((part as { message?: unknown }).message || '');
+    if (code === '23P01' || code === '23505' || message.includes('overlap')) {
+      return 'These dates overlap another leave period, or a time this person was deactivated.';
+    }
+  }
+  return null;
+}
+
+export function formatPermissionDays(dates: string[]) {
+  if (dates.length === 0) return '';
+  const label = (value: string) => new Date(`${value}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  if (dates.length <= 3) return dates.map(label).join(', ');
+  return `${label(dates[0])} – ${label(dates[dates.length - 1])} (${dates.length} days)`;
+}
