@@ -1,79 +1,34 @@
 import 'server-only';
 
-import { gzipSync } from 'node:zlib';
+import { gunzipSync } from 'node:zlib';
 import { DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { db } from '@/db';
 import {
-  attendancePermission,
-  attendanceRecord,
-  auditEvent,
-  contributionEntry,
-  contributionSection,
-  deviceTransferRequest,
-  emergencyContact,
-  entrySubmission,
-  latenessDebtPardon,
-  latenessDebtPardonEntry,
-  latenessEntry,
-  latenessPayment,
-  latenessPaymentAllocation,
-  offenceBookItem,
-  officeLocation,
-  officeNetwork,
-  staff,
-  staffDevice,
-  staffLeavePeriod,
-  templateVersion,
-  workCalendar,
-} from '@/db/schema';
+  BACKUP_FORMAT_V1,
+  BACKUP_FORMAT_V2,
+  BACKUP_PREFIX,
+  backupDateOfId,
+  backupIdFromManifestKey,
+  backupKeysForId,
+  backupSourceOf,
+  expiredBackupIds,
+  isBackupId,
+  newBackupId,
+  type BackupManifest,
+  type BackupSource,
+  type BackupTableName,
+} from '@/lib/backup-format';
+import { buildBackupFile, sha256Hex, snapshotTables } from '@/lib/data-backup-core';
+import { RestoreError, v1RowsToColumns, type BackupTables } from '@/lib/data-restore-core';
 import { getAccraDateKey } from '@/lib/date-key';
+import { withDbClient } from '@/lib/db-pool';
 import { getR2Client } from '@/lib/r2/client';
 
-// Weekly copy of LateWatch's business data, kept in Cloudflare R2 so it survives anything that
-// happens to the Neon database. Each backup is one gzipped JSON file plus a small manifest.
-// Logs and secrets that can be rebuilt (check-in attempts, push deliveries and subscriptions,
-// cron runs, rate limits, notification reads, theme preferences) are left out.
+// Copies of LateWatch's business data, kept in Cloudflare R2 so they survive anything that happens
+// to the Neon database: every Sunday, on "Back Up Now", and just before a restore. Each backup is
+// one gzipped JSON file plus a small manifest; the last 12 weeks are kept.
 
-export const BACKUP_PREFIX = 'backups/';
-const KEEP_WEEKS = 12;
-
-const BACKUP_TABLES = {
-  attendance_permission: attendancePermission,
-  attendance_record: attendanceRecord,
-  audit_event: auditEvent,
-  contribution_entry: contributionEntry,
-  contribution_section: contributionSection,
-  device_transfer_request: deviceTransferRequest,
-  emergency_contact: emergencyContact,
-  entry_submission: entrySubmission,
-  lateness_debt_pardon: latenessDebtPardon,
-  lateness_debt_pardon_entry: latenessDebtPardonEntry,
-  lateness_entry: latenessEntry,
-  lateness_payment: latenessPayment,
-  lateness_payment_allocation: latenessPaymentAllocation,
-  offence_book_item: offenceBookItem,
-  office_location: officeLocation,
-  office_network: officeNetwork,
-  staff,
-  staff_device: staffDevice,
-  staff_leave_period: staffLeavePeriod,
-  template_version: templateVersion,
-  work_calendar: workCalendar,
-} as const;
-
-export const BACKUP_TABLE_NAMES = Object.keys(BACKUP_TABLES);
-
-export type BackupManifest = {
-  backupKey: string;
-  commit: string | null;
-  createdAt: string;
-  createdBy: string;
-  date: string;
-  rowCounts: Record<string, number>;
-  sizeBytes: number;
-  totalRows: number;
-};
+export type BackupListItem = BackupManifest & { id: string; source: BackupSource };
 
 function bucket() {
   const name = process.env.CF_R2_BUCKET;
@@ -81,55 +36,32 @@ function bucket() {
   return name;
 }
 
-export function backupKeysForDate(date: string) {
-  return {
-    backupKey: `${BACKUP_PREFIX}latewatch-${date}.json.gz`,
-    manifestKey: `${BACKUP_PREFIX}latewatch-${date}.manifest.json`,
-  };
-}
-
-export function isOlderThanRetention(backupDate: string, today: string, keepWeeks = KEEP_WEEKS) {
-  const ageDays = (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${backupDate}T00:00:00Z`)) / 86_400_000;
-  return ageDays > keepWeeks * 7;
-}
-
-function dateFromKey(key: string) {
-  return key.match(/latewatch-(\d{4}-\d{2}-\d{2})\.manifest\.json$/)?.[1] || null;
-}
-
-export async function createDataBackup(createdBy: string) {
-  const date = getAccraDateKey();
-  const tables: Record<string, unknown[]> = {};
-  const rowCounts: Record<string, number> = {};
-
-  for (const [name, table] of Object.entries(BACKUP_TABLES)) {
-    const rows = await db.select().from(table);
-    tables[name] = rows;
-    rowCounts[name] = rows.length;
-  }
-
-  const { backupKey, manifestKey } = backupKeysForDate(date);
-  const createdAt = new Date().toISOString();
+export async function createDataBackup(input: { createdBy: string; source: BackupSource }) {
+  const now = new Date();
+  const id = newBackupId(now);
+  const createdAt = now.toISOString();
   const commit = process.env.VERCEL_GIT_COMMIT_SHA || null;
-  const body = gzipSync(JSON.stringify({ createdAt, commit, date, format: 'latewatch-backup/1', tables }));
+  const { rowCounts, tables } = await withDbClient((client) => snapshotTables(client));
+  const { body, sha256 } = buildBackupFile({ commit, createdAt, id, tables });
+  const { backupKey, manifestKey } = backupKeysForId(id);
   const manifest: BackupManifest = {
     backupKey,
     commit,
     createdAt,
-    createdBy,
-    date,
+    createdBy: input.createdBy,
+    date: getAccraDateKey(now),
+    format: BACKUP_FORMAT_V2,
+    id,
     rowCounts,
+    sha256,
     sizeBytes: body.length,
+    source: input.source,
     totalRows: Object.values(rowCounts).reduce((sum, count) => sum + count, 0),
   };
 
   const r2 = getR2Client();
-  await r2.send(new PutObjectCommand({
-    Body: body,
-    Bucket: bucket(),
-    ContentType: 'application/gzip',
-    Key: backupKey,
-  }));
+  await r2.send(new PutObjectCommand({ Body: body, Bucket: bucket(), ContentType: 'application/gzip', Key: backupKey }));
+  // The manifest goes last: a backup only lists once its file is fully stored.
   await r2.send(new PutObjectCommand({
     Body: JSON.stringify(manifest, null, 2),
     Bucket: bucket(),
@@ -137,60 +69,103 @@ export async function createDataBackup(createdBy: string) {
     Key: manifestKey,
   }));
 
-  const removed = await pruneOldBackups(date);
+  const removed = await pruneOldBackups(getAccraDateKey(now));
   return { manifest, removed };
 }
 
-async function listManifestKeys() {
+async function listBackupIds() {
   const r2 = getR2Client();
-  const keys: string[] = [];
+  const ids: string[] = [];
   let token: string | undefined;
   do {
     const listed = await r2.send(new ListObjectsV2Command({ Bucket: bucket(), ContinuationToken: token, Prefix: BACKUP_PREFIX }));
     for (const object of listed.Contents || []) {
-      if (object.Key && dateFromKey(object.Key)) keys.push(object.Key);
+      const id = object.Key ? backupIdFromManifestKey(object.Key) : null;
+      if (id) ids.push(id);
     }
     token = listed.IsTruncated ? listed.NextContinuationToken : undefined;
   } while (token);
-  return keys;
+  return ids;
 }
 
 async function pruneOldBackups(today: string) {
   const r2 = getR2Client();
-  const expiredDates = (await listManifestKeys())
-    .map((key) => dateFromKey(key) as string)
-    .filter((date) => isOlderThanRetention(date, today));
-
-  for (const date of expiredDates) {
-    const { backupKey, manifestKey } = backupKeysForDate(date);
-    await r2.send(new DeleteObjectCommand({ Bucket: bucket(), Key: backupKey }));
+  const expired = expiredBackupIds(await listBackupIds(), today);
+  for (const id of expired) {
+    const { backupKey, manifestKey } = backupKeysForId(id);
     await r2.send(new DeleteObjectCommand({ Bucket: bucket(), Key: manifestKey }));
+    await r2.send(new DeleteObjectCommand({ Bucket: bucket(), Key: backupKey }));
   }
-  return expiredDates.length;
+  return expired.length;
 }
 
+async function readManifest(id: string): Promise<BackupListItem | null> {
+  try {
+    const object = await getR2Client().send(new GetObjectCommand({ Bucket: bucket(), Key: backupKeysForId(id).manifestKey }));
+    const manifest = JSON.parse(await object.Body!.transformToString()) as BackupManifest;
+    return {
+      ...manifest,
+      id,
+      source: backupSourceOf(manifest),
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Newest first.
 export async function listDataBackups() {
-  const r2 = getR2Client();
-  const keys = await listManifestKeys();
-  const manifests = await Promise.all(keys.map(async (key) => {
-    try {
-      const object = await r2.send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
-      return JSON.parse(await object.Body!.transformToString()) as BackupManifest;
-    } catch {
-      return null;
-    }
-  }));
+  const manifests = await Promise.all((await listBackupIds()).map(readManifest));
   return manifests
-    .filter((manifest): manifest is BackupManifest => Boolean(manifest))
-    .sort((a, b) => b.date.localeCompare(a.date));
+    .filter((manifest): manifest is BackupListItem => Boolean(manifest))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-export async function getBackupDownloadUrl(date: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Invalid backup date');
-  const { backupKey } = backupKeysForDate(date);
+export async function getBackupDownloadUrl(id: string) {
+  if (!isBackupId(id)) throw new RestoreError('Invalid backup.');
+  const { backupKey } = backupKeysForId(id);
   return getSignedUrl(getR2Client(), new GetObjectCommand({
     Bucket: bucket(),
     Key: backupKey,
-    ResponseContentDisposition: `attachment; filename="latewatch-${date}.json.gz"`,
+    ResponseContentDisposition: `attachment; filename="latewatch-${id}.json.gz"`,
   }), { expiresIn: 300 });
+}
+
+// The backup's rows by table, checked against its manifest (checksum, format, row counts).
+export async function readBackupTables(id: string) {
+  if (!isBackupId(id)) throw new RestoreError('Invalid backup.');
+  const manifest = await readManifest(id);
+  if (!manifest) throw new RestoreError('That backup was not found.');
+
+  const object = await getR2Client().send(new GetObjectCommand({ Bucket: bucket(), Key: backupKeysForId(id).backupKey }));
+  const body = await object.Body!.transformToByteArray();
+  if (manifest.sha256 && sha256Hex(body) !== manifest.sha256) {
+    throw new RestoreError('This backup file is damaged (its checksum does not match), so it was not restored.');
+  }
+  if (body.length !== manifest.sizeBytes) {
+    throw new RestoreError('This backup file is incomplete, so it was not restored.');
+  }
+
+  let parsed: { format?: string; tables?: Record<string, unknown> };
+  try {
+    parsed = JSON.parse(gunzipSync(body).toString('utf8'));
+  } catch {
+    throw new RestoreError('This backup file could not be read, so it was not restored.');
+  }
+  if (parsed.format !== BACKUP_FORMAT_V1 && parsed.format !== BACKUP_FORMAT_V2) {
+    throw new RestoreError('This backup is in an unknown format, so it was not restored.');
+  }
+  if (!parsed.tables || typeof parsed.tables !== 'object') throw new RestoreError('This backup has no data.');
+
+  const tables: BackupTables = {};
+  for (const [name, rows] of Object.entries(parsed.tables)) {
+    if (!Array.isArray(rows)) throw new RestoreError(`Backup table ${name} is not a list of rows.`);
+    if (manifest.rowCounts[name] !== undefined && manifest.rowCounts[name] !== rows.length) {
+      throw new RestoreError(`Backup table ${name} has ${rows.length} rows but its manifest says ${manifest.rowCounts[name]}.`);
+    }
+    tables[name as BackupTableName] = parsed.format === BACKUP_FORMAT_V1
+      ? v1RowsToColumns(name, rows as Record<string, unknown>[])
+      : rows as Record<string, unknown>[];
+  }
+  return { date: backupDateOfId(id), manifest, tables };
 }

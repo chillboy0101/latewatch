@@ -69,6 +69,7 @@
     "eslint-config-next": "16.2.2",
     "exceljs": "^4.4.0",
     "lucide-react": "^1.7.0",
+    "pg": "^8.13.1",
     "playwright-core": "^1.56.1",
     "recharts": "^3.8.1",
     "tailwind-merge": "^3.5.0",
