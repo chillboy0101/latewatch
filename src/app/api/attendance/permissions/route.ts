@@ -264,12 +264,50 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `${member.fullName} is on leave or deactivated on every selected day` }, { status: 409 });
     }
 
+    // Editing a permission saved with the wrong date or person: the old one goes, and its day
+    // is recalculated under the normal rules (unless the edit kept that same day and person).
+    const replacesPermissionId = optionalText(body?.replacesPermissionId);
+    let replacedPermission = null;
+    if (replacesPermissionId) {
+      const [old] = await db.select().from(attendancePermission).where(eq(attendancePermission.id, replacesPermissionId)).limit(1);
+      const keptInPlace = old && permissions.some((saved) => saved.id === old.id);
+      if (old && !keptInPlace) {
+        await db.delete(attendancePermission).where(eq(attendancePermission.id, old.id));
+        const [oldMember] = await db.select({
+          fullName: staff.fullName,
+          id: staff.id,
+          isAttendanceOnly: staff.isAttendanceOnly,
+          isNssPersonnel: staff.isNssPersonnel,
+        }).from(staff).where(eq(staff.id, old.staffId)).limit(1);
+        await writeAuditEvent({
+          entityType: 'attendance_permission',
+          entityId: old.id,
+          action: 'DELETE',
+          before: { ...old, staffName: oldMember?.fullName || null },
+          after: null,
+          actor: { email: actorEmail, id: user.id },
+          reason: 'attendance-permission-corrected',
+        });
+        if (oldMember) {
+          await reconcileAttendanceForPermission({
+            activePermission: null,
+            actor: { email: actorEmail, id: user.id },
+            date: old.date,
+            reason: 'attendance-permission-corrected',
+            staffMember: oldMember,
+          });
+        }
+        replacedPermission = { date: old.date, staffId: old.staffId };
+      }
+    }
+
     return NextResponse.json({
       ...permission,
       appliedDates,
       permissions,
       reconciliation: reconciliations[0] || null,
       reconciliations,
+      replacedPermission,
       skippedDeactivatedDays: formatPermissionDays(deactivatedDates),
       skippedLeaveDays: formatPermissionDays([...leaveDates].sort()),
       staffEmail: member.email,

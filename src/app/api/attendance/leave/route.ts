@@ -1,5 +1,5 @@
 import { currentUser } from '@clerk/nextjs/server';
-import { and, asc, eq, gte, isNull, ne, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, isNull, ne, or } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { staff, staffLeavePeriod } from '@/db/schema';
@@ -36,6 +36,23 @@ export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url);
     const staffId = url.searchParams.get('staffId');
+    // One person's leave, newest first (past ones too), so wrong dates can be corrected.
+    if (staffId && url.searchParams.get('history') === '1') {
+      const history = await db.select({
+        endDate: staffLeavePeriod.endDate,
+        id: staffLeavePeriod.id,
+        leaveType: staffLeavePeriod.leaveType,
+        returnedOn: staffLeavePeriod.returnedOn,
+        source: staffLeavePeriod.source,
+        staffId: staffLeavePeriod.staffId,
+        startDate: staffLeavePeriod.startDate,
+      })
+        .from(staffLeavePeriod)
+        .where(and(eq(staffLeavePeriod.staffId, staffId), ne(staffLeavePeriod.source, 'staff_status')))
+        .orderBy(desc(staffLeavePeriod.startDate))
+        .limit(10);
+      return NextResponse.json(history, { headers: { 'Cache-Control': 'no-store' } });
+    }
     const startDate = url.searchParams.get('startDate');
     const endDate = url.searchParams.get('endDate');
     const hasReviewInput = Boolean(staffId || startDate || endDate);

@@ -425,12 +425,15 @@ export default function AttendancePage() {
 
     try {
       const wasEditing = isEditingPermission;
+      // An edit replaces the permission it started from, so a wrong date or person doesn't linger.
+      const replacesPermissionId = editingPermissionId || undefined;
       const payload = permissionType === 'absence'
         ? {
             absenceEndDate: permissionAbsenceEndDate,
             date: permissionAbsenceStartDate,
             permissionType,
             reason: permissionReason,
+            replacesPermissionId,
             staffId: permissionStaffId,
           }
         : {
@@ -440,6 +443,7 @@ export default function AttendancePage() {
             expectedEndTime: permissionWindow === 'specific_time' ? permissionExpectedTime : null,
             permissionType,
             reason: permissionReason,
+            replacesPermissionId,
             staffId: permissionStaffId,
           };
       const response = await fetch('/api/attendance/permissions', {

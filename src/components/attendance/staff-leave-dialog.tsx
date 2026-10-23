@@ -80,6 +80,10 @@ export function StaffLeaveDialog({
   const [action, setAction] = useState<'return' | 'end'>('return');
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null);
+  // Correcting a leave entered with the wrong dates or type (current or an earlier one).
+  const [correcting, setCorrecting] = useState<LeavePeriod | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [history, setHistory] = useState<LeavePeriod[]>([]);
 
   const current = periods?.find((period) => period.staffId === staffId && !period.returnedOn) || null;
   const staffName = staffOptions.find((option) => option.id === staffId)?.fullName;
@@ -93,6 +97,21 @@ export function StaffLeaveDialog({
       setPeriods([]);
     }
   }, []);
+
+  const loadHistory = useCallback(async (forStaffId: string) => {
+    if (!forStaffId) return setHistory([]);
+    try {
+      const response = await fetch(`/api/attendance/leave?staffId=${encodeURIComponent(forStaffId)}&history=1`, { cache: 'no-store' });
+      const payload = await response.json().catch(() => []);
+      setHistory(Array.isArray(payload) ? payload : []);
+    } catch {
+      setHistory([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) void loadHistory(staffId);
+  }, [loadHistory, open, staffId]);
 
   // Start fresh each time the dialog opens.
   useEffect(() => {
@@ -110,6 +129,8 @@ export function StaffLeaveDialog({
     setLeaveType('annual');
     setReturnDate(key);
     setAction('return');
+    setCorrecting(null);
+    setConfirmRemove(false);
   }, [staffId, current?.id, current?.endDate]);
 
   // Leave replaces any absence / late permissions already approved on its days; say so.
@@ -134,6 +155,9 @@ export function StaffLeaveDialog({
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Could not save leave.');
       await loadPeriods();
+      await loadHistory(staffId);
+      setCorrecting(null);
+      setConfirmRemove(false);
       await onChanged?.();
       setMessage({ error: false, text: typeof success === 'string' ? success : success(body) });
     } catch (error) {
@@ -163,6 +187,34 @@ export function StaffLeaveDialog({
     }), withReplaced('End date updated.'));
   }
 
+  function startCorrecting(period: LeavePeriod) {
+    setCorrecting(period);
+    setConfirmRemove(false);
+    setMessage(null);
+    setStartDate(period.startDate);
+    setEndDate(period.endDate || period.startDate);
+    setLeaveType(period.leaveType || 'annual');
+  }
+
+  function saveCorrection() {
+    if (!correcting) return;
+    if (!startDate || !endDate || endDate < startDate) return setMessage({ error: true, text: 'The end date must be on or after the start date.' });
+    void submit(() => fetch(`/api/attendance/leave/${correcting.id}`, {
+      body: JSON.stringify({ correct: true, endDate, leaveType, startDate }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'PATCH',
+    }), withReplaced('Leave corrected. Its days are recalculated.'));
+  }
+
+  function removeLeave() {
+    if (!correcting) return;
+    if (!confirmRemove) return setConfirmRemove(true);
+    void submit(
+      () => fetch(`/api/attendance/leave/${correcting.id}`, { method: 'DELETE' }),
+      'Leave removed. Those days are charged as normal again.',
+    );
+  }
+
   function recordReturn() {
     if (!current) return;
     if (!returnDate || returnDate <= current.startDate || returnDate > today) {
@@ -181,7 +233,7 @@ export function StaffLeaveDialog({
         <DialogHeader>
           <DialogTitle>Staff leave</DialogTitle>
           <DialogDescription>
-            {!staffName ? 'New leave' : periods === null ? 'Loading…' : current ? 'On leave' : 'Not on leave'}
+            {correcting ? 'Correct leave' : !staffName ? 'New leave' : periods === null ? 'Loading…' : current ? 'On leave' : 'Not on leave'}
           </DialogDescription>
         </DialogHeader>
 
@@ -194,7 +246,22 @@ export function StaffLeaveDialog({
             onChange={(value) => { setStaffId(value); setMessage(null); }}
           />
 
-          {current ? (
+          {correcting ? (
+            <>
+              <p className="text-sm text-muted-foreground sm:col-span-2">
+                Fix the dates or type if they were entered wrong. Past days are recalculated.
+              </p>
+              <DateField label="From" value={startDate} onChange={setStartDate} />
+              <DateField label="To" value={endDate} onChange={setEndDate} />
+              <div className="sm:col-span-2">
+                <Select label="Type" value={leaveType} onChange={setLeaveType}>
+                  {STAFF_LEAVE_TYPES.map((type) => (
+                    <option key={type.value} value={type.value}>{type.label}</option>
+                  ))}
+                </Select>
+              </div>
+            </>
+          ) : current ? (
             <>
               <div className="rounded-md border border-primary/25 bg-primary/10 px-3 py-2.5 text-sm text-primary sm:col-span-2">
                 <span className="font-semibold">{leaveTypeLabel(current.leaveType)} leave</span>
@@ -225,6 +292,9 @@ export function StaffLeaveDialog({
               ) : (
                 <DateField className="sm:col-span-2" label="New end date" value={endDate} onChange={setEndDate} />
               )}
+              <button type="button" className="justify-self-start text-sm font-medium text-primary underline-offset-4 hover:underline sm:col-span-2" onClick={() => startCorrecting(current)}>
+                Wrong dates or type? Correct this leave
+              </button>
             </>
           ) : (
             <>
@@ -237,6 +307,24 @@ export function StaffLeaveDialog({
                   ))}
                 </Select>
               </div>
+              {history.length > 0 && (
+                <div className="sm:col-span-2">
+                  <p className="mb-1.5 text-xs font-medium uppercase text-muted-foreground">Earlier leave</p>
+                  <ul className="divide-y divide-border rounded-md border border-border">
+                    {history.slice(0, 5).map((period) => (
+                      <li key={period.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                        <span className="min-w-0 truncate">
+                          {leaveTypeLabel(period.leaveType)} · {displayDate(period.startDate)} – {period.endDate ? displayDate(period.endDate) : 'no end date'}
+                          {period.returnedOn ? ` · back ${displayDate(period.returnedOn)}` : ''}
+                        </span>
+                        <button type="button" className="shrink-0 font-medium text-primary underline-offset-4 hover:underline" onClick={() => startCorrecting(period)}>
+                          Correct
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </>
           )}
 
@@ -246,7 +334,20 @@ export function StaffLeaveDialog({
         </div>
 
         <DialogFooter>
-          {current ? (
+          {correcting ? (
+            <>
+              <Button variant="ghost" onClick={() => { setCorrecting(null); setConfirmRemove(false); setMessage(null); }} disabled={submitting}>
+                Back
+              </Button>
+              <Button variant="outline" className="text-danger" onClick={removeLeave} disabled={submitting}>
+                {confirmRemove ? 'Tap again to remove' : 'Remove leave'}
+              </Button>
+              <Button onClick={saveCorrection} disabled={submitting || !startDate || !endDate}>
+                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save correction
+              </Button>
+            </>
+          ) : current ? (
             action === 'return' ? (
               <Button onClick={recordReturn} disabled={submitting || !returnDate}>
                 {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
