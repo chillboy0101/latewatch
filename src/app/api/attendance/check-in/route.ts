@@ -764,8 +764,13 @@ export async function POST(request: NextRequest) {
       );
     }
     const staffMember = member;
-    // Every reply carries the not-charged badge; runs alongside the checks below and never throws.
-    const chargeStatusLoad = getStaffChargeStatus(staffMember);
+    // Every reply that reaches the page carries the not-charged badge (blocked attempts don't).
+    const staffPayload = async () => ({
+      chargeStatus: await getStaffChargeStatus(staffMember),
+      email: staffMember.email,
+      fullName: staffMember.fullName,
+      id: staffMember.id,
+    });
 
     if (!deviceToken || !deviceHash) {
       return block('DEVICE_REQUIRED', 'This browser could not be registered as your attendance device. Refresh the page and try again.', 403, staffMember.id);
@@ -953,7 +958,7 @@ export async function POST(request: NextRequest) {
           locationPolicy: responseLocationPolicy,
           networkConfigured: true,
           permission: serializePermission(permission),
-          staff: { chargeStatus: await chargeStatusLoad, email: staffMember.email, fullName: staffMember.fullName, id: staffMember.id },
+          staff: await staffPayload(),
           time: clock.timeKey,
           transferRequest: {
             id: transferRequest.id,
@@ -1044,7 +1049,7 @@ export async function POST(request: NextRequest) {
               locationPolicy: responseLocationPolicy,
               networkConfigured: true,
               permission: serializePermission(permission),
-              staff: { chargeStatus: await chargeStatusLoad, email: staffMember.email, fullName: staffMember.fullName, id: staffMember.id },
+              staff: await staffPayload(),
               time: clock.timeKey,
             }),
           });
@@ -1111,7 +1116,7 @@ export async function POST(request: NextRequest) {
               locationPolicy: responseLocationPolicy,
               networkConfigured: true,
               permission: serializePermission(permission),
-              staff: { chargeStatus: await chargeStatusLoad, email: staffMember.email, fullName: staffMember.fullName, id: staffMember.id },
+              staff: await staffPayload(),
               time: clock.timeKey,
             }),
           });
@@ -1188,7 +1193,7 @@ export async function POST(request: NextRequest) {
             locationPolicy: responseLocationPolicy,
             networkConfigured: true,
             permission: serializePermission(permission),
-            staff: { chargeStatus: await chargeStatusLoad, email: staffMember.email, fullName: staffMember.fullName, id: staffMember.id },
+            staff: await staffPayload(),
             time: clock.timeKey,
           }),
         });
@@ -1242,7 +1247,7 @@ export async function POST(request: NextRequest) {
           locationPolicy: responseLocationPolicy,
           networkConfigured: true,
           permission: serializePermission(permission),
-          staff: { chargeStatus: await chargeStatusLoad, email: staffMember.email, fullName: staffMember.fullName, id: staffMember.id },
+          staff: await staffPayload(),
           time: clock.timeKey,
         }),
       });
@@ -1368,7 +1373,7 @@ export async function POST(request: NextRequest) {
           locationPolicy: responseLocationPolicy,
           networkConfigured: true,
           permission: serializePermission(permission),
-          staff: { chargeStatus: await chargeStatusLoad, email: staffMember.email, fullName: staffMember.fullName, id: staffMember.id },
+          staff: await staffPayload(),
           time: clock.timeKey,
         }),
       });
@@ -1498,7 +1503,7 @@ export async function POST(request: NextRequest) {
         locationPolicy: responseLocationPolicy,
         networkConfigured: true,
         permission: serializePermission(permission),
-        staff: { chargeStatus: await chargeStatusLoad, email: staffMember.email, fullName: staffMember.fullName, id: staffMember.id },
+        staff: await staffPayload(),
         time: clock.timeKey,
       }),
     });

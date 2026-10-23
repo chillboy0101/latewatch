@@ -161,9 +161,9 @@ function chargedAs(type: StaffTypeOnDate) {
   return !flagsForStaffType(type).isAttendanceOnly;
 }
 
-// The day someone stopped being charged, from their changes; null when they never were (or when the
-// history disagrees with their current type). Time away and moves between uncharged types don't
-// restart it (intern → special keeps the intern start).
+// The day someone's not-charged type began, from their changes; null when they were never charged
+// (or when the history disagrees with their current type). Time away in between and moves between
+// uncharged types don't restart it (intern → special keeps the intern start).
 export function currentStaffTypeSince(changes: StaffTypeChange[] | undefined, current: StaffType) {
   const typed = sortStaffTypeChanges(changes || []).filter((change) => change.staffType !== 'away').reverse();
   if (typed.length === 0 || typed[0].staffType !== current || chargedAs(current)) return null;
@@ -182,11 +182,17 @@ export interface StaffChargeStatus {
   staffType: StaffType;
 }
 
-// What a person's own pages say about charges, from the same rule the charges use.
+// Whether this person is charged today. Charging reads the isAttendanceOnly flag, so the badge does
+// too (the type only names it); rows without the flag fall back to the type's rule.
+export function isChargedNow(member: StaffTypeFields) {
+  return typeof member.isAttendanceOnly === 'boolean' ? !member.isAttendanceOnly : chargedAs(staffTypeOf(member));
+}
+
+// What a person's own pages say about charges.
 export function chargeStatusFor(member: StaffTypeFields, changes?: StaffTypeChange[]): StaffChargeStatus {
   const staffType = staffTypeOf(member);
   return {
-    charged: chargedAs(staffType),
+    charged: isChargedNow(member),
     label: STAFF_TYPE_LABELS[staffType],
     since: currentStaffTypeSince(changes, staffType),
     staffType,
@@ -194,7 +200,7 @@ export function chargeStatusFor(member: StaffTypeFields, changes?: StaffTypeChan
 }
 
 function formatDayMonthYear(dateKey: string) {
-  return new Date(`${dateKey}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC', year: 'numeric' });
+  return new Date(`${dateKey}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC', year: 'numeric' });
 }
 
 // The line at the top of their penalty history, or null for people who are charged.
@@ -202,7 +208,8 @@ function formatDayMonthYear(dateKey: string) {
 export function notChargedNote(status: StaffChargeStatus | null | undefined, hasHistory = true) {
   if (!status || status.charged) return null;
   const who = status.staffType === 'intern' ? 'an intern' : 'special staff';
-  if (!status.since) return `As ${who} you are not charged.`;
-  const note = `Since ${formatDayMonthYear(status.since)} you're ${who} and are not charged.`;
+  const note = status.since
+    ? `Since ${formatDayMonthYear(status.since)} you're ${who} and are not charged.`
+    : `As ${who} you are not charged.`;
   return hasHistory ? `${note} Earlier charges and receipts are kept below.` : note;
 }
