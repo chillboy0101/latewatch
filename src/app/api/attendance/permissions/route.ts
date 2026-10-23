@@ -16,6 +16,8 @@ import { writeAuditEvent } from '@/lib/audit';
 import { publishRealtime } from '@/lib/realtime';
 import { enforceRole } from '@/lib/auth/roles';
 import { getNonWorkdayLabel } from '@/lib/attendance';
+import { formatPermissionDays, leaveOverlapError } from '@/lib/staff-leave';
+import { getLeaveAndDeactivationCoverage } from '@/lib/staff-leave-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -166,6 +168,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'The selected period has no workdays' }, { status: 400 });
     }
 
+    // Days already on leave are excused by the leave, and a deactivated person isn't charged:
+    // those days are skipped (and reported) instead of failing the whole period part-way.
+    const coverage = await getLeaveAndDeactivationCoverage({ endDate: appliedDates[appliedDates.length - 1], staffIds: [staffId], startDate: appliedDates[0] });
+    const leaveDates = appliedDates.filter((day) => coverage(staffId, day) === 'leave');
+    const deactivatedDates = appliedDates.filter((day) => coverage(staffId, day) === 'deactivated');
+    appliedDates = appliedDates.filter((day) => !coverage(staffId, day));
+    if (appliedDates.length === 0) {
+      const why = leaveDates.length > 0
+        ? `${member.fullName} is on leave on ${formatPermissionDays(leaveDates)}, so no permission is needed`
+        : `${member.fullName} is deactivated on ${formatPermissionDays(deactivatedDates)}. Activate them first`;
+      return NextResponse.json({ error: why }, { status: 409 });
+    }
+
     const permissions = [];
     const reconciliations = [];
 
@@ -189,14 +204,22 @@ export async function POST(request: NextRequest) {
         updatedAt: now,
       };
 
-      const [permission] = existing
-        ? await db.update(attendancePermission)
-          .set(values)
-          .where(eq(attendancePermission.id, existing.id))
-          .returning()
-        : await db.insert(attendancePermission)
-          .values(values)
-          .returning();
+      let permission;
+      try {
+        [permission] = existing
+          ? await db.update(attendancePermission)
+            .set(values)
+            .where(eq(attendancePermission.id, existing.id))
+            .returning()
+          : await db.insert(attendancePermission)
+            .values(values)
+            .returning();
+      } catch (error) {
+        // Leave or a deactivation recorded for this day meanwhile: skip it, keep the rest.
+        if (!leaveOverlapError(error)) throw error;
+        leaveDates.push(permissionDate);
+        continue;
+      }
 
       await writeAuditEvent({
         entityType: 'attendance_permission',
@@ -237,6 +260,9 @@ export async function POST(request: NextRequest) {
     publishRealtime('audit-trail', 'invalidate', { reason: 'attendance-permission' });
 
     const permission = permissions[0];
+    if (!permission) {
+      return NextResponse.json({ error: `${member.fullName} is on leave or deactivated on every selected day` }, { status: 409 });
+    }
 
     return NextResponse.json({
       ...permission,
@@ -244,6 +270,8 @@ export async function POST(request: NextRequest) {
       permissions,
       reconciliation: reconciliations[0] || null,
       reconciliations,
+      skippedDeactivatedDays: formatPermissionDays(deactivatedDates),
+      skippedLeaveDays: formatPermissionDays([...leaveDates].sort()),
       staffEmail: member.email,
       staffName: member.fullName,
     });

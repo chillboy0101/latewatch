@@ -310,6 +310,7 @@ require('tsx/cjs');
 
 const {
   applyNoShowSignInPenaltiesForDate,
+  applyNoShowSignInPenaltiesForRange,
   syncLatenessEntriesFromAttendanceForDate,
   syncLatenessEntriesFromAttendanceForRange,
 } = require('../src/lib/attendance-lateness-sync.ts');
@@ -795,4 +796,44 @@ test('a pardoned charge on an approved leave day is set to no charge; a paid one
   assert.equal(byId.get('entry-pardoned').computedAmount, '0.00');
   assert.equal(byId.get('entry-pardoned').reason, 'On approved leave');
   assert.equal(byId.get('entry-paid').computedAmount, '10.00');
+});
+
+test('leave entered late (open-ended, started days ago) clears every unpaid charge from its start; days before keep theirs', async () => {
+  resetFixture();
+  fixture.attendancePermission = [];
+  // Asked for leave from 6 Jul "till further notice", only entered on 9 Jul.
+  fixture.leavePeriods = [{ endDate: null, returnedOn: null, source: 'approved_leave', staffId: 'staff-1', startDate: '2026-07-06' }];
+  fixture.attendanceRecord = [
+    { id: 'att-before', checkInTime: '09:40:00', computedAmount: '15.00', date: '2026-07-03', reason: "DIDN'T COME BEFORE 8:30AM", signOutTime: '17:00:00', staffId: 'staff-1', status: 'late' },
+    { id: 'att-late', checkInTime: '09:40:00', computedAmount: '15.00', date: '2026-07-07', reason: "DIDN'T COME BEFORE 8:30AM", signOutTime: '17:00:00', staffId: 'staff-1', status: 'late' },
+  ];
+  const entry = (id, date, amount, reason, arrivalTime = null) => ({ arrivalTime, computedAmount: amount, date, didNotSignOut: false, id, reason, staffId: 'staff-1' });
+  fixture.latenessEntry = [
+    entry('before', '2026-07-03', '15.00', "DIDN'T COME BEFORE 8:30AM", '09:40'),
+    entry('late', '2026-07-07', '15.00', "DIDN'T COME BEFORE 8:30AM", '09:40'),
+    entry('no-show', '2026-07-08', '10.00', "DIDN'T SIGN IN BEFORE 4:30PM"),
+  ];
+
+  await syncLatenessEntriesFromAttendanceForRange('2026-07-06', '2026-07-09');
+  await applyNoShowSignInPenaltiesForRange('2026-07-06', '2026-07-09');
+
+  assert.deepEqual(fixture.latenessEntry.map((row) => row.id), ['before'], 'only the day before the leave keeps its charge');
+  const attendance = new Map(fixture.attendanceRecord.map((row) => [row.id, row]));
+  assert.equal(attendance.get('att-late').computedAmount, '0.00');
+  assert.equal(attendance.get('att-before').computedAmount, '15.00');
+});
+
+test('a leave that ended early by a recorded return stops excusing days from the return', async () => {
+  resetFixture();
+  fixture.attendancePermission = [];
+  fixture.attendanceRecord = [];
+  fixture.leavePeriods = [{ endDate: '2026-12-31', returnedOn: '2026-07-09', source: 'approved_leave', staffId: 'staff-1', startDate: '2026-07-06' }];
+  const noShow = (id, date) => ({ arrivalTime: null, computedAmount: '10.00', date, didNotSignOut: false, id, reason: "DIDN'T SIGN IN BEFORE 4:30PM", staffId: 'staff-1' });
+  fixture.latenessEntry = [noShow('on-leave', '2026-07-08'), noShow('back', '2026-07-09')];
+
+  // As recalculateDaysAfterLeaveChange does: the attendance sync, then the no-show pass.
+  await syncLatenessEntriesFromAttendanceForRange('2026-07-08', '2026-07-09');
+  await applyNoShowSignInPenaltiesForRange('2026-07-08', '2026-07-09');
+
+  assert.deepEqual(fixture.latenessEntry.map((row) => row.id), ['back'], 'the return day is a normal working day again');
 });
