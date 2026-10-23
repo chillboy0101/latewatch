@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { enforceRole } from '@/lib/auth/roles';
 import { getAuditActor, tryWriteAuditEvent } from '@/lib/audit';
 import { createDataBackup, getBackupDownloadUrl, listDataBackups } from '@/lib/data-backup';
+import { RestoreError } from '@/lib/data-restore-core';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 const noStore = { 'Cache-Control': 'no-store' };
 
-// GET: list backups, or ?download=YYYY-MM-DD for a 5-minute download link.
+// GET: list backups, or ?download=<id> for a 5-minute download link.
 export async function GET(request: NextRequest) {
   const adminError = await enforceRole(['admin']);
   if (adminError) return NextResponse.json({ error: adminError.error }, { status: adminError.status });
@@ -22,6 +23,7 @@ export async function GET(request: NextRequest) {
     }
     return NextResponse.json({ backups: await listDataBackups() }, { headers: noStore });
   } catch (error) {
+    if (error instanceof RestoreError) return NextResponse.json({ error: error.message }, { status: 400, headers: noStore });
     console.error('Backup lookup failed:', error);
     return NextResponse.json({ error: 'Could not reach backup storage.' }, { status: 500, headers: noStore });
   }
@@ -34,11 +36,11 @@ export async function POST() {
 
   try {
     const actor = await getAuditActor();
-    const { manifest, removed } = await createDataBackup(actor.actorEmail);
+    const { manifest, removed } = await createDataBackup({ createdBy: actor.actorEmail, source: 'manual' });
     await tryWriteAuditEvent({
       action: 'BACKUP_CREATED',
-      after: { date: manifest.date, removedOld: removed, sizeBytes: manifest.sizeBytes, source: 'manual', totalRows: manifest.totalRows },
-      entityId: manifest.date,
+      after: { id: manifest.id, removedOld: removed, sizeBytes: manifest.sizeBytes, source: 'manual', totalRows: manifest.totalRows },
+      entityId: manifest.id!,
       entityType: 'data_backup',
     });
     return NextResponse.json({ backup: manifest }, { headers: noStore });

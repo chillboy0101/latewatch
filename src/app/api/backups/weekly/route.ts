@@ -11,21 +11,29 @@ export async function GET(request: NextRequest) {
   const guard = validateReminderCronAuth(request);
   if (!guard.ok) return guard.response;
 
+  const source = reminderCronSource(request);
   try {
-    const source = reminderCronSource(request);
-    const { manifest, removed } = await createDataBackup(`cron:${source}`);
+    const { manifest, removed } = await createDataBackup({ createdBy: `cron:${source}`, source: 'weekly' });
     await tryWriteAuditEvent({
       action: 'BACKUP_CREATED',
       actor: { email: 'system' },
-      after: { date: manifest.date, removedOld: removed, sizeBytes: manifest.sizeBytes, source, totalRows: manifest.totalRows },
-      entityId: manifest.date,
+      after: { id: manifest.id, removedOld: removed, sizeBytes: manifest.sizeBytes, source, totalRows: manifest.totalRows },
+      entityId: manifest.id!,
       entityType: 'data_backup',
     });
-    return NextResponse.json({ date: manifest.date, removed, sizeBytes: manifest.sizeBytes, totalRows: manifest.totalRows }, {
+    return NextResponse.json({ id: manifest.id, removed, sizeBytes: manifest.sizeBytes, totalRows: manifest.totalRows }, {
       headers: { 'Cache-Control': 'no-store' },
     });
   } catch (error) {
     console.error('Weekly backup failed:', error);
+    // Recorded so a missed week shows up in the audit trail, not only in server logs.
+    await tryWriteAuditEvent({
+      action: 'BACKUP_FAILED',
+      actor: { email: 'system' },
+      after: { error: error instanceof Error ? error.message : String(error), source },
+      entityId: new Date().toISOString().slice(0, 10),
+      entityType: 'data_backup',
+    });
     return NextResponse.json({ error: 'Backup failed' }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
   }
 }

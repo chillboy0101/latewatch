@@ -1,30 +1,58 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { DatabaseBackup, Download, Loader2 } from 'lucide-react';
+import { AlertTriangle, DatabaseBackup, Download, History, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { formatDisplayDateTime } from '@/lib/date-format';
 import { cn } from '@/lib/utils';
 
 type Backup = {
   createdAt: string;
   createdBy: string;
-  date: string;
+  id: string;
   sizeBytes: number;
+  source: 'manual' | 'weekly' | 'before-restore';
   totalRows: number;
 };
 
-function formatSize(bytes: number) {
+// Two decimals in MB so a week's growth is visible (3.27 MB → 3.29 MB), not hidden by rounding.
+export function formatBackupSize(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-// Weekly data backups kept in Cloudflare R2 (Sundays, plus any made here). Last 12 weeks kept.
+const SOURCE_LABELS: Record<Backup['source'], string> = {
+  'before-restore': 'safety copy before a restore',
+  manual: 'manual',
+  weekly: 'automatic',
+};
+
+// A Sunday backup is due every 7 days; one more day of grace before warning.
+export const STALE_BACKUP_DAYS = 8;
+
+export function isBackupStale(newestCreatedAt: string | undefined, now = Date.now()) {
+  if (!newestCreatedAt) return false;
+  return now - Date.parse(newestCreatedAt) > STALE_BACKUP_DAYS * 86_400_000;
+}
+
+function rowChange(backups: Backup[], index: number) {
+  const older = backups[index + 1];
+  if (!older) return null;
+  const change = backups[index].totalRows - older.totalRows;
+  return `${change >= 0 ? '+' : '−'}${Math.abs(change).toLocaleString()} since previous`;
+}
+
+// Data backups kept in Cloudflare R2 (Sundays, "Back Up Now", and before each restore). Last 12
+// weeks kept. Admins can download one or put its data back.
 export function BackupsCard() {
   const [backups, setBackups] = useState<Backup[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null);
+  const [restoreTarget, setRestoreTarget] = useState<Backup | null>(null);
+  const [confirmText, setConfirmText] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -58,11 +86,11 @@ export function BackupsCard() {
     }
   }
 
-  async function download(date: string) {
-    setBusy(date);
+  async function download(id: string) {
+    setBusy(id);
     setMessage(null);
     try {
-      const response = await fetch(`/api/admin/backups?download=${encodeURIComponent(date)}`, { cache: 'no-store' });
+      const response = await fetch(`/api/admin/backups?download=${encodeURIComponent(id)}`, { cache: 'no-store' });
       const body = await response.json().catch(() => ({}));
       if (!response.ok || !body.url) throw new Error(body.error || 'Could not get the download link.');
       window.location.href = body.url;
@@ -72,6 +100,43 @@ export function BackupsCard() {
       setBusy(null);
     }
   }
+
+  function openRestore(backup: Backup) {
+    setConfirmText('');
+    setRestoreTarget(backup);
+  }
+
+  async function restore() {
+    if (!restoreTarget || confirmText !== 'RESTORE') return;
+    setBusy('restore');
+    setMessage(null);
+    try {
+      const response = await fetch('/api/admin/backups/restore', {
+        body: JSON.stringify({ confirm: confirmText, id: restoreTarget.id }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || 'Restore failed. Nothing was changed.');
+      const records = Object.values(body.restored as Record<string, number>).reduce((sum, count) => sum + count, 0);
+      const kept = Array.isArray(body.keptAsIs) && body.keptAsIs.length > 0
+        ? ' Staff type history and deactivation periods were not in this older backup, so they were kept as they are.'
+        : '';
+      setMessage({
+        error: false,
+        text: `Restored ${records.toLocaleString()} records from ${formatDisplayDateTime(restoreTarget.createdAt)}. A safety copy of the data from before the restore is at the top of the list.${kept}`,
+      });
+      setRestoreTarget(null);
+      await load();
+    } catch (error) {
+      setMessage({ error: true, text: error instanceof Error ? error.message : 'Restore failed. Nothing was changed.' });
+      setRestoreTarget(null);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const stale = backups !== null && isBackupStale(backups[0]?.createdAt);
 
   return (
     <Card className="overflow-hidden">
@@ -94,6 +159,12 @@ export function BackupsCard() {
       </div>
 
       <div className="px-6 py-4">
+        {stale && (
+          <p className="mb-3 flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            No backup in the last {STALE_BACKUP_DAYS} days. The Sunday backup may have failed; use Back Up Now.
+          </p>
+        )}
         {message && (
           <p className={cn('mb-3 text-sm font-medium', message.error ? 'text-danger' : 'text-primary')}>{message.text}</p>
         )}
@@ -106,30 +177,70 @@ export function BackupsCard() {
           <p className="text-sm text-muted-foreground">No backups yet.</p>
         ) : (
           <ul className="divide-y divide-border rounded-md border border-border">
-            {backups.map((backup) => (
-              <li key={backup.date} className="flex items-center justify-between gap-3 px-3 py-2.5">
+            {backups.map((backup, index) => (
+              <li key={backup.id} className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-sm font-medium">{formatDisplayDateTime(backup.createdAt)}</p>
                   <p className="truncate text-xs text-muted-foreground">
-                    {backup.totalRows.toLocaleString()} records · {formatSize(backup.sizeBytes)}
-                    {backup.createdBy.startsWith('cron:') ? ' · automatic' : ` · ${backup.createdBy}`}
+                    {backup.totalRows.toLocaleString()} records
+                    {rowChange(backups, index) && ` (${rowChange(backups, index)})`}
+                    {' · '}{formatBackupSize(backup.sizeBytes)} · {SOURCE_LABELS[backup.source]}
+                    {backup.source !== 'weekly' && ` · ${backup.createdBy}`}
                   </p>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0 gap-1.5"
-                  disabled={busy !== null}
-                  onClick={() => void download(backup.date)}
-                >
-                  {busy === backup.date ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                  Download
-                </Button>
+                <div className="flex shrink-0 gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    disabled={busy !== null}
+                    onClick={() => void download(backup.id)}
+                  >
+                    {busy === backup.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                    Download
+                  </Button>
+                  <Button variant="outline" size="sm" className="gap-1.5" disabled={busy !== null} onClick={() => openRestore(backup)}>
+                    <History className="h-3.5 w-3.5" />
+                    Restore
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>
         )}
       </div>
+
+      <Dialog open={restoreTarget !== null} onOpenChange={(open) => { if (!open && busy !== 'restore') setRestoreTarget(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Restore this backup?</DialogTitle>
+            <DialogDescription>
+              {restoreTarget && `All staff, attendance, charges, payments, leave and permissions go back to ${formatDisplayDateTime(restoreTarget.createdAt)}. Anything entered after that is removed.`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              A safety copy of today&apos;s data is taken first, so you can restore that one to undo. If anything goes wrong, nothing is changed.
+            </p>
+            <label className="block space-y-1.5">
+              <span className="font-medium">Type RESTORE to confirm</span>
+              <Input
+                autoComplete="off"
+                value={confirmText}
+                onChange={(event) => setConfirmText(event.target.value.toUpperCase())}
+                disabled={busy === 'restore'}
+              />
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRestoreTarget(null)} disabled={busy === 'restore'}>Cancel</Button>
+            <Button onClick={() => void restore()} disabled={confirmText !== 'RESTORE' || busy === 'restore'} aria-busy={busy === 'restore'}>
+              {busy === 'restore' ? <Loader2 className="h-4 w-4 animate-spin" /> : <History className="h-4 w-4" />}
+              {busy === 'restore' ? 'Restoring' : 'Restore'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
