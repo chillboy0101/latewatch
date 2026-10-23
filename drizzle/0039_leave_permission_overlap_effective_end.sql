@@ -1,5 +1,5 @@
 -- One excuse per day (leave, approved permission, or deactivation), but a leave only covers the
--- days it actually ran: up to the day before an early return. Status-only leave rows
+-- days it actually ran: its planned end, or the day before an earlier return (LEAST skips nulls). Status-only leave rows
 -- ('staff_status') don't block, matching the app and prevent_overlapping_staff_leave_periods.
 -- GREATEST stops a same-day return from building an invalid (end before start) range.
 CREATE OR REPLACE FUNCTION enforce_attendance_permission_non_overlap()
@@ -19,18 +19,18 @@ BEGIN
       WHERE existing_leave.staff_id = NEW.staff_id
         AND existing_leave.id <> NEW.id
         AND existing_leave.source <> 'staff_status'
-        AND daterange(existing_leave.start_date, GREATEST(existing_leave.start_date, COALESCE(existing_leave.returned_on - 1, existing_leave.end_date, 'infinity'::date)), '[]')
-          && daterange(NEW.start_date, GREATEST(NEW.start_date, COALESCE(NEW.returned_on - 1, NEW.end_date, 'infinity'::date)), '[]')
+        AND daterange(existing_leave.start_date, GREATEST(existing_leave.start_date, COALESCE(LEAST(existing_leave.returned_on - 1, existing_leave.end_date), 'infinity'::date)), '[]')
+          && daterange(NEW.start_date, GREATEST(NEW.start_date, COALESCE(LEAST(NEW.returned_on - 1, NEW.end_date), 'infinity'::date)), '[]')
     ) OR EXISTS (
       SELECT 1 FROM attendance_permission existing_permission
       WHERE existing_permission.staff_id = NEW.staff_id
         AND existing_permission.status = 'approved'
-        AND existing_permission.date BETWEEN NEW.start_date AND COALESCE(NEW.returned_on - 1, NEW.end_date, 'infinity'::date)
+        AND existing_permission.date BETWEEN NEW.start_date AND COALESCE(LEAST(NEW.returned_on - 1, NEW.end_date), 'infinity'::date)
     ) OR EXISTS (
       SELECT 1 FROM staff_inactive_period inactive_period
       WHERE inactive_period.staff_id = NEW.staff_id
         AND daterange(inactive_period.start_date::date, COALESCE(inactive_period.reactivated_on::date, 'infinity'::date), '[)')
-          && daterange(NEW.start_date, GREATEST(NEW.start_date, COALESCE(NEW.returned_on - 1, NEW.end_date, 'infinity'::date)), '[]')
+          && daterange(NEW.start_date, GREATEST(NEW.start_date, COALESCE(LEAST(NEW.returned_on - 1, NEW.end_date), 'infinity'::date)), '[]')
     ) INTO has_overlap;
   ELSIF TG_TABLE_NAME = 'attendance_permission' THEN
     IF NEW.status <> 'approved' THEN
@@ -40,7 +40,7 @@ BEGIN
       SELECT 1 FROM staff_leave_period existing_leave
       WHERE existing_leave.staff_id = NEW.staff_id
         AND existing_leave.source <> 'staff_status'
-        AND NEW.date BETWEEN existing_leave.start_date AND COALESCE(existing_leave.returned_on - 1, existing_leave.end_date, 'infinity'::date)
+        AND NEW.date BETWEEN existing_leave.start_date AND COALESCE(LEAST(existing_leave.returned_on - 1, existing_leave.end_date), 'infinity'::date)
     ) OR EXISTS (
       SELECT 1 FROM staff_inactive_period inactive_period
       WHERE inactive_period.staff_id = NEW.staff_id
@@ -58,7 +58,7 @@ BEGIN
       SELECT 1 FROM staff_leave_period existing_leave
       WHERE existing_leave.staff_id = NEW.staff_id
         AND existing_leave.source <> 'staff_status'
-        AND daterange(existing_leave.start_date, GREATEST(existing_leave.start_date, COALESCE(existing_leave.returned_on - 1, existing_leave.end_date, 'infinity'::date)), '[]')
+        AND daterange(existing_leave.start_date, GREATEST(existing_leave.start_date, COALESCE(LEAST(existing_leave.returned_on - 1, existing_leave.end_date), 'infinity'::date)), '[]')
           && daterange(NEW.start_date::date, COALESCE(NEW.reactivated_on::date, 'infinity'::date), '[)')
     ) OR EXISTS (
       SELECT 1 FROM attendance_permission existing_permission
