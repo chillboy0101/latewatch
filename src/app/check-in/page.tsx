@@ -1398,7 +1398,7 @@ export default function CheckInPage() {
               <div className="flex h-full flex-col">
                 <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3 sm:gap-4 sm:p-5">
                 <div className={cn('flex flex-1 flex-col items-center justify-center gap-5 rounded-2xl border p-6 text-center sm:gap-7 sm:p-8', statusTone(status))}>
-                  {/* A soft halo around one badge: solid with a bold tick once checked in, quiet before. */}
+                  {/* A soft halo around one badge: soft fill before, solid with a bold tick once checked in. */}
                   <div className="relative flex h-24 w-24 items-center justify-center sm:h-28 sm:w-28">
                     <span aria-hidden className="absolute inset-0 rounded-full bg-current opacity-15" />
                     {status?.attendance ? (
@@ -1406,7 +1406,7 @@ export default function CheckInPage() {
                         <Check className="h-9 w-9 sm:h-10 sm:w-10" strokeWidth={3} />
                       </span>
                     ) : (
-                      <span className="relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-background ring-1 ring-current/30 sm:h-20 sm:w-20">
+                      <span className="relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-current/20 ring-1 ring-current/30 sm:h-20 sm:w-20">
                         {canCheckIn ? (
                           <ShieldCheck className="h-9 w-9 sm:h-10 sm:w-10" />
                         ) : (
