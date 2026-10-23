@@ -68,3 +68,20 @@ test('the overlap rule only counts the days a leave actually ran', () => {
   assert.match(sql, /existing_leave\.source <> 'staff_status'/);
   assert.match(sql, /GREATEST\(NEW\.start_date, COALESCE\(LEAST\(NEW\.returned_on - 1/);
 });
+
+test('permissions and general pardons skip days already on leave or deactivated, instead of failing part-way', () => {
+  const single = read('src/app/api/attendance/permissions/route.ts');
+  const general = read('src/app/api/attendance/permissions/general-pardon/route.ts');
+  for (const [name, route] of [['permissions', single], ['general pardon', general]]) {
+    assert.match(route, /await getLeaveAndDeactivationCoverage\(\{/, name);
+    // A leave or deactivation recorded meanwhile skips that day/person instead of a 500.
+    assert.match(route, /if \(!leaveOverlapError\(error\)\) throw error;/, name);
+  }
+  assert.match(single, /skippedLeaveDays: formatPermissionDays/);
+  assert.match(single, /is on leave on \$\{formatPermissionDays\(leaveDates\)\}, so no permission is needed/);
+  assert.match(general, /skippedCount: skippedPermissions\.length,/);
+  const page = read('src/app/attendance/overview/page.tsx');
+  assert.match(page, /Skipped \$\{body\.skippedLeaveDays\}: already on leave\./);
+  const service = read('src/lib/staff-leave-service.ts');
+  assert.match(service, /if \(isStaffLeaveDate\(periods, staffId, date\)\) return 'leave';/);
+});

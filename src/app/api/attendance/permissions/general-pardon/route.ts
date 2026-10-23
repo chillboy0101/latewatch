@@ -8,6 +8,8 @@ import { reconcileAttendanceForPermission } from '@/lib/attendance-permission-re
 import { writeAuditEvent } from '@/lib/audit';
 import { publishRealtime } from '@/lib/realtime';
 import { getNonWorkdayLabel } from '@/lib/attendance';
+import { leaveOverlapError } from '@/lib/staff-leave';
+import { getLeaveAndDeactivationCoverage } from '@/lib/staff-leave-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,7 +79,17 @@ export async function POST(request: NextRequest) {
           permissionType: 'late_arrival',
         };
 
+    // Anyone on leave (or deactivated) that day is already excused; the database keeps one
+    // excuse per day, so they are skipped instead of failing the pardon for everyone else.
+    const coverage = await getLeaveAndDeactivationCoverage({ endDate: date, staffIds: members.map((member) => member.id), startDate: date });
+    const skippedPermissions: Array<{ reason: 'leave' | 'deactivated'; staffId: string; staffName: string }> = [];
+
     for (const member of members) {
+      const covered = coverage(member.id, date);
+      if (covered) {
+        skippedPermissions.push({ reason: covered, staffId: member.id, staffName: member.fullName });
+        continue;
+      }
       const [existing] = await db.select()
         .from(attendancePermission)
         .where(and(eq(attendancePermission.staffId, member.id), eq(attendancePermission.date, date)))
@@ -95,17 +107,25 @@ export async function POST(request: NextRequest) {
         updatedAt: now,
       };
 
-      const [permission] = existing
-        ? await db.update(attendancePermission)
-          .set({
-            generalPardonType: pardonType,
-            updatedAt: now,
-          })
-          .where(eq(attendancePermission.id, existing.id))
-          .returning()
-        : await db.insert(attendancePermission)
-          .values(values)
-          .returning();
+      let permission;
+      try {
+        [permission] = existing
+          ? await db.update(attendancePermission)
+            .set({
+              generalPardonType: pardonType,
+              updatedAt: now,
+            })
+            .where(eq(attendancePermission.id, existing.id))
+            .returning()
+          : await db.insert(attendancePermission)
+            .values(values)
+            .returning();
+      } catch (error) {
+        // Leave or a deactivation recorded for this person meanwhile: skip them, keep the rest.
+        if (!leaveOverlapError(error)) throw error;
+        skippedPermissions.push({ reason: 'leave', staffId: member.id, staffName: member.fullName });
+        continue;
+      }
 
       await writeAuditEvent({
         entityType: 'attendance_permission',
@@ -160,6 +180,7 @@ export async function POST(request: NextRequest) {
         pardonType,
         reason: 'general pardon',
         financialReviewRequiredCount: financialReviewRequired.length,
+        skipped: skippedPermissions,
         staffIds: permissions.map((permission) => permission.staffId),
       },
       actor,
@@ -182,8 +203,8 @@ export async function POST(request: NextRequest) {
       reconciliations,
       financialReviewRequired,
       financialReviewRequiredCount: financialReviewRequired.length,
-      skippedCount: 0,
-      skippedPermissions: [],
+      skippedCount: skippedPermissions.length,
+      skippedPermissions,
     });
   } catch (error) {
     console.error('Failed to apply general attendance pardon:', error);

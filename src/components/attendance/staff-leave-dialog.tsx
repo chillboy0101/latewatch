@@ -22,7 +22,11 @@ type LeavePeriod = {
 
 type StaffOption = { fullName: string; id: string };
 
-type LeaveSaveResult = { replacedPermissionCount?: number; replacedPermissionDays?: string };
+type LeaveSaveResult = {
+  financialReview?: { paidEntryCount?: number };
+  replacedPermissionCount?: number;
+  replacedPermissionDays?: string;
+};
 
 const selectClassName = 'h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-10 text-sm font-medium text-foreground outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/35 disabled:cursor-not-allowed disabled:opacity-60';
 
@@ -110,11 +114,16 @@ export function StaffLeaveDialog({
 
   // Leave replaces any absence / late permissions already approved on its days; say so.
   function withReplaced(success: string) {
-    return (body: LeaveSaveResult) => (
-      body.replacedPermissionCount
-        ? `${success} It replaces the permission${body.replacedPermissionCount === 1 ? '' : 's'} on ${body.replacedPermissionDays}.`
-        : success
-    );
+    return (body: LeaveSaveResult) => {
+      const replaced = body.replacedPermissionCount
+        ? ` It replaces the permission${body.replacedPermissionCount === 1 ? '' : 's'} on ${body.replacedPermissionDays}.`
+        : '';
+      // Leave entered after the fact clears unpaid charges on its days; paid ones stay paid.
+      const paid = body.financialReview?.paidEntryCount
+        ? ` ${body.financialReview.paidEntryCount} day${body.financialReview.paidEntryCount === 1 ? ' was' : 's were'} already paid and stay${body.financialReview.paidEntryCount === 1 ? 's' : ''} as paid.`
+        : '';
+      return `${success}${replaced}${paid}`;
+    };
   }
 
   async function submit(request: () => Promise<Response>, success: string | ((body: LeaveSaveResult) => string)) {

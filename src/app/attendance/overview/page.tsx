@@ -453,7 +453,12 @@ export default function AttendancePage() {
 
       resetPermissionForm();
       setPermissionDialogOpen(false);
-      setNotice(wasEditing ? 'Permission updated.' : 'Permission approved.');
+      // Days already on leave (or while deactivated) need no permission and are left out.
+      const skippedCopy = [
+        body.skippedLeaveDays ? ` Skipped ${body.skippedLeaveDays}: already on leave.` : '',
+        body.skippedDeactivatedDays ? ` Skipped ${body.skippedDeactivatedDays}: deactivated.` : '',
+      ].join('');
+      setNotice(`${wasEditing ? 'Permission updated.' : 'Permission approved.'}${skippedCopy}`);
       await fetchAttendance();
     } catch (err) {
       console.error('Failed to save permission:', err);
@@ -508,7 +513,7 @@ export default function AttendancePage() {
         ? body.financialReviewRequiredCount
         : 0;
       const skippedCopy = skippedCount > 0
-        ? ` ${skippedCount} existing permission${skippedCount === 1 ? '' : 's'} skipped.`
+        ? ` ${skippedCount} skipped (on leave or deactivated).`
         : '';
       const financialReviewCopy = financialReviewRequiredCount > 0
         ? ` ${financialReviewRequiredCount} late amount${financialReviewRequiredCount === 1 ? '' : 's'} remain unchanged because allocated payments require financial review.`

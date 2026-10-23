@@ -10,7 +10,7 @@ import {
   staffLeavePeriod,
 } from '@/db/schema';
 import { writeAuditEvent } from '@/lib/audit';
-import { formatPermissionDays } from '@/lib/staff-leave';
+import { formatPermissionDays, isStaffLeaveDate } from '@/lib/staff-leave';
 
 export async function getStaffLeavePeriodsForRange(input: {
   endDate: string;
@@ -213,4 +213,33 @@ export async function findInactivePeriodOverlap(input: {
     LIMIT 1`);
   const row = (result.rows as Array<{ start_date: string }>)[0];
   return row ? { startDate: row.start_date } : null;
+}
+
+export type DayCoverage = 'leave' | 'deactivated' | null;
+
+// Which days already have leave or a deactivation for these staff. A permission can't be stored
+// on those days (the database keeps one excuse per day), and none is needed: leave already
+// excuses the day, and a deactivated person isn't charged.
+export async function getLeaveAndDeactivationCoverage(input: {
+  endDate: string;
+  staffIds: string[];
+  startDate: string;
+}) {
+  if (input.staffIds.length === 0) return (): DayCoverage => null;
+  const [periods, inactiveResult] = await Promise.all([
+    getStaffLeavePeriodsForRange(input),
+    db.execute(sql`
+      SELECT staff_id::text AS staff_id, start_date::date::text AS start_date, reactivated_on::date::text AS reactivated_on
+      FROM staff_inactive_period
+      WHERE staff_id IN (${sql.join(input.staffIds.map((id) => sql`${id}::uuid`), sql`, `)})
+        AND start_date::date <= ${input.endDate}::date
+        AND (reactivated_on IS NULL OR reactivated_on::date > ${input.startDate}::date)`),
+  ]);
+  const inactive = inactiveResult.rows as Array<{ reactivated_on: string | null; staff_id: string; start_date: string }>;
+  return (staffId: string, date: string): DayCoverage => {
+    if (isStaffLeaveDate(periods, staffId, date)) return 'leave';
+    const deactivated = inactive.some((row) => row.staff_id === staffId
+      && row.start_date <= date && (!row.reactivated_on || date < row.reactivated_on));
+    return deactivated ? 'deactivated' : null;
+  };
 }

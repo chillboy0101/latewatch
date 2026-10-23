@@ -99,7 +99,7 @@ test('attendance page confirms general pardons before calling the bulk endpoint'
   assert.match(source, /setGeneralPardonOpen\(true\)/);
   assert.match(source, /\/api\/attendance\/permissions\/general-pardon/);
   assert.match(source, /skippedCount/);
-  assert.match(source, /existing permission/);
+  assert.match(source, /skipped \(on leave or deactivated\)/);
 });
 
 test('attendance page lets admins change an existing permission from the permission list', () => {
