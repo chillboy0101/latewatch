@@ -503,6 +503,9 @@ test('a missing or malformed date keeps the no-sign-out charge (fails closed)', 
   assert.equal(chargesNoSignOut(undefined), true);
   assert.equal(chargesNoSignOut(''), true);
   assert.equal(chargesNoSignOut('20261013'), true);
+  assert.equal(chargesNoSignOut('2026-10-32'), true, 'impossible day');
+  assert.equal(chargesNoSignOut('2026-02-30'), true, 'impossible day');
+  assert.equal(chargesNoSignOut('2026-10-31'), false);
   assert.equal(computePenalty({ arrivalTime: '08:00', didNotSignOut: true, isHoliday: false }).amount, 2);
 });
 
@@ -512,4 +515,5 @@ test('scripts and the Entries page pass the day to the no-sign-out rule', () => 
   assert.equal((script.match(/computePenalty\(\{[^}]*date: INCIDENT_DATE/g) || []).length, 2);
   const page = fs.readFileSync(require('node:path').join(__dirname, '../src/app/entries/page.tsx'), 'utf8');
   assert.match(page, /\|\| !chargesNoSignOut\(format\(selectedDate, 'yyyy-MM-dd'\)\)/);
+  assert.match(page, /!isOnLeave && \(entry\.noSignOutWaived \|\| chargesNoSignOut\(format\(selectedDate, 'yyyy-MM-dd'\)\)\) && \(/, 'no new no-sign-out waivers after the charge ended');
 });
