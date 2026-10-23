@@ -145,6 +145,13 @@ export function leaveOverlapError(error: unknown) {
   return null;
 }
 
+// Only the "one excuse per day" refusal (leave / deactivation already covers the day). A plain
+// duplicate (23505) on a permission is a different problem and must not read as "on leave".
+export function isExcuseOverlapError(error: unknown) {
+  return [error, (error as { cause?: unknown } | null)?.cause]
+    .some((part) => Boolean(part) && typeof part === 'object' && String((part as { code?: unknown }).code || '') === '23P01');
+}
+
 function nextDayKey(value: string) {
   const date = new Date(`${value}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + 1);

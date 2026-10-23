@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { staffLeavePeriod } from '@/db/schema';
 import { isIsoDateKey } from '@/lib/date-format';
-import { getEffectiveLeaveEndDate, leaveOverlapError, STAFF_LEAVE_TYPES, type StaffLeaveType } from '@/lib/staff-leave';
+import { formatPermissionDays, getEffectiveLeaveEndDate, leaveOverlapError, STAFF_LEAVE_TYPES, type StaffLeaveType } from '@/lib/staff-leave';
 import { getAccraDateKey } from '@/lib/date-key';
 import { writeAuditEvent } from '@/lib/audit';
 import { enforceRole } from '@/lib/auth/roles';
@@ -14,6 +14,7 @@ import {
   findInactivePeriodOverlap,
   findOverlappingStaffLeavePeriod,
   replacedPermissionSummary,
+  restorePermissionsReplacedByLeave,
 } from '@/lib/staff-leave-service';
 import { nextDateKey, publishLeaveChange, recalculateDaysAfterLeaveChange } from '@/lib/staff-leave-return';
 
@@ -30,18 +31,15 @@ function actorOf(user: Awaited<ReturnType<typeof currentUser>>): Actor {
   };
 }
 
-function laterKey(left: string, right: string) {
-  return left > right ? left : right;
-}
-
-// Fix a leave entered with the wrong dates or type (any leave, open or already ended). Its new
-// days take over approved permissions like a new leave, and every day whose status changed,
-// old range and new, is recalculated.
+// Fix a leave entered with the wrong dates or type (any leave, open or already ended; "no end
+// date" stays possible). New days take over approved permissions like a new leave; days it no
+// longer covers get back the permissions it had replaced; changed days are recalculated.
 async function correctLeave(id: string, body: Record<string, unknown>, actor: Actor) {
   const startDate = typeof body.startDate === 'string' ? body.startDate : '';
-  const endDate = typeof body.endDate === 'string' ? body.endDate : '';
+  const openEnded = body.openEnded === true;
+  const endDate = openEnded ? null : typeof body.endDate === 'string' ? body.endDate : '';
   const leaveType = typeof body.leaveType === 'string' ? body.leaveType : '';
-  if (!isIsoDateKey(startDate) || !isIsoDateKey(endDate) || startDate > endDate) {
+  if (!isIsoDateKey(startDate) || (endDate !== null && (!isIsoDateKey(endDate) || startDate > endDate))) {
     return NextResponse.json({ error: 'Select valid leave dates: the end on or after the start' }, { status: 400 });
   }
   if (!VALID_LEAVE_TYPES.has(leaveType)) {
@@ -58,7 +56,9 @@ async function correctLeave(id: string, body: Record<string, unknown>, actor: Ac
   }
 
   const staffId = before.staffId;
-  const coveredEnd = getEffectiveLeaveEndDate({ endDate, returnedOn: before.returnedOn }) || endDate;
+  const today = getAccraDateKey();
+  // The last day the corrected leave covers (an open-ended one runs on; checks go to far future).
+  const coveredEnd = getEffectiveLeaveEndDate({ endDate, returnedOn: before.returnedOn }) || '9999-12-31';
   const overlap = await findOverlappingStaffLeavePeriod({ endDate: coveredEnd, excludeId: id, staffId, startDate });
   if (overlap) return NextResponse.json({ error: 'These dates overlap another leave period' }, { status: 409 });
   const inactive = await findInactivePeriodOverlap({ endDate: coveredEnd, staffId, startDate });
@@ -91,18 +91,20 @@ async function correctLeave(id: string, body: Record<string, unknown>, actor: Ac
     actor,
     reason: 'staff-leave-corrected',
   });
-  await auditReplacedPermissions({ actor, permissions: replacedPermissions, staffId });
+  await auditReplacedPermissions({ actor, leaveId: id, permissions: replacedPermissions });
+  const restoredDays = await restorePermissionsReplacedByLeave({ actor, keep: { endDate: coveredEnd, startDate }, leaveId: id, staffId });
 
-  // Re-apply the normal rules to every past day in the old range and the new one.
-  const today = getAccraDateKey();
+  // Only the days whose cover changed need the normal rules re-applied: the old range and the
+  // new one (a type-only correction changes no charge).
   const oldEnd = getEffectiveLeaveEndDate(before) || today;
-  await recalculateDaysAfterLeaveChange(
-    before.startDate < startDate ? before.startDate : startDate,
-    laterKey(oldEnd, coveredEnd),
-  );
+  const datesChanged = before.startDate !== startDate || (before.endDate || null) !== endDate;
+  if (datesChanged) {
+    await recalculateDaysAfterLeaveChange(before.startDate, oldEnd);
+    await recalculateDaysAfterLeaveChange(startDate, coveredEnd);
+  }
   publishLeaveChange('staff-leave-corrected', staffId);
 
-  return NextResponse.json({ ...period, ...replacedPermissionSummary(replacedPermissions) });
+  return NextResponse.json({ ...period, ...replacedPermissionSummary(replacedPermissions), restoredPermissionDays: formatPermissionDays(restoredDays) });
 }
 
 // Remove a leave entered by mistake: its days go back to the normal rules (charged as usual).
@@ -132,10 +134,12 @@ export async function DELETE(
       actor,
       reason: 'staff-leave-removed',
     });
+    // Permissions this leave had replaced come back, then its days get the normal rules again.
+    const restoredDays = await restorePermissionsReplacedByLeave({ actor, leaveId: id, staffId: before.staffId });
     await recalculateDaysAfterLeaveChange(before.startDate, getEffectiveLeaveEndDate(before) || getAccraDateKey());
     publishLeaveChange('staff-leave-removed', before.staffId);
 
-    return NextResponse.json({ removed: true, staffId: before.staffId });
+    return NextResponse.json({ removed: true, restoredPermissionDays: formatPermissionDays(restoredDays), staffId: before.staffId });
   } catch (error) {
     console.error('Failed to remove leave:', error);
     return NextResponse.json({ error: 'Failed to remove leave' }, { status: 500 });
@@ -189,8 +193,8 @@ export async function PATCH(
       }
     }
 
-    const actorEmail = user?.primaryEmailAddress?.emailAddress || user?.emailAddresses[0]?.emailAddress || 'system';
-    const actor = { email: actorEmail, id: user?.id || null };
+    const actor = actorOf(user);
+    const actorEmail = actor.email;
     const updateLeave = db.update(staffLeavePeriod)
       .set(returnedOn
         ? { closedAt: new Date(), closedByEmail: actorEmail, returnedOn, updatedAt: new Date() }
@@ -228,7 +232,16 @@ export async function PATCH(
       actor,
       reason,
     });
-    await auditReplacedPermissions({ actor, permissions: replacedPermissions, staffId: before.staffId });
+    await auditReplacedPermissions({ actor, leaveId: id, permissions: replacedPermissions });
+    // Days a shorter leave (earlier end, or back early) no longer covers get back the
+    // permissions it had replaced there.
+    await restorePermissionsReplacedByLeave({
+      actor,
+      // An open-ended leave still covers every day from its start.
+      keep: { endDate: getEffectiveLeaveEndDate(period) || '9999-12-31', startDate: period.startDate },
+      leaveId: id,
+      staffId: before.staffId,
+    });
 
     // Past days whose leave status changed get the normal rules re-applied (or cleared).
     const today = getAccraDateKey();

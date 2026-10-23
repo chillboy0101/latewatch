@@ -868,7 +868,6 @@ export default function AttendancePage() {
                 label="Staff"
                 value={permissionStaffId}
                 onChange={setPermissionStaffId}
-                disabled={isEditingPermission}
                 options={(data?.rows || []).map((row) => ({ fullName: row.staff.fullName, id: row.staff.id }))}
               />
               <SelectField
@@ -888,13 +887,11 @@ export default function AttendancePage() {
               {permissionType === 'late_arrival' ? (
                 <>
                   <DateField
-                    disabled={isEditingPermission}
                     label="From"
                     value={permissionAbsenceStartDate}
                     onChange={setPermissionAbsenceStartDate}
                   />
                   <DateField
-                    disabled={isEditingPermission}
                     label="To"
                     value={permissionAbsenceEndDate}
                     onChange={setPermissionAbsenceEndDate}
@@ -936,13 +933,11 @@ export default function AttendancePage() {
               ) : (
                 <>
                   <DateField
-                    disabled={isEditingPermission}
                     label="From"
                     value={permissionAbsenceStartDate}
                     onChange={setPermissionAbsenceStartDate}
                   />
                   <DateField
-                    disabled={isEditingPermission}
                     label="To"
                     value={permissionAbsenceEndDate}
                     onChange={setPermissionAbsenceEndDate}

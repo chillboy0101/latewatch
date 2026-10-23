@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { ChevronDown, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -26,6 +26,7 @@ type LeaveSaveResult = {
   financialReview?: { paidEntryCount?: number };
   replacedPermissionCount?: number;
   replacedPermissionDays?: string;
+  restoredPermissionDays?: string;
 };
 
 const selectClassName = 'h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-10 text-sm font-medium text-foreground outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/35 disabled:cursor-not-allowed disabled:opacity-60';
@@ -84,6 +85,9 @@ export function StaffLeaveDialog({
   const [correcting, setCorrecting] = useState<LeavePeriod | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [history, setHistory] = useState<LeavePeriod[]>([]);
+  const [openEnded, setOpenEnded] = useState(false);
+  // The person whose history is wanted now: a slower answer for someone else is ignored.
+  const historyFor = useRef('');
 
   const current = periods?.find((period) => period.staffId === staffId && !period.returnedOn) || null;
   const staffName = staffOptions.find((option) => option.id === staffId)?.fullName;
@@ -99,13 +103,15 @@ export function StaffLeaveDialog({
   }, []);
 
   const loadHistory = useCallback(async (forStaffId: string) => {
-    if (!forStaffId) return setHistory([]);
+    historyFor.current = forStaffId;
+    setHistory([]);
+    if (!forStaffId) return;
     try {
       const response = await fetch(`/api/attendance/leave?staffId=${encodeURIComponent(forStaffId)}&history=1`, { cache: 'no-store' });
       const payload = await response.json().catch(() => []);
-      setHistory(Array.isArray(payload) ? payload : []);
+      if (historyFor.current === forStaffId) setHistory(Array.isArray(payload) ? payload : []);
     } catch {
-      setHistory([]);
+      if (historyFor.current === forStaffId) setHistory([]);
     }
   }, []);
 
@@ -121,8 +127,8 @@ export function StaffLeaveDialog({
     void loadPeriods();
   }, [initialStaffId, loadPeriods, open]);
 
-  // Fill the form for whoever is selected.
-  useEffect(() => {
+  // The form's normal state for whoever is selected (also after leaving a correction).
+  const resetForm = useCallback(() => {
     const key = getAccraDateKey();
     setStartDate(key);
     setEndDate(current?.endDate || key);
@@ -131,7 +137,13 @@ export function StaffLeaveDialog({
     setAction('return');
     setCorrecting(null);
     setConfirmRemove(false);
-  }, [staffId, current?.id, current?.endDate]);
+    setOpenEnded(false);
+  }, [current?.endDate]);
+
+  // Fill the form for whoever is selected.
+  useEffect(() => {
+    resetForm();
+  }, [staffId, current?.id, resetForm]);
 
   // Leave replaces any absence / late permissions already approved on its days; say so.
   function withReplaced(success: string) {
@@ -156,8 +168,7 @@ export function StaffLeaveDialog({
       if (!response.ok) throw new Error(body.error || 'Could not save leave.');
       await loadPeriods();
       await loadHistory(staffId);
-      setCorrecting(null);
-      setConfirmRemove(false);
+      resetForm();
       await onChanged?.();
       setMessage({ error: false, text: typeof success === 'string' ? success : success(body) });
     } catch (error) {
@@ -187,23 +198,30 @@ export function StaffLeaveDialog({
     }), withReplaced('End date updated.'));
   }
 
+  function restoredCopy(body: LeaveSaveResult) {
+    return body.restoredPermissionDays ? ` The permissions it had replaced are back on ${body.restoredPermissionDays}.` : '';
+  }
+
   function startCorrecting(period: LeavePeriod) {
     setCorrecting(period);
     setConfirmRemove(false);
     setMessage(null);
     setStartDate(period.startDate);
     setEndDate(period.endDate || period.startDate);
+    setOpenEnded(!period.endDate);
     setLeaveType(period.leaveType || 'annual');
   }
 
   function saveCorrection() {
     if (!correcting) return;
-    if (!startDate || !endDate || endDate < startDate) return setMessage({ error: true, text: 'The end date must be on or after the start date.' });
+    if (!startDate || (!openEnded && (!endDate || endDate < startDate))) {
+      return setMessage({ error: true, text: 'The end date must be on or after the start date.' });
+    }
     void submit(() => fetch(`/api/attendance/leave/${correcting.id}`, {
-      body: JSON.stringify({ correct: true, endDate, leaveType, startDate }),
+      body: JSON.stringify({ correct: true, endDate: openEnded ? null : endDate, leaveType, openEnded, startDate }),
       headers: { 'Content-Type': 'application/json' },
       method: 'PATCH',
-    }), withReplaced('Leave corrected. Its days are recalculated.'));
+    }), (body: LeaveSaveResult) => `${withReplaced('Leave corrected. Its days are recalculated.')(body)}${restoredCopy(body)}`);
   }
 
   function removeLeave() {
@@ -211,7 +229,7 @@ export function StaffLeaveDialog({
     if (!confirmRemove) return setConfirmRemove(true);
     void submit(
       () => fetch(`/api/attendance/leave/${correcting.id}`, { method: 'DELETE' }),
-      'Leave removed. Those days are charged as normal again.',
+      (body: LeaveSaveResult) => `Leave removed. Those days are charged as normal again.${restoredCopy(body)}`,
     );
   }
 
@@ -252,7 +270,15 @@ export function StaffLeaveDialog({
                 Fix the dates or type if they were entered wrong. Past days are recalculated.
               </p>
               <DateField label="From" value={startDate} onChange={setStartDate} />
-              <DateField label="To" value={endDate} onChange={setEndDate} />
+              {openEnded ? (
+                <div className="flex items-end text-sm text-muted-foreground">No end date</div>
+              ) : (
+                <DateField label="To" value={endDate} onChange={setEndDate} />
+              )}
+              <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                <input type="checkbox" checked={openEnded} onChange={(event) => setOpenEnded(event.target.checked)} />
+                No end date (till further notice)
+              </label>
               <div className="sm:col-span-2">
                 <Select label="Type" value={leaveType} onChange={setLeaveType}>
                   {STAFF_LEAVE_TYPES.map((type) => (
@@ -336,7 +362,7 @@ export function StaffLeaveDialog({
         <DialogFooter>
           {correcting ? (
             <>
-              <Button variant="ghost" onClick={() => { setCorrecting(null); setConfirmRemove(false); setMessage(null); }} disabled={submitting}>
+              <Button variant="ghost" onClick={() => { resetForm(); setMessage(null); }} disabled={submitting}>
                 Back
               </Button>
               <Button variant="outline" className="text-danger" onClick={removeLeave} disabled={submitting}>

@@ -16,13 +16,21 @@ import { writeAuditEvent } from '@/lib/audit';
 import { publishRealtime } from '@/lib/realtime';
 import { enforceRole } from '@/lib/auth/roles';
 import { getNonWorkdayLabel } from '@/lib/attendance';
-import { formatPermissionDays, leaveOverlapError } from '@/lib/staff-leave';
+import { formatPermissionDays, isExcuseOverlapError } from '@/lib/staff-leave';
 import { getLeaveAndDeactivationCoverage } from '@/lib/staff-leave-service';
 
 export const dynamic = 'force-dynamic';
 
 const VALID_TYPES = new Set(['late_arrival', 'absence']);
 const MAX_PERMISSION_DAYS = 62;
+
+function allCoveredMessage(name: string, leaveDates: string[], deactivatedDates: string[]) {
+  const parts = [
+    leaveDates.length > 0 ? `on leave on ${formatPermissionDays([...leaveDates].sort())}` : '',
+    deactivatedDates.length > 0 ? `deactivated on ${formatPermissionDays(deactivatedDates)}` : '',
+  ].filter(Boolean);
+  return `${name} is ${parts.join(' and ')}, so no permission can be added for those days`;
+}
 
 function optionalText(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -175,10 +183,7 @@ export async function POST(request: NextRequest) {
     const deactivatedDates = appliedDates.filter((day) => coverage(staffId, day) === 'deactivated');
     appliedDates = appliedDates.filter((day) => !coverage(staffId, day));
     if (appliedDates.length === 0) {
-      const why = leaveDates.length > 0
-        ? `${member.fullName} is on leave on ${formatPermissionDays(leaveDates)}, so no permission is needed`
-        : `${member.fullName} is deactivated on ${formatPermissionDays(deactivatedDates)}. Activate them first`;
-      return NextResponse.json({ error: why }, { status: 409 });
+      return NextResponse.json({ error: allCoveredMessage(member.fullName, leaveDates, deactivatedDates) }, { status: 409 });
     }
 
     const permissions = [];
@@ -216,7 +221,7 @@ export async function POST(request: NextRequest) {
             .returning();
       } catch (error) {
         // Leave or a deactivation recorded for this day meanwhile: skip it, keep the rest.
-        if (!leaveOverlapError(error)) throw error;
+        if (!isExcuseOverlapError(error)) throw error;
         leaveDates.push(permissionDate);
         continue;
       }
@@ -251,18 +256,12 @@ export async function POST(request: NextRequest) {
       reconciliations.push({ date: permissionDate, ...reconciliation });
     }
 
-    publishRealtime('dashboard', 'invalidate', { reason: 'attendance-permission' });
-    publishRealtime('notifications', 'invalidate', { reason: 'attendance-permission' });
-    publishRealtime('attendance', 'invalidate', { reason: 'attendance-permission' });
-    publishRealtime('entries', 'invalidate', { reason: 'attendance-permission' });
-    publishRealtime('payments', 'invalidate', { reason: 'attendance-permission', staffId });
-    publishRealtime('staff-penalty-history', 'invalidate', { reason: 'attendance-permission', staffId });
-    publishRealtime('audit-trail', 'invalidate', { reason: 'attendance-permission' });
-
     const permission = permissions[0];
     if (!permission) {
-      return NextResponse.json({ error: `${member.fullName} is on leave or deactivated on every selected day` }, { status: 409 });
+      return NextResponse.json({ error: allCoveredMessage(member.fullName, leaveDates, deactivatedDates) }, { status: 409 });
     }
+    // Report only the days actually saved.
+    appliedDates = permissions.map((saved) => String(saved.date).slice(0, 10));
 
     // Editing a permission saved with the wrong date or person: the old one goes, and its day
     // is recalculated under the normal rules (unless the edit kept that same day and person).
@@ -300,6 +299,14 @@ export async function POST(request: NextRequest) {
         replacedPermission = { date: old.date, staffId: old.staffId };
       }
     }
+
+    publishRealtime('dashboard', 'invalidate', { reason: 'attendance-permission' });
+    publishRealtime('notifications', 'invalidate', { reason: 'attendance-permission' });
+    publishRealtime('attendance', 'invalidate', { reason: 'attendance-permission' });
+    publishRealtime('entries', 'invalidate', { reason: 'attendance-permission' });
+    publishRealtime('payments', 'invalidate', { reason: 'attendance-permission', staffId });
+    publishRealtime('staff-penalty-history', 'invalidate', { reason: 'attendance-permission', staffId });
+    publishRealtime('audit-trail', 'invalidate', { reason: 'attendance-permission' });
 
     return NextResponse.json({
       ...permission,

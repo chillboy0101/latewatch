@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
       actor,
       reason: 'approved-staff-leave',
     });
-    await auditReplacedPermissions({ actor, permissions: replacedPermissions, staffId, staffName: member.fullName });
+    await auditReplacedPermissions({ actor, leaveId: period.id, permissions: replacedPermissions, staffName: member.fullName });
     // Leave recorded after the fact: clear the unpaid charges already made for those days.
     await recalculateDaysAfterLeaveChange(startDate, endDate);
     publishLeaveInvalidations('approved-staff-leave', staffId);
