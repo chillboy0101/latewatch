@@ -85,7 +85,7 @@ function resolveNextAttendanceState({ arrivalTime, existingLateness, permission,
 
   if (permissionClearsLatePenalty && permission) {
     const signOutPenalty = didNotSignOut
-      ? computePenalty({ arrivalTime: null, didNotSignOut: true, isNssPersonnel: isNssPersonnel === true, isHoliday: false })
+      ? computePenalty({ arrivalTime: null, date: INCIDENT_DATE, didNotSignOut: true, isNssPersonnel: isNssPersonnel === true, isHoliday: false })
       : { amount: 0, reason: '' };
     const pardonReason = approvedLateArrivalReason(permission);
 
@@ -98,7 +98,7 @@ function resolveNextAttendanceState({ arrivalTime, existingLateness, permission,
     };
   }
 
-  const penalty = computePenalty({ arrivalTime, didNotSignOut, isNssPersonnel: isNssPersonnel === true, isHoliday: false });
+  const penalty = computePenalty({ arrivalTime, date: INCIDENT_DATE, didNotSignOut, isNssPersonnel: isNssPersonnel === true, isHoliday: false });
 
   return {
     amount: penalty.amount,

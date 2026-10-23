@@ -42,7 +42,9 @@ export function isOnTimeCheckIn(value: string | null | undefined) {
 // The GHC 2 no-sign-out charge was dropped from this day on; earlier days keep it.
 export const NO_SIGN_OUT_CHARGE_END_DATE = '2026-10-12';
 
+// A missing or malformed date keeps the charge (fails closed) rather than silently dropping it.
 export function chargesNoSignOut(dateKey: string) {
+  if (typeof dateKey !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return true;
   return dateKey < NO_SIGN_OUT_CHARGE_END_DATE;
 }
 
