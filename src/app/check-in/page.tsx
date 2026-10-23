@@ -1034,7 +1034,7 @@ export default function CheckInPage() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Check-in failed');
 
-      setStatus((current) => withChargeStatus(body, current));
+      setStatus(body);
       setMessage({
         type: 'success',
         text: body.signedOut
@@ -1218,7 +1218,7 @@ export default function CheckInPage() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Could not request device transfer');
 
-      setStatus((current) => withChargeStatus(body, current));
+      setStatus(body);
       setMessage({ type: 'success', text: 'Device transfer request sent. Ask an admin to approve it.' });
     } catch (error) {
       console.warn('Device transfer request could not complete:', error);
@@ -1516,14 +1516,6 @@ export default function CheckInPage() {
       </div>
     </main>
   );
-}
-
-// Check-in and transfer replies don't carry the charge status; keep the one from the last status load.
-function withChargeStatus(next: CheckInStatus, current: CheckInStatus | null): CheckInStatus {
-  const chargeStatus = next.staff?.chargeStatus ?? current?.staff?.chargeStatus;
-  return next.staff && chargeStatus && next.staff.id === current?.staff?.id
-    ? { ...next, staff: { ...next.staff, chargeStatus } }
-    : next;
 }
 
 function PenaltyHistoryDialog({
