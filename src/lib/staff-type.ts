@@ -154,16 +154,25 @@ export function staffReturnDateError(input: {
   return null;
 }
 
-// The day someone's current type began, from their changes; null when they've had it from the start.
-// Time away in between doesn't restart it (special → away → special keeps the first date).
+// Days before someone's first change keep the type they had, from any date in the past.
+export const HISTORY_START = '2000-01-01';
+
+function chargedAs(type: StaffTypeOnDate) {
+  return !flagsForStaffType(type).isAttendanceOnly;
+}
+
+// The day someone stopped being charged, from their changes; null when they never were (or when the
+// history disagrees with their current type). Time away and moves between uncharged types don't
+// restart it (intern → special keeps the intern start).
 export function currentStaffTypeSince(changes: StaffTypeChange[] | undefined, current: StaffType) {
+  const typed = sortStaffTypeChanges(changes || []).filter((change) => change.staffType !== 'away').reverse();
+  if (typed.length === 0 || typed[0].staffType !== current || chargedAs(current)) return null;
   let since: string | null = null;
-  for (const change of [...sortStaffTypeChanges(changes || [])].reverse()) {
-    if (change.staffType === 'away') continue;
-    if (change.staffType !== current) break;
+  for (const change of typed) {
+    if (!isStaffType(change.staffType) || chargedAs(change.staffType)) break;
     since = change.effectiveFrom;
   }
-  return since && since > '2000-01-01' ? since : null;
+  return since && since > HISTORY_START ? since : null;
 }
 
 export interface StaffChargeStatus {
@@ -173,22 +182,19 @@ export interface StaffChargeStatus {
   staffType: StaffType;
 }
 
-// What a person's own pages say about charges: interns and special staff are never charged.
+// What a person's own pages say about charges, from the same rule the charges use.
 export function chargeStatusFor(member: StaffTypeFields, changes?: StaffTypeChange[]): StaffChargeStatus {
   const staffType = staffTypeOf(member);
   return {
-    charged: staffType === 'main' || staffType === 'nss',
+    charged: chargedAs(staffType),
     label: STAFF_TYPE_LABELS[staffType],
     since: currentStaffTypeSince(changes, staffType),
     staffType,
   };
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
 function formatDayMonthYear(dateKey: string) {
-  const [year, month, day] = dateKey.split('-').map(Number);
-  return `${day} ${MONTHS[month - 1]} ${year}`;
+  return new Date(`${dateKey}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC', year: 'numeric' });
 }
 
 // The line at the top of their penalty history, or null for people who are charged.

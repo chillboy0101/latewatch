@@ -509,6 +509,8 @@ export async function GET(request: NextRequest) {
       getHolidayForDate(clock.dateKey),
     ]);
     const isWeekend = isWeekendDate(clock.dateKey);
+    // Runs alongside the lookups below; it never throws (no badge if it fails).
+    const chargeStatusLoad = member ? getStaffChargeStatus(member) : Promise.resolve(undefined);
     const permission = member
       ? await getApprovedAttendancePermission(member.id, clock.dateKey)
       : null;
@@ -614,7 +616,7 @@ export async function GET(request: NextRequest) {
       networkConfigured: Boolean(office),
       permission: serializePermission(permission),
       staff: member
-        ? { chargeStatus: await getStaffChargeStatus(member), email: member.email, fullName: member.fullName, id: member.id }
+        ? { chargeStatus: await chargeStatusLoad, email: member.email, fullName: member.fullName, id: member.id }
         : null,
       time: clock.timeKey,
       transferRequest: statusTransfer
@@ -762,6 +764,8 @@ export async function POST(request: NextRequest) {
       );
     }
     const staffMember = member;
+    // Every reply carries the not-charged badge; runs alongside the checks below and never throws.
+    const chargeStatusLoad = getStaffChargeStatus(staffMember);
 
     if (!deviceToken || !deviceHash) {
       return block('DEVICE_REQUIRED', 'This browser could not be registered as your attendance device. Refresh the page and try again.', 403, staffMember.id);
@@ -949,7 +953,7 @@ export async function POST(request: NextRequest) {
           locationPolicy: responseLocationPolicy,
           networkConfigured: true,
           permission: serializePermission(permission),
-          staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
+          staff: { chargeStatus: await chargeStatusLoad, email: staffMember.email, fullName: staffMember.fullName, id: staffMember.id },
           time: clock.timeKey,
           transferRequest: {
             id: transferRequest.id,
@@ -1040,7 +1044,7 @@ export async function POST(request: NextRequest) {
               locationPolicy: responseLocationPolicy,
               networkConfigured: true,
               permission: serializePermission(permission),
-              staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
+              staff: { chargeStatus: await chargeStatusLoad, email: staffMember.email, fullName: staffMember.fullName, id: staffMember.id },
               time: clock.timeKey,
             }),
           });
@@ -1107,7 +1111,7 @@ export async function POST(request: NextRequest) {
               locationPolicy: responseLocationPolicy,
               networkConfigured: true,
               permission: serializePermission(permission),
-              staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
+              staff: { chargeStatus: await chargeStatusLoad, email: staffMember.email, fullName: staffMember.fullName, id: staffMember.id },
               time: clock.timeKey,
             }),
           });
@@ -1184,7 +1188,7 @@ export async function POST(request: NextRequest) {
             locationPolicy: responseLocationPolicy,
             networkConfigured: true,
             permission: serializePermission(permission),
-            staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
+            staff: { chargeStatus: await chargeStatusLoad, email: staffMember.email, fullName: staffMember.fullName, id: staffMember.id },
             time: clock.timeKey,
           }),
         });
@@ -1238,7 +1242,7 @@ export async function POST(request: NextRequest) {
           locationPolicy: responseLocationPolicy,
           networkConfigured: true,
           permission: serializePermission(permission),
-          staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
+          staff: { chargeStatus: await chargeStatusLoad, email: staffMember.email, fullName: staffMember.fullName, id: staffMember.id },
           time: clock.timeKey,
         }),
       });
@@ -1364,7 +1368,7 @@ export async function POST(request: NextRequest) {
           locationPolicy: responseLocationPolicy,
           networkConfigured: true,
           permission: serializePermission(permission),
-          staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
+          staff: { chargeStatus: await chargeStatusLoad, email: staffMember.email, fullName: staffMember.fullName, id: staffMember.id },
           time: clock.timeKey,
         }),
       });
@@ -1494,7 +1498,7 @@ export async function POST(request: NextRequest) {
         locationPolicy: responseLocationPolicy,
         networkConfigured: true,
         permission: serializePermission(permission),
-        staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
+        staff: { chargeStatus: await chargeStatusLoad, email: staffMember.email, fullName: staffMember.fullName, id: staffMember.id },
         time: clock.timeKey,
       }),
     });
