@@ -10,7 +10,7 @@ import { deleteUnsettledLatenessEntry, updateUnsettledLatenessEntry } from '@/li
 import { attendanceStatusFor } from '@/lib/manual-attendance-correction';
 import { penaltyFlagsOn } from '@/lib/staff-type';
 import { getStaffTypeChanges } from '@/lib/staff-type-history';
-import { computePenalty, NO_SHOW_SIGN_IN_AMOUNT, NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/penalty-calculator';
+import { chargesNoSignOut, computePenalty, NO_SHOW_SIGN_IN_AMOUNT, NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/penalty-calculator';
 import { publishRealtime } from '@/lib/realtime';
 import { getFinanciallyProtectedLeaveEntryIds } from '@/lib/staff-leave-service';
 
@@ -49,13 +49,14 @@ function approvedAbsenceReason(permission: PermissionRecord) {
 
 function resolveNextAttendanceState(input: {
   arrivalTime: string | null;
+  date: string;
   existingLateness: LatenessRecord | null;
   noShowSignInWaived: boolean;
   permission: PermissionRecord | null;
   staffMember: StaffRef;
 }) {
   const arrivalTime = input.arrivalTime;
-  const didNotSignOut = input.existingLateness?.didNotSignOut === true;
+  const didNotSignOut = input.existingLateness?.didNotSignOut === true && chargesNoSignOut(input.date);
 
   if (
     input.permission?.generalPardonType === 'absence' ||
@@ -109,6 +110,7 @@ function resolveNextAttendanceState(input: {
     const signOutPenalty = didNotSignOut
       ? computePenalty({
           arrivalTime: null,
+          date: input.date,
           didNotSignOut: true,
           isNssPersonnel: input.staffMember.isNssPersonnel === true,
           isHoliday: false,
@@ -125,13 +127,14 @@ function resolveNextAttendanceState(input: {
       reason: signOutPenalty.amount > 0
         ? `${signOutPenalty.reason}; ${pardonReason}`
         : pardonReason,
-      // From the time, never the fee: a GHC 2 no sign-out doesn't make the day "late".
+      // From the time, never the fee: a no sign-out doesn't make the day "late".
       status: attendanceStatusFor({ arrivalTime, lateArrivalApproved: true }),
     };
   }
 
   const penalty = computePenalty({
     arrivalTime,
+    date: input.date,
     didNotSignOut,
     isNssPersonnel: input.staffMember.isNssPersonnel === true,
     isHoliday: false,
@@ -181,6 +184,7 @@ export async function reconcileAttendanceForPermission(input: {
   const typeChanges = await getStaffTypeChanges([input.staffMember.id]);
   const next = resolveNextAttendanceState({
     arrivalTime,
+    date: input.date,
     existingLateness: existingLateness || null,
     noShowSignInWaived: attendance?.noShowSignInWaived === true,
     permission: input.activePermission,

@@ -472,6 +472,7 @@ function EntriesPageContent() {
 
     const penalty = computePenalty({
       arrivalTime: normalizedEntry.arrivalTime || null,
+      date: format(selectedDate, 'yyyy-MM-dd'),
       didNotSignOut,
       isAttendanceOnly: (member?.chargeOnDate ?? member)?.isAttendanceOnly === true,
       isNssPersonnel: (member?.chargeOnDate ?? member)?.isNssPersonnel === true,

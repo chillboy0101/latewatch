@@ -39,11 +39,19 @@ export function isOnTimeCheckIn(value: string | null | undefined) {
   return MINUTE_TIME_PATTERN.test(time) && time <= WORKDAY_START_TIME;
 }
 
+// The GHC 2 no-sign-out charge was dropped from this day on; earlier days keep it.
+export const NO_SIGN_OUT_CHARGE_END_DATE = '2026-10-12';
+
+export function chargesNoSignOut(dateKey: string) {
+  return dateKey < NO_SIGN_OUT_CHARGE_END_DATE;
+}
+
 /**
  * The no-sign-out charge belongs to a finished day: any past day, or today once the
  * no-sign-out cut-off has passed. Before that a missing sign-out is simply "not yet".
  */
 export function isNoSignOutChargeDue(dateKey: string, todayKey: string, nowTimeKey: string) {
+  if (!chargesNoSignOut(dateKey)) return false;
   if (dateKey < todayKey) return true;
   if (dateKey > todayKey) return false;
   return shouldAlertNoSignOut(nowTimeKey);

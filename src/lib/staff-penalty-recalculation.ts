@@ -1,5 +1,6 @@
 import { type AttendanceDayStatus, resolveManualPenalty } from '@/lib/manual-attendance-correction';
 import {
+  chargesNoSignOut,
   NO_SHOW_SIGN_IN_EFFECTIVE_DATE,
   NO_SHOW_SIGN_IN_REASON,
   NO_SHOW_SIGN_IN_WAIVED_REASON,
@@ -121,6 +122,7 @@ function shouldApplyNoSignOutPenalty(input: {
   signOutKnown: boolean;
   signOutTime: string | null;
 }) {
+  if (!chargesNoSignOut(input.date)) return false;
   if (!input.signOutKnown) return input.existingDidNotSignOut;
   if (input.noSignOutWaived) return false;
   if (!input.checkInTime || input.signOutTime) return false;
@@ -133,6 +135,7 @@ function shouldApplyNoSignOutPenalty(input: {
 // Same rules as the sync and manual corrections, so changing a staff flag can't disagree with them.
 function resolvePenaltyState(input: {
   arrivalTime: string | null;
+  date: string;
   didNotSignOut: boolean;
   isAttendanceOnly: boolean;
   isNssPersonnel: boolean;
@@ -142,6 +145,7 @@ function resolvePenaltyState(input: {
   const penalty = resolveManualPenalty({
     activePermission: input.permission,
     arrivalTime: input.arrivalTime,
+    date: input.date,
     didNotSignOut: input.didNotSignOut,
     isAttendanceOnly: input.isAttendanceOnly,
     isNssPersonnel: input.isNssPersonnel,
@@ -242,6 +246,7 @@ export function planStaffPenaltyRecalculation(input: {
     });
     const next = resolvePenaltyState({
       arrivalTime,
+      date,
       didNotSignOut,
       ...flagsOn(date),
       noSignIn,
@@ -320,6 +325,7 @@ export function planStaffPenaltyRecalculation(input: {
     if (leaveDates.has(date) || holidayDates.has(date)) continue;
     const next = resolvePenaltyState({
       arrivalTime: normalizeTime(entry.arrivalTime),
+      date,
       didNotSignOut: entry.didNotSignOut === true,
       ...flagsOn(date),
       noSignIn: entry.reason === NO_SHOW_SIGN_IN_REASON,

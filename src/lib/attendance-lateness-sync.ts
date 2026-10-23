@@ -21,6 +21,7 @@ import {
 } from '@/lib/lateness-entry-writes';
 import { NO_SHOW_SIGN_IN_CUTOFF_TIME, shouldAlertNoSignOut } from '@/lib/work-hours';
 import {
+  chargesNoSignOut,
   NO_SHOW_SIGN_IN_EFFECTIVE_DATE,
   NO_SHOW_SIGN_IN_REASON,
   NO_SHOW_SIGN_IN_WAIVED_REASON,
@@ -115,6 +116,7 @@ function shouldApplyNoSignOutPenalty(input: {
   noSignOutWaived: boolean;
   signOutTime: string | null;
 }) {
+  if (!chargesNoSignOut(input.date)) return false;
   if (input.noSignOutWaived) return false;
   if (!input.checkInTime || input.signOutTime) return false;
   if (input.existingDidNotSignOut) return true;
@@ -247,6 +249,7 @@ export async function applyNoShowSignInPenaltiesForDate(dateKey: string) {
     const penalty = resolveManualPenalty({
       activePermission: permission || null,
       arrivalTime: null,
+      date: dateKey,
       didNotSignOut: false,
       isAttendanceOnly: false,
       isNssPersonnel: flags.isNssPersonnel,
@@ -421,6 +424,7 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
       const penalty = resolveManualPenalty({
         activePermission: permission || null,
         arrivalTime: null,
+        date,
         didNotSignOut: false,
         isAttendanceOnly: false,
         isNssPersonnel: flags.isNssPersonnel,
@@ -590,6 +594,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
       : resolveManualPenalty({
         activePermission,
         arrivalTime,
+        date,
         didNotSignOut,
         ...penaltyFlagsOn(date, typeChanges.get(row.staffId), row),
       });
@@ -741,6 +746,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     const penalty = resolveManualPenalty({
       activePermission,
       arrivalTime: normalizeTimeKey(existing.arrivalTime),
+      date,
       didNotSignOut: existing.didNotSignOut === true,
       ...flags,
     });

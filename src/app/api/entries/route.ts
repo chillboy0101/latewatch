@@ -611,6 +611,7 @@ export async function POST(request: NextRequest) {
       const penalty = resolveManualPenalty({
         activePermission,
         arrivalTime,
+        date,
         didNotSignOut,
         ...penaltyFlagsFor(entry.staffId),
       });

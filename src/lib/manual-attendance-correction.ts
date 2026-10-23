@@ -1,11 +1,11 @@
-import { computePenalty } from '@/lib/penalty-calculator';
+import { chargesNoSignOut, computePenalty } from '@/lib/penalty-calculator';
 import { formatAbsencePermissionReason, getPermissionWindowBounds, isPermissionWindowActive } from '@/lib/attendance-permissions';
 import { isOnTimeCheckIn, WORKDAY_START_TIME } from '@/lib/work-hours';
 
 export type AttendanceDayStatus = 'absent' | 'excused' | 'late' | 'present';
 
 /**
- * A day's status comes from the clock and permissions, never from the fee: a GHC 2 no-sign-out
+ * A day's status comes from the clock and permissions, never from the fee: a no-sign-out
  * doesn't make an 08:10 arrival late, and NSS or attendance-only staff who arrive late are late
  * even when their fee is smaller or nil. An approved late arrival is excused, as on Entries.
  */
@@ -108,11 +108,14 @@ function approvedAbsenceReason(permission: ManualPermissionLike) {
 export function resolveManualPenalty(input: {
   activePermission?: ManualPermissionLike | null;
   arrivalTime: string | null;
+  date: string;
   didNotSignOut: boolean;
   isAttendanceOnly?: boolean;
   isNssPersonnel?: boolean;
   noSignIn?: boolean;
 }) {
+  // A missed sign-out is only an issue on days it was still charged.
+  const didNotSignOut = input.didNotSignOut && chargesNoSignOut(input.date);
   if (
     input.activePermission?.generalPardonType === 'absence' ||
     (input.activePermission?.status === 'approved' &&
@@ -143,9 +146,10 @@ export function resolveManualPenalty(input: {
   );
 
   if (permissionClearsLatePenalty && input.activePermission) {
-    const signOutPenalty = input.didNotSignOut
+    const signOutPenalty = didNotSignOut
       ? computePenalty({
           arrivalTime: null,
+          date: input.date,
           didNotSignOut: true,
           isAttendanceOnly: input.isAttendanceOnly,
           isNssPersonnel: input.isNssPersonnel,
@@ -156,7 +160,7 @@ export function resolveManualPenalty(input: {
 
     return {
       amount: signOutPenalty.amount,
-      didNotSignOut: input.didNotSignOut,
+      didNotSignOut,
       reason: signOutPenalty.amount > 0 ? `${signOutPenalty.reason}; ${permissionReason}` : permissionReason,
       status: attendanceStatusFor({ arrivalTime: input.arrivalTime, lateArrivalApproved: true }),
     };
@@ -164,7 +168,8 @@ export function resolveManualPenalty(input: {
 
   const penalty = computePenalty({
     arrivalTime: input.arrivalTime,
-    didNotSignOut: input.didNotSignOut,
+    date: input.date,
+    didNotSignOut,
     isAttendanceOnly: input.isAttendanceOnly,
     isNssPersonnel: input.isNssPersonnel,
     isHoliday: false,
@@ -173,7 +178,7 @@ export function resolveManualPenalty(input: {
 
   return {
     amount: penalty.amount,
-    didNotSignOut: input.didNotSignOut,
+    didNotSignOut,
     reason: penalty.reason || null,
     status: attendanceStatusFor({ arrivalTime: input.arrivalTime }),
   };
@@ -196,6 +201,7 @@ export function resolveManualAttendanceCorrection(input: {
   const nextPenalty = resolveManualPenalty({
     activePermission: input.activePermission,
     arrivalTime: nextArrivalTime,
+    date: input.date,
     didNotSignOut: input.didNotSignOut,
     isAttendanceOnly: input.isAttendanceOnly,
     isNssPersonnel: input.isNssPersonnel,
