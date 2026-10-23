@@ -410,7 +410,7 @@ function EntriesPageContent() {
     const isExcusedAbsence = entry.isExcusedAbsence === true;
     const noShowSignInWaived = hasSignInTime || isExcusedAbsence ? false : entry.noShowSignInWaived;
     const noSignOutWaived = hasSignOutTime || isExcusedAbsence ? false : entry.noSignOutWaived;
-    // From 12 Oct 2026 a missed sign-out is no longer charged, so it isn't shown as one either.
+    // From 1 Oct 2026 a missed sign-out is no longer charged, so it isn't shown as one either.
     const didNotSignOut = hasSignOutTime || isExcusedAbsence || noSignOutWaived || noShowSignInWaived
       || !chargesNoSignOut(format(selectedDate, 'yyyy-MM-dd'))
       ? false
@@ -1159,7 +1159,7 @@ function EntriesPageContent() {
                             title={signOutField.title}
                           />
                           {/* No sign-in means no sign-out charge, so nothing to waive there. */}
-                          {/* No new waivers once the charge ended (12 Oct 2026); a saved waiver stays removable. */}
+                          {/* No new waivers once the charge ended (1 Oct 2026); a saved waiver stays removable. */}
                           {!entry.signOutTime && Boolean(entry.arrivalTime) && !entry.isExcusedAbsence && !isOnLeave && (entry.noSignOutWaived || chargesNoSignOut(format(selectedDate, 'yyyy-MM-dd'))) && (
                             <Button
                               type="button"
