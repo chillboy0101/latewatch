@@ -45,6 +45,8 @@ export const NO_SIGN_OUT_CHARGE_END_DATE = '2026-10-12';
 // A missing or malformed date keeps the charge (fails closed) rather than silently dropping it.
 export function chargesNoSignOut(dateKey: string) {
   if (typeof dateKey !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return true;
+  const day = new Date(`${dateKey}T00:00:00Z`);
+  if (Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== dateKey) return true;
   return dateKey < NO_SIGN_OUT_CHARGE_END_DATE;
 }
 

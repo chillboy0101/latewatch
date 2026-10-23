@@ -1159,7 +1159,8 @@ function EntriesPageContent() {
                             title={signOutField.title}
                           />
                           {/* No sign-in means no sign-out charge, so nothing to waive there. */}
-                          {!entry.signOutTime && Boolean(entry.arrivalTime) && !entry.isExcusedAbsence && !isOnLeave && (
+                          {/* No new waivers once the charge ended (12 Oct 2026); a saved waiver stays removable. */}
+                          {!entry.signOutTime && Boolean(entry.arrivalTime) && !entry.isExcusedAbsence && !isOnLeave && (entry.noSignOutWaived || chargesNoSignOut(format(selectedDate, 'yyyy-MM-dd'))) && (
                             <Button
                               type="button"
                               size="sm"
