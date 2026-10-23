@@ -60,3 +60,10 @@ test('check-in page does not expose temporary Anna-Lisa permission buttons', () 
   assert.doesNotMatch(source, /requestLocationAccess/);
   assert.doesNotMatch(source, /requestNotificationAccess/);
 });
+
+test('check-in card shows a Penalty row only when there is a charge', () => {
+  const source = fs.readFileSync(checkInPagePath, 'utf8');
+  assert.doesNotMatch(source, /\{!status\?\.attendance && \(\s*<div[^>]*>\s*<span[^>]*>Penalty<\/span>/);
+  assert.equal((source.match(/>Penalty<\/span>/g) || []).length, 1);
+  assert.match(source, /status\?\.attendance && Number\(status\.attendance\.computedAmount \|\| 0\) > 0 && \(/);
+});

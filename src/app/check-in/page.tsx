@@ -1437,12 +1437,6 @@ export default function CheckInPage() {
                       {status.attendance.reason}
                     </div>
                   )}
-                  {!status?.attendance && (
-                    <div className="flex flex-1 items-center justify-between gap-3 border-t border-border">
-                      <span className="text-sm text-muted-foreground">Penalty</span>
-                      <span className="font-mono text-xl font-semibold tabular-nums">-</span>
-                    </div>
-                  )}
                 </div>
 
                 <ReminderPrompt
