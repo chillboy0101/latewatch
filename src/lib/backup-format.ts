@@ -61,16 +61,16 @@ export type BackupManifest = {
   totalRows: number;
 };
 
-// A backup's id: its UTC time to the second (2026-10-23T204400Z). Backups made before ids existed
-// (one per day) use their date (2026-10-23).
-const ID_PATTERN = /^\d{4}-\d{2}-\d{2}(T\d{6}Z)?$/;
+// A backup's id: its UTC time to the millisecond (2026-10-23T204400123Z). Backups made before ids
+// existed (one per day) use their date (2026-10-23).
+const ID_PATTERN = /^\d{4}-\d{2}-\d{2}(T\d{6}(\d{3})?Z)?$/;
 
 export function isBackupId(value: unknown): value is string {
   return typeof value === 'string' && ID_PATTERN.test(value);
 }
 
 export function newBackupId(now: Date) {
-  return now.toISOString().replace(/[-:]/g, '').replace(/^(\d{4})(\d{2})(\d{2})T(\d{6})\.\d{3}Z$/, '$1-$2-$3T$4Z');
+  return now.toISOString().replace(/[-:]/g, '').replace(/^(\d{4})(\d{2})(\d{2})T(\d{6})\.(\d{3})Z$/, '$1-$2-$3T$4$5Z');
 }
 
 export function backupDateOfId(id: string) {

@@ -7,7 +7,6 @@ import {
   BACKUP_FORMAT_V1,
   BACKUP_FORMAT_V2,
   BACKUP_PREFIX,
-  backupDateOfId,
   backupIdFromManifestKey,
   backupKeysForId,
   backupSourceOf,
@@ -37,6 +36,8 @@ function bucket() {
 }
 
 export async function createDataBackup(input: { createdBy: string; source: BackupSource }) {
+  // A safety copy before a restore never prunes: the backup being restored may be the old one kept
+  // only because it was the newest.
   const now = new Date();
   const id = newBackupId(now);
   const createdAt = now.toISOString();
@@ -60,16 +61,18 @@ export async function createDataBackup(input: { createdBy: string; source: Backu
   };
 
   const r2 = getR2Client();
-  await r2.send(new PutObjectCommand({ Body: body, Bucket: bucket(), ContentType: 'application/gzip', Key: backupKey }));
+  // IfNoneMatch: two backups in the same millisecond must not overwrite each other.
+  await r2.send(new PutObjectCommand({ Body: body, Bucket: bucket(), ContentType: 'application/gzip', IfNoneMatch: '*', Key: backupKey }));
   // The manifest goes last: a backup only lists once its file is fully stored.
   await r2.send(new PutObjectCommand({
     Body: JSON.stringify(manifest, null, 2),
     Bucket: bucket(),
     ContentType: 'application/json',
+    IfNoneMatch: '*',
     Key: manifestKey,
   }));
 
-  const removed = await pruneOldBackups(getAccraDateKey(now));
+  const removed = input.source === 'before-restore' ? 0 : await pruneOldBackups(getAccraDateKey(now));
   return { manifest, removed };
 }
 
@@ -93,8 +96,9 @@ async function pruneOldBackups(today: string) {
   const expired = expiredBackupIds(await listBackupIds(), today);
   for (const id of expired) {
     const { backupKey, manifestKey } = backupKeysForId(id);
-    await r2.send(new DeleteObjectCommand({ Bucket: bucket(), Key: manifestKey }));
+    // File first: if that fails the manifest stays, so the next prune retries it.
     await r2.send(new DeleteObjectCommand({ Bucket: bucket(), Key: backupKey }));
+    await r2.send(new DeleteObjectCommand({ Bucket: bucket(), Key: manifestKey }));
   }
   return expired.length;
 }
@@ -167,5 +171,5 @@ export async function readBackupTables(id: string) {
       ? v1RowsToColumns(name, rows as Record<string, unknown>[])
       : rows as Record<string, unknown>[];
   }
-  return { date: backupDateOfId(id), manifest, tables };
+  return { manifest, tables };
 }

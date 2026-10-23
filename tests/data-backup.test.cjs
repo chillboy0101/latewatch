@@ -15,12 +15,13 @@ const backupCore = require('../src/lib/data-backup-core.ts');
 
 test('each backup has its own id and file, so two backups on one day no longer overwrite each other', () => {
   const id = format.newBackupId(new Date('2026-10-23T20:44:05.123Z'));
-  assert.equal(id, '2026-10-23T204405Z');
+  assert.equal(id, '2026-10-23T204405123Z');
   assert.deepEqual(format.backupKeysForId(id), {
-    backupKey: 'backups/latewatch-2026-10-23T204405Z.json.gz',
-    manifestKey: 'backups/latewatch-2026-10-23T204405Z.manifest.json',
+    backupKey: 'backups/latewatch-2026-10-23T204405123Z.json.gz',
+    manifestKey: 'backups/latewatch-2026-10-23T204405123Z.manifest.json',
   });
-  assert.equal(format.backupIdFromManifestKey('backups/latewatch-2026-10-23T204405Z.manifest.json'), id);
+  assert.equal(format.backupIdFromManifestKey('backups/latewatch-2026-10-23T204405123Z.manifest.json'), id);
+  assert.equal(format.isBackupId('2026-10-23T204405Z'), true);
   // Backups made before ids existed are still found.
   assert.equal(format.backupIdFromManifestKey('backups/latewatch-2026-10-18.manifest.json'), '2026-10-18');
   assert.equal(format.backupIdFromManifestKey('backups/latewatch-2026-10-18.json.gz'), null);
@@ -70,6 +71,13 @@ test('old (v1) backups map field names back to column names', () => {
   const [row] = core.v1RowsToColumns('lateness_entry', [{ computedAmount: '10.00', id: 'x', staffId: 'y' }]);
   assert.deepEqual(row, { computed_amount: '10.00', id: 'x', staff_id: 'y' });
   assert.throws(() => core.v1RowsToColumns('nope', []), /unknown table/);
+  // Backups from before staff types get the type their flags mean.
+  assert.deepEqual(core.withStaffType([
+    { id: 'a', is_attendance_only: true, is_nss_personnel: false },
+    { id: 'b', is_attendance_only: false, is_nss_personnel: true },
+    { id: 'c', is_attendance_only: false, is_nss_personnel: false },
+    { id: 'd', is_attendance_only: true, staff_type: 'intern' },
+  ]).map((row) => row.staff_type), ['special', 'nss', 'main', 'intern']);
 });
 
 test('the backup file is gzipped JSON with a checksum, tables spliced in as written', () => {
@@ -87,6 +95,8 @@ test('restore runs in one transaction: rolls back on any error and re-checks eve
   assert.match(source, /await client\.query\('BEGIN'\);/);
   assert.match(source, /catch \(error\) \{\s*await client\.query\('ROLLBACK'\)/);
   assert.match(source, /pg_try_advisory_xact_lock/);
+  assert.match(source, /LOCK TABLE \$\{order\.map\(quoteIdent\)\.join\(', '\)\} IN ACCESS EXCLUSIVE MODE/);
+  assert.match(source, /table === 'staff' \? withStaffType\(rows\) : rows/);
   assert.match(source, /DISABLE TRIGGER USER[\s\S]*ENABLE TRIGGER USER/);
   assert.match(source, /expected \$\{expected\} rows after restore/);
   // Check-in attempts (never backed up) are unlinked, not deleted.
@@ -95,6 +105,9 @@ test('restore runs in one transaction: rolls back on any error and re-checks eve
   assert.match(restore, /readBackupTables\(input\.id\);\s*const \{ manifest: safety \} = await createDataBackup\(\{[^}]*source: 'before-restore' \}\);\s*const restored = await withDbClient/);
   const backup = read('src', 'lib', 'data-backup.ts');
   assert.match(backup, /sha256Hex\(body\) !== manifest\.sha256/);
+  // The safety copy never prunes (it could remove the very backup being restored).
+  assert.match(backup, /input\.source === 'before-restore' \? 0 : await pruneOldBackups/);
+  assert.equal((backup.match(/IfNoneMatch: '\*'/g) || []).length, 2);
   assert.match(read('src', 'lib', 'data-backup-core.ts'), /BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY/);
 });
 

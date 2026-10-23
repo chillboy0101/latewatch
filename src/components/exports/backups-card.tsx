@@ -120,7 +120,7 @@ export function BackupsCard() {
       if (!response.ok) throw new Error(body.error || 'Restore failed. Nothing was changed.');
       const records = Object.values(body.restored as Record<string, number>).reduce((sum, count) => sum + count, 0);
       const kept = Array.isArray(body.keptAsIs) && body.keptAsIs.length > 0
-        ? ' Staff type history and deactivation periods were not in this older backup, so they were kept as they are.'
+        ? ' This older backup has no staff type history or deactivation periods, so those were kept as they are.'
         : '';
       setMessage({
         error: false,
@@ -177,13 +177,15 @@ export function BackupsCard() {
           <p className="text-sm text-muted-foreground">No backups yet.</p>
         ) : (
           <ul className="divide-y divide-border rounded-md border border-border">
-            {backups.map((backup, index) => (
+            {backups.map((backup, index) => {
+              const change = rowChange(backups, index);
+              return (
               <li key={backup.id} className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-sm font-medium">{formatDisplayDateTime(backup.createdAt)}</p>
                   <p className="truncate text-xs text-muted-foreground">
                     {backup.totalRows.toLocaleString()} records
-                    {rowChange(backups, index) && ` (${rowChange(backups, index)})`}
+                    {change && ` (${change})`}
                     {' · '}{formatBackupSize(backup.sizeBytes)} · {SOURCE_LABELS[backup.source]}
                     {backup.source !== 'weekly' && ` · ${backup.createdBy}`}
                   </p>
@@ -205,7 +207,8 @@ export function BackupsCard() {
                   </Button>
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </div>
