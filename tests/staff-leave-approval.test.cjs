@@ -45,7 +45,12 @@ test('approving or extending leave replaces permissions on its days in one trans
     assert.match(route, /findInactivePeriodOverlap\(/, file);
     // Only the save itself is mapped to an overlap message; later failures stay real errors.
     assert.match(route, /\} catch \(error\) \{\n\s+const overlapMessage = leaveOverlapError\(error\);\n\s+if \(overlapMessage\) return NextResponse\.json\(\{ error: overlapMessage \}, \{ status: 409 \}\);\n\s+throw error;/, file);
-    assert.equal((route.match(/leaveOverlapError\(error\)/g) || []).length, 1, file);
+    // Every mapping sits right after a save and rethrows anything else.
+    assert.equal(
+      (route.match(/leaveOverlapError\(error\)/g) || []).length,
+      (route.match(/if \(overlapMessage\) return NextResponse\.json\(\{ error: overlapMessage \}, \{ status: 409 \}\);\n\s+throw error;/g) || []).length,
+      file,
+    );
   }
   // A return wins over an end date sent with it; only a real extension replaces permissions.
   assert.match(patch, /const extending = !returnedOn && Boolean\(endDate\);/);
@@ -84,4 +89,39 @@ test('permissions and general pardons skip days already on leave or deactivated,
   assert.match(page, /Skipped \$\{body\.skippedLeaveDays\}: already on leave\./);
   const service = read('src/lib/staff-leave-service.ts');
   assert.match(service, /if \(isStaffLeaveDate\(periods, staffId, date\)\) return 'leave';/);
+});
+
+test('a leave with wrong dates or type can be corrected or removed, and its days recalculated', () => {
+  const route = read('src/app/api/attendance/leave/[id]/route.ts');
+  // Correction: any leave (open or ended), new days take over permissions in one transaction.
+  assert.match(route, /if \(body\?\.correct === true\) return await correctLeave\(id, body, actorOf\(user\)\);/);
+  assert.match(route, /\.set\(\{ endDate, leaveType: leaveType as StaffLeaveType, startDate, updatedAt: new Date\(\) \}\)/);
+  assert.match(route, /deletePermissionsCoveredByLeave\(\{ endDate: coveredEnd, staffId, startDate \}\)/);
+  assert.match(route, /reason: 'staff-leave-corrected'/);
+  // Old range and new range are both recalculated.
+  assert.match(route, /before\.startDate < startDate \? before\.startDate : startDate,\n\s+laterKey\(oldEnd, coveredEnd\),/);
+  assert.match(route, /They were back at work on \$\{before\.returnedOn\}, so the leave must start before that\./);
+  // Removal: its days go back to normal and are recalculated; status rows can't be removed here.
+  assert.match(route, /export async function DELETE\(/);
+  assert.match(route, /reason: 'staff-leave-removed'/);
+  assert.match(route, /await recalculateDaysAfterLeaveChange\(before\.startDate, getEffectiveLeaveEndDate\(before\) \|\| getAccraDateKey\(\)\);/);
+  assert.equal((route.match(/ne\(staffLeavePeriod\.source, 'staff_status'\)/g) || []).length, 3);
+
+  const list = read('src/app/api/attendance/leave/route.ts');
+  assert.match(list, /url\.searchParams\.get\('history'\) === '1'/);
+  const dialog = read('src/components/attendance/staff-leave-dialog.tsx');
+  assert.match(dialog, /Correct this leave/);
+  assert.match(dialog, /Earlier leave/);
+  assert.match(dialog, /body: JSON\.stringify\(\{ correct: true, endDate, leaveType, startDate \}\)/);
+  assert.match(dialog, /\{confirmRemove \? 'Tap again to remove' : 'Remove leave'\}/);
+});
+
+test('editing a permission to another date or person removes the old one and recalculates its day', () => {
+  const route = read('src/app/api/attendance/permissions/route.ts');
+  assert.match(route, /const keptInPlace = old && permissions\.some\(\(saved\) => saved\.id === old\.id\);/);
+  assert.match(route, /if \(old && !keptInPlace\) \{\n\s+await db\.delete\(attendancePermission\)/);
+  assert.match(route, /reason: 'attendance-permission-corrected'/);
+  assert.match(route, /activePermission: null,/);
+  const page = read('src/app/attendance/overview/page.tsx');
+  assert.equal((page.match(/replacesPermissionId,/g) || []).length, 2);
 });
