@@ -153,3 +153,50 @@ export function staffReturnDateError(input: {
   }
   return null;
 }
+
+// The day someone's current type began, from their changes; null when they've had it from the start.
+// Time away in between doesn't restart it (special → away → special keeps the first date).
+export function currentStaffTypeSince(changes: StaffTypeChange[] | undefined, current: StaffType) {
+  let since: string | null = null;
+  for (const change of [...sortStaffTypeChanges(changes || [])].reverse()) {
+    if (change.staffType === 'away') continue;
+    if (change.staffType !== current) break;
+    since = change.effectiveFrom;
+  }
+  return since && since > '2000-01-01' ? since : null;
+}
+
+export interface StaffChargeStatus {
+  charged: boolean;
+  label: string;
+  since: string | null;
+  staffType: StaffType;
+}
+
+// What a person's own pages say about charges: interns and special staff are never charged.
+export function chargeStatusFor(member: StaffTypeFields, changes?: StaffTypeChange[]): StaffChargeStatus {
+  const staffType = staffTypeOf(member);
+  return {
+    charged: staffType === 'main' || staffType === 'nss',
+    label: STAFF_TYPE_LABELS[staffType],
+    since: currentStaffTypeSince(changes, staffType),
+    staffType,
+  };
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function formatDayMonthYear(dateKey: string) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return `${day} ${MONTHS[month - 1]} ${year}`;
+}
+
+// The line at the top of their penalty history, or null for people who are charged.
+// With no earlier charges there is nothing kept below, so that sentence is left out.
+export function notChargedNote(status: StaffChargeStatus | null | undefined, hasHistory = true) {
+  if (!status || status.charged) return null;
+  const who = status.staffType === 'intern' ? 'an intern' : 'special staff';
+  if (!status.since) return `As ${who} you are not charged.`;
+  const note = `Since ${formatDayMonthYear(status.since)} you're ${who} and are not charged.`;
+  return hasHistory ? `${note} Earlier charges and receipts are kept below.` : note;
+}

@@ -7,6 +7,7 @@ import { getAccraClock } from '@/lib/attendance';
 import { getSignedInStaff } from '@/lib/auth/signed-in-staff';
 import { summarizeLatenessPaymentReceipts } from '@/lib/lateness-payment-receipts';
 import { summarizeLatenessPaymentEntries, summarizePenaltyHistoryWeeks } from '@/lib/lateness-payments';
+import { getStaffChargeStatus } from '@/lib/staff-type-history';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,6 +66,7 @@ export async function GET() {
     });
 
     return NextResponse.json({
+      chargeStatus: await getStaffChargeStatus(member),
       currentWeek: history.currentWeek,
       receipts,
       staff: {

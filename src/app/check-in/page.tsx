@@ -22,6 +22,7 @@ import {
   type ReminderToggleConfirmation,
 } from '@/lib/push-reminder-toggle-confirmation';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
+import { notChargedNote, type StaffChargeStatus } from '@/lib/staff-type';
 import { getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 import { ModePicker } from '@/components/theme/mode-picker';
 import { ThemePicker } from '@/components/theme/theme-picker';
@@ -78,6 +79,7 @@ interface CheckInStatus {
     status: string;
   } | null;
   staff: {
+    chargeStatus?: StaffChargeStatus;
     id: string;
     fullName: string;
     email: string | null;
@@ -144,6 +146,7 @@ interface PenaltyHistoryWeek {
 }
 
 interface PenaltyHistoryResponse {
+  chargeStatus?: StaffChargeStatus;
   currentWeek: PenaltyHistoryWeek;
   receipts: PenaltyReceiptSummary[];
   staff: {
@@ -1031,7 +1034,7 @@ export default function CheckInPage() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Check-in failed');
 
-      setStatus(body);
+      setStatus((current) => withChargeStatus(body, current));
       setMessage({
         type: 'success',
         text: body.signedOut
@@ -1215,7 +1218,7 @@ export default function CheckInPage() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Could not request device transfer');
 
-      setStatus(body);
+      setStatus((current) => withChargeStatus(body, current));
       setMessage({ type: 'success', text: 'Device transfer request sent. Ask an admin to approve it.' });
     } catch (error) {
       console.warn('Device transfer request could not complete:', error);
@@ -1413,6 +1416,11 @@ export default function CheckInPage() {
                     {status?.staff?.fullName && (
                       <p className="max-w-full truncate text-lg font-semibold leading-tight sm:text-xl">{status.staff.fullName}</p>
                     )}
+                    {status?.staff?.chargeStatus?.charged === false && (
+                      <span className="-mt-2 rounded-full border border-border bg-background/70 px-3 py-1 text-xs font-medium text-muted-foreground sm:-mt-3">
+                        {status.staff.chargeStatus.label} · not charged
+                      </span>
+                    )}
                     <LocationStatusChip status={status} liveLocation={liveLocation} />
                   </div>
                 </div>
@@ -1510,6 +1518,14 @@ export default function CheckInPage() {
   );
 }
 
+// Check-in and transfer replies don't carry the charge status; keep the one from the last status load.
+function withChargeStatus(next: CheckInStatus, current: CheckInStatus | null): CheckInStatus {
+  const chargeStatus = next.staff?.chargeStatus ?? current?.staff?.chargeStatus;
+  return next.staff && chargeStatus && next.staff.id === current?.staff?.id
+    ? { ...next, staff: { ...next.staff, chargeStatus } }
+    : next;
+}
+
 function PenaltyHistoryDialog({
   error,
   history,
@@ -1526,6 +1542,7 @@ function PenaltyHistoryDialog({
   const currentWeek = history?.currentWeek || null;
   const weeks = penaltyWeeks(history);
   const owed = penaltyOwed(history);
+  const notCharged = notChargedNote(history?.chargeStatus, weeks.length > 0);
 
   return (
     <DrawerNested open={open} onOpenChange={onOpenChange}>
@@ -1547,6 +1564,9 @@ function PenaltyHistoryDialog({
           </div>
         ) : weeks.length > 0 ? (
           <div data-vaul-no-drag className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-6">
+            {notCharged && (
+              <p className="rounded-2xl border border-success/30 bg-success/10 px-4 py-3 text-sm text-foreground">{notCharged}</p>
+            )}
             <div className="rounded-2xl border border-border bg-background px-4 py-4">
               {owed > 0 ? (
                 <>
@@ -1576,7 +1596,8 @@ function PenaltyHistoryDialog({
             <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
               <History className="h-6 w-6" />
             </span>
-            <p className="mt-3 text-base font-semibold text-foreground">No penalties yet</p>
+            <p className="mt-3 text-base font-semibold text-foreground">{notCharged ? 'Not charged' : 'No penalties yet'}</p>
+            {notCharged && <p className="mt-1 max-w-xs text-sm text-muted-foreground">{notCharged}</p>}
           </div>
         )}
       </DrawerContent>
