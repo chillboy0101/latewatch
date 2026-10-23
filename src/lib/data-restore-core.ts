@@ -41,6 +41,16 @@ export function v1RowsToColumns(tableName: string, rows: Record<string, unknown>
   ));
 }
 
+// Backups from before staff types (18 Oct 2026) have only the two flags; give each row the type
+// those flags mean, so the flags and staff_type never disagree after a restore.
+export function withStaffType(rows: Record<string, unknown>[]) {
+  return rows.map((row) => {
+    if ('staff_type' in row) return row;
+    const staffType = row.is_attendance_only === true ? 'special' : row.is_nss_personnel === true ? 'nss' : 'main';
+    return { ...row, staff_type: staffType };
+  });
+}
+
 // The backup's tables in restore order, refusing anything that could wipe the database by mistake.
 export function backupTablesInOrder(tables: BackupTables) {
   const unknown = Object.keys(tables).filter((name) => !(BACKUP_TABLE_ORDER as readonly string[]).includes(name));
@@ -90,6 +100,9 @@ export async function restoreTables(client: QueryClient, tables: BackupTables) {
   try {
     const { rows: [lock] } = await client.query('SELECT pg_try_advisory_xact_lock(hashtext($1)) AS locked', [RESTORE_LOCK]);
     if (!lock?.locked) throw new RestoreError('Another restore is running. Try again in a minute.');
+    // No check-in or edit can land mid-restore and survive it or upset the row counts; they wait
+    // (a few seconds) and then run against the restored data.
+    await client.query(`LOCK TABLE ${order.map(quoteIdent).join(', ')} IN ACCESS EXCLUSIVE MODE`);
 
     // The overlap checks would fire on half-loaded data; the backup itself was consistent.
     for (const table of RESTORE_TRIGGER_TABLES) {
@@ -119,7 +132,8 @@ export async function restoreTables(client: QueryClient, tables: BackupTables) {
     }
     // Parents first.
     for (const table of order) {
-      await insertRows(client, table, tables[table] || [], kept.has(table));
+      const rows = tables[table] || [];
+      await insertRows(client, table, table === 'staff' ? withStaffType(rows) : rows, kept.has(table));
     }
 
     for (const table of RESTORE_TRIGGER_TABLES) {
