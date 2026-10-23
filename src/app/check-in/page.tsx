@@ -4,7 +4,7 @@ import { UserButton, useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, BellRing, CheckCircle2, ChevronRight, History, Loader2, LogOut, MapPin, MoreHorizontal, Printer, ReceiptText, ShieldCheck, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BellRing, Check, CheckCircle2, ChevronRight, History, Loader2, LogOut, MapPin, MoreHorizontal, Printer, ReceiptText, ShieldCheck, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerNested, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
@@ -22,7 +22,6 @@ import {
   type ReminderToggleConfirmation,
 } from '@/lib/push-reminder-toggle-confirmation';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
-import { notChargedNote, type StaffChargeStatus } from '@/lib/staff-type';
 import { getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 import { ModePicker } from '@/components/theme/mode-picker';
 import { ThemePicker } from '@/components/theme/theme-picker';
@@ -79,7 +78,6 @@ interface CheckInStatus {
     status: string;
   } | null;
   staff: {
-    chargeStatus?: StaffChargeStatus;
     id: string;
     fullName: string;
     email: string | null;
@@ -146,7 +144,6 @@ interface PenaltyHistoryWeek {
 }
 
 interface PenaltyHistoryResponse {
-  chargeStatus?: StaffChargeStatus;
   currentWeek: PenaltyHistoryWeek;
   receipts: PenaltyReceiptSummary[];
   staff: {
@@ -1401,13 +1398,21 @@ export default function CheckInPage() {
               <div className="flex h-full flex-col">
                 <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3 sm:gap-4 sm:p-5">
                 <div className={cn('flex flex-1 flex-col items-center justify-center gap-5 rounded-2xl border p-6 text-center sm:gap-7 sm:p-8', statusTone(status))}>
-                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-background/70 sm:h-24 sm:w-24">
+                  {/* A soft halo around one badge: solid with a bold tick once checked in, quiet before. */}
+                  <div className="relative flex h-24 w-24 items-center justify-center sm:h-28 sm:w-28">
+                    <span aria-hidden className="absolute inset-0 rounded-full bg-current opacity-15" />
                     {status?.attendance ? (
-                      <CheckCircle2 className="h-10 w-10 sm:h-12 sm:w-12" />
-                    ) : canCheckIn ? (
-                      <ShieldCheck className="h-10 w-10 sm:h-12 sm:w-12" />
+                      <span className="relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-4 ring-primary/25 sm:h-20 sm:w-20">
+                        <Check className="h-9 w-9 sm:h-10 sm:w-10" strokeWidth={3} />
+                      </span>
                     ) : (
-                      <AlertTriangle className="h-10 w-10 sm:h-12 sm:w-12" />
+                      <span className="relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-background ring-1 ring-current/30 sm:h-20 sm:w-20">
+                        {canCheckIn ? (
+                          <ShieldCheck className="h-9 w-9 sm:h-10 sm:w-10" />
+                        ) : (
+                          <AlertTriangle className="h-9 w-9 sm:h-10 sm:w-10" />
+                        )}
+                      </span>
                     )}
                   </div>
                   {/* Status, name and location sit at one even spacing. */}
@@ -1415,11 +1420,6 @@ export default function CheckInPage() {
                     <h2 className="text-2xl font-bold text-balance leading-tight sm:text-3xl">{statusCopy(status)}</h2>
                     {status?.staff?.fullName && (
                       <p className="max-w-full truncate text-lg font-semibold leading-tight sm:text-xl">{status.staff.fullName}</p>
-                    )}
-                    {status?.staff?.chargeStatus?.charged === false && (
-                      <span className="-mt-2 rounded-full border border-border bg-background/70 px-3 py-1 text-xs font-medium text-muted-foreground sm:-mt-3">
-                        {status.staff.chargeStatus.label} · not charged
-                      </span>
                     )}
                     <LocationStatusChip status={status} liveLocation={liveLocation} />
                   </div>
@@ -1534,7 +1534,6 @@ function PenaltyHistoryDialog({
   const currentWeek = history?.currentWeek || null;
   const weeks = penaltyWeeks(history);
   const owed = penaltyOwed(history);
-  const notCharged = notChargedNote(history?.chargeStatus, weeks.length > 0);
 
   return (
     <DrawerNested open={open} onOpenChange={onOpenChange}>
@@ -1556,9 +1555,6 @@ function PenaltyHistoryDialog({
           </div>
         ) : weeks.length > 0 ? (
           <div data-vaul-no-drag className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-6">
-            {notCharged && (
-              <p className="rounded-2xl border border-success/30 bg-success/10 px-4 py-3 text-sm text-foreground">{notCharged}</p>
-            )}
             <div className="rounded-2xl border border-border bg-background px-4 py-4">
               {owed > 0 ? (
                 <>
@@ -1588,8 +1584,7 @@ function PenaltyHistoryDialog({
             <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
               <History className="h-6 w-6" />
             </span>
-            <p className="mt-3 text-base font-semibold text-foreground">{notCharged ? 'Not charged' : 'No penalties yet'}</p>
-            {notCharged && <p className="mt-1 max-w-xs text-sm text-muted-foreground">{notCharged}</p>}
+            <p className="mt-3 text-base font-semibold text-foreground">No penalties yet</p>
           </div>
         )}
       </DrawerContent>

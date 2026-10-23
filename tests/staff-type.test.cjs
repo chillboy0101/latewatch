@@ -11,10 +11,6 @@ const read = (...parts) => fs.readFileSync(path.join(root, ...parts), 'utf8');
 const {
   allowedStaffTypes,
   canChangeStaffType,
-  chargeStatusFor,
-  currentStaffTypeSince,
-  flagsForStaffType,
-  notChargedNote,
   isValidDateKey,
   penaltyFlagsOn,
   staffReturnDateError,
@@ -239,91 +235,4 @@ test('type changes are confirmed before saving, and undo is admin-only, audited 
   const display = read('src/lib/audit-display.ts');
   assert.match(display, /\$\{typeChange\.from\} → \$\{typeChange\.to\} from/);
   assert.match(display, /type change undone, back to/);
-});
-
-test('own pages say who is not charged: interns and special staff, from the day their type began', () => {
-  // Lisabeth: NSS, archived 18 Oct, back as special staff from 23 Oct.
-  const lisabeth = [
-    { effectiveFrom: '2000-01-01', staffType: 'nss' },
-    { effectiveFrom: '2026-10-18', staffType: 'away' },
-    { effectiveFrom: '2026-10-23', staffType: 'special' },
-  ];
-  const special = chargeStatusFor({ staffType: 'special' }, lisabeth);
-  assert.deepEqual(special, { charged: false, label: 'Special staff', since: '2026-10-23', staffType: 'special' });
-  assert.equal(notChargedNote(special), "Since 23 October 2026 you're special staff and are not charged. Earlier charges and receipts are kept below.");
-  assert.equal(notChargedNote(special, false), "Since 23 October 2026 you're special staff and are not charged.");
-  assert.equal(notChargedNote({ ...special, since: '2026-09-05' }, false), "Since 5 September 2026 you're special staff and are not charged.");
-
-  // An intern from the start has no date to show.
-  const intern = chargeStatusFor({ staffType: 'intern' });
-  assert.deepEqual(intern, { charged: false, label: 'Intern', since: null, staffType: 'intern' });
-  assert.equal(notChargedNote(intern, false), 'As an intern you are not charged.');
-  // Old charges listed below still get explained, even without a date.
-  assert.equal(notChargedNote(intern), 'As an intern you are not charged. Earlier charges and receipts are kept below.');
-
-  // NSS and main staff get no note.
-  assert.equal(chargeStatusFor({ staffType: 'nss' }).charged, true);
-  assert.equal(chargeStatusFor({ staffType: 'main' }).charged, true);
-  assert.equal(notChargedNote(chargeStatusFor({ staffType: 'main' })), null);
-  assert.equal(notChargedNote(null), null);
-
-  // Older rows without staff_type still read their flags.
-  assert.equal(chargeStatusFor({ isAttendanceOnly: true }).label, 'Special staff');
-});
-
-test('the "since" date is when charging stopped: time away and intern → special do not restart it', () => {
-  assert.equal(currentStaffTypeSince([
-    { effectiveFrom: '2000-01-01', staffType: 'nss' },
-    { effectiveFrom: '2026-09-01', staffType: 'special' },
-    { effectiveFrom: '2026-09-10', staffType: 'away' },
-    { effectiveFrom: '2026-09-20', staffType: 'special' },
-  ], 'special'), '2026-09-01');
-  // Never charged: an intern from the start who became special staff gets no date.
-  assert.equal(currentStaffTypeSince([
-    { effectiveFrom: '2000-01-01', staffType: 'intern' },
-    { effectiveFrom: '2026-09-01', staffType: 'special' },
-  ], 'special'), null);
-  // Charged as NSS until 19 Oct, special staff since.
-  assert.equal(currentStaffTypeSince([
-    { effectiveFrom: '2000-01-01', staffType: 'intern' },
-    { effectiveFrom: '2026-06-01', staffType: 'nss' },
-    { effectiveFrom: '2026-10-19', staffType: 'special' },
-  ], 'special'), '2026-10-19');
-  // History that disagrees with the staff row shows no date rather than a wrong one.
-  assert.equal(currentStaffTypeSince([
-    { effectiveFrom: '2000-01-01', staffType: 'special' },
-    { effectiveFrom: '2026-10-01', staffType: 'nss' },
-  ], 'special'), null);
-  assert.equal(currentStaffTypeSince([{ effectiveFrom: '2000-01-01', staffType: 'special' }], 'special'), null);
-  assert.equal(currentStaffTypeSince(undefined, 'special'), null);
-  assert.equal(currentStaffTypeSince([{ effectiveFrom: '2026-10-01', staffType: 'main' }], 'main'), null);
-});
-
-test('the badge follows the flag the charges read, not just the type name', () => {
-  for (const type of ['intern', 'nss', 'special', 'main']) {
-    const flags = flagsForStaffType(type);
-    assert.equal(chargeStatusFor({ staffType: type, ...flags }).charged, !flags.isAttendanceOnly, type);
-    assert.equal(chargeStatusFor({ staffType: type }).charged, !flags.isAttendanceOnly, type);
-  }
-  // A row whose type and flag disagree: charging uses the flag, so the page does too.
-  assert.equal(chargeStatusFor({ isAttendanceOnly: false, staffType: 'special' }).charged, true);
-  assert.equal(notChargedNote(chargeStatusFor({ isAttendanceOnly: false, staffType: 'special' })), null);
-  // Exempted on the record while typed NSS or main: not called special staff or an intern.
-  assert.equal(notChargedNote(chargeStatusFor({ isAttendanceOnly: true, staffType: 'nss' }), false), 'You are not charged.');
-  assert.equal(notChargedNote(chargeStatusFor({ isAttendanceOnly: true, staffType: 'main' })), 'You are not charged. Earlier charges and receipts are kept below.');
-});
-
-test('every check-in reply carries the not-charged status, and a failed lookup never blocks check-in', () => {
-  const page = read('src', 'app', 'check-in', 'page.tsx');
-  assert.match(page, /status\?\.staff\?\.chargeStatus\?\.charged === false && \(/);
-  assert.match(page, /\{status\.staff\.chargeStatus\.label\} · not charged/);
-  assert.match(page, /notChargedNote\(history\?\.chargeStatus, weeks\.length > 0\)/);
-  const status = read('src', 'app', 'api', 'attendance', 'check-in', 'route.ts');
-  assert.doesNotMatch(status, /staff: \{ id: staffMember\.id, fullName: staffMember\.fullName, email: staffMember\.email \}/);
-  assert.match(status, /chargeStatus: await chargeStatusLoad, email: member\.email/);
-  assert.equal((status.match(/staff: await staffPayload\(\),/g) || []).length, 7);
-  const history = read('src', 'app', 'api', 'attendance', 'check-in', 'penalty-history', 'route.ts');
-  assert.match(history, /const chargeStatusLoad = getStaffChargeStatus\(member\);[\s\S]*chargeStatus: await chargeStatusLoad,/);
-  const lookup = read('src', 'lib', 'staff-type-history.ts');
-  assert.match(lookup, /export async function getStaffChargeStatus[\s\S]*?try \{[\s\S]*?catch \(error\) \{[\s\S]*?return undefined;/);
 });

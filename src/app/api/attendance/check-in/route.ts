@@ -33,8 +33,6 @@ import { type OfficeBoundary, parseOfficeBoundary } from '@/lib/office-boundary'
 import { allowRequest } from '@/lib/rate-limit';
 import { maybeRunMissedReminderBatch } from '@/lib/reminder-fallback';
 import { publishRealtime } from '@/lib/realtime';
-import type { StaffChargeStatus } from '@/lib/staff-type';
-import { getStaffChargeStatus } from '@/lib/staff-type-history';
 import {
   canSignOutNow,
   isSignInClosed,
@@ -184,7 +182,7 @@ function responsePayload(input: {
     requestedAt?: Date | string | null;
     status: string;
   } | null;
-  staff?: { chargeStatus?: StaffChargeStatus; id: string; fullName: string; email: string | null } | null;
+  staff?: { id: string; fullName: string; email: string | null } | null;
   time: string;
 }) {
   return {
@@ -509,8 +507,6 @@ export async function GET(request: NextRequest) {
       getHolidayForDate(clock.dateKey),
     ]);
     const isWeekend = isWeekendDate(clock.dateKey);
-    // Runs alongside the lookups below; it never throws (no badge if it fails).
-    const chargeStatusLoad = member ? getStaffChargeStatus(member) : Promise.resolve(undefined);
     const permission = member
       ? await getApprovedAttendancePermission(member.id, clock.dateKey)
       : null;
@@ -615,9 +611,7 @@ export async function GET(request: NextRequest) {
       locationPolicy: serializeLocationPolicy(office),
       networkConfigured: Boolean(office),
       permission: serializePermission(permission),
-      staff: member
-        ? { chargeStatus: await chargeStatusLoad, email: member.email, fullName: member.fullName, id: member.id }
-        : null,
+      staff: member ? { id: member.id, fullName: member.fullName, email: member.email } : null,
       time: clock.timeKey,
       transferRequest: statusTransfer
         ? {
@@ -764,13 +758,6 @@ export async function POST(request: NextRequest) {
       );
     }
     const staffMember = member;
-    // Every reply that reaches the page carries the not-charged badge (blocked attempts don't).
-    const staffPayload = async () => ({
-      chargeStatus: await getStaffChargeStatus(staffMember),
-      email: staffMember.email,
-      fullName: staffMember.fullName,
-      id: staffMember.id,
-    });
 
     if (!deviceToken || !deviceHash) {
       return block('DEVICE_REQUIRED', 'This browser could not be registered as your attendance device. Refresh the page and try again.', 403, staffMember.id);
@@ -958,7 +945,7 @@ export async function POST(request: NextRequest) {
           locationPolicy: responseLocationPolicy,
           networkConfigured: true,
           permission: serializePermission(permission),
-          staff: await staffPayload(),
+          staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
           time: clock.timeKey,
           transferRequest: {
             id: transferRequest.id,
@@ -1049,7 +1036,7 @@ export async function POST(request: NextRequest) {
               locationPolicy: responseLocationPolicy,
               networkConfigured: true,
               permission: serializePermission(permission),
-              staff: await staffPayload(),
+              staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
               time: clock.timeKey,
             }),
           });
@@ -1116,7 +1103,7 @@ export async function POST(request: NextRequest) {
               locationPolicy: responseLocationPolicy,
               networkConfigured: true,
               permission: serializePermission(permission),
-              staff: await staffPayload(),
+              staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
               time: clock.timeKey,
             }),
           });
@@ -1193,7 +1180,7 @@ export async function POST(request: NextRequest) {
             locationPolicy: responseLocationPolicy,
             networkConfigured: true,
             permission: serializePermission(permission),
-            staff: await staffPayload(),
+            staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
             time: clock.timeKey,
           }),
         });
@@ -1247,7 +1234,7 @@ export async function POST(request: NextRequest) {
           locationPolicy: responseLocationPolicy,
           networkConfigured: true,
           permission: serializePermission(permission),
-          staff: await staffPayload(),
+          staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
           time: clock.timeKey,
         }),
       });
@@ -1373,7 +1360,7 @@ export async function POST(request: NextRequest) {
           locationPolicy: responseLocationPolicy,
           networkConfigured: true,
           permission: serializePermission(permission),
-          staff: await staffPayload(),
+          staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
           time: clock.timeKey,
         }),
       });
@@ -1503,7 +1490,7 @@ export async function POST(request: NextRequest) {
         locationPolicy: responseLocationPolicy,
         networkConfigured: true,
         permission: serializePermission(permission),
-        staff: await staffPayload(),
+        staff: { id: staffMember.id, fullName: staffMember.fullName, email: staffMember.email },
         time: clock.timeKey,
       }),
     });

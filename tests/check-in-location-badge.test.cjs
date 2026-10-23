@@ -67,3 +67,10 @@ test('check-in card shows a Penalty row only when there is a charge', () => {
   assert.equal((source.match(/>Penalty<\/span>/g) || []).length, 1);
   assert.match(source, /status\?\.attendance && Number\(status\.attendance\.computedAmount \|\| 0\) > 0 && \(/);
 });
+
+test('check-in status icon: a bold tick on a solid badge once checked in, no badge about charges', () => {
+  const page = fs.readFileSync(path.join(__dirname, '../src/app/check-in/page.tsx'), 'utf8');
+  assert.match(page, /rounded-full bg-primary text-primary-foreground[^"]*"\>\s*<Check className="h-9 w-9 sm:h-10 sm:w-10" strokeWidth=\{3\} \/>/);
+  assert.doesNotMatch(page, /<CheckCircle2 className="h-10 w-10/);
+  assert.doesNotMatch(page, /not charged/);
+});
