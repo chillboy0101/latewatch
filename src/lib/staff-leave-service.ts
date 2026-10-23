@@ -1,8 +1,9 @@
 import 'server-only';
 
-import { and, eq, gte, inArray, lte, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte, ne, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import {
+  attendancePermission,
   latenessDebtPardonEntry,
   latenessEntry,
   latenessPaymentAllocation,
@@ -142,4 +143,45 @@ export async function getPardonedEntryIds(entryIds: string[]) {
     .where(inArray(latenessDebtPardonEntry.entryId, entryIds));
 
   return new Set(pardons.map((row) => row.entryId));
+}
+// Approved absence / late-arrival permissions (general pardons too) on days the leave covers.
+// Leave takes over those days, so they are removed when the leave is saved.
+export async function getPermissionsCoveredByLeave(input: {
+  endDate: string;
+  staffId: string;
+  startDate: string;
+}) {
+  return db.select({
+    date: attendancePermission.date,
+    generalPardonType: attendancePermission.generalPardonType,
+    id: attendancePermission.id,
+    permissionType: attendancePermission.permissionType,
+    reason: attendancePermission.reason,
+  })
+    .from(attendancePermission)
+    .where(and(
+      eq(attendancePermission.staffId, input.staffId),
+      eq(attendancePermission.status, 'approved'),
+      gte(attendancePermission.date, input.startDate),
+      lte(attendancePermission.date, input.endDate),
+    ))
+    .orderBy(asc(attendancePermission.date));
+}
+
+// A deactivation (legacy staff_inactive_period row) touching the leave dates: the database won't
+// accept leave over it, so say so plainly instead of failing.
+export async function findInactivePeriodOverlap(input: {
+  endDate: string;
+  staffId: string;
+  startDate: string;
+}) {
+  const result = await db.execute(sql`
+    SELECT start_date::date::text AS start_date
+    FROM staff_inactive_period
+    WHERE staff_id = ${input.staffId}
+      AND start_date::date <= ${input.endDate}::date
+      AND (reactivated_on IS NULL OR reactivated_on::date > ${input.startDate}::date)
+    LIMIT 1`);
+  const row = (result.rows as Array<{ start_date: string }>)[0];
+  return row ? { startDate: row.start_date } : null;
 }

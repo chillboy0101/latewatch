@@ -22,6 +22,8 @@ type LeavePeriod = {
 
 type StaffOption = { fullName: string; id: string };
 
+type LeaveSaveResult = { replacedPermissionCount?: number; replacedPermissionDays?: string };
+
 const selectClassName = 'h-10 w-full appearance-none rounded-md border border-border bg-background px-3 pr-10 text-sm font-medium text-foreground outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/35 disabled:cursor-not-allowed disabled:opacity-60';
 
 function Select({ label, onChange, value, children }: { children: React.ReactNode; label: string; onChange: (value: string) => void; value: string }) {
@@ -106,7 +108,16 @@ export function StaffLeaveDialog({
     setAction('return');
   }, [staffId, current?.id, current?.endDate]);
 
-  async function submit(request: () => Promise<Response>, success: string) {
+  // Leave replaces any absence / late permissions already approved on its days; say so.
+  function withReplaced(success: string) {
+    return (body: LeaveSaveResult) => (
+      body.replacedPermissionCount
+        ? `${success} It replaces the permission${body.replacedPermissionCount === 1 ? '' : 's'} on ${body.replacedPermissionDays}.`
+        : success
+    );
+  }
+
+  async function submit(request: () => Promise<Response>, success: string | ((body: LeaveSaveResult) => string)) {
     setSubmitting(true);
     setMessage(null);
     try {
@@ -115,7 +126,7 @@ export function StaffLeaveDialog({
       if (!response.ok) throw new Error(body.error || 'Could not save leave.');
       await loadPeriods();
       await onChanged?.();
-      setMessage({ error: false, text: success });
+      setMessage({ error: false, text: typeof success === 'string' ? success : success(body) });
     } catch (error) {
       setMessage({ error: true, text: error instanceof Error ? error.message : 'Could not save leave.' });
     } finally {
@@ -130,7 +141,7 @@ export function StaffLeaveDialog({
       body: JSON.stringify({ endDate, leaveType, staffId, startDate }),
       headers: { 'Content-Type': 'application/json' },
       method: 'POST',
-    }), 'Leave approved.');
+    }), withReplaced('Leave approved.'));
   }
 
   function changeEndDate() {
@@ -140,7 +151,7 @@ export function StaffLeaveDialog({
       body: JSON.stringify({ endDate }),
       headers: { 'Content-Type': 'application/json' },
       method: 'PATCH',
-    }), 'End date updated.');
+    }), withReplaced('End date updated.'));
   }
 
   function recordReturn() {

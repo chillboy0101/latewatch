@@ -1,12 +1,17 @@
 import { currentUser } from '@clerk/nextjs/server';
-import { and, asc, eq, gte, isNull, ne, or } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, ne, or } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { staff, staffLeavePeriod } from '@/db/schema';
+import { attendancePermission, staff, staffLeavePeriod } from '@/db/schema';
 import { getAccraDateKey } from '@/lib/date-key';
 import { isIsoDateKey } from '@/lib/date-format';
-import { STAFF_LEAVE_TYPES, type StaffLeaveType } from '@/lib/staff-leave';
-import { findOverlappingStaffLeavePeriod, getLeaveFinancialReview } from '@/lib/staff-leave-service';
+import { formatPermissionDays, leaveOverlapError, STAFF_LEAVE_TYPES, type StaffLeaveType } from '@/lib/staff-leave';
+import {
+  findInactivePeriodOverlap,
+  findOverlappingStaffLeavePeriod,
+  getLeaveFinancialReview,
+  getPermissionsCoveredByLeave,
+} from '@/lib/staff-leave-service';
 import { recalculateDaysAfterLeaveChange } from '@/lib/staff-leave-return';
 import { writeAuditEvent } from '@/lib/audit';
 import { publishRealtime } from '@/lib/realtime';
@@ -104,14 +109,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Staff member was not found or is former personnel' }, { status: 404 });
     }
 
-    const overlap = await findOverlappingStaffLeavePeriod({ endDate, staffId, startDate });
+    const range = { endDate, staffId, startDate };
+    const overlap = await findOverlappingStaffLeavePeriod(range);
     if (overlap) {
       return NextResponse.json({ error: 'These dates overlap an existing leave period' }, { status: 409 });
     }
+    const inactive = await findInactivePeriodOverlap(range);
+    if (inactive) {
+      return NextResponse.json({ error: `${member.fullName} was deactivated from ${inactive.startDate}. Activate them before recording leave on those dates.` }, { status: 409 });
+    }
 
-    const financialReview = await getLeaveFinancialReview({ endDate, staffId, startDate });
+    const [financialReview, replacedPermissions] = await Promise.all([
+      getLeaveFinancialReview(range),
+      getPermissionsCoveredByLeave(range),
+    ]);
     const actorEmail = user?.primaryEmailAddress?.emailAddress || user?.emailAddresses[0]?.emailAddress || 'system';
-    const [period] = await db.insert(staffLeavePeriod)
+    const insertLeave = db.insert(staffLeavePeriod)
       .values({
         createdByEmail: actorEmail,
         endDate,
@@ -122,27 +135,53 @@ export async function POST(request: NextRequest) {
         startDate,
       })
       .returning();
+    // Leave takes over days that already had an approved absence or late permission: those are
+    // removed in the same transaction, so the leave is never refused and nothing is half-saved.
+    const [period] = replacedPermissions.length > 0
+      ? (await db.batch([
+        db.delete(attendancePermission).where(and(
+          eq(attendancePermission.staffId, staffId),
+          inArray(attendancePermission.id, replacedPermissions.map((permission) => permission.id)),
+        )),
+        insertLeave,
+      ] as const))[1]
+      : await insertLeave;
 
     await writeAuditEvent({
       entityType: 'staff_leave_period',
       entityId: period.id,
       action: 'CREATE',
       before: null,
-      after: { ...period, financialReview, staffName: member.fullName },
+      after: { ...period, financialReview, replacedPermissions, staffName: member.fullName },
       actor: { email: actorEmail, id: user?.id || null },
       reason: 'approved-staff-leave',
     });
+    for (const permission of replacedPermissions) {
+      await writeAuditEvent({
+        entityType: 'attendance_permission',
+        entityId: permission.id,
+        action: 'DELETE',
+        before: { ...permission, staffId, staffName: member.fullName },
+        after: null,
+        actor: { email: actorEmail, id: user?.id || null },
+        publish: false,
+        reason: 'replaced-by-leave',
+      });
+    }
     // Leave recorded after the fact: clear the unpaid charges already made for those days.
     await recalculateDaysAfterLeaveChange(startDate, endDate);
     publishLeaveInvalidations('approved-staff-leave', staffId);
 
-    return NextResponse.json({ financialReview, period }, { status: 201 });
+    return NextResponse.json({
+      financialReview,
+      period,
+      replacedPermissionDays: formatPermissionDays(replacedPermissions.map((permission) => String(permission.date))),
+      replacedPermissionCount: replacedPermissions.length,
+    }, { status: 201 });
   } catch (error) {
-    const code = typeof error === 'object' && error !== null && 'code' in error
-      ? String((error as { code?: unknown }).code)
-      : '';
-    if (code === '23P01' || code === '23505') {
-      return NextResponse.json({ error: 'These dates overlap an existing leave period' }, { status: 409 });
+    const overlapMessage = leaveOverlapError(error);
+    if (overlapMessage) {
+      return NextResponse.json({ error: overlapMessage }, { status: 409 });
     }
     console.error('Failed to approve staff leave:', error);
     return NextResponse.json({ error: 'Failed to approve staff leave' }, { status: 500 });
