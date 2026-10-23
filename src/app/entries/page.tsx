@@ -15,7 +15,7 @@ import { ArrowLeft, ClockAlert, Save, CheckCircle, AlertCircle, CalendarOff, Che
 import { computePenalty } from '@/lib/penalty-calculator';
 import { NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/penalty-calculator';
 import { getAccraDateKey, getAccraTimeKey } from '@/lib/date-key';
-import { chargesNoSignOut, isNoSignOutChargeDue, isOnTimeCheckIn } from '@/lib/work-hours';
+import { chargesNoSignOut, isNoSignOutChargeDue, isOnTimeCheckIn, shouldAlertNoSignOut } from '@/lib/work-hours';
 import { formatLongDisplayDate } from '@/lib/date-format';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { formatLeaveSummary } from '@/lib/staff-leave';
@@ -796,6 +796,17 @@ function EntriesPageContent() {
   const todayDateKey = getAccraDateKey();
   const isSelectedDateInPastOrToday = selectedDateKey <= todayDateKey;
   const noShowSignInWaiveAvailable = isSelectedDateInPastOrToday;
+  // From 1 Oct 2026 a missed sign-out isn't charged, but it is still shown (and counted) once the
+  // sign-out time has passed, like the Attendance overview's "No Sign-Out".
+  const noSignOutCharged = chargesNoSignOut(selectedDateKey);
+  const signOutTimePassed = selectedDateKey < todayDateKey
+    || (selectedDateKey === todayDateKey && shouldAlertNoSignOut(getAccraTimeKey()));
+  const missedUnchargedSignOut = (entry: Entry) => !noSignOutCharged
+    && signOutTimePassed
+    && Boolean(entry.arrivalTime)
+    && !entry.signOutTime
+    && !entry.isExcusedAbsence
+    && !entry.noSignOutWaived;
 
   // Day Summary, counted from each row's sign-in and sign-out:
   // on time = signed in by 8:30; late = signed in after 8:30 without a late permission;
@@ -813,7 +824,7 @@ function EntriesPageContent() {
         else next.late += 1;
       } else if (entry.noShowSignInWaived) next.excused += 1;
       else if (entry.reason === NO_SHOW_SIGN_IN_REASON) next.noSignIn += 1;
-      if (entry.didNotSignOut && !entry.noSignOutWaived) next.didNotSignOut += 1;
+      if ((entry.didNotSignOut && !entry.noSignOutWaived) || missedUnchargedSignOut(entry)) next.didNotSignOut += 1;
       return next;
     },
     { didNotSignOut: 0, excused: 0, late: 0, noSignIn: 0, onTime: 0, totalAmount: 0 },
@@ -1067,7 +1078,9 @@ function EntriesPageContent() {
                           ? { state: 'waived', text: 'Waived', title: 'No sign-out waived' }
                           : entry.didNotSignOut
                             ? { state: 'missing', text: 'No sign-out', title: 'No sign-out: charged' }
-                            : { state: 'empty' };
+                            : missedUnchargedSignOut(entry)
+                              ? { state: 'empty', text: 'No sign-out', title: 'No sign-out: not charged (from 1 Oct 2026)' }
+                              : { state: 'empty' };
                   const statusTag = getEntryStatusTag(entry, isOnLeave ? leaveSummary : undefined);
                   // Two charges on the row (late + no sign-out): offer one action for both.
                   const showWaiveAllButton =
@@ -1280,7 +1293,9 @@ function EntriesPageContent() {
             <p className="text-xs text-muted-foreground">
               {lateArrivalPardonTarget?.mode === 'all'
                 ? `Clears GHC ${lateArrivalPardonTarget.amount}: the late fee and the no sign-out charge.`
-                : 'Late fee only. No sign-out has its own Waive button.'}
+                : noSignOutCharged
+                  ? 'Late fee only. No sign-out has its own Waive button.'
+                  : 'Clears the late fee.'}
             </p>
           </div>
 

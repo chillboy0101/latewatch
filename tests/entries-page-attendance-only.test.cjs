@@ -288,3 +288,13 @@ test('Day Summary counts no sign-in separately from late arrivals', () => {
   assert.match(source, />Excused \/ Leave</);
   assert.doesNotMatch(source, /entry\.amount > 0 && !entry\.reason\.includes\('SIGN OUT'\)/);
 });
+
+test('entries page shows a missed sign-out from 1 Oct 2026 as not charged, and still counts it', () => {
+  const source = fs.readFileSync(entriesPagePath, 'utf8');
+  assert.match(source, /const noSignOutCharged = chargesNoSignOut\(selectedDateKey\);/);
+  assert.match(source, /selectedDateKey === todayDateKey && shouldAlertNoSignOut\(getAccraTimeKey\(\)\)/);
+  assert.match(source, /missedUnchargedSignOut\(entry\)\s*\? \{ state: 'empty', text: 'No sign-out', title: 'No sign-out: not charged \(from 1 Oct 2026\)' \}/);
+  assert.match(source, /\(entry\.didNotSignOut && !entry\.noSignOutWaived\) \|\| missedUnchargedSignOut\(entry\)/);
+  // The late-fee dialog doesn't point at a no-sign-out Waive button that no longer shows.
+  assert.match(source, /noSignOutCharged\s*\? 'Late fee only\. No sign-out has its own Waive button\.'\s*: 'Clears the late fee\.'/);
+});
