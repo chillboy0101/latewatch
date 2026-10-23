@@ -80,10 +80,10 @@ test('permissions and general pardons skip days already on leave or deactivated,
   for (const [name, route] of [['permissions', single], ['general pardon', general]]) {
     assert.match(route, /await getLeaveAndDeactivationCoverage\(\{/, name);
     // A leave or deactivation recorded meanwhile skips that day/person instead of a 500.
-    assert.match(route, /if \(!leaveOverlapError\(error\)\) throw error;/, name);
+    assert.match(route, /if \(!isExcuseOverlapError\(error\)\) throw error;/, name);
   }
   assert.match(single, /skippedLeaveDays: formatPermissionDays/);
-  assert.match(single, /is on leave on \$\{formatPermissionDays\(leaveDates\)\}, so no permission is needed/);
+  assert.match(single, /so no permission can be added for those days/);
   assert.match(general, /skippedCount: skippedPermissions\.length,/);
   const page = read('src/app/attendance/overview/page.tsx');
   assert.match(page, /Skipped \$\{body\.skippedLeaveDays\}: already on leave\./);
@@ -98,8 +98,12 @@ test('a leave with wrong dates or type can be corrected or removed, and its days
   assert.match(route, /\.set\(\{ endDate, leaveType: leaveType as StaffLeaveType, startDate, updatedAt: new Date\(\) \}\)/);
   assert.match(route, /deletePermissionsCoveredByLeave\(\{ endDate: coveredEnd, staffId, startDate \}\)/);
   assert.match(route, /reason: 'staff-leave-corrected'/);
-  // Old range and new range are both recalculated.
-  assert.match(route, /before\.startDate < startDate \? before\.startDate : startDate,\n\s+laterKey\(oldEnd, coveredEnd\),/);
+  // Only changed dates recalculate, old range and new range each (a type-only fix changes no charge).
+  assert.match(route, /if \(datesChanged\) \{\n\s+await recalculateDaysAfterLeaveChange\(before\.startDate, oldEnd\);\n\s+await recalculateDaysAfterLeaveChange\(startDate, coveredEnd\);/);
+  // "No end date" stays possible when correcting.
+  assert.match(route, /const endDate = openEnded \? null :/);
+  // Days the leave no longer covers get back the permissions it replaced (correct, shorten, return, remove).
+  assert.equal((route.match(/await restorePermissionsReplacedByLeave\(\{/g) || []).length, 3);
   assert.match(route, /They were back at work on \$\{before\.returnedOn\}, so the leave must start before that\./);
   // Removal: its days go back to normal and are recalculated; status rows can't be removed here.
   assert.match(route, /export async function DELETE\(/);
@@ -112,8 +116,11 @@ test('a leave with wrong dates or type can be corrected or removed, and its days
   const dialog = read('src/components/attendance/staff-leave-dialog.tsx');
   assert.match(dialog, /Correct this leave/);
   assert.match(dialog, /Earlier leave/);
-  assert.match(dialog, /body: JSON\.stringify\(\{ correct: true, endDate, leaveType, startDate \}\)/);
+  assert.match(dialog, /body: JSON\.stringify\(\{ correct: true, endDate: openEnded \? null : endDate, leaveType, openEnded, startDate \}\)/);
   assert.match(dialog, /\{confirmRemove \? 'Tap again to remove' : 'Remove leave'\}/);
+  assert.match(dialog, /No end date \(till further notice\)/);
+  // A slower history answer for a previously selected person is ignored.
+  assert.match(dialog, /if \(historyFor\.current === forStaffId\) setHistory/);
 });
 
 test('editing a permission to another date or person removes the old one and recalculates its day', () => {
@@ -124,4 +131,33 @@ test('editing a permission to another date or person removes the old one and rec
   assert.match(route, /activePermission: null,/);
   const page = read('src/app/attendance/overview/page.tsx');
   assert.equal((page.match(/replacesPermissionId,/g) || []).length, 2);
+});
+
+test('replaced permissions are tied to their leave and restored only on days it no longer covers', () => {
+  const service = read('src/lib/staff-leave-service.ts');
+  assert.match(service, /before: \{ \.\.\.permission, replacedByLeaveId: input\.leaveId,/);
+  assert.match(service, /before_json->>'replacedByLeaveId' = \$\{input\.leaveId\}/);
+  assert.match(service, /!input\.keep \|\| date < input\.keep\.startDate \|\| date > input\.keep\.endDate/);
+  assert.match(service, /if \(coverage\(input\.staffId, date\)\) continue;/);
+  assert.match(service, /\.onConflictDoNothing\(\)/);
+  assert.match(service, /reason: 'restored-after-leave-change'/);
+  const patch = read('src/app/api/attendance/leave/[id]/route.ts');
+  assert.match(patch, /keep: \{ endDate: getEffectiveLeaveEndDate\(period\) \|\| '9999-12-31', startDate: period\.startDate \}/);
+});
+
+test('a permission is skipped as "on leave" only for the one-excuse-per-day refusal, not a duplicate', () => {
+  const { isExcuseOverlapError } = require('../src/lib/staff-leave.ts');
+  const wrap = (code) => Object.assign(new Error('Failed query'), { cause: Object.assign(new Error('x'), { code }) });
+  assert.equal(isExcuseOverlapError(wrap('23P01')), true);
+  assert.equal(isExcuseOverlapError(wrap('23505')), false);
+  assert.equal(isExcuseOverlapError(new Error('nope')), false);
+  for (const file of ['src/app/api/attendance/permissions/route.ts', 'src/app/api/attendance/permissions/general-pardon/route.ts']) {
+    assert.match(read(file), /if \(!isExcuseOverlapError\(error\)\) throw error;/, file);
+  }
+  const route = read('src/app/api/attendance/permissions/route.ts');
+  assert.match(route, /appliedDates = permissions\.map\(\(saved\) => String\(saved\.date\)\.slice\(0, 10\)\);/);
+  // Screens refresh after an edit's old permission is removed, not before.
+  assert.ok(route.indexOf("reason: 'attendance-permission-corrected'") < route.indexOf("publishRealtime('dashboard'"));
+  const page = read('src/app/attendance/overview/page.tsx');
+  assert.doesNotMatch(page, /disabled=\{isEditingPermission\}/);
 });

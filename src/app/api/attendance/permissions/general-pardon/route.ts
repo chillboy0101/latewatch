@@ -8,7 +8,7 @@ import { reconcileAttendanceForPermission } from '@/lib/attendance-permission-re
 import { writeAuditEvent } from '@/lib/audit';
 import { publishRealtime } from '@/lib/realtime';
 import { getNonWorkdayLabel } from '@/lib/attendance';
-import { leaveOverlapError } from '@/lib/staff-leave';
+import { isExcuseOverlapError } from '@/lib/staff-leave';
 import { getLeaveAndDeactivationCoverage } from '@/lib/staff-leave-service';
 
 export const dynamic = 'force-dynamic';
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
             .returning();
       } catch (error) {
         // Leave or a deactivation recorded for this person meanwhile: skip them, keep the rest.
-        if (!leaveOverlapError(error)) throw error;
+        if (!isExcuseOverlapError(error)) throw error;
         skippedPermissions.push({ reason: 'leave', staffId: member.id, staffName: member.fullName });
         continue;
       }

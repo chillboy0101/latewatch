@@ -73,7 +73,9 @@ test('attendance permission modal contains the absence fields and actions', () =
   assert.match(source, /Change Permission/);
   assert.match(source, /label="From"/);
   assert.match(source, /label="To"/);
-  assert.match(source, /disabled=\{isEditingPermission\}/);
+  // Staff and dates stay editable, so a permission saved on the wrong day can be moved.
+  assert.doesNotMatch(source, /disabled=\{isEditingPermission\}/);
+  assert.match(source, /replacesPermissionId/);
   assert.match(source, /Approve Permission/);
   assert.match(source, /Update Permission/);
 });
@@ -111,7 +113,9 @@ test('attendance page lets admins change an existing permission from the permiss
   assert.match(source, /startPermissionEdit\(permission: AttendancePermission\)/);
   assert.match(source, /setEditingPermissionId\(permission\.id\)/);
   assert.match(source, /setPermissionDialogOpen\(true\)/);
-  assert.match(source, /disabled=\{isEditingPermission\}/);
+  // Staff and dates stay editable, so a permission saved on the wrong day can be moved.
+  assert.doesNotMatch(source, /disabled=\{isEditingPermission\}/);
+  assert.match(source, /replacesPermissionId/);
   assert.match(source, /Update Permission/);
   assert.match(source, /Permission updated\./);
   assert.match(source, />\s*Change\s*</);
