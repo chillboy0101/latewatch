@@ -1,6 +1,8 @@
 // lib/penalty-calculator.ts
 
-import { isSignInClosed, WORKDAY_START_TIME } from '@/lib/work-hours';
+import { chargesNoSignOut, isSignInClosed, WORKDAY_START_TIME } from '@/lib/work-hours';
+
+export { chargesNoSignOut, NO_SIGN_OUT_CHARGE_END_DATE } from '@/lib/work-hours';
 
 export const NO_SHOW_SIGN_IN_AMOUNT = 10;
 export const DAILY_PENALTY_CAP = 50;
@@ -11,6 +13,7 @@ export const NO_SHOW_SIGN_IN_EFFECTIVE_DATE = '2026-07-08';
 
 interface PenaltyInput {
   arrivalTime: string | null;  // HH:MM format
+  date: string;  // YYYY-MM-DD
   didNotSignOut: boolean;
   isAttendanceOnly?: boolean;
   isHoliday: boolean;
@@ -28,7 +31,8 @@ function minutesFromTime(time: string) {
   return hours * 60 + minutes;
 }
 
-export function computePenalty(input: PenaltyInput): PenaltyOutput {
+export function computePenalty(rawInput: PenaltyInput): PenaltyOutput {
+  const input = chargesNoSignOut(rawInput.date) ? rawInput : { ...rawInput, didNotSignOut: false };
   const CUTOFF_TIME = WORKDAY_START_TIME;
   const BASE_PENALTY = 10;
   const HOURLY_INCREMENT = 5;

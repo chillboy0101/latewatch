@@ -189,7 +189,7 @@ export async function GET(request: NextRequest) {
       );
       const statuses = getAttendanceStatusFlags({
         absencePermission,
-        // From the check-in time and permission, never the fee (a GHC 2 no-sign-out isn't "late").
+        // From the check-in time and permission, never the fee (a no-sign-out isn't "late").
         attendanceStatus: attendance
           ? attendanceStatusFor({ arrivalTime: attendance.checkInTime, excusedAbsence: absencePermission, lateArrivalApproved })
           : null,

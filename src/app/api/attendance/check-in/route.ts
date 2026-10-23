@@ -1268,6 +1268,7 @@ export async function POST(request: NextRequest) {
 
     const rawPenalty = computePenalty({
       arrivalTime: checkInTime,
+      date: clock.dateKey,
       didNotSignOut: false,
       isAttendanceOnly: staffMember.isAttendanceOnly === true,
       isNssPersonnel: staffMember.isNssPersonnel === true,

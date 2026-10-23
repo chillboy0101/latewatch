@@ -8,7 +8,7 @@ import { REMINDER_CRON_SCHEDULES, validateReminderCronRequest } from '@/lib/remi
 
 export const dynamic = 'force-dynamic';
 
-/** How many past days the 4:30 PM job re-checks, so a missed sign-out (GHC 2) is always charged. */
+/** How many past days the 4:30 PM job re-checks, so no charge is missed. */
 const RECHECK_DAYS = 7;
 
 export async function GET(request: NextRequest) {
