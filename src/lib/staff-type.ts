@@ -207,9 +207,12 @@ function formatDayMonthYear(dateKey: string) {
 // With no earlier charges there is nothing kept below, so that sentence is left out.
 export function notChargedNote(status: StaffChargeStatus | null | undefined, hasHistory = true) {
   if (!status || status.charged) return null;
-  const who = status.staffType === 'intern' ? 'an intern' : 'special staff';
-  const note = status.since
-    ? `Since ${formatDayMonthYear(status.since)} you're ${who} and are not charged.`
-    : `As ${who} you are not charged.`;
+  // Only interns and special staff are named; anyone else exempted on their record isn't given a type.
+  const who = status.staffType === 'intern' ? 'an intern' : status.staffType === 'special' ? 'special staff' : null;
+  const note = !who
+    ? 'You are not charged.'
+    : status.since
+      ? `Since ${formatDayMonthYear(status.since)} you're ${who} and are not charged.`
+      : `As ${who} you are not charged.`;
   return hasHistory ? `${note} Earlier charges and receipts are kept below.` : note;
 }

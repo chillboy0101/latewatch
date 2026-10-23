@@ -308,6 +308,9 @@ test('the badge follows the flag the charges read, not just the type name', () =
   // A row whose type and flag disagree: charging uses the flag, so the page does too.
   assert.equal(chargeStatusFor({ isAttendanceOnly: false, staffType: 'special' }).charged, true);
   assert.equal(notChargedNote(chargeStatusFor({ isAttendanceOnly: false, staffType: 'special' })), null);
+  // Exempted on the record while typed NSS or main: not called special staff or an intern.
+  assert.equal(notChargedNote(chargeStatusFor({ isAttendanceOnly: true, staffType: 'nss' }), false), 'You are not charged.');
+  assert.equal(notChargedNote(chargeStatusFor({ isAttendanceOnly: true, staffType: 'main' })), 'You are not charged. Earlier charges and receipts are kept below.');
 });
 
 test('every check-in reply carries the not-charged status, and a failed lookup never blocks check-in', () => {
