@@ -3,7 +3,7 @@ import 'server-only';
 import { and, asc, eq, gt, gte, inArray, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { staff, staffTypeChange } from '@/db/schema';
-import { chargeStatusFor, flagsForStaffType, HISTORY_START, undoableStaffTypeChange, type StaffType, type StaffTypeChange, type StaffTypeFields, type StaffTypeOnDate } from '@/lib/staff-type';
+import { chargeStatusFor, flagsForStaffType, HISTORY_START, isChargedNow, undoableStaffTypeChange, type StaffType, type StaffTypeChange, type StaffTypeFields, type StaffTypeOnDate } from '@/lib/staff-type';
 
 // Each person's type changes, oldest first. People who never changed type have no rows.
 export async function getStaffTypeChanges(staffIds: string[]) {
@@ -32,7 +32,8 @@ export async function getStaffTypeChanges(staffIds: string[]) {
 // Only a label: if the lookup fails the page shows no badge rather than failing to load.
 export async function getStaffChargeStatus(member: StaffTypeFields & { id: string }) {
   try {
-    const changes = (await getStaffTypeChanges([member.id])).get(member.id);
+    // Charged people get no note, so their history (only needed for the date) isn't read.
+    const changes = isChargedNow(member) ? undefined : (await getStaffTypeChanges([member.id])).get(member.id);
     return chargeStatusFor(member, changes);
   } catch (error) {
     console.warn('Charge status could not load:', error);

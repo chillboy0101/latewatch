@@ -25,6 +25,7 @@ export async function GET() {
     }
 
     const clock = getAccraClock();
+    const chargeStatusLoad = getStaffChargeStatus(member);
 
     const entries = await db.select()
       .from(latenessEntry)
@@ -66,7 +67,7 @@ export async function GET() {
     });
 
     return NextResponse.json({
-      chargeStatus: await getStaffChargeStatus(member),
+      chargeStatus: await chargeStatusLoad,
       currentWeek: history.currentWeek,
       receipts,
       staff: {
