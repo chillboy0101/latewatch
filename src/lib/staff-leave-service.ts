@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, asc, eq, gte, inArray, lte, ne, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, lte, ne, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import {
   attendancePermission,
@@ -9,6 +9,8 @@ import {
   latenessPaymentAllocation,
   staffLeavePeriod,
 } from '@/db/schema';
+import { writeAuditEvent } from '@/lib/audit';
+import { formatPermissionDays } from '@/lib/staff-leave';
 
 export async function getStaffLeavePeriodsForRange(input: {
   endDate: string;
@@ -144,28 +146,55 @@ export async function getPardonedEntryIds(entryIds: string[]) {
 
   return new Set(pardons.map((row) => row.entryId));
 }
-// Approved absence / late-arrival permissions (general pardons too) on days the leave covers.
-// Leave takes over those days, so they are removed when the leave is saved.
-export async function getPermissionsCoveredByLeave(input: {
+// Approved absence / late-arrival permissions (general pardons too) on the leave's days. Leave
+// takes those days over, so they are deleted in the same db.batch as the leave save. The delete
+// matches by date range, not by ids read earlier, so one approved meanwhile is replaced too.
+export function deletePermissionsCoveredByLeave(input: {
   endDate: string;
   staffId: string;
   startDate: string;
 }) {
-  return db.select({
-    date: attendancePermission.date,
-    generalPardonType: attendancePermission.generalPardonType,
-    id: attendancePermission.id,
-    permissionType: attendancePermission.permissionType,
-    reason: attendancePermission.reason,
-  })
-    .from(attendancePermission)
+  return db.delete(attendancePermission)
     .where(and(
       eq(attendancePermission.staffId, input.staffId),
       eq(attendancePermission.status, 'approved'),
       gte(attendancePermission.date, input.startDate),
       lte(attendancePermission.date, input.endDate),
     ))
-    .orderBy(asc(attendancePermission.date));
+    .returning({
+      date: attendancePermission.date,
+      generalPardonType: attendancePermission.generalPardonType,
+      id: attendancePermission.id,
+      permissionType: attendancePermission.permissionType,
+      reason: attendancePermission.reason,
+    });
+}
+
+type ReplacedPermission = Awaited<ReturnType<typeof deletePermissionsCoveredByLeave>>[number];
+
+// One audit event per replaced permission, written together; a failed audit write never undoes
+// the saved leave or hides it from the admin.
+export async function auditReplacedPermissions(input: {
+  actor: { email: string; id: string | null };
+  permissions: ReplacedPermission[];
+  staffId: string;
+  staffName?: string | null;
+}) {
+  await Promise.all(input.permissions.map((permission) => writeAuditEvent({
+    action: 'DELETE',
+    actor: input.actor,
+    after: null,
+    before: { ...permission, staffId: input.staffId, staffName: input.staffName ?? undefined },
+    entityId: permission.id,
+    entityType: 'attendance_permission',
+    publish: false,
+    reason: 'replaced-by-leave',
+  }).catch((error) => console.error('Failed to audit permission replaced by leave:', error))));
+}
+
+export function replacedPermissionSummary(permissions: ReplacedPermission[]) {
+  const dates = permissions.map((permission) => String(permission.date).slice(0, 10)).sort();
+  return { replacedPermissionCount: dates.length, replacedPermissionDays: formatPermissionDays(dates) };
 }
 
 // A deactivation (legacy staff_inactive_period row) touching the leave dates: the database won't

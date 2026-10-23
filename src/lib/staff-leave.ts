@@ -132,23 +132,30 @@ export function leaveRangesOverlap(input: {
 }
 
 // Database overlap refusals arrive wrapped by the driver (code on error.cause); turn them into a
-// message the admin can act on instead of a generic failure.
+// message the admin can act on instead of a generic failure. Only the overlap error codes count.
 export function leaveOverlapError(error: unknown) {
   const parts = [error, (error as { cause?: unknown } | null)?.cause];
   for (const part of parts) {
     if (!part || typeof part !== 'object') continue;
     const code = String((part as { code?: unknown }).code || '');
-    const message = String((part as { message?: unknown }).message || '');
-    if (code === '23P01' || code === '23505' || message.includes('overlap')) {
+    if (code === '23P01' || code === '23505') {
       return 'These dates overlap another leave period, or a time this person was deactivated.';
     }
   }
   return null;
 }
 
+function nextDayKey(value: string) {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+// "26 Oct – 30 Oct (5 days)" only for a continuous run; otherwise each day is listed.
 export function formatPermissionDays(dates: string[]) {
   if (dates.length === 0) return '';
   const label = (value: string) => new Date(`${value}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
-  if (dates.length <= 3) return dates.map(label).join(', ');
-  return `${label(dates[0])} – ${label(dates[dates.length - 1])} (${dates.length} days)`;
+  const consecutive = dates.every((date, index) => index === 0 || date === nextDayKey(dates[index - 1]));
+  if (dates.length > 3 && consecutive) return `${label(dates[0])} – ${label(dates[dates.length - 1])} (${dates.length} days)`;
+  return dates.map(label).join(', ');
 }
