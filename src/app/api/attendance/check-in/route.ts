@@ -33,6 +33,8 @@ import { type OfficeBoundary, parseOfficeBoundary } from '@/lib/office-boundary'
 import { allowRequest } from '@/lib/rate-limit';
 import { maybeRunMissedReminderBatch } from '@/lib/reminder-fallback';
 import { publishRealtime } from '@/lib/realtime';
+import type { StaffChargeStatus } from '@/lib/staff-type';
+import { getStaffChargeStatus } from '@/lib/staff-type-history';
 import {
   canSignOutNow,
   isSignInClosed,
@@ -182,7 +184,7 @@ function responsePayload(input: {
     requestedAt?: Date | string | null;
     status: string;
   } | null;
-  staff?: { id: string; fullName: string; email: string | null } | null;
+  staff?: { chargeStatus?: StaffChargeStatus; id: string; fullName: string; email: string | null } | null;
   time: string;
 }) {
   return {
@@ -611,7 +613,9 @@ export async function GET(request: NextRequest) {
       locationPolicy: serializeLocationPolicy(office),
       networkConfigured: Boolean(office),
       permission: serializePermission(permission),
-      staff: member ? { id: member.id, fullName: member.fullName, email: member.email } : null,
+      staff: member
+        ? { chargeStatus: await getStaffChargeStatus(member), email: member.email, fullName: member.fullName, id: member.id }
+        : null,
       time: clock.timeKey,
       transferRequest: statusTransfer
         ? {

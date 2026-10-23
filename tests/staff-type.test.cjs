@@ -11,6 +11,9 @@ const read = (...parts) => fs.readFileSync(path.join(root, ...parts), 'utf8');
 const {
   allowedStaffTypes,
   canChangeStaffType,
+  chargeStatusFor,
+  currentStaffTypeSince,
+  notChargedNote,
   isValidDateKey,
   penaltyFlagsOn,
   staffReturnDateError,
@@ -235,4 +238,55 @@ test('type changes are confirmed before saving, and undo is admin-only, audited 
   const display = read('src/lib/audit-display.ts');
   assert.match(display, /\$\{typeChange\.from\} → \$\{typeChange\.to\} from/);
   assert.match(display, /type change undone, back to/);
+});
+
+test('own pages say who is not charged: interns and special staff, from the day their type began', () => {
+  // Lisabeth: NSS, archived 18 Oct, back as special staff from 23 Oct.
+  const lisabeth = [
+    { effectiveFrom: '2000-01-01', staffType: 'nss' },
+    { effectiveFrom: '2026-10-18', staffType: 'away' },
+    { effectiveFrom: '2026-10-23', staffType: 'special' },
+  ];
+  const special = chargeStatusFor({ staffType: 'special' }, lisabeth);
+  assert.deepEqual(special, { charged: false, label: 'Special staff', since: '2026-10-23', staffType: 'special' });
+  assert.equal(notChargedNote(special), "Since 23 Oct 2026 you're special staff and are not charged. Earlier charges and receipts are kept below.");
+  assert.equal(notChargedNote(special, false), "Since 23 Oct 2026 you're special staff and are not charged.");
+
+  // An intern from the start has no date to show.
+  const intern = chargeStatusFor({ staffType: 'intern' });
+  assert.deepEqual(intern, { charged: false, label: 'Intern', since: null, staffType: 'intern' });
+  assert.equal(notChargedNote(intern), 'As an intern you are not charged.');
+
+  // NSS and main staff get no note.
+  assert.equal(chargeStatusFor({ staffType: 'nss' }).charged, true);
+  assert.equal(chargeStatusFor({ staffType: 'main' }).charged, true);
+  assert.equal(notChargedNote(chargeStatusFor({ staffType: 'main' })), null);
+  assert.equal(notChargedNote(null), null);
+
+  // Older rows without staff_type still read their flags.
+  assert.equal(chargeStatusFor({ isAttendanceOnly: true }).label, 'Special staff');
+});
+
+test('time away does not restart the date someone became special staff', () => {
+  assert.equal(currentStaffTypeSince([
+    { effectiveFrom: '2000-01-01', staffType: 'nss' },
+    { effectiveFrom: '2026-09-01', staffType: 'special' },
+    { effectiveFrom: '2026-09-10', staffType: 'away' },
+    { effectiveFrom: '2026-09-20', staffType: 'special' },
+  ], 'special'), '2026-09-01');
+  assert.equal(currentStaffTypeSince([{ effectiveFrom: '2000-01-01', staffType: 'special' }], 'special'), null);
+  assert.equal(currentStaffTypeSince(undefined, 'special'), null);
+});
+
+test('check-in page shows the not-charged badge and note only for people who are not charged', () => {
+  const page = read('src', 'app', 'check-in', 'page.tsx');
+  assert.match(page, /status\?\.staff\?\.chargeStatus\?\.charged === false && \(/);
+  assert.match(page, /\{status\.staff\.chargeStatus\.label\} · not charged/);
+  assert.match(page, /notChargedNote\(history\?\.chargeStatus, weeks\.length > 0\)/);
+  // Check-in replies keep the badge (they don't carry the charge status themselves).
+  assert.equal((page.match(/setStatus\(\(current\) => withChargeStatus\(body, current\)\)/g) || []).length, 2);
+  const status = read('src', 'app', 'api', 'attendance', 'check-in', 'route.ts');
+  assert.match(status, /chargeStatus: await getStaffChargeStatus\(member\)/);
+  const history = read('src', 'app', 'api', 'attendance', 'check-in', 'penalty-history', 'route.ts');
+  assert.match(history, /chargeStatus: await getStaffChargeStatus\(member\)/);
 });
