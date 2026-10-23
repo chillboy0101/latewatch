@@ -15,7 +15,7 @@ import { ArrowLeft, ClockAlert, Save, CheckCircle, AlertCircle, CalendarOff, Che
 import { computePenalty } from '@/lib/penalty-calculator';
 import { NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/penalty-calculator';
 import { getAccraDateKey, getAccraTimeKey } from '@/lib/date-key';
-import { isNoSignOutChargeDue, isOnTimeCheckIn } from '@/lib/work-hours';
+import { chargesNoSignOut, isNoSignOutChargeDue, isOnTimeCheckIn } from '@/lib/work-hours';
 import { formatLongDisplayDate } from '@/lib/date-format';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { formatLeaveSummary } from '@/lib/staff-leave';
@@ -410,7 +410,11 @@ function EntriesPageContent() {
     const isExcusedAbsence = entry.isExcusedAbsence === true;
     const noShowSignInWaived = hasSignInTime || isExcusedAbsence ? false : entry.noShowSignInWaived;
     const noSignOutWaived = hasSignOutTime || isExcusedAbsence ? false : entry.noSignOutWaived;
-    const didNotSignOut = hasSignOutTime || isExcusedAbsence || noSignOutWaived || noShowSignInWaived ? false : entry.didNotSignOut;
+    // From 12 Oct 2026 a missed sign-out is no longer charged, so it isn't shown as one either.
+    const didNotSignOut = hasSignOutTime || isExcusedAbsence || noSignOutWaived || noShowSignInWaived
+      || !chargesNoSignOut(format(selectedDate, 'yyyy-MM-dd'))
+      ? false
+      : entry.didNotSignOut;
     const normalizedEntry = {
       ...entry,
       didNotSignOut,
