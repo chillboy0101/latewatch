@@ -48,8 +48,7 @@ function DevicesIllustration() {
   );
 }
 
-function ChoiceCard({ description, highlight, href, icon, title }: {
-  description: string;
+function ChoiceCard({ highlight, href, icon, title }: {
   highlight?: boolean;
   href: string;
   icon: ReactNode;
@@ -69,10 +68,7 @@ function ChoiceCard({ description, highlight, href, icon, title }: {
       )}>
         {icon}
       </span>
-      <span className="min-w-0">
-        <span className="block text-[17.5px] font-semibold leading-tight">{title}</span>
-        <span className="mt-1 block text-sm text-muted-foreground">{description}</span>
-      </span>
+      <span className="min-w-0 text-[17.5px] font-semibold leading-tight">{title}</span>
       <ArrowRight className="ml-auto h-5 w-5 shrink-0 text-muted-foreground" />
     </Link>
   );
@@ -99,20 +95,17 @@ export function DesktopRequiredScreen() {
       <section className="rounded-t-[32px] border-t border-border bg-card px-6 pb-[max(2.25rem,env(safe-area-inset-bottom))] pt-3">
         <div aria-hidden className="mx-auto mb-6 h-[5px] w-10 rounded-full bg-foreground/15" />
         <h1 className="text-[28px] font-bold leading-tight tracking-tight">Admin needs a computer</h1>
-        <p className="mt-2.5 text-base leading-relaxed text-muted-foreground">Open this page on a laptop or desktop.</p>
         <nav className="mt-6 grid gap-3" aria-label="Where to go">
           <ChoiceCard
             highlight
             href="/check-in"
             icon={<LogIn className="h-[22px] w-[22px]" />}
             title="Attendance Portal"
-            description="Check in and check out"
           />
           <ChoiceCard
             href="/"
             icon={<LayoutDashboard className="h-[22px] w-[22px]" />}
             title="Portal Home"
-            description="Pick a different portal"
           />
         </nav>
       </section>
