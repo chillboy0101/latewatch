@@ -1,0 +1,121 @@
+'use client';
+
+import type { CSSProperties, ReactNode } from 'react';
+import Link from 'next/link';
+import { ArrowRight, Check, LayoutDashboard, LogIn } from 'lucide-react';
+import { LateWatchLogo } from '@/components/brand/latewatch-logo';
+import { ModePicker } from '@/components/theme/mode-picker';
+import { ThemePicker } from '@/components/theme/theme-picker';
+import { cn } from '@/lib/utils';
+
+// Lines of the drawing: the theme colour lifted toward the text colour, so it reads in every theme
+// and in light and dark mode.
+const ink = 'color-mix(in oklab, var(--primary) 55%, var(--foreground))';
+
+const glow: CSSProperties = {
+  background: 'radial-gradient(110% 85% at 50% 30%, color-mix(in oklab, var(--primary) 34%, transparent) 0%, color-mix(in oklab, var(--primary) 10%, transparent) 45%, transparent 85%)',
+};
+
+// A laptop with a phone in front of it (ticked): "this works on a computer, check in on the phone".
+function DevicesIllustration() {
+  return (
+    <div aria-hidden className="relative h-[164px] w-[232px]">
+      <div
+        className="pointer-events-none absolute -inset-x-10 -inset-y-12"
+        style={{ background: `radial-gradient(closest-side, color-mix(in oklab, ${ink} 24%, transparent), transparent)` }}
+      />
+      <div
+        className="absolute left-0 top-0 h-[118px] w-[184px] rounded-[13px] border-2"
+        style={{ background: `linear-gradient(160deg, color-mix(in oklab, ${ink} 14%, transparent), color-mix(in oklab, ${ink} 3%, transparent))`, borderColor: ink }}
+      >
+        <div className="absolute inset-x-[18px] top-[18px] flex flex-col gap-[9px]">
+          <span className="h-[9px] rounded-full" style={{ background: `color-mix(in oklab, ${ink} 32%, transparent)` }} />
+          <span className="h-[9px] w-[68%] rounded-full" style={{ background: `color-mix(in oklab, ${ink} 32%, transparent)` }} />
+          <span className="h-[9px] w-[44%] rounded-full" style={{ background: `color-mix(in oklab, ${ink} 58%, transparent)` }} />
+        </div>
+      </div>
+      <div className="absolute -left-3.5 top-[124px] h-3 w-[212px] rounded-b-xl rounded-t-sm" style={{ background: ink }} />
+      <div
+        className="absolute bottom-0 right-0 flex h-[104px] w-[58px] items-end justify-center rounded-[14px] border-2 bg-background pb-2.5 shadow-[-8px_10px_24px_rgba(0,0,0,0.3)]"
+        style={{ borderColor: ink }}
+      >
+        <span className="absolute top-[7px] h-[3px] w-4 rounded-full" style={{ background: `color-mix(in oklab, ${ink} 40%, transparent)` }} />
+        <span className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <Check className="h-3.5 w-3.5" strokeWidth={3} />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ChoiceCard({ description, highlight, href, icon, title }: {
+  description: string;
+  highlight?: boolean;
+  href: string;
+  icon: ReactNode;
+  title: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        'flex h-[86px] items-center gap-4 rounded-[22px] border px-[18px] transition-[filter] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 active:brightness-95',
+        highlight ? 'border-primary/35 bg-gradient-to-br from-primary/30 to-primary/10' : 'border-border bg-background/40',
+      )}
+    >
+      <span className={cn(
+        'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl',
+        highlight ? 'bg-primary text-primary-foreground' : 'bg-foreground/5 text-primary',
+      )}>
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[17.5px] font-semibold leading-tight">{title}</span>
+        <span className="mt-1 block text-sm text-muted-foreground">{description}</span>
+      </span>
+      <ArrowRight className="ml-auto h-5 w-5 shrink-0 text-muted-foreground" />
+    </Link>
+  );
+}
+
+// Phones opening an admin page: the admin portal needs a bigger screen, so offer the attendance
+// portal (or the portal chooser). Glowing top with the drawing, a panel with the choices.
+export function DesktopRequiredScreen() {
+  return (
+    <main className="relative flex h-dvh flex-col overflow-hidden overscroll-none bg-background text-foreground lg:hidden">
+      <header className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-6 pt-[max(1.25rem,env(safe-area-inset-top))]">
+        <LateWatchLogo markSize="md" />
+        <div className="flex items-center gap-2">
+          <ThemePicker buttonVariant="glass" buttonClassName="h-10 w-10 rounded-full" iconClassName="h-5 w-5" />
+          <ModePicker buttonVariant="glass" buttonClassName="h-10 w-10 rounded-full" />
+        </div>
+      </header>
+
+      {/* The drawing sits centred in the space between the header and the panel. */}
+      <div className="flex min-h-0 flex-1 items-center justify-center pb-7 pt-24" style={glow}>
+        <DevicesIllustration />
+      </div>
+
+      <section className="rounded-t-[32px] border-t border-border bg-card px-6 pb-[max(2.25rem,env(safe-area-inset-bottom))] pt-3">
+        <div aria-hidden className="mx-auto mb-6 h-[5px] w-10 rounded-full bg-foreground/15" />
+        <h1 className="text-[28px] font-bold leading-tight tracking-tight">Best on a bigger screen</h1>
+        <p className="mt-2.5 text-base leading-relaxed text-muted-foreground">Admin tools need a laptop or desktop.</p>
+        <nav className="mt-6 grid gap-3" aria-label="Where to go">
+          <ChoiceCard
+            highlight
+            href="/check-in"
+            icon={<LogIn className="h-[22px] w-[22px]" />}
+            title="Attendance Portal"
+            description="Check in and check out"
+          />
+          <ChoiceCard
+            href="/"
+            icon={<LayoutDashboard className="h-[22px] w-[22px]" />}
+            title="Portal Home"
+            description="Pick a different portal"
+          />
+        </nav>
+      </section>
+    </main>
+  );
+}
