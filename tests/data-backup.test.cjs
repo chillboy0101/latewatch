@@ -103,11 +103,16 @@ test('restore runs in one transaction: rolls back on any error and re-checks eve
   // Check-in attempts (never backed up) are unlinked, not deleted.
   assert.match(source, /UPDATE attendance_attempt SET staff_id = NULL/);
   const restore = read('src', 'lib', 'data-restore.ts');
-  assert.match(restore, /readBackupTables\(input\.id\);\s*const \{ manifest: safety \} = await createDataBackup\(\{[^}]*source: 'before-restore' \}\);\s*const restored = await withDbClient/);
+  // The safety copy is stored inside the restore's transaction, once the tables are locked.
+  assert.match(restore, /readBackupTables\(input\.id\);[\s\S]*restoreTables\(client, tables, \{\s*onLocked: async \(locked\) => \{\s*safetyBackupId = \(await createSafetyBackup\(locked, input\.actor\.email\)\)\.id;/);
   const backup = read('src', 'lib', 'data-backup.ts');
   assert.match(backup, /sha256Hex\(body\) !== manifest\.sha256/);
   // The safety copy never prunes (it could remove the very backup being restored).
-  assert.match(backup, /input\.source === 'before-restore' \? 0 : await pruneOldBackups/);
+  const safety = backup.slice(backup.indexOf('export async function createSafetyBackup'), backup.indexOf('async function storeBackup'));
+  assert.doesNotMatch(safety, /pruneOldBackups/);
+  // Storage being unreachable isn't reported as "not found"; a missing file says so.
+  assert.match(backup, /if \(strict && !isNotFound\(error\)\) throw error;/);
+  assert.match(backup, /This backup\\'s file is missing/);
   assert.match(read('src', 'app', 'api', 'admin', 'backups', 'restore', 'route.ts'), /code === '55P03'/);
   assert.match(read('src', 'lib', 'data-backup-core.ts'), /BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY/);
 });
@@ -164,6 +169,23 @@ test('restore round trip on Postgres', { skip: !process.env.LATEWATCH_TEST_PG_HO
     assert.equal(entry.a, '10.00');
     const { rows: [attempt] } = await client.query('SELECT count(*)::int AS n FROM attendance_attempt WHERE staff_id = $1', [staffId]);
     assert.equal(attempt.n, attemptsBefore.n + 1);
+    // Two people in the backup swapped emails since: putting them back must not trip the unique index.
+    const kofiId = '44444444-4444-4444-4444-444444444444';
+    const withKofi = { ...tables, staff: [...tables.staff, { email: 'kofi@example.com', full_name: 'Kofi Boateng', id: kofiId }] };
+    await core.restoreTables(client, withKofi);
+    await client.query(`UPDATE staff SET email = 'tmp@example.com' WHERE id = $1`, [staffId]);
+    await client.query(`UPDATE staff SET email = 'ama@example.com' WHERE id = $1`, [kofiId]);
+    await client.query(`UPDATE staff SET email = 'kofi@example.com' WHERE id = $1`, [staffId]);
+    const seen = [];
+    await core.restoreTables(client, withKofi, { onLocked: async (locked) => {
+      // The safety copy reads here: everything is locked and nothing has changed yet.
+      const { rows: [row] } = await locked.query('SELECT email FROM staff WHERE id = $1', [kofiId]);
+      seen.push(row.email);
+    } });
+    assert.deepEqual(seen, ['ama@example.com']);
+    const { rows: emails } = await client.query('SELECT id, email FROM staff WHERE id = ANY($1::uuid[]) ORDER BY email', [[staffId, kofiId]]);
+    assert.deepEqual(emails.map((row) => row.email), ['ama@example.com', 'kofi@example.com']);
+    assert.equal(emails[0].id, staffId);
     // A bad row rolls the whole restore back.
     await assert.rejects(core.restoreTables(client, { ...tables, lateness_entry: [{ ...tables.lateness_entry[0], staff_id: '99999999-9999-9999-9999-999999999999' }] }));
     const { rows: [after] } = await client.query('SELECT count(*)::int AS n FROM lateness_entry WHERE id = $1', [entryId]);

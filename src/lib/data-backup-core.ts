@@ -10,21 +10,28 @@ import type { QueryClient } from '@/lib/data-restore-core';
 // payment can't be in the backup without the charges it pays. Rows keep their column names and
 // Postgres's own JSON for each type (dates stay dates, amounts stay exact).
 export async function snapshotTables(client: QueryClient) {
-  const tables: Record<string, string> = {};
-  const rowCounts: Record<string, number> = {};
   await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
   try {
-    for (const table of BACKUP_TABLE_ORDER) {
-      const { rows: [row] } = await client.query(
-        `SELECT count(*)::int AS n, coalesce(json_agg(t ORDER BY t.id), '[]'::json)::text AS rows FROM "${table}" t`,
-      );
-      tables[table] = String(row?.rows ?? '[]');
-      rowCounts[table] = Number(row?.n ?? 0);
-    }
+    const snapshot = await readTables(client);
     await client.query('COMMIT');
+    return snapshot;
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);
     throw error;
+  }
+}
+
+// Every backed-up table, read inside the caller's transaction (the restore reads its safety copy
+// this way, after locking the tables, so nothing can be written in between).
+export async function readTables(client: QueryClient) {
+  const tables: Record<string, string> = {};
+  const rowCounts: Record<string, number> = {};
+  for (const table of BACKUP_TABLE_ORDER) {
+    const { rows: [row] } = await client.query(
+      `SELECT count(*)::int AS n, coalesce(json_agg(t ORDER BY t.id), '[]'::json)::text AS rows FROM "${table}" t`,
+    );
+    tables[table] = String(row?.rows ?? '[]');
+    rowCounts[table] = Number(row?.n ?? 0);
   }
   return { rowCounts, tables };
 }

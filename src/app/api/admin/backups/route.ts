@@ -40,7 +40,7 @@ export async function POST() {
     await tryWriteAuditEvent({
       action: 'BACKUP_CREATED',
       after: { id: manifest.id, removedOld: removed, sizeBytes: manifest.sizeBytes, source: 'manual', totalRows: manifest.totalRows },
-      entityId: manifest.id!,
+      entityId: manifest.id,
       entityType: 'data_backup',
     });
     return NextResponse.json({ backup: manifest }, { headers: noStore });

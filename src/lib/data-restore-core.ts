@@ -63,18 +63,26 @@ export function backupTablesInOrder(tables: BackupTables) {
   return BACKUP_TABLE_ORDER.filter((name) => tables[name] !== undefined);
 }
 
-async function tableColumns(client: QueryClient, table: string) {
+// Each table's columns in order, in one query.
+async function tableColumns(client: QueryClient, tables: string[]) {
   const { rows } = await client.query(
-    `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`,
-    [table],
+    `SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ANY($1::text[]) ORDER BY table_name, ordinal_position`,
+    [tables],
   );
-  if (rows.length === 0) throw new RestoreError(`Table ${table} is missing from the database.`);
-  return rows.map((row) => String(row.column_name));
+  const byTable = new Map<string, string[]>();
+  for (const row of rows) {
+    const list = byTable.get(String(row.table_name)) || [];
+    list.push(String(row.column_name));
+    byTable.set(String(row.table_name), list);
+  }
+  for (const table of tables) {
+    if (!byTable.has(table)) throw new RestoreError(`Table ${table} is missing from the database.`);
+  }
+  return byTable;
 }
 
-async function insertRows(client: QueryClient, table: string, rows: Record<string, unknown>[], upsert: boolean) {
+async function insertRows(client: QueryClient, table: string, tableCols: string[], rows: Record<string, unknown>[], upsert: boolean) {
   if (rows.length === 0) return;
-  const tableCols = await tableColumns(client, table);
   // Only columns the backup has, so newer columns take their defaults instead of NULL.
   const present = new Set(rows.flatMap((row) => Object.keys(row)));
   const columns = tableCols.filter((column) => present.has(column));
@@ -93,7 +101,13 @@ async function insertRows(client: QueryClient, table: string, rows: Record<strin
 
 // Replaces the backed-up tables with the backup's rows. Tables the backup doesn't have are left
 // as they are. Returns the restored row count per table.
-export async function restoreTables(client: QueryClient, tables: BackupTables) {
+// `onLocked` runs once every table is locked and before anything changes: the safety copy is read
+// there, so nothing written by anyone else can fall between it and the restore.
+export async function restoreTables(
+  client: QueryClient,
+  tables: BackupTables,
+  options: { onLocked?: (client: QueryClient) => Promise<void> } = {},
+) {
   const order = backupTablesInOrder(tables);
   const kept = new Set<string>(RESTORE_KEPT_TABLES);
 
@@ -107,6 +121,8 @@ export async function restoreTables(client: QueryClient, tables: BackupTables) {
     // No check-in or edit can land mid-restore and survive it or upset the row counts; they wait
     // (a few seconds) and then run against the restored data.
     await client.query(`LOCK TABLE ${order.map(quoteIdent).join(', ')} IN ACCESS EXCLUSIVE MODE`);
+    await options.onLocked?.(client);
+    const columns = await tableColumns(client, order);
 
     // The overlap checks would fire on half-loaded data; the backup itself was consistent.
     for (const table of RESTORE_TRIGGER_TABLES) {
@@ -134,10 +150,15 @@ export async function restoreTables(client: QueryClient, tables: BackupTables) {
         await client.query(`DELETE FROM ${quoteIdent(table)}`);
       }
     }
+    // An email can move to another person after a backup; clear the kept staff's emails first so
+    // putting the backup's back can't trip the unique email index halfway through.
+    if ((tables.staff || []).some((row) => 'email' in row)) {
+      await client.query('UPDATE staff SET email = NULL WHERE email IS NOT NULL');
+    }
     // Parents first.
     for (const table of order) {
       const rows = tables[table] || [];
-      await insertRows(client, table, table === 'staff' ? withStaffType(rows) : rows, kept.has(table));
+      await insertRows(client, table, columns.get(table)!, table === 'staff' ? withStaffType(rows) : rows, kept.has(table));
     }
 
     for (const table of RESTORE_TRIGGER_TABLES) {
