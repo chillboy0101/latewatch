@@ -16,7 +16,7 @@ const glow: CSSProperties = {
   background: 'radial-gradient(110% 85% at 50% 30%, color-mix(in oklab, var(--primary) 34%, transparent) 0%, color-mix(in oklab, var(--primary) 10%, transparent) 45%, transparent 85%)',
 };
 
-// A laptop with a phone in front of it (ticked): "this works on a computer, check in on the phone".
+// A laptop (ticked: the right device) with a faded phone in front of it: "use a computer for this".
 function DevicesIllustration() {
   return (
     <div aria-hidden className="relative h-[164px] w-[232px]">
@@ -28,21 +28,21 @@ function DevicesIllustration() {
         className="absolute left-0 top-0 h-[118px] w-[184px] rounded-[13px] border-2"
         style={{ background: `linear-gradient(160deg, color-mix(in oklab, ${ink} 14%, transparent), color-mix(in oklab, ${ink} 3%, transparent))`, borderColor: ink }}
       >
-        <div className="absolute inset-x-[18px] top-[18px] flex flex-col gap-[9px]">
+        <div className="absolute left-[18px] right-[54px] top-[18px] flex flex-col gap-[9px]">
           <span className="h-[9px] rounded-full" style={{ background: `color-mix(in oklab, ${ink} 32%, transparent)` }} />
           <span className="h-[9px] w-[68%] rounded-full" style={{ background: `color-mix(in oklab, ${ink} 32%, transparent)` }} />
           <span className="h-[9px] w-[44%] rounded-full" style={{ background: `color-mix(in oklab, ${ink} 58%, transparent)` }} />
         </div>
+        <span className="absolute right-3 top-3 flex h-[30px] w-[30px] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
+          <Check className="h-4 w-4" strokeWidth={3} />
+        </span>
       </div>
       <div className="absolute -left-3.5 top-[124px] h-3 w-[212px] rounded-b-xl rounded-t-sm" style={{ background: ink }} />
       <div
-        className="absolute bottom-0 right-0 flex h-[104px] w-[58px] items-end justify-center rounded-[14px] border-2 bg-background pb-2.5 shadow-[-8px_10px_24px_rgba(0,0,0,0.3)]"
-        style={{ borderColor: ink }}
+        className="absolute bottom-0 right-0 flex h-[104px] w-[58px] justify-center rounded-[14px] border-2 bg-background shadow-[-8px_10px_24px_rgba(0,0,0,0.3)]"
+        style={{ borderColor: `color-mix(in oklab, ${ink} 45%, transparent)` }}
       >
-        <span className="absolute top-[7px] h-[3px] w-4 rounded-full" style={{ background: `color-mix(in oklab, ${ink} 40%, transparent)` }} />
-        <span className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-primary text-primary-foreground">
-          <Check className="h-3.5 w-3.5" strokeWidth={3} />
-        </span>
+        <span className="absolute top-[7px] h-[3px] w-4 rounded-full" style={{ background: `color-mix(in oklab, ${ink} 25%, transparent)` }} />
       </div>
     </div>
   );
@@ -78,7 +78,7 @@ function ChoiceCard({ description, highlight, href, icon, title }: {
   );
 }
 
-// Phones opening an admin page: the admin portal needs a bigger screen, so offer the attendance
+// Phones opening an admin page: the admin portal needs a computer, so offer the attendance
 // portal (or the portal chooser). Glowing top with the drawing, a panel with the choices.
 export function DesktopRequiredScreen() {
   return (
@@ -98,8 +98,8 @@ export function DesktopRequiredScreen() {
 
       <section className="rounded-t-[32px] border-t border-border bg-card px-6 pb-[max(2.25rem,env(safe-area-inset-bottom))] pt-3">
         <div aria-hidden className="mx-auto mb-6 h-[5px] w-10 rounded-full bg-foreground/15" />
-        <h1 className="text-[28px] font-bold leading-tight tracking-tight">Best on a bigger screen</h1>
-        <p className="mt-2.5 text-base leading-relaxed text-muted-foreground">Admin tools need a laptop or desktop.</p>
+        <h1 className="text-[28px] font-bold leading-tight tracking-tight">Admin needs a computer</h1>
+        <p className="mt-2.5 text-base leading-relaxed text-muted-foreground">Open this page on a laptop or desktop.</p>
         <nav className="mt-6 grid gap-3" aria-label="Where to go">
           <ChoiceCard
             highlight
