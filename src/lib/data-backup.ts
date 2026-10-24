@@ -61,14 +61,12 @@ export async function createDataBackup(input: { createdBy: string; source: Backu
   };
 
   const r2 = getR2Client();
-  // IfNoneMatch: two backups in the same millisecond must not overwrite each other.
-  await r2.send(new PutObjectCommand({ Body: body, Bucket: bucket(), ContentType: 'application/gzip', IfNoneMatch: '*', Key: backupKey }));
+  await r2.send(new PutObjectCommand({ Body: body, Bucket: bucket(), ContentType: 'application/gzip', Key: backupKey }));
   // The manifest goes last: a backup only lists once its file is fully stored.
   await r2.send(new PutObjectCommand({
     Body: JSON.stringify(manifest, null, 2),
     Bucket: bucket(),
     ContentType: 'application/json',
-    IfNoneMatch: '*',
     Key: manifestKey,
   }));
 

@@ -19,6 +19,7 @@ export type BackupTables = Partial<Record<BackupTableName, Record<string, unknow
 
 const INSERT_CHUNK = 500;
 const RESTORE_LOCK = 'latewatch-backup-restore';
+const LOCK_TIMEOUT = '15s';
 
 export class RestoreError extends Error {}
 
@@ -98,6 +99,9 @@ export async function restoreTables(client: QueryClient, tables: BackupTables) {
 
   await client.query('BEGIN');
   try {
+    // A long-running query holding a table makes the restore give up (and change nothing) after a
+    // few seconds instead of waiting until the function is killed.
+    await client.query(`SET LOCAL lock_timeout = '${LOCK_TIMEOUT}'`);
     const { rows: [lock] } = await client.query('SELECT pg_try_advisory_xact_lock(hashtext($1)) AS locked', [RESTORE_LOCK]);
     if (!lock?.locked) throw new RestoreError('Another restore is running. Try again in a minute.');
     // No check-in or edit can land mid-restore and survive it or upset the row counts; they wait
