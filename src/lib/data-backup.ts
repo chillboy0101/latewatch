@@ -17,8 +17,8 @@ import {
   type BackupSource,
   type BackupTableName,
 } from '@/lib/backup-format';
-import { buildBackupFile, sha256Hex, snapshotTables } from '@/lib/data-backup-core';
-import { RestoreError, v1RowsToColumns, type BackupTables } from '@/lib/data-restore-core';
+import { buildBackupFile, readTables, sha256Hex, snapshotTables } from '@/lib/data-backup-core';
+import { RestoreError, v1RowsToColumns, type BackupTables, type QueryClient } from '@/lib/data-restore-core';
 import { getAccraDateKey } from '@/lib/date-key';
 import { withDbClient } from '@/lib/db-pool';
 import { getR2Client } from '@/lib/r2/client';
@@ -29,23 +29,46 @@ import { getR2Client } from '@/lib/r2/client';
 
 export type BackupListItem = BackupManifest & { id: string; source: BackupSource };
 
+function isNotFound(error: unknown) {
+  const err = error as { $metadata?: { httpStatusCode?: number }; name?: string } | null;
+  return err?.name === 'NoSuchKey' || err?.name === 'NotFound' || err?.$metadata?.httpStatusCode === 404;
+}
+
 function bucket() {
   const name = process.env.CF_R2_BUCKET;
   if (!name) throw new Error('Cloudflare R2 bucket is required');
   return name;
 }
 
-export async function createDataBackup(input: { createdBy: string; source: BackupSource }) {
-  // A safety copy before a restore never prunes: the backup being restored may be the old one kept
-  // only because it was the newest.
+export async function createDataBackup(input: { createdBy: string; source: 'manual' | 'weekly' }) {
+  const snapshot = await withDbClient((client) => snapshotTables(client));
   const now = new Date();
+  const manifest = await storeBackup({ ...snapshot, createdBy: input.createdBy, now, source: input.source });
+  const removed = await pruneOldBackups(getAccraDateKey(now));
+  return { manifest, removed };
+}
+
+// The safety copy taken by a restore, read inside its transaction once the tables are locked. It
+// never prunes: the backup being restored may be the old one kept only because it was the newest.
+export async function createSafetyBackup(client: QueryClient, createdBy: string) {
+  const snapshot = await readTables(client);
+  return storeBackup({ ...snapshot, createdBy, now: new Date(), source: 'before-restore' });
+}
+
+async function storeBackup(input: {
+  createdBy: string;
+  now: Date;
+  rowCounts: Record<string, number>;
+  source: BackupSource;
+  tables: Record<string, string>;
+}): Promise<BackupManifest & { id: string }> {
+  const { now, rowCounts, tables } = input;
   const id = newBackupId(now);
   const createdAt = now.toISOString();
   const commit = process.env.VERCEL_GIT_COMMIT_SHA || null;
-  const { rowCounts, tables } = await withDbClient((client) => snapshotTables(client));
   const { body, sha256 } = buildBackupFile({ commit, createdAt, id, tables });
   const { backupKey, manifestKey } = backupKeysForId(id);
-  const manifest: BackupManifest = {
+  const manifest: BackupManifest & { id: string } = {
     backupKey,
     commit,
     createdAt,
@@ -69,9 +92,7 @@ export async function createDataBackup(input: { createdBy: string; source: Backu
     ContentType: 'application/json',
     Key: manifestKey,
   }));
-
-  const removed = input.source === 'before-restore' ? 0 : await pruneOldBackups(getAccraDateKey(now));
-  return { manifest, removed };
+  return manifest;
 }
 
 async function listBackupIds() {
@@ -101,7 +122,9 @@ async function pruneOldBackups(today: string) {
   return expired.length;
 }
 
-async function readManifest(id: string): Promise<BackupListItem | null> {
+// null when the manifest doesn't exist (or, for the listing, can't be read). A restore passes
+// strict, so storage being unreachable isn't reported as "not found".
+async function readManifest(id: string, strict = false): Promise<BackupListItem | null> {
   try {
     const object = await getR2Client().send(new GetObjectCommand({ Bucket: bucket(), Key: backupKeysForId(id).manifestKey }));
     const manifest = JSON.parse(await object.Body!.transformToString()) as BackupManifest;
@@ -110,14 +133,15 @@ async function readManifest(id: string): Promise<BackupListItem | null> {
       id,
       source: backupSourceOf(manifest),
     };
-  } catch {
+  } catch (error) {
+    if (strict && !isNotFound(error)) throw error;
     return null;
   }
 }
 
 // Newest first.
 export async function listDataBackups() {
-  const manifests = await Promise.all((await listBackupIds()).map(readManifest));
+  const manifests = await Promise.all((await listBackupIds()).map((id) => readManifest(id)));
   return manifests
     .filter((manifest): manifest is BackupListItem => Boolean(manifest))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -136,11 +160,17 @@ export async function getBackupDownloadUrl(id: string) {
 // The backup's rows by table, checked against its manifest (checksum, format, row counts).
 export async function readBackupTables(id: string) {
   if (!isBackupId(id)) throw new RestoreError('Invalid backup.');
-  const manifest = await readManifest(id);
+  const manifest = await readManifest(id, true);
   if (!manifest) throw new RestoreError('That backup was not found.');
 
-  const object = await getR2Client().send(new GetObjectCommand({ Bucket: bucket(), Key: backupKeysForId(id).backupKey }));
-  const body = await object.Body!.transformToByteArray();
+  let body: Uint8Array;
+  try {
+    const object = await getR2Client().send(new GetObjectCommand({ Bucket: bucket(), Key: backupKeysForId(id).backupKey }));
+    body = await object.Body!.transformToByteArray();
+  } catch (error) {
+    if (isNotFound(error)) throw new RestoreError('This backup\'s file is missing, so it was not restored.');
+    throw error;
+  }
   if (manifest.sha256 && sha256Hex(body) !== manifest.sha256) {
     throw new RestoreError('This backup file is damaged (its checksum does not match), so it was not restored.');
   }

@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
       action: 'BACKUP_CREATED',
       actor: { email: 'system' },
       after: { id: manifest.id, removedOld: removed, sizeBytes: manifest.sizeBytes, source, totalRows: manifest.totalRows },
-      entityId: manifest.id!,
+      entityId: manifest.id,
       entityType: 'data_backup',
     });
     return NextResponse.json({ id: manifest.id, removed, sizeBytes: manifest.sizeBytes, totalRows: manifest.totalRows }, {

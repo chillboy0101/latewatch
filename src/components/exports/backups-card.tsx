@@ -54,13 +54,15 @@ export function BackupsCard() {
   const [restoreTarget, setRestoreTarget] = useState<Backup | null>(null);
   const [confirmText, setConfirmText] = useState('');
 
-  const load = useCallback(async () => {
+  // keepMessage: a refresh after a restore must not replace "Restored …" with a list error.
+  const load = useCallback(async (options?: { keepMessage?: boolean }) => {
     try {
       const response = await fetch('/api/admin/backups', { cache: 'no-store' });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Could not load backups.');
       setBackups(Array.isArray(body.backups) ? body.backups : []);
     } catch (error) {
+      if (options?.keepMessage) return;
       setBackups([]);
       setMessage({ error: true, text: error instanceof Error ? error.message : 'Could not load backups.' });
     }
@@ -127,7 +129,7 @@ export function BackupsCard() {
         text: `Restored ${records.toLocaleString()} records from ${formatDisplayDateTime(restoreTarget.createdAt)}. A safety copy of the data from before the restore is at the top of the list.${kept}`,
       });
       setRestoreTarget(null);
-      await load();
+      await load({ keepMessage: true });
     } catch (error) {
       setMessage({ error: true, text: error instanceof Error ? error.message : 'Restore failed. Nothing was changed.' });
       setRestoreTarget(null);
