@@ -4,17 +4,23 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const source = fs.readFileSync(path.join(__dirname, '../src/components/layout/dashboard-layout.tsx'), 'utf8');
+const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
 
-test('on phones the admin portal shows a screen styled like the attendance portal', () => {
-  // Same shell as the check-in page: full-height card, theme and mode pickers, tinted status card.
-  assert.match(source, /<main className="flex h-dvh flex-col overflow-hidden overscroll-none bg-background text-foreground lg:hidden">/);
-  assert.match(source, /<ThemePicker buttonVariant="glass"/);
-  assert.match(source, /<ModePicker buttonVariant="glass"/);
-  assert.match(source, /rounded-2xl border border-primary\/25 bg-primary\/10/);
-  assert.match(source, /bg-current\/20 ring-1 ring-current\/30[\s\S]{0,120}<Monitor /);
-  // Big rounded actions: attendance portal first, then portal home.
-  assert.match(source, /h-14 w-full gap-2\.5 rounded-2xl[\s\S]{0,120}<Link href="\/check-in">[\s\S]{0,160}Open Attendance Portal/);
-  assert.match(source, /<Link href="\/">[\s\S]{0,120}Portal Home/);
-  assert.match(source, /<div className="relative hidden h-screen w-full overflow-hidden lg:flex">/);
+test('on phones the admin portal shows the "best on a bigger screen" page', () => {
+  const layout = read('src', 'components', 'layout', 'dashboard-layout.tsx');
+  assert.match(layout, /<DesktopRequiredScreen \/>\s*<div className="relative hidden h-screen w-full overflow-hidden lg:flex">/);
+
+  const screen = read('src', 'components', 'layout', 'desktop-required-screen.tsx');
+  assert.match(screen, /<main className="relative flex h-dvh flex-col[^"]*lg:hidden">/);
+  // Glowing top with the laptop-and-phone drawing, centred above the panel.
+  assert.match(screen, /<div className="flex min-h-0 flex-1 items-center justify-center[^"]*" style=\{glow\}>\s*<DevicesIllustration \/>/);
+  // Panel with the heading and two choice cards: attendance portal first (highlighted), then home.
+  assert.match(screen, /<h1[^>]*>Best on a bigger screen<\/h1>/);
+  assert.match(screen, /highlight\s+href="\/check-in"[\s\S]{0,120}title="Attendance Portal"/);
+  assert.match(screen, /href="\/"[\s\S]{0,120}title="Portal Home"/);
+  // Cards a little larger than the mockup (86px tall, 48px icons).
+  assert.match(screen, /'flex h-\[86px\] items-center gap-4 rounded-\[22px\]/);
+  assert.match(screen, /'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl'/);
+  // Colours come from the theme, so it works in every theme and in light and dark mode.
+  assert.match(screen, /color-mix\(in oklab, var\(--primary\) 55%, var\(--foreground\)\)/);
 });
