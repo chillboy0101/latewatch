@@ -95,6 +95,7 @@ test('restore runs in one transaction: rolls back on any error and re-checks eve
   assert.match(source, /await client\.query\('BEGIN'\);/);
   assert.match(source, /catch \(error\) \{\s*await client\.query\('ROLLBACK'\)/);
   assert.match(source, /pg_try_advisory_xact_lock/);
+  assert.match(source, /SET LOCAL lock_timeout/);
   assert.match(source, /LOCK TABLE \$\{order\.map\(quoteIdent\)\.join\(', '\)\} IN ACCESS EXCLUSIVE MODE/);
   assert.match(source, /table === 'staff' \? withStaffType\(rows\) : rows/);
   assert.match(source, /DISABLE TRIGGER USER[\s\S]*ENABLE TRIGGER USER/);
@@ -107,7 +108,7 @@ test('restore runs in one transaction: rolls back on any error and re-checks eve
   assert.match(backup, /sha256Hex\(body\) !== manifest\.sha256/);
   // The safety copy never prunes (it could remove the very backup being restored).
   assert.match(backup, /input\.source === 'before-restore' \? 0 : await pruneOldBackups/);
-  assert.equal((backup.match(/IfNoneMatch: '\*'/g) || []).length, 2);
+  assert.match(read('src', 'app', 'api', 'admin', 'backups', 'restore', 'route.ts'), /code === '55P03'/);
   assert.match(read('src', 'lib', 'data-backup-core.ts'), /BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY/);
 });
 
@@ -154,6 +155,7 @@ test('restore round trip on Postgres', { skip: !process.env.LATEWATCH_TEST_PG_HO
       staff_type_change: [{ effective_from: '2000-01-01', id: '33333333-3333-3333-3333-333333333333', staff_id: staffId, staff_type: 'main' }],
     };
     await core.restoreTables(client, tables);
+    const { rows: [attemptsBefore] } = await client.query('SELECT count(*)::int AS n FROM attendance_attempt WHERE staff_id = $1', [staffId]);
     await client.query(`INSERT INTO attendance_attempt (staff_id, user_email, date, network_ip, successful, result) VALUES ($1, 'a@x', '2026-10-21', '1.1.1.1', true, 'ok')`, [staffId]);
     await client.query(`UPDATE lateness_entry SET computed_amount = 99 WHERE id = $1`, [entryId]);
     const restored = await core.restoreTables(client, tables);
@@ -161,7 +163,7 @@ test('restore round trip on Postgres', { skip: !process.env.LATEWATCH_TEST_PG_HO
     const { rows: [entry] } = await client.query('SELECT computed_amount::text AS a FROM lateness_entry WHERE id = $1', [entryId]);
     assert.equal(entry.a, '10.00');
     const { rows: [attempt] } = await client.query('SELECT count(*)::int AS n FROM attendance_attempt WHERE staff_id = $1', [staffId]);
-    assert.equal(attempt.n, 1);
+    assert.equal(attempt.n, attemptsBefore.n + 1);
     // A bad row rolls the whole restore back.
     await assert.rejects(core.restoreTables(client, { ...tables, lateness_entry: [{ ...tables.lateness_entry[0], staff_id: '99999999-9999-9999-9999-999999999999' }] }));
     const { rows: [after] } = await client.query('SELECT count(*)::int AS n FROM lateness_entry WHERE id = $1', [entryId]);

@@ -42,6 +42,10 @@ export async function POST(request: NextRequest) {
       entityType: 'data_backup',
     });
     if (error instanceof RestoreError) return NextResponse.json({ error: error.message }, { status: 400, headers: noStore });
+    // lock_not_available: the database was busy for longer than the restore waits.
+    if ((error as { code?: string })?.code === '55P03') {
+      return NextResponse.json({ error: 'The database was busy, so the restore stopped. Nothing was changed. Try again in a minute.' }, { status: 409, headers: noStore });
+    }
     console.error('Backup restore failed:', error);
     return NextResponse.json({ error: 'Restore failed. Nothing was changed.' }, { status: 500, headers: noStore });
   }
