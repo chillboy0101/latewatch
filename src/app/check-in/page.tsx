@@ -304,21 +304,6 @@ function ActionButton({ busy, disabled, icon: Icon, label, onClick }: {
   );
 }
 
-// Two soft zigzag brush strokes in the card's corners, in the status colour: a quiet watermark like
-// the circles on the portal home's clock card.
-function BrushWatermark() {
-  return (
-    <svg aria-hidden className="pointer-events-none absolute inset-0 size-full text-current" preserveAspectRatio="none" viewBox="0 0 100 100">
-      <g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
-        <polyline className="opacity-[0.09]" points="-6,20 6,8 18,20 30,8 42,20" strokeWidth="14" vectorEffect="non-scaling-stroke" />
-        <polyline className="opacity-[0.06]" points="-4,30 8,18 20,30 32,18" strokeWidth="5" vectorEffect="non-scaling-stroke" />
-        <polyline className="opacity-[0.09]" points="58,92 70,80 82,92 94,80 106,92" strokeWidth="14" vectorEffect="non-scaling-stroke" />
-        <polyline className="opacity-[0.06]" points="68,82 80,70 92,82 104,70" strokeWidth="5" vectorEffect="non-scaling-stroke" />
-      </g>
-    </svg>
-  );
-}
-
 // Every status follows the theme colour.
 function statusTone(status: CheckInStatus | null) {
   if (!status) return 'border-border bg-card text-muted-foreground';
@@ -1299,7 +1284,7 @@ export default function CheckInPage() {
   const transferRequestPending = status?.transferRequest?.status === 'pending';
 
   return (
-    <main className="flex h-dvh flex-col overflow-hidden overscroll-none bg-background text-foreground">
+    <main className="flex h-dvh flex-col overflow-hidden overscroll-none bg-background text-foreground sunray">
       <div className="mx-auto flex h-full w-full max-w-xl flex-col px-3 py-3 sm:px-6 sm:py-4">
         <header className="flex h-12 shrink-0 items-center justify-between sm:h-14">
           <Button
@@ -1446,9 +1431,8 @@ export default function CheckInPage() {
                     units are supported its badge, text and spacing scale with its height (cqh); older
                     browsers keep the fixed sizes. min-h-48 fits the smallest scaled content, so on very
                     short screens the column scrolls instead of the content spilling out of the card. */}
-                <div className={cn('relative min-h-48 flex-[6] overflow-hidden rounded-2xl border [container-type:size]', statusTone(status))}>
-                  <BrushWatermark />
-                  <div className="relative flex h-full flex-col items-center justify-center gap-5 p-6 text-center supports-[height:1cqh]:gap-[clamp(0.5rem,5.5cqh,1.75rem)] supports-[height:1cqh]:p-[clamp(0.75rem,6cqh,2rem)]">
+                <div className={cn('min-h-48 flex-[6] rounded-2xl border [container-type:size]', statusTone(status))}>
+                  <div className="flex h-full flex-col items-center justify-center gap-5 p-6 text-center supports-[height:1cqh]:gap-[clamp(0.5rem,5.5cqh,1.75rem)] supports-[height:1cqh]:p-[clamp(0.75rem,6cqh,2rem)]">
                     {/* A soft halo around one badge: soft fill before, solid with a bold tick once checked in. */}
                     <div className="relative flex size-24 shrink-0 items-center justify-center supports-[height:1cqh]:size-[clamp(3.5rem,25.5cqh,7rem)]">
                       <span aria-hidden className="absolute inset-0 rounded-full bg-current opacity-15" />
