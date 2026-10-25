@@ -4,7 +4,7 @@ import { UserButton, useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, BellRing, Check, CheckCircle2, ChevronRight, History, Loader2, LogOut, MapPin, MoreHorizontal, Printer, ReceiptText, ShieldCheck, XCircle, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, BellRing, Check, CheckCircle2, ChevronRight, History, Loader2, LogOut, MapPin, MoreHorizontal, Printer, ReceiptText, ShieldCheck, XCircle, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerNested, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
@@ -26,7 +26,7 @@ import { getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 import { ModePicker } from '@/components/theme/mode-picker';
 import { ThemePicker } from '@/components/theme/theme-picker';
 import { cn } from '@/lib/utils';
-import { CHOICE_SIZE, CHOICE_TEXT } from '@/components/layout/portal-ui';
+import { CHOICE_ICON, CHOICE_PLAIN, CHOICE_PRESS, CHOICE_SIZE, CHOICE_TEXT } from '@/components/layout/portal-ui';
 
 interface CheckInStatus {
   attendance: {
@@ -550,17 +550,18 @@ function MenuRow({
 }) {
   return (
     <li>
+      {/* Looks and presses like the portal choice cards. */}
       <button
         type="button"
         onClick={onClick}
-        className="flex w-full items-center gap-3.5 px-3.5 py-3 text-left transition-colors hover:bg-foreground/5 active:bg-foreground/10"
+        className={cn(CHOICE_PRESS, CHOICE_PLAIN, CHOICE_SIZE, 'w-full gap-4 px-[18px] text-left')}
       >
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{icon}</span>
+        <span className={cn(CHOICE_ICON, 'bg-foreground/5 text-primary')}>{icon}</span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[15px] font-semibold text-foreground">{title}</span>
-          <span className={cn('block min-h-4 truncate text-xs text-muted-foreground', statusClassName)}>{status}</span>
+          <span className={cn('block font-semibold leading-tight text-foreground', CHOICE_TEXT)}>{title}</span>
+          <span className={cn('mt-0.5 block min-h-5 truncate text-sm text-muted-foreground', statusClassName)}>{status}</span>
         </span>
-        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <ArrowRight className="h-5 w-5 shrink-0 text-muted-foreground" />
       </button>
     </li>
   );
@@ -1334,23 +1335,23 @@ export default function CheckInPage() {
                 <DrawerDescription className="sr-only">
                   Open payment receipts, penalty history, or reminder settings.
                 </DrawerDescription>
-                <ul className="mt-4 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-background">
+                <ul className="mt-4 grid gap-3">
                   <MenuRow
-                    icon={<ReceiptText className="h-5 w-5" />}
+                    icon={<ReceiptText className="h-[22px] w-[22px]" />}
                     title="Payment receipts"
                     onClick={() => setReceiptsDialogOpen(true)}
                     status={receiptNotifications.length > 0 ? `${receiptNotifications.length} new` : 'All seen'}
                     statusClassName={receiptNotifications.length > 0 ? 'font-medium text-primary' : undefined}
                   />
                   <MenuRow
-                    icon={<History className="h-5 w-5" />}
+                    icon={<History className="h-[22px] w-[22px]" />}
                     title="Penalty history"
                     onClick={openPenaltyHistory}
                     status={penaltyHistory ? (owedNow > 0 ? `You owe ${ghc(owedNow)}` : 'Nothing owed') : ''}
                     statusClassName={penaltyHistory ? (owedNow > 0 ? 'text-warning' : 'text-success') : undefined}
                   />
                   <MenuRow
-                    icon={<BellRing className="h-5 w-5" />}
+                    icon={<BellRing className="h-[22px] w-[22px]" />}
                     title="Reminders"
                     onClick={() => setRemindersDialogOpen(true)}
                     status={reminderSummary(signInReminderEnabled, signOutReminderEnabled)}
