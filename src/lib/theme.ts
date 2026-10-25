@@ -2,6 +2,7 @@ export type ThemePreference = 'light' | 'dark' | 'system';
 
 export const THEME_ACCENT_PRESETS = [
   { accent: 'neutral', label: 'Neutral', swatch: '#737373' },
+  { accent: 'wine', label: 'Wine', swatch: '#5e1224' },
   { accent: 'blue', label: 'Blue', swatch: '#2563eb' },
   { accent: 'sky', label: 'Sky', swatch: '#0284c7' },
   { accent: 'indigo', label: 'Indigo', swatch: '#4f46e5' },
@@ -26,7 +27,17 @@ const THEME_CUSTOM_COLOR_KEY = 'theme-custom-color';
 const THEME_VARIABLES_KEY = 'theme-accent-variables';
 const THEME_OWNER_KEY = 'theme-accent-owner';
 const THEME_UPDATED_AT_KEY = 'theme-accent-updated-at';
-const DEFAULT_ACCENT: ThemeAccentPreset = 'blue';
+// Everyone's colour until they pick their own.
+export const DEFAULT_ACCENT: ThemeAccentPreset = 'wine';
+export const DEFAULT_ACCENT_COLOR = '#5e1224';
+// Blue was the default until this date, and it was saved to each account on first sign-in, so a Blue
+// saved before then can't be told apart from the old default: it reads as the new default instead.
+// Blue picked after this date is kept.
+export const BLUE_DEFAULT_RETIRED_AT = Date.UTC(2026, 9, 26);
+
+function isRetiredBlueDefault(accent: unknown, updatedAt: number) {
+  return accent === 'blue' && updatedAt < BLUE_DEFAULT_RETIRED_AT;
+}
 const HEX_PATTERN = /^#[0-9a-f]{6}$/i;
 
 const PRESET_SWATCHES: Record<string, string> = Object.fromEntries(
@@ -112,6 +123,7 @@ export function getThemeAccent(): ThemeAccent {
 
   const saved = readStorage(THEME_ACCENT_KEY);
   if (saved === 'custom' && normalizeHexColor(readStorage(THEME_CUSTOM_COLOR_KEY))) return 'custom';
+  if (isRetiredBlueDefault(saved, getThemeUpdatedAt())) return DEFAULT_ACCENT;
   return saved && saved in PRESET_SWATCHES ? saved as ThemeAccentPreset : DEFAULT_ACCENT;
 }
 
@@ -153,6 +165,7 @@ export function parseThemeSelection(value: unknown): ThemeSelection | null {
     : 0;
   const mode = record.mode === 'light' || record.mode === 'dark' || record.mode === 'system' ? record.mode : undefined;
   if (record.accent === 'custom') return { accent: 'custom', customColor, mode, updatedAt };
+  if (isRetiredBlueDefault(record.accent, updatedAt)) return { accent: DEFAULT_ACCENT, customColor, mode, updatedAt };
   if (typeof record.accent === 'string' && record.accent in PRESET_SWATCHES) {
     return { accent: record.accent as ThemeAccentPreset, customColor, mode, updatedAt };
   }
@@ -172,7 +185,7 @@ export function themeChannelForUser(userId: string) {
 
 export const DEFAULT_THEME_SELECTION: ThemeSelection = { accent: DEFAULT_ACCENT, customColor: PRESET_SWATCHES[DEFAULT_ACCENT] };
 
-/** True when someone on this device has explicitly picked a colour (not just the Blue default). */
+/** True when someone on this device has explicitly picked a colour (not just the default). */
 export function hasStoredThemeAccent() {
   return typeof window !== 'undefined' && readStorage(THEME_ACCENT_KEY) !== null;
 }

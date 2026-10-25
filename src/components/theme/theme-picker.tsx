@@ -6,6 +6,8 @@ import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
   applyThemeAccent,
+  DEFAULT_ACCENT,
+  DEFAULT_ACCENT_COLOR,
   getThemeAccent,
   getThemeAccentColor,
   previewThemeAccentColor,
@@ -29,8 +31,8 @@ export function ThemePicker({
   buttonVariant?: 'ghost' | 'glass';
   iconClassName?: string;
 }) {
-  const accent = useSyncExternalStore(subscribeThemeChange, getThemeAccent, () => 'blue');
-  const accentColor = useSyncExternalStore(subscribeThemeChange, getThemeAccentColor, () => '#2563eb');
+  const accent = useSyncExternalStore(subscribeThemeChange, getThemeAccent, () => DEFAULT_ACCENT);
+  const accentColor = useSyncExternalStore(subscribeThemeChange, getThemeAccentColor, () => DEFAULT_ACCENT_COLOR);
   const shareRef = useRef<{ lastAt: number; timer: ReturnType<typeof setTimeout> | null; hex: string | null }>({ lastAt: 0, timer: null, hex: null });
   const inputRef = useRef<HTMLInputElement>(null);
 

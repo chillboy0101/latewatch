@@ -81,8 +81,9 @@ test('home page shows the appearance and theme colour buttons', () => {
   assert.match(portalUi, /<ThemePicker /);
 });
 
-test('theme colour syncs to the account, defaulting to blue for first-time users', () => {
+test('theme colour syncs to the account, defaulting to wine for first-time users', () => {
   const {
+    BLUE_DEFAULT_RETIRED_AT,
     DEFAULT_THEME_SELECTION,
     parseThemeSelection,
     sameThemeSelection,
@@ -90,7 +91,12 @@ test('theme colour syncs to the account, defaulting to blue for first-time users
   const sync = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'theme', 'theme-account-sync.tsx'), 'utf8');
   const provider = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'auth', 'clerk-theme-provider.tsx'), 'utf8');
 
-  assert.deepEqual(DEFAULT_THEME_SELECTION, { accent: 'blue', customColor: '#2563eb' });
+  assert.deepEqual(DEFAULT_THEME_SELECTION, { accent: 'wine', customColor: '#5e1224' });
+  // Blue saved while it was the default reads as the new default; Blue picked since then is kept.
+  assert.equal(parseThemeSelection({ accent: 'blue' }).accent, 'wine');
+  assert.equal(parseThemeSelection({ accent: 'blue', updatedAt: BLUE_DEFAULT_RETIRED_AT - 1 }).accent, 'wine');
+  assert.equal(parseThemeSelection({ accent: 'blue', updatedAt: BLUE_DEFAULT_RETIRED_AT }).accent, 'blue');
+  assert.equal(parseThemeSelection({ accent: 'red', updatedAt: 5 }).accent, 'red');
   assert.deepEqual(parseThemeSelection({ accent: 'custom', customColor: '#ABCDEF', updatedAt: 5 }), { accent: 'custom', customColor: '#abcdef', mode: undefined, updatedAt: 5 });
   assert.equal(parseThemeSelection({ accent: 'role-admin' }), null);
   assert.equal(parseThemeSelection('red'), null);
@@ -125,9 +131,9 @@ test('theme colour button opens the native colour picker on each device directly
   assert.match(picker, /onChange=\{\(event\) => previewLive\(event\.target\.value\)\}/);
   assert.match(picker, /input\.addEventListener\('change', handleChange\)/);
   assert.match(picker, /defaultValue=\{accentColor\}/);
-  // A way back to the standard blue.
-  assert.match(modePicker, /applyThemeAccent\('blue'\)/);
-  assert.match(modePicker, />Reset to blue</);
+  // A way back to the standard colour.
+  assert.match(modePicker, /applyThemeAccent\(DEFAULT_ACCENT\)/);
+  assert.match(modePicker, />Reset to wine</);
   assert.match(modePicker, /<p className=\{SECTION_LABEL\}>Colour<\/p>/);
 });
 

@@ -4,7 +4,7 @@ import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { Check, Monitor, Moon, RotateCcw, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { applyThemeAccent, applyThemePreference, getIsDarkTheme, getThemeAccent, getThemePreference, subscribeThemeChange, type ThemePreference } from '@/lib/theme';
+import { applyThemeAccent, DEFAULT_ACCENT, DEFAULT_ACCENT_COLOR, applyThemePreference, getIsDarkTheme, getThemeAccent, getThemePreference, subscribeThemeChange, type ThemePreference } from '@/lib/theme';
 import { useDismissable } from '@/components/theme/use-dismissable';
 
 const MODES: Array<{ icon: typeof Sun; label: string; value: ThemePreference }> = [
@@ -26,8 +26,8 @@ export function ModePicker({
 }) {
   const preference = useSyncExternalStore(subscribeThemeChange, getThemePreference, () => 'system');
   const isDark = useSyncExternalStore(subscribeThemeChange, getIsDarkTheme, () => true);
-  const accent = useSyncExternalStore(subscribeThemeChange, getThemeAccent, () => 'blue');
-  const showColourReset = accent !== 'blue';
+  const accent = useSyncExternalStore(subscribeThemeChange, getThemeAccent, () => DEFAULT_ACCENT);
+  const showColourReset = accent !== DEFAULT_ACCENT;
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -82,14 +82,14 @@ export function ModePicker({
                 type="button"
                 role="menuitem"
                 onClick={() => {
-                  applyThemeAccent('blue');
+                  applyThemeAccent(DEFAULT_ACCENT);
                   setOpen(false);
                 }}
                 className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
               >
                 <RotateCcw className="h-4 w-4" />
-                <span className="flex-1 whitespace-nowrap text-left">Reset to blue</span>
-                <span aria-hidden className="h-3 w-3 rounded-full bg-[#2563eb]" />
+                <span className="flex-1 whitespace-nowrap text-left">Reset to wine</span>
+                <span aria-hidden className="h-3 w-3 rounded-full" style={{ background: DEFAULT_ACCENT_COLOR }} />
               </button>
             </>
           )}

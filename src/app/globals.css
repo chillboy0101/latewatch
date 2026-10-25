@@ -5,13 +5,14 @@
   --font-inter: "Aptos", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --font-jetbrains-mono: "Aptos Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   /* The selected accent. Set on <html> by the theme script; these are the Blue defaults. */
-  --brand: #2563eb;
-  --brand-light: #2563eb;
+  /* Default colour (Wine #5e1224), as computeAccentVariables makes it; a picked colour replaces these. */
+  --brand: #5e1224;
+  --brand-light: #5e1224;
   --brand-light-foreground: #ffffff;
-  --brand-light-hover: #1f54c8;
-  --brand-dark: #4b7def;
+  --brand-light-hover: #500f1f;
+  --brand-dark: #a0737d;
   --brand-dark-foreground: #0a0a0a;
-  --brand-dark-hover: #6f97f2;
+  --brand-dark-hover: #b38f97;
   /* Light mode text colours are a shade darker than in dark mode so they stay readable on the
      light, tinted surfaces (secondary text, labels, placeholders, amounts). */
   --success: #047857;
