@@ -9,27 +9,31 @@ import { useMemo } from 'react';
 // screens actually visited instead of stacking new pages on top.
 
 const STACK_KEY = 'latewatch-nav-stack';
+// Screens left by going back, most recent last: a swipe from the right edge reopens them.
+const FORWARD_KEY = 'latewatch-nav-forward';
 const NAV_EASE_WAIT_MS = 1500;
 
-export type NavDirection = 'forward' | 'back' | 'swipe-back';
+export type NavDirection = 'forward' | 'back' | 'swipe-back' | 'swipe-forward';
 
 // The screens visited in this app session, oldest first. Kept in sessionStorage so a reload keeps it.
-function readStack(): string[] {
+function readList(key: string): string[] {
   try {
-    const value: unknown = JSON.parse(sessionStorage.getItem(STACK_KEY) || '[]');
+    const value: unknown = JSON.parse(sessionStorage.getItem(key) || '[]');
     return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
   } catch {
     return [];
   }
 }
 
-function writeStack(stack: string[]) {
+function writeList(key: string, list: string[]) {
   try {
-    sessionStorage.setItem(STACK_KEY, JSON.stringify(stack.slice(-50)));
+    sessionStorage.setItem(key, JSON.stringify(list.slice(-50)));
   } catch {
-    // Storage blocked: back buttons fall back to each screen's parent.
+    // Storage blocked: back buttons fall back to each screen's parent; no forward swipe.
   }
 }
+
+const readStack = () => readList(STACK_KEY);
 
 let replaceTop = false;
 let finishSlide: (() => void) | null = null;
@@ -37,11 +41,26 @@ let finishSlide: (() => void) | null = null;
 /** Called after every route change has been committed (NavigationTracker). */
 export function recordPathname(pathname: string) {
   const stack = readStack();
-  if (replaceTop && stack.length > 0) stack[stack.length - 1] = pathname;
-  else if (stack.at(-2) === pathname) stack.pop();
-  else if (stack.at(-1) !== pathname) stack.push(pathname);
+  const forward = readList(FORWARD_KEY);
+  const left = stack.at(-1);
+  if (replaceTop && left !== undefined) {
+    // Back with no earlier screen (went to the parent instead): the screen left can be reopened.
+    if (left !== pathname) forward.push(left);
+    stack[stack.length - 1] = pathname;
+  } else if (stack.at(-2) === pathname) {
+    // Back: remember the screen left so a swipe from the right edge can reopen it.
+    if (left !== undefined) forward.push(left);
+    stack.pop();
+  } else if (left !== pathname) {
+    stack.push(pathname);
+    // Reopening the screen just left keeps the rest of the way forward; any other screen starts a
+    // new path, like a browser's forward history.
+    if (forward.at(-1) === pathname) forward.pop();
+    else forward.length = 0;
+  }
   replaceTop = false;
-  writeStack(stack);
+  writeList(STACK_KEY, stack);
+  writeList(FORWARD_KEY, forward);
   // The new screen is on the page: let the slide animate to it.
   finishSlide?.();
   finishSlide = null;
@@ -50,6 +69,11 @@ export function recordPathname(pathname: string) {
 /** True when there is an earlier screen from this session to go back to. */
 export function canGoBack() {
   return readStack().length > 1;
+}
+
+/** The screen most recently left by going back, if any: where a swipe from the right edge leads. */
+export function forwardPath() {
+  return readList(FORWARD_KEY).at(-1) ?? null;
 }
 
 /** Where back leads when the app was opened straight on a screen (no earlier screen to return to). */
@@ -92,6 +116,12 @@ type Router = ReturnType<typeof useRouter>;
 
 export function navigateForward(router: Router, href: string) {
   slideTo('forward', () => router.push(href));
+}
+
+/** Reopens the screen most recently left by going back (the swipe from the right edge). */
+export function navigateToForward(router: Router) {
+  const href = forwardPath();
+  if (href) slideTo('swipe-forward', () => router.push(href));
 }
 
 /** Back to the previous screen; with none (the app was opened here), to `fallbackHref`. */

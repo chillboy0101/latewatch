@@ -2,10 +2,10 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, type ReactNode } from 'react';
-import { canGoBack, navigateBack, parentPath, recordPathname } from '@/lib/app-nav';
+import { canGoBack, forwardPath, navigateBack, navigateToForward, parentPath, recordPathname } from '@/lib/app-nav';
 
-// How close to the left edge a swipe has to start, and how far (share of the width) or fast
-// (px per ms) it has to travel to count as "back".
+// How close to the edge a swipe has to start, and how far (share of the width) or fast (px per ms)
+// it has to travel to count.
 const EDGE_PX = 24;
 const COMMIT_SHARE = 0.35;
 const COMMIT_VELOCITY = 0.45;
@@ -25,9 +25,10 @@ function clearDrag(page: HTMLElement) {
 }
 
 // Wraps every screen. It records each screen visited (for the back stack and the slides), and in
-// the installed app it adds the iPhone edge swipe: drag from the left edge and the screen follows
-// the finger; let go far or fast enough and it slides away to the previous screen. (Home-screen
-// web apps get no system swipe-back, and in Safari the browser's own swipe is left alone.)
+// the installed app it adds the edge swipes: drag from the left edge and the screen follows the
+// finger and slides away to the previous screen; drag from the right edge to reopen the screen just
+// left by going back. (Home-screen web apps get no system swipes; in Safari the browser's own are
+// left alone.)
 export function AppPage({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -35,7 +36,7 @@ export function AppPage({ children }: { children: ReactNode }) {
   const dragResetTimer = useRef<number | null>(null);
 
   useEffect(() => {
-    // A finished swipe left this screen pushed off to the right: put it back for the new screen.
+    // A finished swipe left this screen pushed off to the side: put it back for the new screen.
     if (dragResetTimer.current !== null) window.clearTimeout(dragResetTimer.current);
     dragResetTimer.current = null;
     if (pageRef.current) clearDrag(pageRef.current);
@@ -46,15 +47,27 @@ export function AppPage({ children }: { children: ReactNode }) {
     const page = pageRef.current;
     if (!page || !isInstalledApp() || !window.matchMedia('(pointer: coarse)').matches) return;
 
+    // 1: from the left edge, back. -1: from the right edge, forward (the page moves left).
+    let direction: 1 | -1 = 1;
     let start: { time: number; x: number; y: number } | null = null;
     let dragging = false;
     let offset = 0;
 
     const onStart = (event: TouchEvent) => {
       const touch = event.touches[0];
-      if (event.touches.length !== 1 || touch.clientX > EDGE_PX) return;
-      // Nowhere to go back to, or a sheet or dialog is open (back closes that instead).
-      if (!canGoBack() && !parentPath(window.location.pathname)) return;
+      if (event.touches.length !== 1) return;
+      if (touch.clientX <= EDGE_PX) {
+        // Nowhere to go back to: no swipe.
+        if (!canGoBack() && !parentPath(window.location.pathname)) return;
+        direction = 1;
+      } else if (touch.clientX >= window.innerWidth - EDGE_PX) {
+        // No screen left by going back: no swipe.
+        if (!forwardPath()) return;
+        direction = -1;
+      } else {
+        return;
+      }
+      // A sheet or dialog is open (back closes that instead).
       if (document.querySelector('[role="dialog"]')) return;
       if (dragResetTimer.current !== null) window.clearTimeout(dragResetTimer.current);
       dragResetTimer.current = null;
@@ -74,15 +87,16 @@ export function AppPage({ children }: { children: ReactNode }) {
           start = null;
           return;
         }
-        if (dx < 8) return;
+        if (dx * direction < 8) return;
         dragging = true;
         page.style.transition = 'none';
         page.style.willChange = 'transform';
-        page.style.boxShadow = '-12px 0 32px rgb(0 0 0 / 0.18)';
+        page.style.boxShadow = `${-12 * direction}px 0 32px rgb(0 0 0 / 0.18)`;
       }
       event.preventDefault();
-      offset = Math.max(0, dx);
-      page.style.transform = `translate3d(${offset}px, 0, 0)`;
+      // How far the page has moved in the swipe's direction.
+      offset = Math.max(0, dx * direction);
+      page.style.transform = `translate3d(${offset * direction}px, 0, 0)`;
     };
 
     const onEnd = (event: TouchEvent) => {
@@ -96,15 +110,17 @@ export function AppPage({ children }: { children: ReactNode }) {
       const velocity = offset / Math.max(1, event.timeStamp - began.time);
       page.style.transition = `transform ${SLIDE_OUT_MS}ms ${EASE}`;
       if (offset > window.innerWidth * COMMIT_SHARE || (velocity > COMMIT_VELOCITY && offset > 40)) {
-        page.style.transform = 'translate3d(100%, 0, 0)';
+        page.style.transform = `translate3d(${direction * 100}%, 0, 0)`;
+        const swipe = direction;
         window.setTimeout(() => {
-          // If back doesn't change screen (it only left a stale same-screen entry), bring the page
-          // back rather than leave it pushed off to the side. A screen change clears this first.
+          // If the swipe doesn't change screen (back only left a stale same-screen entry), bring the
+          // page back rather than leave it pushed off to the side. A screen change clears this first.
           dragResetTimer.current = window.setTimeout(() => {
             dragResetTimer.current = null;
             clearDrag(page);
           }, 2000);
-          navigateBack(router, parentPath(window.location.pathname) ?? '/', 'swipe-back');
+          if (swipe === 1) navigateBack(router, parentPath(window.location.pathname) ?? '/', 'swipe-back');
+          else navigateToForward(router);
         }, SLIDE_OUT_MS);
       } else {
         // Not far enough: spring back.
