@@ -2,13 +2,13 @@
 
 import { usePathname } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
-import { isDeadEndEntry, recordPathname } from '@/lib/app-nav';
+import { handlePopState, recordPathname } from '@/lib/app-nav';
 
 // Wraps every screen and records each one visited (for the back stack and the slides). The edge
 // swipe back is the phone's own: home-screen apps on iPhone get it from iOS, with the previous screen
 // showing under the finger, and Android has its system back. iOS also has a swipe forward from the
 // right edge, which apps don't: going back leaves a dead end ahead (see app-nav), and landing on it
-// steps straight back.
+// steps straight back. A swipe back from the portal home (the first screen) returns to it.
 export function AppPage({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
@@ -17,11 +17,8 @@ export function AppPage({ children }: { children: ReactNode }) {
   }, [pathname]);
 
   useEffect(() => {
-    const onPopState = () => {
-      if (isDeadEndEntry()) window.history.back();
-    };
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   return (
