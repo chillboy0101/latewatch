@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { Drawer as DrawerPrimitive } from 'vaul';
 
+import { leaveDeadEnd } from '@/lib/app-nav';
 import { cn } from '@/lib/utils';
 
 // Back (the edge swipe, the Android back button) closes the top sheet instead of leaving the screen,
@@ -18,7 +19,10 @@ function popSheetEntries() {
   queueMicrotask(() => {
     const count = pendingPops;
     pendingPops = 0;
-    if (count > 0) window.history.go(-count);
+    if (count === 0) return;
+    // The closed sheets' entries stay ahead, where a swipe forward would land: cap them off.
+    window.addEventListener('popstate', () => window.setTimeout(leaveDeadEnd, 0), { once: true });
+    window.history.go(-count);
   });
 }
 
@@ -50,6 +54,8 @@ function useCloseOnBack(
       if (top === null || top < id) {
         closedByBack = true;
         closeRef.current?.(false);
+        // No swipe forward back into the closed sheet.
+        window.setTimeout(leaveDeadEnd, 0);
       }
     };
 

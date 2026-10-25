@@ -9,11 +9,12 @@ import { useMemo } from 'react';
 // screens actually visited instead of stacking new pages on top.
 
 const STACK_STATE = 'latewatchStack';
+const DEAD_END_STATE = 'latewatchDeadEnd';
 const NAV_EASE_WAIT_MS = 1500;
 // Most leftover same-screen entries back skips in one go (see navigateBack).
 const MAX_SAME_SCREEN_SKIPS = 5;
 
-export type NavDirection = 'forward' | 'back' | 'swipe-back';
+export type NavDirection = 'forward' | 'back';
 
 // The screens leading to this one, oldest first, kept on the browser history entry itself. So the
 // way back always matches the real history, through reloads, relaunches and the Android back button
@@ -35,7 +36,9 @@ export function recordPathname(pathname: string) {
   const own = entryStack();
   if (own && own.at(-1) === pathname) {
     // Back, forward or a reload onto a screen already visited: its entry knows the way back.
+    const cameBack = own.length < currentStack.length && own.every((screen, index) => currentStack[index] === screen);
     currentStack = own;
+    if (cameBack) leaveDeadEnd();
   } else {
     const left = currentStack.at(-1);
     let stack = replaceTop ? currentStack.slice(0, -1) : [...currentStack];
@@ -50,6 +53,21 @@ export function recordPathname(pathname: string) {
   // The new screen is on the page: let the slide animate to it.
   finishSlide?.();
   finishSlide = null;
+}
+
+// After going back, the screen just left is still ahead in the history, and iOS would reopen it on
+// a swipe from the right edge; apps have no swipe forward. A new entry drops everything ahead of
+// this screen, so put one in (a copy of this screen marked as a dead end) and step back onto this
+// screen: a swipe forward can now only reach the dead end, which steps straight back (AppPage).
+export function leaveDeadEnd() {
+  window.history.pushState({ ...window.history.state, [DEAD_END_STATE]: true }, '');
+  window.history.back();
+}
+
+/** True on the dead end left ahead of a screen after going back. */
+export function isDeadEndEntry() {
+  const state: unknown = window.history.state;
+  return Boolean(state && typeof state === 'object' && (state as Record<string, unknown>)[DEAD_END_STATE]);
 }
 
 /** True when there is an earlier screen from this session to go back to. */
