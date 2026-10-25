@@ -8,46 +8,45 @@ import { useMemo } from 'react';
 // and the previous screen in from the left, like an iPhone app. Back buttons step back through the
 // screens actually visited instead of stacking new pages on top.
 
-const STACK_KEY = 'latewatch-nav-stack';
+const STACK_STATE = 'latewatchStack';
 const NAV_EASE_WAIT_MS = 1500;
+// Most leftover same-screen entries back skips in one go (see navigateBack).
+const MAX_SAME_SCREEN_SKIPS = 5;
 
 export type NavDirection = 'forward' | 'back' | 'swipe-back';
 
-// The screens visited in this app session, oldest first. Kept in sessionStorage so a reload keeps it.
-function readStack(): string[] {
-  try {
-    const value: unknown = JSON.parse(sessionStorage.getItem(STACK_KEY) || '[]');
-    return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeStack(stack: string[]) {
-  try {
-    sessionStorage.setItem(STACK_KEY, JSON.stringify(stack.slice(-50)));
-  } catch {
-    // Storage blocked: back buttons fall back to each screen's parent.
-  }
+// The screens leading to this one, oldest first, kept on the browser history entry itself. So the
+// way back always matches the real history, through reloads, relaunches and the Android back button
+// (a list kept anywhere else can drift, and back would then land on the same screen).
+function entryStack(): string[] | null {
+  const state: unknown = window.history.state;
+  const value = state && typeof state === 'object' ? (state as Record<string, unknown>)[STACK_STATE] : undefined;
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string') ? value : null;
 }
 
 const isAuthScreen = (pathname: string) => pathname.startsWith('/sign-in') || pathname.startsWith('/sign-up');
 
+let currentStack: string[] = [];
 let replaceTop = false;
 let finishSlide: (() => void) | null = null;
 
-/** Called after every route change has been committed (NavigationTracker). */
+/** Called after every route change has been committed (AppPage). */
 export function recordPathname(pathname: string) {
-  const stack = readStack();
-  const left = stack.at(-1);
-  if (replaceTop && left !== undefined) stack[stack.length - 1] = pathname;
-  else if (stack.at(-2) === pathname) stack.pop();
-  else if (left !== pathname) stack.push(pathname);
-  // The portal home is the first screen, and the sign-in screens are never gone back to: nothing
-  // before them is kept, so there is no back (or back swipe) into them.
-  if (pathname === '/' || (left !== undefined && isAuthScreen(left))) stack.splice(0, stack.length - 1);
+  const own = entryStack();
+  if (own && own.at(-1) === pathname) {
+    // Back, forward or a reload onto a screen already visited: its entry knows the way back.
+    currentStack = own;
+  } else {
+    const left = currentStack.at(-1);
+    let stack = replaceTop ? currentStack.slice(0, -1) : [...currentStack];
+    if (stack.at(-1) !== pathname) stack.push(pathname);
+    // The portal home is the first screen, and the sign-in screens are never gone back to: nothing
+    // before them is kept, so there is no back (or back swipe) into them.
+    if (pathname === '/' || (left !== undefined && isAuthScreen(left))) stack = [pathname];
+    currentStack = stack.slice(-50);
+    window.history.replaceState({ ...window.history.state, [STACK_STATE]: currentStack }, '');
+  }
   replaceTop = false;
-  writeStack(stack);
   // The new screen is on the page: let the slide animate to it.
   finishSlide?.();
   finishSlide = null;
@@ -55,7 +54,7 @@ export function recordPathname(pathname: string) {
 
 /** True when there is an earlier screen from this session to go back to. */
 export function canGoBack() {
-  return readStack().length > 1;
+  return currentStack.length > 1;
 }
 
 /** Where back leads when the app was opened straight on a screen (no earlier screen to return to). */
@@ -106,10 +105,36 @@ export function navigateReplace(router: Router, href: string) {
   slideTo('forward', () => router.replace(href));
 }
 
+// A leftover entry for the screen being left (a sheet's, say) would make back show the same screen
+// again: keep going back past such entries to the previous screen.
+function skipSameScreenEntries() {
+  const leaving = window.location.pathname;
+  let skips = 0;
+  const stop = () => {
+    window.removeEventListener('popstate', onPopState);
+    window.clearTimeout(timer);
+  };
+  const onPopState = () => {
+    const sheetOpen = document.querySelector('[role="dialog"]') !== null;
+    if (window.location.pathname === leaving && !sheetOpen && skips < MAX_SAME_SCREEN_SKIPS) {
+      skips += 1;
+      window.history.back();
+      return;
+    }
+    stop();
+  };
+  // Back that goes nowhere (no earlier entry) fires no popstate: stop listening after a moment.
+  const timer = window.setTimeout(stop, 3000);
+  window.addEventListener('popstate', onPopState);
+}
+
 /** Back to the previous screen; with none (the app was opened here), to `fallbackHref`. */
 export function navigateBack(router: Router, fallbackHref: string, direction: NavDirection = 'back') {
   if (canGoBack()) {
-    slideTo(direction, () => window.history.back());
+    slideTo(direction, () => {
+      skipSameScreenEntries();
+      window.history.back();
+    });
     return;
   }
   replaceTop = true;
