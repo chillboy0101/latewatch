@@ -6,11 +6,13 @@ import { useEffect } from 'react';
 import { ArrowLeft, Loader2, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ReceiptDetailView, useReceiptDetail } from '@/components/receipts/receipt-detail-view';
+import { isPlainClick, useAppNavigation } from '@/lib/app-nav';
 
 export default function PaymentReceiptPage() {
   const params = useParams<{ paymentId: string }>();
   const paymentId = typeof params.paymentId === 'string' ? params.paymentId : '';
   const { receipt, loading, error, documentTitle } = useReceiptDetail(paymentId);
+  const navigation = useAppNavigation();
 
   useEffect(() => {
     const previousTitle = document.title;
@@ -46,7 +48,14 @@ export default function PaymentReceiptPage() {
 
       <div className="no-print mx-auto mb-4 flex max-w-3xl items-center justify-between gap-3">
         <Button asChild variant="outline" className="h-11 gap-2 rounded-full px-5 text-base">
-          <Link href="/check-in?receipts=1">
+          <Link
+            href="/check-in?receipts=1"
+            onClick={(event) => {
+              if (!isPlainClick(event)) return;
+              event.preventDefault();
+              navigation.back('/check-in?receipts=1');
+            }}
+          >
             <ArrowLeft className="h-5 w-5" />
             Back
           </Link>

@@ -5,11 +5,73 @@ import { Drawer as DrawerPrimitive } from 'vaul';
 
 import { cn } from '@/lib/utils';
 
+// Back (the edge swipe, the Android back button) closes the top sheet instead of leaving the screen,
+// like a sheet in an app. While a sheet is open it has its own history entry (same URL); going back
+// pops it and closes the sheet, and closing the sheet any other way takes the entry back off.
+let lastSheetId = 0;
+let pendingPops = 0;
+
+function popSheetEntries() {
+  // Sheets closing together (a parent with its child) take all their entries off in one step.
+  pendingPops += 1;
+  if (pendingPops > 1) return;
+  queueMicrotask(() => {
+    const count = pendingPops;
+    pendingPops = 0;
+    if (count > 0) window.history.go(-count);
+  });
+}
+
+function sheetEntryId() {
+  const state: unknown = window.history.state;
+  const id = state && typeof state === 'object' ? (state as { latewatchSheet?: unknown }).latewatchSheet : undefined;
+  return typeof id === 'number' ? id : null;
+}
+
+function useCloseOnBack(open: boolean | undefined, onOpenChange: ((open: boolean) => void) | undefined) {
+  const closeRef = React.useRef(onOpenChange);
+  React.useEffect(() => {
+    closeRef.current = onOpenChange;
+  });
+
+  React.useEffect(() => {
+    if (!open || !closeRef.current) return;
+    const id = ++lastSheetId;
+    // Keep the router's own state on the entry so it treats it as the same screen. A sheet that was
+    // closed and reopened straight away (or remounted) reuses the entry still waiting to be removed.
+    const state = { ...(window.history.state ?? {}), latewatchSheet: id };
+    if (pendingPops > 0 && sheetEntryId() !== null) {
+      pendingPops -= 1;
+      window.history.replaceState(state, '');
+    } else {
+      window.history.pushState(state, '');
+    }
+    let closedByBack = false;
+
+    const onPopState = () => {
+      const top = sheetEntryId();
+      if (top === null || top < id) {
+        closedByBack = true;
+        closeRef.current?.(false);
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+      // Closed from the sheet (swipe down, a button), not by back: remove its entry. If the app has
+      // already moved to another screen, the entry is behind it and is left alone.
+      const top = sheetEntryId();
+      if (!closedByBack && top !== null && top >= id) popSheetEntries();
+    };
+  }, [open]);
+}
+
 function Drawer({
   shouldScaleBackground = false,
   noBodyStyles = true,
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Root>) {
+  useCloseOnBack(props.open, props.onOpenChange);
   // noBodyStyles: the check-in page is already `fixed inset-0`, so vaul's body
   // scroll-lock (position:fixed on <body>) is unnecessary and is what flashes
   // the Android nav bar when a sheet opens.
@@ -30,6 +92,7 @@ function DrawerNested({
   noBodyStyles = true,
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.NestedRoot>) {
+  useCloseOnBack(props.open, props.onOpenChange);
   return <DrawerPrimitive.NestedRoot noBodyStyles={noBodyStyles} {...props} />;
 }
 DrawerNested.displayName = 'DrawerNested';

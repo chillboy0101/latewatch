@@ -63,6 +63,7 @@ export function DesktopRequiredScreen() {
           title="Attendance Portal"
         />
         <ChoiceCard
+          back
           href="/"
           icon={<LayoutDashboard className="h-[22px] w-[22px]" />}
           title="Portal Home"
