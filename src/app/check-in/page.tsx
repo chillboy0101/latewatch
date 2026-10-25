@@ -1337,7 +1337,7 @@ export default function CheckInPage() {
                 <DrawerDescription className="sr-only">
                   Open payment receipts, penalty history, or reminder settings.
                 </DrawerDescription>
-                <ul className="mt-4 grid gap-3">
+                <ul className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-3">
                   <MenuRow
                     icon={<ReceiptText className="h-[22px] w-[22px]" />}
                     title="Payment receipts"
@@ -1955,7 +1955,7 @@ function ReceiptsDialog({
               </div>
             ) : (
               <div data-vaul-no-drag className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
-                <ul className="grid gap-3">
+                <ul className="grid grid-cols-[minmax(0,1fr)] gap-3">
                   {notifications.map((notification) => (
                     <li key={notification.id}>
                       {/* Looks and presses like the portal choice cards and the "more" sheet rows. */}
@@ -1966,7 +1966,7 @@ function ReceiptsDialog({
                       >
                         <span className={cn(CHOICE_ICON, 'bg-foreground/5 text-primary')}><ReceiptText className="h-[22px] w-[22px]" /></span>
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex min-w-0 items-center gap-2">
                             <p className="font-mono text-base font-semibold tabular-nums text-foreground">{ghc(notification.amount)}</p>
                             {!notification.read && (
                               <span className="flex h-5 items-center rounded-full bg-primary px-2 text-[10px] font-semibold uppercase tracking-wide text-primary-foreground">
@@ -2170,7 +2170,7 @@ function ReminderNotificationPanel({
   signOutEnabled: boolean;
 }) {
   return (
-    <div className="grid gap-3">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
       <ReminderNotificationToggle
         disabled={disabled || notificationPermission === 'unsupported'}
         enabled={signInEnabled}
