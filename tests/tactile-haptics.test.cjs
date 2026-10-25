@@ -17,15 +17,29 @@ test('buttons and portal cards look raised and press in when tapped', () => {
   assert.match(portal, /active:translate-y-px active:scale-\[0\.98\]/);
 });
 
-test('phones get a haptic tap on every link and button, Android and iOS', () => {
+test('phones get a haptic tap on every link and button: vibration on Android, a real switch on iPhone', () => {
   const haptics = read('src', 'lib', 'haptics.ts');
   assert.match(haptics, /navigator\.vibrate\(10\)/);
-  assert.match(haptics, /input\.setAttribute\('switch', ''\)/);
-  assert.match(haptics, /label\.click\(\);\n\s*label\.remove\(\);/);
+  // iOS 26.5+ ignores switches toggled from script, so no label.click() trick.
+  assert.doesNotMatch(haptics, /label\.click/);
   const listener = read('src', 'components', 'layout', 'haptic-feedback.tsx');
   assert.match(listener, /\(pointer: coarse\)/);
   assert.match(listener, /event\.isTrusted && isTappable\(event\.target\)/);
   assert.match(read('src', 'app', 'layout.tsx'), /<HapticFeedback \/>/);
+
+  // iPhone: an invisible native switch the finger toggles, which then clicks its button or link.
+  const hapticSwitch = read('src', 'components', 'ui', 'haptic-switch.tsx');
+  assert.match(hapticSwitch, /typeof navigator\.vibrate !== 'function' && window\.matchMedia\('\(pointer: coarse\)'\)\.matches/);
+  assert.match(hapticSwitch, /element\?\.setAttribute\('switch', ''\)/);
+  assert.match(hapticSwitch, /event\.stopPropagation\(\);[\s\S]*host\?\.click\(\);/);
+  const css = read('src', 'app', 'globals.css');
+  assert.match(css, /input\.haptic-switch\.haptic-switch \{[^}]*appearance: auto;[^}]*inset: 0;[^}]*opacity: 0;/);
+  assert.doesNotMatch(css.match(/input\.haptic-switch\.haptic-switch \{[^}]*\}/)[0], /display: none|visibility: hidden/);
+  // Every Button (asChild links too), portal card and sheet row carries one.
+  const button = read('src', 'components', 'ui', 'button.tsx');
+  assert.match(button, /<Slottable>\{children\}<\/Slottable>\n\s*<HapticSwitch \/>/);
+  assert.match(read('src', 'components', 'layout', 'portal-ui.tsx'), /<HapticSwitch \/>\n\s*<\/Link>/);
+  assert.match(read('src', 'app', 'check-in', 'page.tsx'), /<HapticSwitch \/>\n\s*<\/button>/);
 });
 
 test('the staff screens have the sunray dial pattern behind them, in the theme colour', () => {

@@ -3,8 +3,9 @@
 import { useEffect } from 'react';
 import { haptic, isTappable } from '@/lib/haptics';
 
-// A light haptic tap on phones whenever a link, button or tab is pressed, across the whole app.
-// Only on touch screens: laptops have no motor to drive.
+// A light vibration on Android phones whenever a link, button or tab is pressed, across the whole
+// app. (iPhones get theirs from the switch inside each button: see HapticSwitch.) Only on touch
+// screens: laptops have no motor to drive.
 export function HapticFeedback() {
   useEffect(() => {
     if (!window.matchMedia('(pointer: coarse)').matches) return;

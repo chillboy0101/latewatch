@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { AlertTriangle, ArrowLeft, ArrowRight, BellRing, Check, CheckCircle2, ChevronRight, History, Loader2, LogOut, MapPin, MoreHorizontal, Printer, ReceiptText, ShieldCheck, XCircle, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { HapticSwitch } from '@/components/ui/haptic-switch';
 import { Card } from '@/components/ui/card';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerNested, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
@@ -562,6 +563,7 @@ function MenuRow({
           <span className={cn('mt-0.5 block min-h-5 truncate text-sm text-muted-foreground', statusClassName)}>{status}</span>
         </span>
         <ArrowRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+        <HapticSwitch />
       </button>
     </li>
   );

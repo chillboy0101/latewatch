@@ -1,24 +1,7 @@
-// A light tap of the phone's vibration motor. Android browsers have navigator.vibrate. iOS Safari
-// has no vibration API, but toggling a switch control (<input type="checkbox" switch>, iOS 17.4+)
-// plays the system haptic, so a hidden one is clicked instead. Must run inside a user gesture
-// (a click handler); does nothing on devices without a motor.
+// A light tap of the phone's vibration motor where the browser has the vibration API (Android).
+// iPhones don't; they get their haptic from the invisible switch in each button (HapticSwitch).
 export function haptic() {
-  if (typeof navigator === 'undefined') return;
-  if (typeof navigator.vibrate === 'function') {
-    navigator.vibrate(10);
-    return;
-  }
-
-  const label = document.createElement('label');
-  label.ariaHidden = 'true';
-  label.style.display = 'none';
-  const input = document.createElement('input');
-  input.type = 'checkbox';
-  input.setAttribute('switch', '');
-  label.appendChild(input);
-  document.head.appendChild(label);
-  label.click();
-  label.remove();
+  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') navigator.vibrate(10);
 }
 
 // What counts as a tap worth feeling: links, buttons and button-like controls that are enabled.

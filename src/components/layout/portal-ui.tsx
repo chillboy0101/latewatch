@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import { ModePicker } from '@/components/theme/mode-picker';
 import { ThemePicker } from '@/components/theme/theme-picker';
+import { HapticSwitch } from '@/components/ui/haptic-switch';
 import { getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 
@@ -40,7 +41,7 @@ export const CHOICE_TEXT = 'text-[17.5px]';
 // The look of a choice card, shared with other big tappable rows (like the attendance portal's
 // "more" sheet) so they all feel the same: raised like a button and pressed in when tapped (see the
 // Button component).
-export const CHOICE_PRESS = 'group flex items-center border transition-[filter,transform,box-shadow] duration-150 hover:brightness-105 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/50 active:translate-y-px active:scale-[0.98] active:brightness-95 motion-reduce:transition-none';
+export const CHOICE_PRESS = 'group relative flex items-center border transition-[filter,transform,box-shadow] duration-150 hover:brightness-105 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/50 active:translate-y-px active:scale-[0.98] active:brightness-95 motion-reduce:transition-none';
 export const CHOICE_PLAIN = 'border-border bg-background/40 shadow-[inset_0_1px_0_rgb(255_255_255/0.08),0_1px_3px_rgb(0_0_0/0.06)] active:shadow-[inset_0_2px_5px_rgb(0_0_0/0.08)]';
 export const CHOICE_ICON = 'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl';
 
@@ -84,6 +85,7 @@ export function ChoiceCard({ highlight, href, icon, size = 'default', title }: {
       ) : (
         <ArrowRight className="ml-auto h-5 w-5 shrink-0 text-muted-foreground" />
       )}
+      <HapticSwitch />
     </Link>
   );
 }
