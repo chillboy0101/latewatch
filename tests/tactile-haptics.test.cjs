@@ -8,13 +8,18 @@ const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts),
 
 test('buttons and portal cards look raised and press in when tapped', () => {
   const button = read('src', 'components', 'ui', 'button.tsx');
-  assert.match(button, /active:translate-y-px active:scale-\[0\.98\]/);
+  // A smooth press: quick in, slow spring back, no pixel jump.
+  assert.match(button, /export const PRESS = '[^']*duration-300 ease-\[cubic-bezier\(0\.22,1,0\.36,1\)\] active:scale-\[0\.97\] active:duration-100/);
+  assert.doesNotMatch(button, /translate-y-px/);
+  // No coloured glow under buttons.
+  assert.doesNotMatch(button, /color-mix\(in_oklab,var\(--(primary|danger)\)_55%/);
   // The solid buttons keep their colour under the sheen (bg-gradient-to-* would make cn drop bg-primary).
   assert.match(button, /'bg-primary bg-linear-to-b from-white\/12/);
   assert.doesNotMatch(button, /bg-gradient-to/);
   assert.match(button, /active:shadow-\[inset_/);
   const portal = read('src', 'components', 'layout', 'portal-ui.tsx');
-  assert.match(portal, /active:translate-y-px active:scale-\[0\.98\]/);
+  assert.match(portal, /export const CHOICE_PRESS = cn\(PRESS,/);
+  assert.doesNotMatch(portal, /0_8px_20px_-10px|shadow-primary\/25/);
 });
 
 test('phones get a haptic tap on every link and button: vibration on Android, a real switch on iPhone', () => {
@@ -42,15 +47,11 @@ test('phones get a haptic tap on every link and button: vibration on Android, a 
   assert.match(read('src', 'app', 'check-in', 'page.tsx'), /<HapticSwitch \/>\n\s*<\/button>/);
 });
 
-test('the staff screens have the sunray dial pattern behind them, in the theme colour', () => {
-  const css = read('src', 'app', 'globals.css');
-  assert.match(css, /\.sunray \{\n\s*isolation: isolate;/);
-  assert.match(css, /\.sunray::before \{[^}]*position: fixed;[^}]*z-index: -1;[^}]*repeating-conic-gradient\([^)]*var\(--primary\)/);
+test('no sunray pattern behind the staff screens', () => {
+  assert.doesNotMatch(read('src', 'app', 'globals.css'), /sunray|repeating-conic-gradient/);
   for (const file of [['src', 'app', 'page.tsx'], ['src', 'app', 'check-in', 'page.tsx'], ['src', 'components', 'layout', 'desktop-required-screen.tsx']]) {
-    assert.match(read(...file), /<main className="[^"]*\bsunray"/);
+    assert.doesNotMatch(read(...file), /sunray/);
   }
-  // The status card has no watermark of its own any more.
-  assert.doesNotMatch(read('src', 'app', 'check-in', 'page.tsx'), /BrushWatermark/);
 });
 
 test('the attendance "more" sheet rows look and press like the portal choice cards', () => {
@@ -61,4 +62,12 @@ test('the attendance "more" sheet rows look and press like the portal choice car
   // ChoiceCard uses the same shared classes.
   assert.match(portal, /CHOICE_PRESS,\n\s*large \?/);
   assert.match(portal, /: CHOICE_PLAIN,/);
+});
+
+test('the reminders sheet toggles and the receipt rows match the portal cards too', () => {
+  const page = read('src', 'app', 'check-in', 'page.tsx');
+  assert.equal([...page.matchAll(/className=\{cn\(CHOICE_PRESS, CHOICE_PLAIN, CHOICE_SIZE, 'w-full gap-4 px-\[18px\] text-left/g)].length, 3); // more-sheet rows, reminder toggles, receipts
+  assert.match(page, /<div className="grid gap-3">\n\s*<ReminderNotificationToggle/);
+  assert.match(page, /<ul className="grid gap-3">\n\s*\{notifications\.map/);
+  assert.equal([...page.matchAll(/<HapticSwitch \/>/g)].length, 3);
 });

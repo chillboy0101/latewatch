@@ -169,26 +169,6 @@ input.haptic-switch.haptic-switch {
   pointer-events: none;
 }
 
-/* A sunray dial finish behind the staff screens (portal home, attendance, "admin needs a computer"),
-   like a luxury watch face: fine rays in the theme colour fanning from the top centre and fading out
-   down the page. Fixed, so it stays put while scrolling. The screen's <main> isolates, so the rays
-   sit above its background and below everything in it. */
-.sunray {
-  isolation: isolate;
-}
-
-.sunray::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background: repeating-conic-gradient(from 0deg at 50% -5%, var(--primary) 0deg 0.35deg, transparent 0.35deg 1.6deg);
-  -webkit-mask: radial-gradient(130% 90% at 50% -5%, #000 10%, transparent 85%);
-  mask: radial-gradient(130% 90% at 50% -5%, #000 10%, transparent 85%);
-  opacity: 0.22;
-}
-
 /* Apple-style "liquid glass": translucent, blurred, saturated surface. The
    -webkit- prefix is required for the blur to show on iOS Safari / installed
    PWAs. Falls back to a mostly-opaque surface where backdrop-filter is absent. */
@@ -514,7 +494,6 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
     box-shadow: 0 0 0 clamp(1rem, 5.5vw, 1.8rem) color-mix(in srgb, var(--primary) 32%, transparent);
   }
 }
-
 
 /* App-like selection behaviour.
    Controls (buttons, menus, navigation, the colour picker) are never selectable, so a long-press or a

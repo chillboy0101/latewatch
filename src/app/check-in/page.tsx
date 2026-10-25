@@ -4,7 +4,7 @@ import { UserButton, useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, ArrowRight, BellRing, Check, CheckCircle2, ChevronRight, History, Loader2, LogOut, MapPin, MoreHorizontal, Printer, ReceiptText, ShieldCheck, XCircle, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, BellRing, Check, CheckCircle2, History, Loader2, LogIn, LogOut, MapPin, MoreHorizontal, Printer, ReceiptText, ShieldCheck, XCircle, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { HapticSwitch } from '@/components/ui/haptic-switch';
 import { Card } from '@/components/ui/card';
@@ -1287,7 +1287,7 @@ export default function CheckInPage() {
   const transferRequestPending = status?.transferRequest?.status === 'pending';
 
   return (
-    <main className="flex h-dvh flex-col overflow-hidden overscroll-none bg-background text-foreground sunray">
+    <main className="flex h-dvh flex-col overflow-hidden overscroll-none bg-background text-foreground">
       <div className="mx-auto flex h-full w-full max-w-xl flex-col px-3 py-3 sm:px-6 sm:py-4">
         <header className="flex h-12 shrink-0 items-center justify-between sm:h-14">
           <Button
@@ -1955,28 +1955,31 @@ function ReceiptsDialog({
               </div>
             ) : (
               <div data-vaul-no-drag className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
-                <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-background">
+                <ul className="grid gap-3">
                   {notifications.map((notification) => (
                     <li key={notification.id}>
+                      {/* Looks and presses like the portal choice cards and the "more" sheet rows. */}
                       <button
                         type="button"
                         onClick={() => selectReceipt(notification)}
-                        className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-foreground/5 active:bg-foreground/10"
+                        className={cn(CHOICE_PRESS, CHOICE_PLAIN, CHOICE_SIZE, 'w-full gap-4 px-[18px] text-left')}
                       >
+                        <span className={cn(CHOICE_ICON, 'bg-foreground/5 text-primary')}><ReceiptText className="h-[22px] w-[22px]" /></span>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <p className="font-mono text-sm font-semibold tabular-nums text-foreground">{ghc(notification.amount)}</p>
+                            <p className="font-mono text-base font-semibold tabular-nums text-foreground">{ghc(notification.amount)}</p>
                             {!notification.read && (
                               <span className="flex h-5 items-center rounded-full bg-primary px-2 text-[10px] font-semibold uppercase tracking-wide text-primary-foreground">
                                 New
                               </span>
                             )}
                           </div>
-                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                          <p className="mt-0.5 truncate text-sm text-muted-foreground">
                             {formatDisplayDateTime(notification.recordedAt)} · <span className="font-mono">{notification.receiptNumber}</span>
                           </p>
                         </div>
-                        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <ArrowRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+                        <HapticSwitch />
                       </button>
                     </li>
                   ))}
@@ -2167,10 +2170,11 @@ function ReminderNotificationPanel({
   signOutEnabled: boolean;
 }) {
   return (
-    <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-background">
+    <div className="grid gap-3">
       <ReminderNotificationToggle
         disabled={disabled || notificationPermission === 'unsupported'}
         enabled={signInEnabled}
+        icon={LogIn}
         label="Sign-in reminder"
         loading={signInLoading}
         onToggle={onToggleCheckIn}
@@ -2179,6 +2183,7 @@ function ReminderNotificationPanel({
       <ReminderNotificationToggle
         disabled={disabled || notificationPermission === 'unsupported'}
         enabled={signOutEnabled}
+        icon={LogOut}
         label="Sign-out reminder"
         loading={signOutLoading}
         onToggle={onToggleSignOut}
@@ -2191,6 +2196,7 @@ function ReminderNotificationPanel({
 function ReminderNotificationToggle({
   disabled,
   enabled,
+  icon: Icon,
   label,
   loading,
   onToggle,
@@ -2198,6 +2204,7 @@ function ReminderNotificationToggle({
 }: {
   disabled: boolean;
   enabled: boolean;
+  icon: LucideIcon;
   label: string;
   loading: boolean;
   onToggle: () => void;
@@ -2211,11 +2218,13 @@ function ReminderNotificationToggle({
       aria-label={label}
       disabled={disabled || loading}
       onClick={onToggle}
-      className="flex w-full items-center justify-between gap-3 px-3.5 py-3 text-left transition-colors hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-55"
+      // Looks and presses like the portal choice cards and the "more" sheet rows.
+      className={cn(CHOICE_PRESS, CHOICE_PLAIN, CHOICE_SIZE, 'w-full gap-4 px-[18px] text-left disabled:cursor-not-allowed disabled:opacity-55')}
     >
-      <span className="min-w-0">
-        <span className="block text-sm font-medium">{label}</span>
-        <span className="block text-xs text-muted-foreground">{time}</span>
+      <span className={cn(CHOICE_ICON, 'bg-foreground/5 text-primary')}><Icon className="h-[22px] w-[22px]" /></span>
+      <span className="min-w-0 flex-1">
+        <span className={cn('block font-semibold leading-tight', CHOICE_TEXT)}>{label}</span>
+        <span className="mt-0.5 block text-sm text-muted-foreground">{time}</span>
       </span>
       {loading ? (
         <Loader2 className="h-5 w-5 shrink-0 animate-spin text-muted-foreground" />
@@ -2235,6 +2244,7 @@ function ReminderNotificationToggle({
           />
         </span>
       )}
+      <HapticSwitch />
     </button>
   );
 }
