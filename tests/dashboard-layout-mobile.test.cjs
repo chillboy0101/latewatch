@@ -79,9 +79,12 @@ test('portal home renders one layout, with the two portals in order and an offic
   // The clock shows office (Accra) time and ticks inside its own card.
   assert.match(home, /timeZone: ACCRA_TIME_ZONE/);
   assert.match(home, /function ClockCard\([^)]*\) \{\s*const now = useNow\(\);/);
-  // An analogue face: hour, minute and second hands, with the time also given to screen readers.
-  assert.equal([...home.matchAll(/<Hand angle=\{(hours|minutes|seconds)\}/g)].length, 3);
-  assert.match(home, /<time className="sr-only">/);
+  // An analogue face: hour and minute hands and a smoothly sweeping second hand (set every animation
+  // frame), with the time also given to screen readers.
+  assert.deepEqual([...home.matchAll(/<Hand angle=\{(\w+)\}/g)].map((match) => match[1]), ['hours', 'minutes']);
+  assert.match(home, /<SweepHand \/>/);
+  assert.match(home, /frame = requestAnimationFrame\(draw\)/);
+  assert.match(home, /<time className="sr-only">\{`\$\{pad\(now\.hours\)\}:\$\{pad\(now\.minutes\)\}`\}<\/time>/);
   assert.match(home, /useApplyDarkMode\(\);/);
   assert.doesNotMatch(home, /description|Staff check-in and check-out|LateWatchLogo/);
 });
