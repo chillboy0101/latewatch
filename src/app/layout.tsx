@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { ClerkThemeProvider } from "@/components/auth/clerk-theme-provider";
 import { buildThemeBootScript } from "@/lib/theme";
 import { AppShell } from "@/components/layout/app-shell";
+import { HapticFeedback } from "@/components/layout/haptic-feedback";
 import { NotificationProvider } from "@/contexts/notification-context";
 import { PushReminderToast } from "@/components/notifications/push-reminder-toast";
 import {
@@ -98,6 +99,7 @@ export default function RootLayout({
           <NotificationProvider>
             <AppShell>{children}</AppShell>
             <PushReminderToast />
+            <HapticFeedback />
           </NotificationProvider>
         </ClerkThemeProvider>
       </body>
