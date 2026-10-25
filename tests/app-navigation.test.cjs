@@ -59,6 +59,9 @@ test('a swipe from the right edge reopens the screen just left by going back', (
   assert.match(nav, /if \(left !== undefined\) forward\.push\(left\);\n\s*stack\.pop\(\);/);
   assert.match(nav, /if \(forward\.at\(-1\) === pathname\) forward\.pop\(\);\n\s*else forward\.length = 0;/);
   assert.match(nav, /if \(href\) slideTo\('swipe-forward', \(\) => router\.push\(href\)\);/);
+  // The portal home is the first screen and sign-in screens are dropped: no back swipe into either.
+  assert.match(nav, /if \(pathname === '\/' \|\| \(left !== undefined && isAuthScreen\(left\)\)\) stack\.splice\(0, stack\.length - 1\);/);
+  assert.match(nav, /if \(pathname === '\/' \|\| isAuthScreen\(pathname\)\) return null;/);
 
   const page = read('src', 'components', 'layout', 'app-page.tsx');
   assert.match(page, /touch\.clientX >= window\.innerWidth - EDGE_PX/);
