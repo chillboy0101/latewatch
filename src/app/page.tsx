@@ -1,7 +1,7 @@
 'use client';
 
 import { LayoutDashboard, LogIn } from 'lucide-react';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ChoiceCard, ChoicePanel, PortalPickers, useApplyDarkMode } from '@/components/layout/portal-ui';
 import { ACCRA_TIME_ZONE } from '@/lib/date-key';
 import { getHomeView, getServerHomeView, subscribeDeviceKind } from '@/lib/device-kind';
@@ -13,7 +13,7 @@ const dateFormat = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'lo
 
 type Now = { date: string; hours: number; minutes: number; seconds: number };
 
-// Ticks every second (for the second hand). Null until mounted: the server doesn't know the time the
+// Ticks every second (the minute hand creeps with the seconds). Null until mounted: the server doesn't know the time the
 // visitor will see.
 function useNow() {
   const [now, setNow] = useState<Now | null>(null);
@@ -55,11 +55,29 @@ function Hand({ angle, className, length, tail = 0, width }: { angle: number; cl
   );
 }
 
+// The second hand sweeps smoothly instead of ticking: its angle is set on every animation frame
+// straight on the element, so the card doesn't re-render 60 times a second. Accra is on UTC, so the
+// seconds come straight from the epoch time.
+function SweepHand() {
+  const ref = useRef<SVGLineElement>(null);
+
+  useEffect(() => {
+    let frame = 0;
+    const draw = () => {
+      ref.current?.setAttribute('transform', `rotate(${(Date.now() % 60_000) * 0.006} 100 100)`);
+      frame = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  return <line className="stroke-primary" ref={ref} strokeLinecap="round" strokeWidth={1.75} x1="100" x2="100" y1="120" y2="20" />;
+}
+
 // The analogue face: minute ticks, longer hour marks, and hour, minute and second hands.
 function AnalogClock({ className, now }: { className: string; now: Now | null }) {
   const hours = now ? (now.hours % 12) * 30 + now.minutes * 0.5 : 0;
   const minutes = now ? now.minutes * 6 + now.seconds * 0.1 : 0;
-  const seconds = now ? now.seconds * 6 : 0;
 
   return (
     <svg aria-hidden className={cn('shrink-0', className)} viewBox="0 0 200 200">
@@ -83,7 +101,7 @@ function AnalogClock({ className, now }: { className: string; now: Now | null })
       <g className={now ? undefined : 'invisible'}>
         <Hand angle={hours} className="stroke-foreground" length={48} tail={10} width={6} />
         <Hand angle={minutes} className="stroke-foreground" length={72} tail={12} width={4} />
-        <Hand angle={seconds} className="stroke-primary" length={80} tail={20} width={1.75} />
+        <SweepHand />
         <circle className="fill-primary" cx="100" cy="100" r="5" />
         <circle className="fill-card" cx="100" cy="100" r="2" />
       </g>
