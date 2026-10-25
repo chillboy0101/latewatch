@@ -75,8 +75,10 @@ test('theme picker closes on outside taps and Escape, and all surfaces derive fr
 
 test('home page shows the appearance and theme colour buttons', () => {
   const home = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'page.tsx'), 'utf8');
-  assert.match(home, /<ModePicker /);
-  assert.match(home, /<ThemePicker /);
+  const portalUi = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'layout', 'portal-ui.tsx'), 'utf8');
+  assert.match(home, /<PortalPickers \/>/);
+  assert.match(portalUi, /<ModePicker /);
+  assert.match(portalUi, /<ThemePicker /);
 });
 
 test('theme colour syncs to the account, defaulting to blue for first-time users', () => {
