@@ -1,11 +1,12 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Check, LayoutDashboard, LogIn } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { ModePicker } from '@/components/theme/mode-picker';
 import { ThemePicker } from '@/components/theme/theme-picker';
+import { getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 
 // Lines of the drawing: the theme colour lifted toward the text colour, so it reads in every theme
@@ -40,6 +41,9 @@ function DevicesIllustration() {
   );
 }
 
+// Solid round buttons: the plain background has nothing for a glass blur to show through.
+const pickerButton = 'h-10 w-10 rounded-full border border-border bg-card shadow-sm';
+
 function ChoiceCard({ highlight, href, icon, title }: {
   highlight?: boolean;
   href: string;
@@ -69,13 +73,21 @@ function ChoiceCard({ highlight, href, icon, title }: {
 // Phones opening an admin page: the admin portal needs a computer, so offer the attendance
 // portal (or the portal chooser). The drawing on top, a panel with the choices.
 export function DesktopRequiredScreen() {
+  // Rendered without the admin header, so it applies light/dark mode itself, like the other
+  // stand-alone screens.
+  const isDark = useSyncExternalStore(subscribeThemeChange, getIsDarkTheme, () => true);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDark);
+  }, [isDark]);
+
   return (
-    <main className="relative flex min-h-dvh flex-col bg-background text-foreground lg:hidden">
+    <main className="relative flex min-h-dvh flex-col bg-background text-foreground">
       <header className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-6 pt-[max(1.25rem,env(safe-area-inset-top))]">
         <LateWatchLogo markSize="md" />
         <div className="flex items-center gap-2">
-          <ThemePicker buttonVariant="glass" buttonClassName="h-10 w-10 rounded-full" iconClassName="h-5 w-5" />
-          <ModePicker buttonVariant="glass" buttonClassName="h-10 w-10 rounded-full" />
+          <ThemePicker buttonClassName={pickerButton} iconClassName="h-5 w-5" />
+          <ModePicker buttonClassName={pickerButton} />
         </div>
       </header>
 

@@ -8,10 +8,15 @@ const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts),
 
 test('on phones the admin portal shows the "admin needs a computer" page', () => {
   const layout = read('src', 'components', 'layout', 'dashboard-layout.tsx');
-  assert.match(layout, /<DesktopRequiredScreen \/>\s*<div className="relative hidden h-screen w-full overflow-hidden lg:flex">/);
+  // One or the other is rendered (not both hidden by CSS), chosen by the device's screen.
+  assert.match(layout, /useSyncExternalStore\(subscribeDeviceKind, getDeviceKind, getServerDeviceKind\)/);
+  assert.match(layout, /if \(deviceKind === 'phone'\) \{\s*return <DesktopRequiredScreen \/>;/);
+  assert.doesNotMatch(layout, /lg:flex|lg:hidden/);
 
   const screen = read('src', 'components', 'layout', 'desktop-required-screen.tsx');
-  assert.match(screen, /<main className="relative flex min-h-dvh flex-col[^"]*lg:hidden">/);
+  assert.match(screen, /<main className="relative flex min-h-dvh flex-col[^"]*">/);
+  // Applies dark mode itself, since the admin header isn't rendered on phones.
+  assert.match(screen, /document\.documentElement\.classList\.toggle\('dark', isDark\)/);
   // The laptop-and-phone drawing, centred above the panel, on the plain background.
   assert.match(screen, /<div className="flex min-h-0 flex-1 items-center justify-center[^"]*">\s*<DevicesIllustration \/>/);
   // Panel with the heading and two choice cards: attendance portal first (highlighted), then home.
@@ -25,4 +30,13 @@ test('on phones the admin portal shows the "admin needs a computer" page', () =>
   assert.match(screen, /'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl'/);
   // Colours come from the theme, so it works in every theme and in light and dark mode.
   assert.match(screen, /color-mix\(in oklab, var\(--primary\) 55%, var\(--foreground\)\)/);
+});
+
+test('phone or computer is judged by the screen, not the window', () => {
+  require('tsx/cjs');
+  const { deviceKindForScreen } = require('../src/lib/device-kind.ts');
+  assert.equal(deviceKindForScreen(390, 844), 'phone');
+  assert.equal(deviceKindForScreen(844, 390), 'phone'); // phone turned sideways
+  assert.equal(deviceKindForScreen(768, 1024), 'computer'); // iPad in portrait
+  assert.equal(deviceKindForScreen(1440, 900), 'computer'); // laptop, whatever the window size
 });
