@@ -4,7 +4,7 @@ import { UserButton, useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, ArrowRight, BellRing, Check, CheckCircle2, ChevronRight, History, Loader2, LogOut, MapPin, MoreHorizontal, Printer, ReceiptText, ShieldCheck, XCircle, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BellRing, Check, CheckCircle2, ChevronRight, History, Loader2, LogOut, MapPin, MoreHorizontal, Printer, ReceiptText, ShieldCheck, XCircle, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerNested, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
@@ -277,8 +277,8 @@ function attendanceButtonLabel(status: CheckInStatus | null, submitting: boolean
   return 'Check In';
 }
 
-// The page's main action (check in / out, device transfer), sized and shaped like the portal choice
-// cards (86px, icon tile, arrow) so it is easy to hit with a thumb.
+// The page's main action (check in / out, device transfer), as tall as the portal choice cards
+// (86px) so it is easy to hit with a thumb.
 function ActionButton({ busy, disabled, icon: Icon, label, onClick }: {
   busy: boolean;
   disabled: boolean;
@@ -288,17 +288,14 @@ function ActionButton({ busy, disabled, icon: Icon, label, onClick }: {
 }) {
   return (
     <Button
-      className="h-[86px] w-full justify-start gap-4 whitespace-normal rounded-[22px] px-[18px] text-left text-[17.5px] font-semibold leading-tight shadow-sm active:brightness-95"
+      className="h-[86px] w-full gap-2.5 whitespace-normal rounded-[22px] px-5 text-center text-[17.5px] font-semibold leading-tight shadow-sm active:brightness-95"
       disabled={disabled}
       onClick={onClick}
       type="button"
     >
-      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary-foreground/15">
-        {busy ? <Loader2 className="h-[22px] w-[22px] animate-spin" /> : <Icon className="h-[22px] w-[22px]" />}
-      </span>
-      {/* Keep times like "4:30 PM" on one line when a long label wraps. */}
-      <span className="min-w-0">{label.replace(/(\d) ([AP]M)\b/g, '$1\u00a0$2')}</span>
-      {!busy && <ArrowRight className="ml-auto h-5 w-5 shrink-0 opacity-80" />}
+      {busy ? <Loader2 className="h-[22px] w-[22px] shrink-0 animate-spin" /> : <Icon className="h-[22px] w-[22px] shrink-0" />}
+      {/* Keep times like "4:30 PM" on one line if a long label wraps. */}
+      {label.replace(/(\d) ([AP]M)\b/g, '$1\u00a0$2')}
     </Button>
   );
 }
@@ -1423,27 +1420,27 @@ export default function CheckInPage() {
             ) : (
               <div className="flex h-full flex-col">
                 <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3 sm:gap-4 sm:p-5">
-                <div className={cn('flex flex-1 flex-col items-center justify-center gap-5 rounded-2xl border p-6 text-center sm:gap-7 sm:p-8', statusTone(status))}>
+                <div className={cn('flex flex-1 flex-col items-center justify-center gap-5 rounded-2xl border p-6 text-center sm:gap-7 sm:p-8 short:gap-2.5 short:px-4 short:py-3', statusTone(status))}>
                   {/* A soft halo around one badge: soft fill before, solid with a bold tick once checked in. */}
-                  <div className="relative flex h-24 w-24 items-center justify-center sm:h-28 sm:w-28">
+                  <div className="relative flex h-24 w-24 items-center justify-center sm:h-28 sm:w-28 short:h-20 short:w-20">
                     <span aria-hidden className="absolute inset-0 rounded-full bg-current opacity-15" />
                     {status?.attendance ? (
-                      <span className="relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-4 ring-primary/25 sm:h-20 sm:w-20">
-                        <Check className="h-9 w-9 sm:h-10 sm:w-10" strokeWidth={3} />
+                      <span className="relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-4 ring-primary/25 sm:h-20 sm:w-20 short:h-16 short:w-16">
+                        <Check className="h-9 w-9 sm:h-10 sm:w-10 short:h-8 short:w-8" strokeWidth={3} />
                       </span>
                     ) : (
-                      <span className="relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-current/20 ring-1 ring-current/30 sm:h-20 sm:w-20">
+                      <span className="relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-current/20 ring-1 ring-current/30 sm:h-20 sm:w-20 short:h-16 short:w-16">
                         {canCheckIn ? (
-                          <ShieldCheck className="h-9 w-9 sm:h-10 sm:w-10" />
+                          <ShieldCheck className="h-9 w-9 sm:h-10 sm:w-10 short:h-8 short:w-8" />
                         ) : (
-                          <AlertTriangle className="h-9 w-9 sm:h-10 sm:w-10" />
+                          <AlertTriangle className="h-9 w-9 sm:h-10 sm:w-10 short:h-8 short:w-8" />
                         )}
                       </span>
                     )}
                   </div>
                   {/* Status, name and location sit at one even spacing. */}
-                  <div className="flex max-w-full flex-col items-center gap-4 sm:gap-5">
-                    <h2 className="text-2xl font-bold text-balance leading-tight sm:text-3xl">{statusCopy(status)}</h2>
+                  <div className="flex max-w-full flex-col items-center gap-4 sm:gap-5 short:gap-2.5">
+                    <h2 className="text-2xl font-bold text-balance leading-tight sm:text-3xl short:text-xl">{statusCopy(status)}</h2>
                     {status?.staff?.fullName && (
                       <p className="max-w-full truncate text-lg font-semibold leading-tight sm:text-xl">{status.staff.fullName}</p>
                     )}
@@ -1451,23 +1448,25 @@ export default function CheckInPage() {
                   </div>
                 </div>
 
-                <div className="flex flex-1 flex-col rounded-2xl border border-border bg-card px-4 sm:px-5">
-                  <div className="flex flex-1 items-center justify-between gap-3">
+                {/* Fixed-height rows, so this card looks the same on every phone (a penalty adds a row);
+                    the status card above takes whatever height is left. */}
+                <div className="flex shrink-0 flex-col rounded-2xl border border-border bg-card px-4 sm:px-5">
+                  <div className="flex h-14 items-center justify-between gap-3">
                     <span className="text-sm text-muted-foreground">Checked in at</span>
                     <span className="font-mono text-xl font-semibold tabular-nums">{status?.attendance ? status.attendance.checkInTime.slice(0, 5) : '-'}</span>
                   </div>
-                  <div className="flex flex-1 items-center justify-between gap-3 border-t border-border">
+                  <div className="flex h-14 items-center justify-between gap-3 border-t border-border">
                     <span className="text-sm text-muted-foreground">Checked out at</span>
                     <span className="font-mono text-xl font-semibold tabular-nums">{status?.attendance?.signOutTime ? status.attendance.signOutTime.slice(0, 5) : '-'}</span>
                   </div>
                   {status?.attendance && Number(status.attendance.computedAmount || 0) > 0 && (
-                    <div className="flex flex-1 items-center justify-between gap-3 border-t border-border">
+                    <div className="flex h-14 items-center justify-between gap-3 border-t border-border">
                       <span className="text-sm text-muted-foreground">Penalty</span>
                       <span className="font-mono text-lg font-semibold text-warning tabular-nums">GHC {Number(status.attendance.computedAmount).toFixed(2)}</span>
                     </div>
                   )}
                   {status?.attendance && Number(status.attendance.computedAmount || 0) === 0 && status.attendance.reason && (
-                    <div className="flex flex-1 items-center border-t border-border py-3 text-sm text-muted-foreground">
+                    <div className="flex items-center border-t border-border py-3 text-sm text-muted-foreground">
                       {status.attendance.reason}
                     </div>
                   )}
