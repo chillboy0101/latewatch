@@ -28,7 +28,11 @@ function sheetEntryId() {
   return typeof id === 'number' ? id : null;
 }
 
-function useCloseOnBack(open: boolean | undefined, onOpenChange: ((open: boolean) => void) | undefined) {
+function useCloseOnBack(
+  open: boolean | undefined,
+  onOpenChange: ((open: boolean) => void) | undefined,
+  nested = false,
+) {
   const closeRef = React.useRef(onOpenChange);
   React.useEffect(() => {
     closeRef.current = onOpenChange;
@@ -36,16 +40,9 @@ function useCloseOnBack(open: boolean | undefined, onOpenChange: ((open: boolean
 
   React.useEffect(() => {
     if (!open || !closeRef.current) return;
-    const id = ++lastSheetId;
-    // Keep the router's own state on the entry so it treats it as the same screen. A sheet that was
-    // closed and reopened straight away (or remounted) reuses the entry still waiting to be removed.
-    const state = { ...(window.history.state ?? {}), latewatchSheet: id };
-    if (pendingPops > 0 && sheetEntryId() !== null) {
-      pendingPops -= 1;
-      window.history.replaceState(state, '');
-    } else {
-      window.history.pushState(state, '');
-    }
+    let id = 0;
+    let added = false;
+    let cancelled = false;
     let closedByBack = false;
 
     const onPopState = () => {
@@ -55,15 +52,38 @@ function useCloseOnBack(open: boolean | undefined, onOpenChange: ((open: boolean
         closeRef.current?.(false);
       }
     };
-    window.addEventListener('popstate', onPopState);
+
+    const addEntry = () => {
+      if (cancelled) return;
+      added = true;
+      id = ++lastSheetId;
+      // Keep the router's own state on the entry so it treats it as the same screen. A sheet that
+      // was closed and reopened straight away (or remounted) reuses the entry still waiting to go.
+      const state = { ...(window.history.state ?? {}), latewatchSheet: id };
+      if (pendingPops > 0 && sheetEntryId() !== null) {
+        pendingPops -= 1;
+        window.history.replaceState(state, '');
+      } else {
+        window.history.pushState(state, '');
+      }
+      window.addEventListener('popstate', onPopState);
+    };
+
+    // Effects run child first, so a child sheet opening together with its parent waits a tick:
+    // the parent's entry goes in first and back closes the child (the top sheet) first.
+    if (nested) queueMicrotask(addEntry);
+    else addEntry();
+
     return () => {
+      cancelled = true;
+      if (!added) return;
       window.removeEventListener('popstate', onPopState);
       // Closed from the sheet (swipe down, a button), not by back: remove its entry. If the app has
       // already moved to another screen, the entry is behind it and is left alone.
       const top = sheetEntryId();
       if (!closedByBack && top !== null && top >= id) popSheetEntries();
     };
-  }, [open]);
+  }, [nested, open]);
 }
 
 function Drawer({
@@ -92,7 +112,7 @@ function DrawerNested({
   noBodyStyles = true,
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.NestedRoot>) {
-  useCloseOnBack(props.open, props.onOpenChange);
+  useCloseOnBack(props.open, props.onOpenChange, true);
   return <DrawerPrimitive.NestedRoot noBodyStyles={noBodyStyles} {...props} />;
 }
 DrawerNested.displayName = 'DrawerNested';

@@ -36,6 +36,8 @@ test('the installed app gets an edge swipe back, and every screen is recorded fo
   assert.match(page, /document\.querySelector\('\[role="dialog"\]'\)/);
   assert.match(page, /navigateBack\(router, parentPath\(window\.location\.pathname\) \?\? '\/', 'swipe-back'\)/);
   assert.match(page, /clearDrag\(pageRef\.current\);\n\s*recordPathname\(pathname\);/);
+  // A back that doesn't change screen still brings the page back after a moment.
+  assert.match(page, /dragResetTimer\.current = window\.setTimeout\(\(\) => \{\n\s*dragResetTimer\.current = null;\n\s*clearDrag\(page\);/);
   assert.match(read('src', 'app', 'layout.tsx'), /<AppPage>\n\s*<AppShell>\{children\}<\/AppShell>\n\s*<\/AppPage>/);
 });
 
@@ -46,5 +48,7 @@ test('back closes the top sheet instead of leaving the screen', () => {
   assert.match(drawer, /if \(!closedByBack && top !== null && top >= id\) popSheetEntries\(\);/);
   // Never history.go(0), which would reload the page.
   assert.match(drawer, /if \(count > 0\) window\.history\.go\(-count\);/);
-  assert.equal([...drawer.matchAll(/useCloseOnBack\(props\.open, props\.onOpenChange\);/g)].length, 2);
+  // A child sheet opening with its parent adds its entry after the parent's, so back closes the child.
+  assert.match(drawer, /if \(nested\) queueMicrotask\(addEntry\);\n\s*else addEntry\(\);/);
+  assert.match(drawer, /useCloseOnBack\(props\.open, props\.onOpenChange\);\n[\s\S]*useCloseOnBack\(props\.open, props\.onOpenChange, true\);/);
 });

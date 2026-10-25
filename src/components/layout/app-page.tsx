@@ -32,9 +32,12 @@ export function AppPage({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const pageRef = useRef<HTMLDivElement>(null);
+  const dragResetTimer = useRef<number | null>(null);
 
   useEffect(() => {
     // A finished swipe left this screen pushed off to the right: put it back for the new screen.
+    if (dragResetTimer.current !== null) window.clearTimeout(dragResetTimer.current);
+    dragResetTimer.current = null;
     if (pageRef.current) clearDrag(pageRef.current);
     recordPathname(pathname);
   }, [pathname]);
@@ -53,6 +56,8 @@ export function AppPage({ children }: { children: ReactNode }) {
       // Nowhere to go back to, or a sheet or dialog is open (back closes that instead).
       if (!canGoBack() && !parentPath(window.location.pathname)) return;
       if (document.querySelector('[role="dialog"]')) return;
+      if (dragResetTimer.current !== null) window.clearTimeout(dragResetTimer.current);
+      dragResetTimer.current = null;
       start = { time: event.timeStamp, x: touch.clientX, y: touch.clientY };
       dragging = false;
       offset = 0;
@@ -93,6 +98,12 @@ export function AppPage({ children }: { children: ReactNode }) {
       if (offset > window.innerWidth * COMMIT_SHARE || (velocity > COMMIT_VELOCITY && offset > 40)) {
         page.style.transform = 'translate3d(100%, 0, 0)';
         window.setTimeout(() => {
+          // If back doesn't change screen (it only left a stale same-screen entry), bring the page
+          // back rather than leave it pushed off to the side. A screen change clears this first.
+          dragResetTimer.current = window.setTimeout(() => {
+            dragResetTimer.current = null;
+            clearDrag(page);
+          }, 2000);
           navigateBack(router, parentPath(window.location.pathname) ?? '/', 'swipe-back');
         }, SLIDE_OUT_MS);
       } else {
