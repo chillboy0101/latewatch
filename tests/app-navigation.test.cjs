@@ -26,8 +26,12 @@ test('screens slide in and out like an app, and back buttons step back instead o
 
   // The staff screens use it: portal cards slide forward, back buttons and "Portal Home" step back.
   const portal = read('src', 'components', 'layout', 'portal-ui.tsx');
-  assert.match(portal, /if \(back\) navigation\.back\(href\);\n\s*else navigation\.forward\(href\);/);
+  assert.match(portal, /if \(back\) navigation\.back\(href\);\n\s*else if \(replace\) navigation\.replace\(href\);\n\s*else navigation\.forward\(href\);/);
   assert.match(read('src', 'components', 'layout', 'desktop-required-screen.tsx'), /<ChoiceCard\n\s*back\n\s*href="\/"/);
+  // "Admin needs a computer" is a dead end: the attendance portal opens in its place, so back skips it.
+  assert.match(read('src', 'components', 'layout', 'desktop-required-screen.tsx'), /href="\/check-in"\n\s*icon=\{<LogIn className="h-\[22px\] w-\[22px\]" \/>\}\n\s*replace\n/);
+  assert.match(portal, /else if \(replace\) navigation\.replace\(href\);/);
+  assert.match(nav, /replaceTop = true;\n\s*slideTo\('forward', \(\) => router\.replace\(href\)\);/);
   assert.match(read('src', 'app', 'check-in', 'page.tsx'), /navigation\.back\('\/'\);/);
   assert.match(read('src', 'app', 'check-in', 'receipts', '[paymentId]', 'page.tsx'), /navigation\.back\('\/check-in\?receipts=1'\);/);
 });

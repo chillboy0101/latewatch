@@ -60,6 +60,7 @@ export function DesktopRequiredScreen() {
           highlight
           href="/check-in"
           icon={<LogIn className="h-[22px] w-[22px]" />}
+          replace
           title="Attendance Portal"
         />
         <ChoiceCard
