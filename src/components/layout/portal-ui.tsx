@@ -10,6 +10,7 @@ import { ModePicker } from '@/components/theme/mode-picker';
 import { ThemePicker } from '@/components/theme/theme-picker';
 import { PRESS } from '@/components/ui/button';
 import { HapticSwitch } from '@/components/ui/haptic-switch';
+import { isPlainClick, useAppNavigation } from '@/lib/app-nav';
 import { getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 
@@ -47,18 +48,27 @@ export const CHOICE_PLAIN = 'border-border bg-background/40 shadow-[inset_0_1px_
 export const CHOICE_ICON = 'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl';
 
 // A portal choice: an icon tile, the name and an arrow. "large" fills the space it is given (the
-// portal home's wide card on computers).
-export function ChoiceCard({ highlight, href, icon, size = 'default', title }: {
+// portal home's wide card on computers). Opening it slides the screen in; a "back" card (like
+// Portal Home from the admin redirect) steps back to the previous screen instead.
+export function ChoiceCard({ back, highlight, href, icon, size = 'default', title }: {
+  back?: boolean;
   highlight?: boolean;
   href: string;
   icon: ReactNode;
   size?: 'default' | 'large';
   title: string;
 }) {
+  const navigation = useAppNavigation();
   const large = size === 'large';
   return (
     <Link
       href={href}
+      onClick={(event) => {
+        if (!isPlainClick(event)) return;
+        event.preventDefault();
+        if (back) navigation.back(href);
+        else navigation.forward(href);
+      }}
       className={cn(
         CHOICE_PRESS,
         large ? 'flex-1 gap-6 rounded-[28px] px-8' : [CHOICE_SIZE, 'gap-4 px-[18px]'],

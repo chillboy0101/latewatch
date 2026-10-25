@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { ClerkThemeProvider } from "@/components/auth/clerk-theme-provider";
 import { buildThemeBootScript } from "@/lib/theme";
+import { AppPage } from "@/components/layout/app-page";
 import { AppShell } from "@/components/layout/app-shell";
 import { HapticFeedback } from "@/components/layout/haptic-feedback";
 import { NotificationProvider } from "@/contexts/notification-context";
@@ -97,7 +98,9 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col font-sans">
         <ClerkThemeProvider>
           <NotificationProvider>
-            <AppShell>{children}</AppShell>
+            <AppPage>
+              <AppShell>{children}</AppShell>
+            </AppPage>
             <PushReminderToast />
             <HapticFeedback />
           </NotificationProvider>

@@ -26,6 +26,7 @@ import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 import { ModePicker } from '@/components/theme/mode-picker';
 import { ThemePicker } from '@/components/theme/theme-picker';
+import { isPlainClick, useAppNavigation } from '@/lib/app-nav';
 import { cn } from '@/lib/utils';
 import { CHOICE_ICON, CHOICE_PLAIN, CHOICE_PRESS, CHOICE_SIZE, CHOICE_TEXT } from '@/components/layout/portal-ui';
 
@@ -640,6 +641,7 @@ export default function CheckInPage() {
   const { isLoaded, user } = useUser();
   const { signOut } = useClerk();
   const router = useRouter();
+  const navigation = useAppNavigation();
   const isDark = useSyncExternalStore(subscribeThemeChange, getIsDarkTheme, () => true);
   const [status, setStatus] = useState<CheckInStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1298,7 +1300,14 @@ export default function CheckInPage() {
             className="h-10 gap-2 rounded-full px-4"
             title="Back to portal chooser"
           >
-            <Link href="/">
+            <Link
+              href="/"
+              onClick={(event) => {
+                if (!isPlainClick(event)) return;
+                event.preventDefault();
+                navigation.back('/');
+              }}
+            >
               <ArrowLeft className="h-5 w-5" />
               <span>Portals</span>
             </Link>
