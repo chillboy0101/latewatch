@@ -3,7 +3,6 @@
 import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Check, LayoutDashboard, LogIn } from 'lucide-react';
-import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { ModePicker } from '@/components/theme/mode-picker';
 import { ThemePicker } from '@/components/theme/theme-picker';
 import { getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
@@ -83,8 +82,7 @@ export function DesktopRequiredScreen() {
 
   return (
     <main className="relative flex min-h-dvh flex-col bg-background text-foreground">
-      <header className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-6 pt-[max(1.25rem,env(safe-area-inset-top))]">
-        <LateWatchLogo markSize="md" />
+      <header className="absolute inset-x-0 top-0 z-10 flex items-center justify-end px-6 pt-[max(1.25rem,env(safe-area-inset-top))]">
         <div className="flex items-center gap-2">
           <ThemePicker buttonClassName={pickerButton} iconClassName="h-5 w-5" />
           <ModePicker buttonClassName={pickerButton} />
