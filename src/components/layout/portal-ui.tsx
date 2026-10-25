@@ -49,12 +49,14 @@ export const CHOICE_ICON = 'flex h-12 w-12 shrink-0 items-center justify-center 
 
 // A portal choice: an icon tile, the name and an arrow. "large" fills the space it is given (the
 // portal home's wide card on computers). Opening it slides the screen in; a "back" card (like
-// Portal Home from the admin redirect) steps back to the previous screen instead.
-export function ChoiceCard({ back, highlight, href, icon, size = 'default', title }: {
+// Portal Home from the admin redirect) steps back to the previous screen instead, and a "replace"
+// card opens its screen in place of this one, so back skips this screen.
+export function ChoiceCard({ back, highlight, href, icon, replace, size = 'default', title }: {
   back?: boolean;
   highlight?: boolean;
   href: string;
   icon: ReactNode;
+  replace?: boolean;
   size?: 'default' | 'large';
   title: string;
 }) {
@@ -67,6 +69,7 @@ export function ChoiceCard({ back, highlight, href, icon, size = 'default', titl
         if (!isPlainClick(event)) return;
         event.preventDefault();
         if (back) navigation.back(href);
+        else if (replace) navigation.replace(href);
         else navigation.forward(href);
       }}
       className={cn(

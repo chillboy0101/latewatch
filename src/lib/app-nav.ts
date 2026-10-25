@@ -100,6 +100,12 @@ export function navigateForward(router: Router, href: string) {
   slideTo('forward', () => router.push(href));
 }
 
+/** Opens a screen in place of this one (a dead end like "Admin needs a computer"), so back skips it. */
+export function navigateReplace(router: Router, href: string) {
+  replaceTop = true;
+  slideTo('forward', () => router.replace(href));
+}
+
 /** Back to the previous screen; with none (the app was opened here), to `fallbackHref`. */
 export function navigateBack(router: Router, fallbackHref: string, direction: NavDirection = 'back') {
   if (canGoBack()) {
@@ -120,5 +126,6 @@ export function useAppNavigation() {
   return useMemo(() => ({
     back: (fallbackHref: string) => navigateBack(router, fallbackHref),
     forward: (href: string) => navigateForward(router, href),
+    replace: (href: string) => navigateReplace(router, href),
   }), [router]);
 }
