@@ -32,36 +32,53 @@ export function PortalPickers() {
   );
 }
 
-export function ChoiceCard({ highlight, href, icon, title }: {
+// A portal choice: an icon tile, the name and an arrow. "large" fills the space it is given (the
+// portal home's wide card on computers).
+export function ChoiceCard({ highlight, href, icon, size = 'default', title }: {
   highlight?: boolean;
   href: string;
   icon: ReactNode;
+  size?: 'default' | 'large';
   title: string;
 }) {
+  const large = size === 'large';
   return (
     <Link
       href={href}
       className={cn(
-        'flex h-[86px] items-center gap-4 rounded-[22px] border px-[18px] transition-[filter] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 active:brightness-95',
+        'group flex items-center border transition-[filter] hover:brightness-105 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/50 active:brightness-95',
+        large ? 'flex-1 gap-6 rounded-[28px] px-8' : 'h-[86px] gap-4 rounded-[22px] px-[18px]',
         highlight ? 'border-primary/35 bg-gradient-to-br from-primary/30 to-primary/10' : 'border-border bg-background/40',
       )}
     >
       <span className={cn(
-        'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl',
+        'flex shrink-0 items-center justify-center',
+        large ? 'h-[72px] w-[72px] rounded-[22px]' : 'h-12 w-12 rounded-2xl',
         highlight ? 'bg-primary text-primary-foreground' : 'bg-foreground/5 text-primary',
+        highlight && large && 'shadow-md shadow-primary/25',
       )}>
         {icon}
       </span>
-      <span className="min-w-0 text-[17.5px] font-semibold leading-tight">{title}</span>
-      <ArrowRight className="ml-auto h-5 w-5 shrink-0 text-muted-foreground" />
+      <span className={cn('min-w-0 font-semibold leading-tight', large ? 'text-[26px] tracking-tight' : 'text-[17.5px]')}>{title}</span>
+      {large ? (
+        <span className={cn(
+          'ml-auto flex h-12 w-12 shrink-0 items-center justify-center rounded-full border transition-transform group-hover:translate-x-1',
+          highlight ? 'border-primary/30 bg-primary/10 text-foreground' : 'border-border text-muted-foreground',
+        )}>
+          <ArrowRight className="h-5 w-5" />
+        </span>
+      ) : (
+        <ArrowRight className="ml-auto h-5 w-5 shrink-0 text-muted-foreground" />
+      )}
     </Link>
   );
 }
 
-// The rounded panel at the bottom of a phone screen, holding just the choice cards.
+// The rounded panel at the bottom of a phone screen, holding just the choice cards. On wider
+// windows (tablets, zoomed browsers) it stays a centred column instead of stretching edge to edge.
 export function ChoicePanel({ children, label }: { children: ReactNode; label: string }) {
   return (
-    <section className="rounded-t-[32px] border-t border-border bg-card px-6 pb-[max(2.25rem,env(safe-area-inset-bottom))] pt-3">
+    <section className="mx-auto w-full max-w-xl rounded-t-[32px] border-t border-border bg-card px-6 pb-[max(2.25rem,env(safe-area-inset-bottom))] pt-3 sm:border-x">
       <div aria-hidden className="mx-auto mb-6 h-[5px] w-10 rounded-full bg-foreground/15" />
       <nav className="grid gap-3" aria-label={label}>
         {children}

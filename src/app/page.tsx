@@ -1,26 +1,29 @@
 'use client';
 
-import Link from 'next/link';
-import { ArrowRight, LayoutDashboard, LogIn } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { LayoutDashboard, LogIn } from 'lucide-react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { ChoiceCard, ChoicePanel, PortalPickers, useApplyDarkMode } from '@/components/layout/portal-ui';
+import { ACCRA_TIME_ZONE } from '@/lib/date-key';
+import { getHomeView, getServerHomeView, subscribeDeviceKind } from '@/lib/device-kind';
 import { cn } from '@/lib/utils';
+
+// Office time: attendance is judged in Accra time, so the clock shows it on every device.
+const timeFormat = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: ACCRA_TIME_ZONE });
+const dateFormat = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', timeZone: ACCRA_TIME_ZONE, weekday: 'long' });
 
 type Now = { date: string; time: string };
 
-function formatNow(now: Date): Now {
-  return {
-    date: now.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', weekday: 'long' }),
-    time: now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-  };
-}
-
-// Today's time and date, ticking. Null until mounted: the server doesn't know the visitor's clock.
+// Ticks every second but only changes state when the minute (or day) changes. Null until mounted:
+// the server doesn't know the time the visitor will see.
 function useNow() {
   const [now, setNow] = useState<Now | null>(null);
 
   useEffect(() => {
-    const tick = () => setNow(formatNow(new Date()));
+    const tick = () => {
+      const date = new Date();
+      const next = { date: dateFormat.format(date), time: timeFormat.format(date) };
+      setNow((previous) => (previous?.time === next.time && previous.date === next.date ? previous : next));
+    };
     tick();
     const timer = window.setInterval(tick, 1000);
     return () => window.clearInterval(timer);
@@ -29,90 +32,66 @@ function useNow() {
   return now;
 }
 
-// The time-and-date card. Until the time is known an invisible placeholder keeps its size.
-function ClockCard({ large, now }: { large?: boolean; now: Now | null }) {
+const CLOCK_SIZES = {
+  compact: { card: 'from-primary/20 px-6 py-9', circleA: '-right-10 -top-10 h-36 w-36', circleB: '-bottom-12 -left-8 h-28 w-28', date: 'mt-3 text-base', time: 'text-[64px]' },
+  large: { card: 'min-h-[400px] from-primary/25', circleA: '-right-14 -top-14 h-52 w-52', circleB: '-bottom-16 -left-12 h-40 w-40', date: 'mt-4 text-lg', time: 'text-[104px]' },
+};
+
+// The time-and-date card. It keeps its own ticking state, so only the card re-renders each minute.
+// Until the time is known an invisible placeholder keeps its size.
+function ClockCard({ size }: { size: keyof typeof CLOCK_SIZES }) {
+  const now = useNow();
+  const sizes = CLOCK_SIZES[size];
+
   return (
-    <div className={cn(
-      'relative flex w-full flex-col items-center justify-center overflow-hidden border border-primary/25 bg-gradient-to-br text-center',
-      large ? 'min-h-[400px] rounded-[28px] from-primary/25 to-primary/5' : 'rounded-[28px] from-primary/20 to-primary/5 px-6 py-9',
-    )}>
-      <span aria-hidden className={cn('absolute rounded-full bg-primary/10', large ? '-right-14 -top-14 h-52 w-52' : '-right-10 -top-10 h-36 w-36')} />
-      <span aria-hidden className={cn('absolute rounded-full bg-primary/10', large ? '-bottom-16 -left-12 h-40 w-40' : '-bottom-12 -left-8 h-28 w-28')} />
+    <div className={cn('relative flex w-full flex-col items-center justify-center overflow-hidden rounded-[28px] border border-primary/25 bg-gradient-to-br to-primary/5 text-center', sizes.card)}>
+      <span aria-hidden className={cn('absolute rounded-full bg-primary/10', sizes.circleA)} />
+      <span aria-hidden className={cn('absolute rounded-full bg-primary/10', sizes.circleB)} />
       <div className={now ? 'relative' : 'invisible'}>
         {/* leading-none after the size: cn drops a line height that comes before a font size. */}
-        <time className={cn('block font-bold tracking-tight tabular-nums', large ? 'text-[104px]' : 'text-[64px]', 'leading-none')}>
-          {now?.time ?? '00:00'}
-        </time>
-        <p className={cn('font-medium text-muted-foreground', large ? 'mt-4 text-lg' : 'mt-3 text-base')}>
-          {now?.date ?? 'Today'}
-        </p>
+        <time className={cn('block font-bold tracking-tight tabular-nums', sizes.time, 'leading-none')}>{now?.time ?? '00:00'}</time>
+        <p className={cn('font-medium text-muted-foreground', sizes.date)}>{now?.date ?? 'Today'}</p>
       </div>
     </div>
   );
 }
 
-// Computers: each portal is a big block filling half of the card's right side.
-function LargeChoiceCard({ highlight, href, icon, title }: {
-  highlight?: boolean;
-  href: string;
-  icon: ReactNode;
-  title: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className={cn(
-        'group flex flex-1 items-center gap-6 rounded-[28px] border px-8 transition-[filter] hover:brightness-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
-        highlight ? 'border-primary/35 bg-gradient-to-br from-primary/30 to-primary/10' : 'border-border bg-background/40',
-      )}
-    >
-      <span className={cn(
-        'flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-[22px]',
-        highlight ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25' : 'bg-foreground/5 text-primary',
-      )}>
-        {icon}
-      </span>
-      <span className="min-w-0 text-[26px] font-semibold leading-tight tracking-tight">{title}</span>
-      <span className={cn(
-        'ml-auto flex h-12 w-12 shrink-0 items-center justify-center rounded-full border transition-transform group-hover:translate-x-1',
-        highlight ? 'border-primary/30 bg-primary/10 text-foreground' : 'border-border text-muted-foreground',
-      )}>
-        <ArrowRight className="h-5 w-5" />
-      </span>
-    </Link>
-  );
-}
-
-// Portal home. Phones and tablets: the clock on top, the two portals in the bottom panel (like the
-// admin portal's phone screen). Computers: one wide card, the clock on the left and the two
-// portals as big blocks on the right.
+// Portal home. Phones (and narrow windows): the clock on top, the two portals in the bottom panel,
+// like the admin portal's phone screen. Computers: one wide card, the clock on the left and the two
+// portals as big blocks on the right. Only the chosen layout is rendered; before the browser has
+// answered (server render and hydration) both are present and CSS shows the one that fits the width.
 export default function Home() {
   useApplyDarkMode();
-  const now = useNow();
+  const view = useSyncExternalStore(subscribeDeviceKind, getHomeView, getServerHomeView);
 
   return (
     <main className="relative min-h-dvh bg-background text-foreground">
       <PortalPickers />
 
-      <div className="flex min-h-dvh flex-col lg:hidden">
-        <div className="flex min-h-0 flex-1 items-center px-6 pb-8 pt-24">
-          <ClockCard now={now} />
+      {view !== 'wide' && (
+        <div className={cn('flex min-h-dvh flex-col', view === null && 'lg:hidden')}>
+          <div className="mx-auto flex min-h-0 w-full max-w-xl flex-1 items-center px-6 pb-8 pt-24">
+            <ClockCard size="compact" />
+          </div>
+          <ChoicePanel label="Choose a portal">
+            <ChoiceCard highlight href="/check-in" icon={<LogIn className="h-[22px] w-[22px]" />} title="Attendance Portal" />
+            <ChoiceCard href="/dashboard" icon={<LayoutDashboard className="h-[22px] w-[22px]" />} title="Admin Portal" />
+          </ChoicePanel>
         </div>
-        <ChoicePanel label="Choose a portal">
-          <ChoiceCard highlight href="/check-in" icon={<LogIn className="h-[22px] w-[22px]" />} title="Attendance Portal" />
-          <ChoiceCard href="/dashboard" icon={<LayoutDashboard className="h-[22px] w-[22px]" />} title="Admin Portal" />
-        </ChoicePanel>
-      </div>
+      )}
 
-      <div className="hidden min-h-dvh items-center justify-center p-10 lg:flex">
-        <div className="grid w-full max-w-5xl grid-cols-2 gap-3 rounded-[36px] border border-border bg-card p-3 shadow-xl">
-          <ClockCard large now={now} />
-          <nav className="flex flex-col gap-3" aria-label="Choose a portal">
-            <LargeChoiceCard highlight href="/check-in" icon={<LogIn className="h-8 w-8" />} title="Attendance Portal" />
-            <LargeChoiceCard href="/dashboard" icon={<LayoutDashboard className="h-8 w-8" />} title="Admin Portal" />
-          </nav>
+      {view !== 'compact' && (
+        // py-24 keeps the card clear of the theme and mode buttons on short windows.
+        <div className={cn('min-h-dvh items-center justify-center px-10 py-24', view === null ? 'hidden lg:flex' : 'flex')}>
+          <div className="grid w-full max-w-5xl grid-cols-2 gap-3 rounded-[36px] border border-border bg-card p-3 shadow-xl">
+            <ClockCard size="large" />
+            <nav className="flex flex-col gap-3" aria-label="Choose a portal">
+              <ChoiceCard highlight size="large" href="/check-in" icon={<LogIn className="h-8 w-8" />} title="Attendance Portal" />
+              <ChoiceCard size="large" href="/dashboard" icon={<LayoutDashboard className="h-8 w-8" />} title="Admin Portal" />
+            </nav>
+          </div>
         </div>
-      </div>
+      )}
     </main>
   );
 }
