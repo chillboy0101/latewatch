@@ -11,7 +11,7 @@ test('screens slide in and out like an app, and back buttons step back instead o
   // The way back is kept on each history entry, so it can't drift from the real history; back pops
   // to the previous entry, with each screen's parent as the fallback.
   assert.match(nav, /if \(own && own\.at\(-1\) === pathname\) \{\n\s*\/\/[^\n]*\n[^\n]*\n\s*currentStack = own;/);
-  assert.match(nav, /window\.history\.replaceState\(\{ \.\.\.window\.history\.state, \[STACK_STATE\]: currentStack \}, ''\);/);
+  assert.match(nav, /window\.history\.replaceState\(\{ \.\.\.window\.history\.state, \[STACK_STATE\]: currentStack, \[INDEX_STATE\]: currentIndex \}, ''\);/);
   // The portal home is the first screen and sign-in screens are dropped: no back swipe into either.
   assert.match(nav, /if \(pathname === '\/' \|\| \(left !== undefined && isAuthScreen\(left\)\)\) stack = \[pathname\];/);
   assert.match(nav, /if \(pathname === '\/' \|\| isAuthScreen\(pathname\)\) return null;/);
@@ -50,7 +50,15 @@ test("the edge swipe back is the phone's own, and no swipe forward reopens a scr
   assert.doesNotMatch(page, /touchstart|touchmove/);
   assert.match(page, /useEffect\(\(\) => \{\n\s*recordPathname\(pathname\);\n\s*\}, \[pathname\]\);/);
   // Going back leaves a dead end ahead, and landing on it (iOS's swipe forward) steps straight back.
-  assert.match(page, /if \(isDeadEndEntry\(\)\) window\.history\.back\(\);/);
+  assert.match(page, /window\.addEventListener\('popstate', handlePopState\);/);
+  const navFile = read('src', 'lib', 'app-nav.ts');
+  assert.match(navFile, /if \(isDeadEndEntry\(\)\) \{\n\s*window\.history\.back\(\);/);
+  // A swipe back from the portal home (the first screen) returns straight to it.
+  assert.match(navFile, /if \(fromHome && \(index === null \|\| index < currentIndex\)\) window\.history\.forward\(\);/);
+  // Going back onto the sign-in page while signed in steps forward again (no second portal home).
+  const authCard = read('src', 'components', 'auth', 'clerk-auth-card.tsx');
+  assert.match(authCard, /if \(!arrivedSignedIn\) return;\n(\s*\/\/[^\n]*\n)*\s*window\.history\.forward\(\);/);
+  assert.match(authCard, /if \(arrivedSignedIn\) return null;/);
   const nav = read('src', 'lib', 'app-nav.ts');
   assert.match(nav, /if \(cameBack\) leaveDeadEnd\(\);/);
   assert.match(nav, /window\.history\.pushState\(\{ \.\.\.window\.history\.state, \[DEAD_END_STATE\]: true \}, ''\);\n\s*window\.history\.back\(\);/);

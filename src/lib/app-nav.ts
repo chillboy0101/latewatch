@@ -10,6 +10,8 @@ import { useMemo } from 'react';
 
 const STACK_STATE = 'latewatchStack';
 const DEAD_END_STATE = 'latewatchDeadEnd';
+// Each screen entry's place in the history (counting up as screens open), to tell back from forward.
+const INDEX_STATE = 'latewatchIndex';
 const NAV_EASE_WAIT_MS = 1500;
 // Most leftover same-screen entries back skips in one go (see navigateBack).
 const MAX_SAME_SCREEN_SKIPS = 5;
@@ -28,6 +30,7 @@ function entryStack(): string[] | null {
 const isAuthScreen = (pathname: string) => pathname.startsWith('/sign-in') || pathname.startsWith('/sign-up');
 
 let currentStack: string[] = [];
+let currentIndex = 0;
 let replaceTop = false;
 let finishSlide: (() => void) | null = null;
 
@@ -38,6 +41,7 @@ export function recordPathname(pathname: string) {
     // Back, forward or a reload onto a screen already visited: its entry knows the way back.
     const cameBack = own.length < currentStack.length && own.every((screen, index) => currentStack[index] === screen);
     currentStack = own;
+    currentIndex = entryIndex() ?? currentIndex;
     if (cameBack) leaveDeadEnd();
   } else {
     const left = currentStack.at(-1);
@@ -47,7 +51,8 @@ export function recordPathname(pathname: string) {
     // before them is kept, so there is no back (or back swipe) into them.
     if (pathname === '/' || (left !== undefined && isAuthScreen(left))) stack = [pathname];
     currentStack = stack.slice(-50);
-    window.history.replaceState({ ...window.history.state, [STACK_STATE]: currentStack }, '');
+    if (!replaceTop) currentIndex += 1;
+    window.history.replaceState({ ...window.history.state, [STACK_STATE]: currentStack, [INDEX_STATE]: currentIndex }, '');
   }
   replaceTop = false;
   // The new screen is on the page: let the slide animate to it.
@@ -64,8 +69,28 @@ export function leaveDeadEnd() {
   window.history.back();
 }
 
+function entryIndex() {
+  const state: unknown = window.history.state;
+  const value = state && typeof state === 'object' ? (state as Record<string, unknown>)[INDEX_STATE] : undefined;
+  return typeof value === 'number' ? value : null;
+}
+
+/** Every back or forward in the history (the phone's swipes, its back button) comes through here. */
+export function handlePopState() {
+  // The swipe forward landed on the dead end left after going back: step straight back.
+  if (isDeadEndEntry()) {
+    window.history.back();
+    return;
+  }
+  // The portal home is the first screen: anything behind it (the sign-in pages, older entries) is
+  // out of reach, so a swipe back from it returns straight to it.
+  const fromHome = currentStack.length === 1 && currentStack[0] === '/';
+  const index = entryIndex();
+  if (fromHome && (index === null || index < currentIndex)) window.history.forward();
+}
+
 /** True on the dead end left ahead of a screen after going back. */
-export function isDeadEndEntry() {
+function isDeadEndEntry() {
   const state: unknown = window.history.state;
   return Boolean(state && typeof state === 'object' && (state as Record<string, unknown>)[DEAD_END_STATE]);
 }
