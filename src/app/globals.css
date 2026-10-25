@@ -1,8 +1,5 @@
 @import "tailwindcss";
 
-/* Short screens (iPhone SE and similar): lets a fixed-height page tighten its spacing to fit. */
-@custom-variant short (@media (max-height: 720px));
-
 :root {
   color-scheme: light;
   --font-inter: "Aptos", "Segoe UI", "Helvetica Neue", Arial, sans-serif;

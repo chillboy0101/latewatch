@@ -16,18 +16,15 @@ test('check-in and device-transfer buttons are big, thumb-sized buttons', () => 
   assert.match(button, /busy \? <Loader2[^\n]*animate-spin/);
 });
 
-test('check-in details card keeps the same row height on every phone', () => {
-  // Rows are a fixed height and the card is not stretched; the status card takes the space left.
-  const details = page.slice(page.indexOf('Fixed-height rows'), page.indexOf('<ReminderPrompt'));
-  assert.match(details, /flex shrink-0 flex-col rounded-2xl/);
-  assert.equal([...details.matchAll(/flex h-14 items-center justify-between/g)].length, 3); // in, out, penalty
-  assert.doesNotMatch(details, /flex-1/);
-});
-
-test('short phones (iPhone SE) tighten only the status card so the page fits without scrolling', () => {
-  const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'globals.css'), 'utf8');
-  assert.match(css, /@custom-variant short \(@media \(max-height: 720px\)\);/);
-  const statusCard = page.slice(page.indexOf("statusTone(status))}>") - 200, page.indexOf('Fixed-height rows'));
-  assert.match(statusCard, /short:py-3/);
-  assert.match(statusCard, /short:text-xl/);
+test('check-in page keeps the same proportions on every phone', () => {
+  // Status and details cards always split the space 6:5 (min-h-0 so content never changes the split).
+  assert.match(page, /'min-h-0 flex-\[6\] rounded-2xl border \[container-type:size\]'/);
+  assert.match(page, /flex min-h-0 flex-\[5\] flex-col rounded-2xl border border-border bg-card/);
+  // The status card's badge, text and spacing scale with its height, so it fits on small phones.
+  const statusCard = page.slice(page.indexOf('[container-type:size]'), page.indexOf("Rows share the card's height evenly"));
+  assert.match(statusCard, /size-\[clamp\([^)]*cqh[^)]*\)\]/);
+  assert.match(statusCard, /text-\[clamp\([^)]*cqh[^)]*\)\]/);
+  // Details rows share the card evenly (checked in, checked out, and penalty when owed).
+  const details = page.slice(page.indexOf("Rows share the card's height evenly"), page.indexOf('<ReminderPrompt'));
+  assert.equal([...details.matchAll(/flex flex-1 items-center justify-between gap-3/g)].length, 3);
 });
