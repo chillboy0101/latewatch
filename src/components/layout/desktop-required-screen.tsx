@@ -1,12 +1,7 @@
 'use client';
 
-import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
-import Link from 'next/link';
-import { ArrowRight, Check, LayoutDashboard, LogIn } from 'lucide-react';
-import { ModePicker } from '@/components/theme/mode-picker';
-import { ThemePicker } from '@/components/theme/theme-picker';
-import { getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
-import { cn } from '@/lib/utils';
+import { Check, LayoutDashboard, LogIn } from 'lucide-react';
+import { ChoiceCard, ChoicePanel, PortalPickers, useApplyDarkMode } from './portal-ui';
 
 // Lines of the drawing: the theme colour lifted toward the text colour, so it reads in every theme
 // and in light and dark mode.
@@ -40,77 +35,37 @@ function DevicesIllustration() {
   );
 }
 
-// Solid round buttons: the plain background has nothing for a glass blur to show through.
-const pickerButton = 'h-10 w-10 rounded-full border border-border bg-card shadow-sm';
-
-function ChoiceCard({ highlight, href, icon, title }: {
-  highlight?: boolean;
-  href: string;
-  icon: ReactNode;
-  title: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className={cn(
-        'flex h-[86px] items-center gap-4 rounded-[22px] border px-[18px] transition-[filter] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 active:brightness-95',
-        highlight ? 'border-primary/35 bg-gradient-to-br from-primary/30 to-primary/10' : 'border-border bg-background/40',
-      )}
-    >
-      <span className={cn(
-        'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl',
-        highlight ? 'bg-primary text-primary-foreground' : 'bg-foreground/5 text-primary',
-      )}>
-        {icon}
-      </span>
-      <span className="min-w-0 text-[17.5px] font-semibold leading-tight">{title}</span>
-      <ArrowRight className="ml-auto h-5 w-5 shrink-0 text-muted-foreground" />
-    </Link>
-  );
-}
-
 // Phones opening an admin page: the admin portal needs a computer, so offer the attendance
-// portal (or the portal chooser). The drawing on top, a panel with the choices.
+// portal (or the portal chooser). The drawing and the message on top, a panel with the choices.
 export function DesktopRequiredScreen() {
-  // Rendered without the admin header, so it applies light/dark mode itself, like the other
-  // stand-alone screens.
-  const isDark = useSyncExternalStore(subscribeThemeChange, getIsDarkTheme, () => true);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', isDark);
-  }, [isDark]);
+  useApplyDarkMode();
 
   return (
     <main className="relative flex min-h-dvh flex-col bg-background text-foreground">
-      <header className="absolute inset-x-0 top-0 z-10 flex items-center justify-end px-6 pt-[max(1.25rem,env(safe-area-inset-top))]">
-        <div className="flex items-center gap-2">
-          <ThemePicker buttonClassName={pickerButton} iconClassName="h-5 w-5" />
-          <ModePicker buttonClassName={pickerButton} />
-        </div>
-      </header>
+      <PortalPickers />
 
-      {/* The drawing sits centred in the space between the header and the panel. */}
-      <div className="flex min-h-0 flex-1 items-center justify-center pb-7 pt-24">
+      {/* The drawing and the message sit centred in the space between the header and the panel. */}
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-9 px-6 pb-8 pt-24">
         <DevicesIllustration />
+        <h1 className="text-center text-[30px] font-bold leading-[1.1] tracking-tight">
+          Admin needs
+          <span className="block" style={{ color: ink }}>a computer</span>
+        </h1>
       </div>
 
-      <section className="rounded-t-[32px] border-t border-border bg-card px-6 pb-[max(2.25rem,env(safe-area-inset-bottom))] pt-3">
-        <div aria-hidden className="mx-auto mb-6 h-[5px] w-10 rounded-full bg-foreground/15" />
-        <h1 className="text-[28px] font-bold leading-tight tracking-tight">Admin needs a computer</h1>
-        <nav className="mt-6 grid gap-3" aria-label="Where to go">
-          <ChoiceCard
-            highlight
-            href="/check-in"
-            icon={<LogIn className="h-[22px] w-[22px]" />}
-            title="Attendance Portal"
-          />
-          <ChoiceCard
-            href="/"
-            icon={<LayoutDashboard className="h-[22px] w-[22px]" />}
-            title="Portal Home"
-          />
-        </nav>
-      </section>
+      <ChoicePanel label="Where to go">
+        <ChoiceCard
+          highlight
+          href="/check-in"
+          icon={<LogIn className="h-[22px] w-[22px]" />}
+          title="Attendance Portal"
+        />
+        <ChoiceCard
+          href="/"
+          icon={<LayoutDashboard className="h-[22px] w-[22px]" />}
+          title="Portal Home"
+        />
+      </ChoicePanel>
     </main>
   );
 }

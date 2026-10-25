@@ -1,73 +1,56 @@
 'use client';
 
-import Link from 'next/link';
 import { LayoutDashboard, LogIn } from 'lucide-react';
-import { useEffect, useSyncExternalStore } from 'react';
-import { LateWatchLogo } from '@/components/brand/latewatch-logo';
-import { ModePicker } from '@/components/theme/mode-picker';
-import { ThemePicker } from '@/components/theme/theme-picker';
-import { getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
+import { useEffect, useState } from 'react';
+import { ChoiceCard, ChoicePanel, PortalPickers, useApplyDarkMode } from '@/components/layout/portal-ui';
 
-const portals = [
-  {
-    description: 'Staff check-in and check-out',
-    href: '/check-in',
-    icon: LogIn,
-    label: 'Attendance Portal',
-  },
-  {
-    description: 'Manage staff, attendance, exports, and audits',
-    href: '/dashboard',
-    icon: LayoutDashboard,
-    label: 'Admin Portal',
-  },
-];
+function formatNow(now: Date) {
+  return {
+    date: now.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', weekday: 'long' }),
+    time: now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+  };
+}
 
-export default function Home() {
-  const isDark = useSyncExternalStore(subscribeThemeChange, getIsDarkTheme, () => true);
+// Today's time and date, ticking. Rendered after mount (the server doesn't know the visitor's
+// clock); until then an invisible placeholder keeps the card's size.
+function LiveClock() {
+  const [now, setNow] = useState<{ date: string; time: string } | null>(null);
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', isDark);
-  }, [isDark]);
+    const tick = () => setNow(formatNow(new Date()));
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   return (
-    <main className="relative flex min-h-dvh items-center justify-center bg-background px-4 py-8 text-foreground">
-      <div className="fixed right-4 top-4 z-20 flex items-center gap-2 sm:right-6 sm:top-6">
-        <ThemePicker buttonVariant="glass" buttonClassName="h-10 w-10 rounded-full shadow-sm" iconClassName="h-5 w-5" />
-        <ModePicker buttonVariant="glass" buttonClassName="h-10 w-10 rounded-full shadow-sm" />
-      </div>
+    <div className="relative w-full overflow-hidden rounded-[28px] border border-primary/25 bg-gradient-to-br from-primary/20 to-primary/5 px-6 py-9 text-center">
+      <span aria-hidden className="absolute -right-10 -top-10 h-36 w-36 rounded-full bg-primary/10" />
+      <span aria-hidden className="absolute -bottom-12 -left-8 h-28 w-28 rounded-full bg-primary/10" />
+      <p className={now ? 'relative' : 'invisible'}>
+        <time className="block text-[64px] font-bold leading-none tracking-tight tabular-nums">{now?.time ?? '00:00'}</time>
+        <span className="mt-3 block text-base font-medium text-muted-foreground">{now?.date ?? 'Today'}</span>
+      </p>
+    </div>
+  );
+}
 
-      <div className="w-full max-w-3xl">
-        <LateWatchLogo
-          className="mb-8 justify-center"
-          markSize="lg"
-          subtitle="Choose a portal"
-          title="LateWatch"
-        />
+// Portal home: the clock on top, the two portals in the bottom panel (like the admin portal's
+// phone screen). On wide screens the two sit together in a centred column.
+export default function Home() {
+  useApplyDarkMode();
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          {portals.map((portal) => {
-            const Icon = portal.icon;
-
-            return (
-              <Link
-                key={portal.href}
-                href={portal.href}
-                className="group rounded-lg border border-border bg-card p-5 transition-colors hover:border-primary/50 hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary/40"
-              >
-                <div className="flex items-start gap-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-background text-primary transition-colors group-hover:border-primary/30 group-hover:bg-primary/10">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <h2 className="text-lg font-semibold">{portal.label}</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">{portal.description}</p>
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
+  return (
+    <main className="relative flex min-h-dvh flex-col bg-background text-foreground lg:items-center lg:justify-center">
+      <PortalPickers />
+      <div className="flex min-h-dvh w-full flex-col lg:min-h-0 lg:max-w-[440px]">
+        <div className="flex min-h-0 flex-1 items-center px-6 pb-8 pt-24 lg:flex-none lg:px-0 lg:pt-0">
+          <LiveClock />
         </div>
+        <ChoicePanel label="Choose a portal">
+          <ChoiceCard highlight href="/check-in" icon={<LogIn className="h-[22px] w-[22px]" />} title="Attendance Portal" />
+          <ChoiceCard href="/dashboard" icon={<LayoutDashboard className="h-[22px] w-[22px]" />} title="Admin Portal" />
+        </ChoicePanel>
       </div>
     </main>
   );
