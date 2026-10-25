@@ -9,31 +9,27 @@ import { useMemo } from 'react';
 // screens actually visited instead of stacking new pages on top.
 
 const STACK_KEY = 'latewatch-nav-stack';
-// Screens left by going back, most recent last: a swipe from the right edge reopens them.
-const FORWARD_KEY = 'latewatch-nav-forward';
 const NAV_EASE_WAIT_MS = 1500;
 
-export type NavDirection = 'forward' | 'back' | 'swipe-back' | 'swipe-forward';
+export type NavDirection = 'forward' | 'back' | 'swipe-back';
 
 // The screens visited in this app session, oldest first. Kept in sessionStorage so a reload keeps it.
-function readList(key: string): string[] {
+function readStack(): string[] {
   try {
-    const value: unknown = JSON.parse(sessionStorage.getItem(key) || '[]');
+    const value: unknown = JSON.parse(sessionStorage.getItem(STACK_KEY) || '[]');
     return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
   } catch {
     return [];
   }
 }
 
-function writeList(key: string, list: string[]) {
+function writeStack(stack: string[]) {
   try {
-    sessionStorage.setItem(key, JSON.stringify(list.slice(-50)));
+    sessionStorage.setItem(STACK_KEY, JSON.stringify(stack.slice(-50)));
   } catch {
-    // Storage blocked: back buttons fall back to each screen's parent; no forward swipe.
+    // Storage blocked: back buttons fall back to each screen's parent.
   }
 }
-
-const readStack = () => readList(STACK_KEY);
 
 const isAuthScreen = (pathname: string) => pathname.startsWith('/sign-in') || pathname.startsWith('/sign-up');
 
@@ -43,29 +39,15 @@ let finishSlide: (() => void) | null = null;
 /** Called after every route change has been committed (NavigationTracker). */
 export function recordPathname(pathname: string) {
   const stack = readStack();
-  const forward = readList(FORWARD_KEY);
   const left = stack.at(-1);
-  if (replaceTop && left !== undefined) {
-    // Back with no earlier screen (went to the parent instead): the screen left can be reopened.
-    if (left !== pathname) forward.push(left);
-    stack[stack.length - 1] = pathname;
-  } else if (stack.at(-2) === pathname) {
-    // Back: remember the screen left so a swipe from the right edge can reopen it.
-    if (left !== undefined) forward.push(left);
-    stack.pop();
-  } else if (left !== pathname) {
-    stack.push(pathname);
-    // Reopening the screen just left keeps the rest of the way forward; any other screen starts a
-    // new path, like a browser's forward history.
-    if (forward.at(-1) === pathname) forward.pop();
-    else forward.length = 0;
-  }
+  if (replaceTop && left !== undefined) stack[stack.length - 1] = pathname;
+  else if (stack.at(-2) === pathname) stack.pop();
+  else if (left !== pathname) stack.push(pathname);
   // The portal home is the first screen, and the sign-in screens are never gone back to: nothing
   // before them is kept, so there is no back (or back swipe) into them.
   if (pathname === '/' || (left !== undefined && isAuthScreen(left))) stack.splice(0, stack.length - 1);
   replaceTop = false;
-  writeList(STACK_KEY, stack);
-  writeList(FORWARD_KEY, forward);
+  writeStack(stack);
   // The new screen is on the page: let the slide animate to it.
   finishSlide?.();
   finishSlide = null;
@@ -74,11 +56,6 @@ export function recordPathname(pathname: string) {
 /** True when there is an earlier screen from this session to go back to. */
 export function canGoBack() {
   return readStack().length > 1;
-}
-
-/** The screen most recently left by going back, if any: where a swipe from the right edge leads. */
-export function forwardPath() {
-  return readList(FORWARD_KEY).at(-1) ?? null;
 }
 
 /** Where back leads when the app was opened straight on a screen (no earlier screen to return to). */
@@ -121,12 +98,6 @@ type Router = ReturnType<typeof useRouter>;
 
 export function navigateForward(router: Router, href: string) {
   slideTo('forward', () => router.push(href));
-}
-
-/** Reopens the screen most recently left by going back (the swipe from the right edge). */
-export function navigateToForward(router: Router) {
-  const href = forwardPath();
-  if (href) slideTo('swipe-forward', () => router.push(href));
 }
 
 /** Back to the previous screen; with none (the app was opened here), to `fallbackHref`. */
