@@ -31,7 +31,7 @@ test('on phones the admin portal shows the "admin needs a computer" page', () =>
   const portalUi = read('src', 'components', 'layout', 'portal-ui.tsx');
   assert.match(portalUi, /size\?: 'default' \| 'large'/);
   assert.match(portalUi, /'h-\[86px\] [^']*'/);
-  assert.match(portalUi, /'h-12 w-12 [^']*'/);
+  assert.match(portalUi, /CHOICE_ICON = '[^']*h-12 w-12[^']*'/);
   // Keyboard focus stays visible in forced-colours mode (outline-hidden, not outline-none).
   assert.match(portalUi, /focus:outline-hidden/);
   assert.doesNotMatch(portalUi, /outline-none/);
