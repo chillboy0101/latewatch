@@ -38,3 +38,13 @@ test('the staff screens have the sunray dial pattern behind them, in the theme c
   // The status card has no watermark of its own any more.
   assert.doesNotMatch(read('src', 'app', 'check-in', 'page.tsx'), /BrushWatermark/);
 });
+
+test('the attendance "more" sheet rows look and press like the portal choice cards', () => {
+  const page = read('src', 'app', 'check-in', 'page.tsx');
+  assert.match(page, /className=\{cn\(CHOICE_PRESS, CHOICE_PLAIN, CHOICE_SIZE, 'w-full gap-4 px-\[18px\] text-left'\)\}/);
+  assert.match(page, /<ul className="mt-4 grid gap-3">\n\s*<MenuRow/);
+  const portal = read('src', 'components', 'layout', 'portal-ui.tsx');
+  // ChoiceCard uses the same shared classes.
+  assert.match(portal, /CHOICE_PRESS,\n\s*large \?/);
+  assert.match(portal, /: CHOICE_PLAIN,/);
+});

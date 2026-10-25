@@ -37,6 +37,13 @@ export function PortalPickers() {
 export const CHOICE_SIZE = 'h-[86px] rounded-[22px]';
 export const CHOICE_TEXT = 'text-[17.5px]';
 
+// The look of a choice card, shared with other big tappable rows (like the attendance portal's
+// "more" sheet) so they all feel the same: raised like a button and pressed in when tapped (see the
+// Button component).
+export const CHOICE_PRESS = 'group flex items-center border transition-[filter,transform,box-shadow] duration-150 hover:brightness-105 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/50 active:translate-y-px active:scale-[0.98] active:brightness-95 motion-reduce:transition-none';
+export const CHOICE_PLAIN = 'border-border bg-background/40 shadow-[inset_0_1px_0_rgb(255_255_255/0.08),0_1px_3px_rgb(0_0_0/0.06)] active:shadow-[inset_0_2px_5px_rgb(0_0_0/0.08)]';
+export const CHOICE_ICON = 'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl';
+
 // A portal choice: an icon tile, the name and an arrow. "large" fills the space it is given (the
 // portal home's wide card on computers).
 export function ChoiceCard({ highlight, href, icon, size = 'default', title }: {
@@ -51,17 +58,16 @@ export function ChoiceCard({ highlight, href, icon, size = 'default', title }: {
     <Link
       href={href}
       className={cn(
-        // Raised like a button and pressed in when tapped (see the Button component).
-        'group flex items-center border transition-[filter,transform,box-shadow] duration-150 hover:brightness-105 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/50 active:translate-y-px active:scale-[0.98] active:brightness-95 motion-reduce:transition-none',
+        CHOICE_PRESS,
         large ? 'flex-1 gap-6 rounded-[28px] px-8' : [CHOICE_SIZE, 'gap-4 px-[18px]'],
         highlight
           ? 'border-primary/35 bg-gradient-to-br from-primary/30 to-primary/10 shadow-[inset_0_1px_0_rgb(255_255_255/0.25),0_8px_20px_-10px_color-mix(in_oklab,var(--primary)_60%,transparent)] active:shadow-[inset_0_2px_6px_color-mix(in_oklab,var(--primary)_25%,transparent)]'
-          : 'border-border bg-background/40 shadow-[inset_0_1px_0_rgb(255_255_255/0.08),0_1px_3px_rgb(0_0_0/0.06)] active:shadow-[inset_0_2px_5px_rgb(0_0_0/0.08)]',
+          : CHOICE_PLAIN,
       )}
     >
       <span className={cn(
-        'flex shrink-0 items-center justify-center',
-        large ? 'h-[72px] w-[72px] rounded-[22px]' : 'h-12 w-12 rounded-2xl',
+        CHOICE_ICON,
+        large && 'h-[72px] w-[72px] rounded-[22px]',
         highlight ? 'bg-primary text-primary-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.2)]' : 'bg-foreground/5 text-primary',
         highlight && large && 'shadow-md shadow-primary/25',
       )}>
