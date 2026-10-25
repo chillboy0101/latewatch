@@ -1,6 +1,6 @@
 'use client';
 
-import type { CSSProperties, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Check, LayoutDashboard, LogIn } from 'lucide-react';
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
@@ -12,18 +12,10 @@ import { cn } from '@/lib/utils';
 // and in light and dark mode.
 const ink = 'color-mix(in oklab, var(--primary) 55%, var(--foreground))';
 
-const glow: CSSProperties = {
-  background: 'radial-gradient(110% 85% at 50% 30%, color-mix(in oklab, var(--primary) 34%, transparent) 0%, color-mix(in oklab, var(--primary) 10%, transparent) 45%, transparent 85%)',
-};
-
 // A laptop (ticked: the right device) with a faded phone in front of it: "use a computer for this".
 function DevicesIllustration() {
   return (
     <div aria-hidden className="relative h-[164px] w-[232px]">
-      <div
-        className="pointer-events-none absolute -inset-x-10 -inset-y-12"
-        style={{ background: `radial-gradient(closest-side, color-mix(in oklab, ${ink} 24%, transparent), transparent)` }}
-      />
       <div
         className="absolute left-0 top-0 h-[118px] w-[184px] rounded-[13px] border-2"
         style={{ background: `linear-gradient(160deg, color-mix(in oklab, ${ink} 14%, transparent), color-mix(in oklab, ${ink} 3%, transparent))`, borderColor: ink }}
@@ -75,7 +67,7 @@ function ChoiceCard({ highlight, href, icon, title }: {
 }
 
 // Phones opening an admin page: the admin portal needs a computer, so offer the attendance
-// portal (or the portal chooser). Glowing top with the drawing, a panel with the choices.
+// portal (or the portal chooser). The drawing on top, a panel with the choices.
 export function DesktopRequiredScreen() {
   return (
     <main className="relative flex h-dvh flex-col overflow-hidden overscroll-none bg-background text-foreground lg:hidden">
@@ -88,7 +80,7 @@ export function DesktopRequiredScreen() {
       </header>
 
       {/* The drawing sits centred in the space between the header and the panel. */}
-      <div className="flex min-h-0 flex-1 items-center justify-center pb-7 pt-24" style={glow}>
+      <div className="flex min-h-0 flex-1 items-center justify-center pb-7 pt-24">
         <DevicesIllustration />
       </div>
 
