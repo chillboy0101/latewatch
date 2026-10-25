@@ -8,21 +8,21 @@ import { getHomeView, getServerHomeView, subscribeDeviceKind } from '@/lib/devic
 import { cn } from '@/lib/utils';
 
 // Office time: attendance is judged in Accra time, so the clock shows it on every device.
-const timeFormat = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: ACCRA_TIME_ZONE });
+const timeFormat = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hour12: false, minute: '2-digit', second: '2-digit', timeZone: ACCRA_TIME_ZONE });
 const dateFormat = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', timeZone: ACCRA_TIME_ZONE, weekday: 'long' });
 
-type Now = { date: string; time: string };
+type Now = { date: string; hours: number; minutes: number; seconds: number };
 
-// Ticks every second but only changes state when the minute (or day) changes. Null until mounted:
-// the server doesn't know the time the visitor will see.
+// Ticks every second (for the second hand). Null until mounted: the server doesn't know the time the
+// visitor will see.
 function useNow() {
   const [now, setNow] = useState<Now | null>(null);
 
   useEffect(() => {
     const tick = () => {
       const date = new Date();
-      const next = { date: dateFormat.format(date), time: timeFormat.format(date) };
-      setNow((previous) => (previous?.time === next.time && previous.date === next.date ? previous : next));
+      const [hours, minutes, seconds] = timeFormat.format(date).split(':').map(Number);
+      setNow({ date: dateFormat.format(date), hours: hours % 24, minutes, seconds });
     };
     tick();
     const timer = window.setInterval(tick, 1000);
@@ -33,12 +33,67 @@ function useNow() {
 }
 
 const CLOCK_SIZES = {
-  compact: { card: 'from-primary/20 px-6 py-9', circleA: '-right-10 -top-10 h-36 w-36', circleB: '-bottom-12 -left-8 h-28 w-28', date: 'mt-3 text-base', time: 'text-[64px]' },
-  large: { card: 'min-h-[400px] from-primary/25', circleA: '-right-14 -top-14 h-52 w-52', circleB: '-bottom-16 -left-12 h-40 w-40', date: 'mt-4 text-lg', time: 'text-[104px]' },
+  compact: { card: 'from-primary/20 px-6 py-8', circleA: '-right-10 -top-10 h-36 w-36', circleB: '-bottom-12 -left-8 h-28 w-28', date: 'mt-4 text-base', face: 'size-48' },
+  large: { card: 'min-h-[400px] from-primary/25', circleA: '-right-14 -top-14 h-52 w-52', circleB: '-bottom-16 -left-12 h-40 w-40', date: 'mt-5 text-lg', face: 'size-64' },
 };
 
-// The time-and-date card. It keeps its own ticking state, so only the card re-renders each minute.
-// Until the time is known an invisible placeholder keeps its size.
+const TICKS = Array.from({ length: 60 }, (_, index) => index);
+
+// A clock hand from the centre of the 200×200 face, pointing at `angle` degrees from 12 o'clock.
+function Hand({ angle, className, length, tail = 0, width }: { angle: number; className: string; length: number; tail?: number; width: number }) {
+  return (
+    <line
+      className={className}
+      strokeLinecap="round"
+      strokeWidth={width}
+      transform={`rotate(${angle} 100 100)`}
+      x1="100"
+      x2="100"
+      y1={100 + tail}
+      y2={100 - length}
+    />
+  );
+}
+
+// The analogue face: minute ticks, longer hour marks, and hour, minute and second hands.
+function AnalogClock({ className, now }: { className: string; now: Now | null }) {
+  const hours = now ? (now.hours % 12) * 30 + now.minutes * 0.5 : 0;
+  const minutes = now ? now.minutes * 6 + now.seconds * 0.1 : 0;
+  const seconds = now ? now.seconds * 6 : 0;
+
+  return (
+    <svg aria-hidden className={cn('shrink-0', className)} viewBox="0 0 200 200">
+      <circle className="fill-card/70 stroke-primary/25" cx="100" cy="100" r="96" strokeWidth="2" />
+      {TICKS.map((index) => {
+        const hourMark = index % 5 === 0;
+        return (
+          <line
+            className={hourMark ? 'stroke-foreground/70' : 'stroke-foreground/20'}
+            key={index}
+            strokeLinecap="round"
+            strokeWidth={hourMark ? 3 : 1.5}
+            transform={`rotate(${index * 6} 100 100)`}
+            x1="100"
+            x2="100"
+            y1="12"
+            y2={hourMark ? 26 : 19}
+          />
+        );
+      })}
+      <g className={now ? undefined : 'invisible'}>
+        <Hand angle={hours} className="stroke-foreground" length={48} tail={10} width={6} />
+        <Hand angle={minutes} className="stroke-foreground" length={72} tail={12} width={4} />
+        <Hand angle={seconds} className="stroke-primary" length={80} tail={20} width={1.75} />
+        <circle className="fill-primary" cx="100" cy="100" r="5" />
+        <circle className="fill-card" cx="100" cy="100" r="2" />
+      </g>
+    </svg>
+  );
+}
+
+const pad = (value: number) => String(value).padStart(2, '0');
+
+// The clock-and-date card. It keeps its own ticking state, so only the card re-renders each second.
 function ClockCard({ size }: { size: keyof typeof CLOCK_SIZES }) {
   const now = useNow();
   const sizes = CLOCK_SIZES[size];
@@ -47,10 +102,10 @@ function ClockCard({ size }: { size: keyof typeof CLOCK_SIZES }) {
     <div className={cn('relative flex w-full flex-col items-center justify-center overflow-hidden rounded-[28px] border border-primary/25 bg-gradient-to-br to-primary/5 text-center', sizes.card)}>
       <span aria-hidden className={cn('absolute rounded-full bg-primary/10', sizes.circleA)} />
       <span aria-hidden className={cn('absolute rounded-full bg-primary/10', sizes.circleB)} />
-      <div className={now ? 'relative' : 'invisible'}>
-        {/* leading-none after the size: cn drops a line height that comes before a font size. */}
-        <time className={cn('block font-bold tracking-tight tabular-nums', sizes.time, 'leading-none')}>{now?.time ?? '00:00'}</time>
-        <p className={cn('font-medium text-muted-foreground', sizes.date)}>{now?.date ?? 'Today'}</p>
+      <div className="relative flex flex-col items-center">
+        <AnalogClock className={sizes.face} now={now} />
+        {now && <time className="sr-only">{`${pad(now.hours)}:${pad(now.minutes)}`}</time>}
+        <p className={cn('font-medium text-muted-foreground', sizes.date, !now && 'invisible')}>{now?.date ?? 'Today'}</p>
       </div>
     </div>
   );
