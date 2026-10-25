@@ -28,8 +28,13 @@ test('phones get a haptic tap on every link and button, Android and iOS', () => 
   assert.match(read('src', 'app', 'layout.tsx'), /<HapticFeedback \/>/);
 });
 
-test('attendance status card carries the brush watermark behind its content', () => {
-  const page = read('src', 'app', 'check-in', 'page.tsx');
-  assert.match(page, /relative min-h-48 flex-\[6\] overflow-hidden/);
-  assert.match(page, /<BrushWatermark \/>\n\s*<div className="relative flex h-full/);
+test('the staff screens have the sunray dial pattern behind them, in the theme colour', () => {
+  const css = read('src', 'app', 'globals.css');
+  assert.match(css, /\.sunray \{\n\s*isolation: isolate;/);
+  assert.match(css, /\.sunray::before \{[^}]*position: fixed;[^}]*z-index: -1;[^}]*repeating-conic-gradient\([^)]*var\(--primary\)/);
+  for (const file of [['src', 'app', 'page.tsx'], ['src', 'app', 'check-in', 'page.tsx'], ['src', 'components', 'layout', 'desktop-required-screen.tsx']]) {
+    assert.match(read(...file), /<main className="[^"]*\bsunray"/);
+  }
+  // The status card has no watermark of its own any more.
+  assert.doesNotMatch(read('src', 'app', 'check-in', 'page.tsx'), /BrushWatermark/);
 });

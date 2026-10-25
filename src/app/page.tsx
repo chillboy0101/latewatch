@@ -138,7 +138,7 @@ export default function Home() {
   const view = useSyncExternalStore(subscribeDeviceKind, getHomeView, getServerHomeView);
 
   return (
-    <main className="relative min-h-dvh bg-background text-foreground">
+    <main className="relative min-h-dvh bg-background text-foreground sunray">
       <PortalPickers />
 
       {view !== 'wide' && (
