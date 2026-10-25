@@ -147,6 +147,28 @@ html {
   background: var(--background);
 }
 
+/* The invisible native switch that gives iPhones their haptic (see HapticSwitch): it covers the
+   whole button so the finger toggles it. It must keep its native appearance and stay rendered
+   (opacity, not display/visibility) or iOS plays no haptic. The doubled class outranks other input
+   rules. A disabled button lets the tap fall through to itself. */
+input.haptic-switch.haptic-switch {
+  all: initial;
+  appearance: auto;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  margin: 0;
+  opacity: 0;
+  border-radius: inherit;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  cursor: inherit;
+}
+
+:disabled > input.haptic-switch.haptic-switch {
+  pointer-events: none;
+}
+
 /* A sunray dial finish behind the staff screens (portal home, attendance, "admin needs a computer"),
    like a luxury watch face: fine rays in the theme colour fanning from the top centre and fading out
    down the page. Fixed, so it stays put while scrolling. The screen's <main> isolates, so the rays
