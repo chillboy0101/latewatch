@@ -35,6 +35,8 @@ function writeList(key: string, list: string[]) {
 
 const readStack = () => readList(STACK_KEY);
 
+const isAuthScreen = (pathname: string) => pathname.startsWith('/sign-in') || pathname.startsWith('/sign-up');
+
 let replaceTop = false;
 let finishSlide: (() => void) | null = null;
 
@@ -58,6 +60,9 @@ export function recordPathname(pathname: string) {
     if (forward.at(-1) === pathname) forward.pop();
     else forward.length = 0;
   }
+  // The portal home is the first screen, and the sign-in screens are never gone back to: nothing
+  // before them is kept, so there is no back (or back swipe) into them.
+  if (pathname === '/' || (left !== undefined && isAuthScreen(left))) stack.splice(0, stack.length - 1);
   replaceTop = false;
   writeList(STACK_KEY, stack);
   writeList(FORWARD_KEY, forward);
@@ -78,7 +83,7 @@ export function forwardPath() {
 
 /** Where back leads when the app was opened straight on a screen (no earlier screen to return to). */
 export function parentPath(pathname: string) {
-  if (pathname === '/') return null;
+  if (pathname === '/' || isAuthScreen(pathname)) return null;
   if (pathname.startsWith('/check-in/')) return '/check-in';
   return '/';
 }
