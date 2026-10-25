@@ -26,6 +26,7 @@ import { getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 import { ModePicker } from '@/components/theme/mode-picker';
 import { ThemePicker } from '@/components/theme/theme-picker';
 import { cn } from '@/lib/utils';
+import { CHOICE_SIZE, CHOICE_TEXT } from '@/components/layout/portal-ui';
 
 interface CheckInStatus {
   attendance: {
@@ -267,7 +268,7 @@ function attendanceButtonLabel(status: CheckInStatus | null, submitting: boolean
     if (liveLocation.state === 'weak') return 'Improve GPS Accuracy';
     return 'Location Required';
   }
-  if (status?.attendance) return canSignOut(status) ? 'Check Out' : `Check Out Opens ${status.signOutStartLabel}`;
+  if (status?.attendance) return canSignOut(status) ? 'Check Out' : `Check Out Opens ${status.signOutStartLabel.replace(' ', '\u00a0')}` /* keep "4:30 PM" on one line */;
   if (status?.isHoliday) return 'Closed - Holiday';
   if (status?.isWeekend) return 'Closed - Weekend';
   if (status?.isAfterWorkdayEnd) return 'Closed - After Hours';
@@ -287,16 +288,19 @@ function ActionButton({ busy, disabled, icon: Icon, label, onClick }: {
   onClick: () => void;
 }) {
   return (
-    <Button
-      className="h-[86px] w-full gap-2.5 whitespace-normal rounded-[22px] px-5 text-center text-[17.5px] font-semibold leading-tight shadow-sm active:brightness-95"
-      disabled={disabled}
-      onClick={onClick}
-      type="button"
-    >
-      {busy ? <Loader2 className="h-[22px] w-[22px] shrink-0 animate-spin" /> : <Icon className="h-[22px] w-[22px] shrink-0" />}
-      {/* Keep times like "4:30 PM" on one line if a long label wraps. */}
-      {label.replace(/(\d) ([AP]M)\b/g, '$1\u00a0$2')}
-    </Button>
+    <>
+      <Button
+        className={cn('w-full gap-2.5 whitespace-normal px-5 text-center font-semibold leading-tight shadow-sm active:brightness-95', CHOICE_SIZE, CHOICE_TEXT)}
+        disabled={disabled}
+        onClick={onClick}
+        type="button"
+      >
+        {busy ? <Loader2 className="h-[22px] w-[22px] shrink-0 animate-spin" /> : <Icon className="h-[22px] w-[22px] shrink-0" />}
+        {label}
+      </Button>
+      {/* Screen readers hear "Checking in…" while the request runs (the button itself is disabled). */}
+      <span className="sr-only" role="status">{busy ? label : ''}</span>
+    </>
   );
 }
 
@@ -1271,6 +1275,8 @@ export default function CheckInPage() {
   );
   const accessNotSetUp = Boolean(status && !status.staff);
   const locationBlocksAction = Boolean(status?.locationConfigured && liveLocation.blocking);
+  // A registered but untrusted phone gets the device-transfer button instead of check-in.
+  const needsTransfer = Boolean(status?.device?.registered && !status.device.trusted);
   const signInReminderEnabled = Boolean(pushReminderStatus?.subscription?.signInEnabled && !pushReminderStatus.subscription.disabledAt);
   const signOutReminderEnabled = Boolean(pushReminderStatus?.subscription?.signOutEnabled && !pushReminderStatus.subscription.disabledAt);
   const owedNow = penaltyOwed(penaltyHistory);
@@ -1420,13 +1426,15 @@ export default function CheckInPage() {
             ) : (
               <div className="flex h-full flex-col">
                 <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3 sm:gap-4 sm:p-5">
-                {/* The status card and the details card always share the space 6:5, so the page has the
-                    same proportions on every phone. The status card is a size container: its badge,
-                    text and spacing scale with its height (cqh), clamped for very small and large cards. */}
-                <div className={cn('min-h-0 flex-[6] rounded-2xl border [container-type:size]', statusTone(status))}>
-                  <div className="flex h-full flex-col items-center justify-center gap-[clamp(0.5rem,5.5cqh,1.75rem)] p-[clamp(0.75rem,6cqh,2rem)] text-center">
+                {/* The status card and the details card share the space 6:5, so the page has the same
+                    proportions on every phone. The status card is a size container: where container
+                    units are supported its badge, text and spacing scale with its height (cqh); older
+                    browsers keep the fixed sizes. min-h-48 fits the smallest scaled content, so on very
+                    short screens the column scrolls instead of the content spilling out of the card. */}
+                <div className={cn('min-h-48 flex-[6] rounded-2xl border [container-type:size]', statusTone(status))}>
+                  <div className="flex h-full flex-col items-center justify-center gap-5 p-6 text-center supports-[height:1cqh]:gap-[clamp(0.5rem,5.5cqh,1.75rem)] supports-[height:1cqh]:p-[clamp(0.75rem,6cqh,2rem)]">
                     {/* A soft halo around one badge: soft fill before, solid with a bold tick once checked in. */}
-                    <div className="relative flex size-[clamp(3.5rem,25.5cqh,7rem)] shrink-0 items-center justify-center">
+                    <div className="relative flex size-24 shrink-0 items-center justify-center supports-[height:1cqh]:size-[clamp(3.5rem,25.5cqh,7rem)]">
                       <span aria-hidden className="absolute inset-0 rounded-full bg-current opacity-15" />
                       {status?.attendance ? (
                         <span className="relative flex size-[76%] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-4 ring-primary/25">
@@ -1439,28 +1447,30 @@ export default function CheckInPage() {
                       )}
                     </div>
                     {/* Status, name and location sit at one even spacing. */}
-                    <div className="flex max-w-full flex-col items-center gap-[clamp(0.375rem,4.3cqh,1.25rem)]">
-                      <h2 className="text-[clamp(1.0625rem,6.5cqh,1.875rem)] font-bold text-balance leading-tight">{statusCopy(status)}</h2>
+                    <div className="flex max-w-full flex-col items-center gap-4 supports-[height:1cqh]:gap-[clamp(0.375rem,4.3cqh,1.25rem)]">
+                      <h2 className="text-2xl font-bold text-balance leading-tight supports-[height:1cqh]:text-[clamp(1.0625rem,6.5cqh,1.875rem)]">{statusCopy(status)}</h2>
                       {status?.staff?.fullName && (
-                        <p className="max-w-full truncate text-[clamp(0.9375rem,4.9cqh,1.25rem)] font-semibold leading-tight">{status.staff.fullName}</p>
+                        <p className="max-w-full truncate text-lg font-semibold leading-tight supports-[height:1cqh]:text-[clamp(0.9375rem,4.9cqh,1.25rem)]">{status.staff.fullName}</p>
                       )}
                       <LocationStatusChip status={status} liveLocation={liveLocation} />
                     </div>
                   </div>
                 </div>
 
-                {/* Rows share the card's height evenly (a penalty adds a third row). */}
-                <div className="flex min-h-0 flex-[5] flex-col rounded-2xl border border-border bg-card px-4 sm:px-5">
-                  <div className="flex flex-1 items-center justify-between gap-3">
+                {/* Rows share the card's height evenly; a penalty or a no-charge reason adds a third row.
+                    The card never shrinks below its rows, so a long reason scrolls the column instead
+                    of running past the border. */}
+                <div className="flex flex-[5] flex-col rounded-2xl border border-border bg-card px-4 sm:px-5">
+                  <div className="flex min-h-12 flex-1 items-center justify-between gap-3">
                     <span className="text-sm text-muted-foreground">Checked in at</span>
                     <span className="font-mono text-xl font-semibold tabular-nums">{status?.attendance ? status.attendance.checkInTime.slice(0, 5) : '-'}</span>
                   </div>
-                  <div className="flex flex-1 items-center justify-between gap-3 border-t border-border">
+                  <div className="flex min-h-12 flex-1 items-center justify-between gap-3 border-t border-border">
                     <span className="text-sm text-muted-foreground">Checked out at</span>
                     <span className="font-mono text-xl font-semibold tabular-nums">{status?.attendance?.signOutTime ? status.attendance.signOutTime.slice(0, 5) : '-'}</span>
                   </div>
                   {status?.attendance && Number(status.attendance.computedAmount || 0) > 0 && (
-                    <div className="flex flex-1 items-center justify-between gap-3 border-t border-border">
+                    <div className="flex min-h-12 flex-1 items-center justify-between gap-3 border-t border-border">
                       <span className="text-sm text-muted-foreground">Penalty</span>
                       <span className="font-mono text-lg font-semibold text-warning tabular-nums">GHC {Number(status.attendance.computedAmount).toFixed(2)}</span>
                     </div>
@@ -1504,18 +1514,8 @@ export default function CheckInPage() {
                 )}
                 </div>
 
-                <div className="shrink-0 space-y-2.5 border-t border-border/60 p-3 pt-4 sm:p-4 sm:pt-5">
-                  {!(status?.device?.registered && !status.device.trusted) && (
-                    <ActionButton
-                      busy={checkingIn}
-                      disabled={(!canCheckIn && !canSubmitSignOut) || checkingIn || locationBlocksAction}
-                      icon={status?.attendance && !status.attendance.signOutTime ? LogOut : ShieldCheck}
-                      label={attendanceButtonLabel(status, checkingIn, liveLocation)}
-                      onClick={() => void submitAttendance()}
-                    />
-                  )}
-
-                  {status?.device?.registered && !status.device.trusted && (
+                <div className="shrink-0 border-t border-border/60 p-3 pt-4 sm:p-4 sm:pt-5">
+                  {needsTransfer ? (
                     <ActionButton
                       busy={requestingTransfer}
                       disabled={requestingTransfer || transferRequestPending}
@@ -1526,6 +1526,14 @@ export default function CheckInPage() {
                           ? 'Transfer Request Pending'
                           : 'Request Device Transfer'}
                       onClick={requestDeviceTransfer}
+                    />
+                  ) : (
+                    <ActionButton
+                      busy={checkingIn}
+                      disabled={(!canCheckIn && !canSubmitSignOut) || checkingIn || locationBlocksAction}
+                      icon={status?.attendance && !status.attendance.signOutTime ? LogOut : ShieldCheck}
+                      label={attendanceButtonLabel(status, checkingIn, liveLocation)}
+                      onClick={() => void submitAttendance()}
                     />
                   )}
                 </div>

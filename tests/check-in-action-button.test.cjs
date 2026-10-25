@@ -4,27 +4,49 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const page = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'check-in', 'page.tsx'), 'utf8');
+const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
+const page = read('src', 'app', 'check-in', 'page.tsx');
 
-test('check-in and device-transfer buttons are big, thumb-sized buttons', () => {
-  // Both main actions use the one ActionButton, as tall as the portal choice cards (86px).
-  assert.equal([...page.matchAll(/<ActionButton\b/g)].length, 2);
-  assert.match(page, /h-\[86px\]/);
-  // Just the button made bigger: its own icon and the label, no icon tile or arrow.
-  const button = page.slice(page.indexOf('function ActionButton('), page.indexOf('// Every status follows the theme colour.'));
-  assert.doesNotMatch(button, /ArrowRight|rounded-2xl bg-primary-foreground/);
+// The source between two markers; fails if either is missing, so a reworded marker can't make the
+// checks below run against the rest of the file.
+function section(start, end) {
+  const from = page.indexOf(start);
+  assert.ok(from >= 0, `marker not found: ${start}`);
+  const to = page.indexOf(end, from);
+  assert.ok(to > from, `marker not found after "${start}": ${end}`);
+  return page.slice(from, to);
+}
+
+test('check-in and device-transfer buttons are one big button, sized like the portal cards', () => {
+  const button = section('function ActionButton(', '// Every status follows the theme colour.');
+  // Shares the portal choice card size instead of copying it.
+  assert.match(button, /CHOICE_SIZE, CHOICE_TEXT/);
+  assert.match(read('src', 'components', 'layout', 'portal-ui.tsx'), /export const CHOICE_SIZE = 'h-\[86px\]/);
+  // Its own icon and the label; no icon tile or arrow.
+  assert.doesNotMatch(button, /ArrowRight|bg-primary-foreground\/15/);
+  // Busy: spinner, and the busy label is announced to screen readers.
   assert.match(button, /busy \? <Loader2[^\n]*animate-spin/);
+  assert.match(button, /role="status">\{busy \? label : ''\}/);
+  // One condition picks which of the two buttons shows.
+  const actions = section('{needsTransfer ? (', '</Card>');
+  assert.equal([...actions.matchAll(/<ActionButton\b/g)].length, 2);
+  // The sign-out time keeps "4:30 PM" together at the source, not by post-processing every label.
+  assert.match(page, /Check Out Opens \$\{status\.signOutStartLabel\.replace\(' ', '\\u00a0'\)\}/);
 });
 
 test('check-in page keeps the same proportions on every phone', () => {
-  // Status and details cards always split the space 6:5 (min-h-0 so content never changes the split).
-  assert.match(page, /'min-h-0 flex-\[6\] rounded-2xl border \[container-type:size\]'/);
-  assert.match(page, /flex min-h-0 flex-\[5\] flex-col rounded-2xl border border-border bg-card/);
-  // The status card's badge, text and spacing scale with its height, so it fits on small phones.
-  const statusCard = page.slice(page.indexOf('[container-type:size]'), page.indexOf("Rows share the card's height evenly"));
-  assert.match(statusCard, /size-\[clamp\([^)]*cqh[^)]*\)\]/);
-  assert.match(statusCard, /text-\[clamp\([^)]*cqh[^)]*\)\]/);
-  // Details rows share the card evenly (checked in, checked out, and penalty when owed).
-  const details = page.slice(page.indexOf("Rows share the card's height evenly"), page.indexOf('<ReminderPrompt'));
-  assert.equal([...details.matchAll(/flex flex-1 items-center justify-between gap-3/g)].length, 3);
+  const statusCard = section('The status card and the details card share the space 6:5', "Rows share the card's height evenly");
+  const details = section("Rows share the card's height evenly", '<ReminderPrompt');
+  // The two cards split the space 6:5.
+  assert.match(statusCard, /flex-\[6\]/);
+  assert.match(details, /flex-\[5\]/);
+  // The status card scales its contents with its height where container units exist, with fixed
+  // sizes as the fallback, and never gets shorter than its smallest content.
+  assert.match(statusCard, /\[container-type:size\]/);
+  assert.match(statusCard, /min-h-48/);
+  assert.match(statusCard, /size-24 [^"]*supports-\[height:1cqh\]:size-\[clamp\([^)]*cqh/);
+  assert.match(statusCard, /text-2xl [^"]*supports-\[height:1cqh\]:text-\[clamp\([^)]*cqh/);
+  // Details rows share the card evenly and the card never shrinks below them.
+  assert.doesNotMatch(details.split('\n').find((line) => line.includes('flex-[5]')), /min-h-0/);
+  assert.equal([...details.matchAll(/min-h-12 flex-1 items-center justify-between/g)].length, 3); // in, out, penalty
 });

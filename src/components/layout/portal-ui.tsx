@@ -32,6 +32,11 @@ export function PortalPickers() {
   );
 }
 
+// Size of a portal choice card (and of any big action button meant to match it, like the
+// attendance portal's check-in button).
+export const CHOICE_SIZE = 'h-[86px] rounded-[22px]';
+export const CHOICE_TEXT = 'text-[17.5px]';
+
 // A portal choice: an icon tile, the name and an arrow. "large" fills the space it is given (the
 // portal home's wide card on computers).
 export function ChoiceCard({ highlight, href, icon, size = 'default', title }: {
@@ -47,7 +52,7 @@ export function ChoiceCard({ highlight, href, icon, size = 'default', title }: {
       href={href}
       className={cn(
         'group flex items-center border transition-[filter] hover:brightness-105 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/50 active:brightness-95',
-        large ? 'flex-1 gap-6 rounded-[28px] px-8' : 'h-[86px] gap-4 rounded-[22px] px-[18px]',
+        large ? 'flex-1 gap-6 rounded-[28px] px-8' : [CHOICE_SIZE, 'gap-4 px-[18px]'],
         highlight ? 'border-primary/35 bg-gradient-to-br from-primary/30 to-primary/10' : 'border-border bg-background/40',
       )}
     >
@@ -59,7 +64,7 @@ export function ChoiceCard({ highlight, href, icon, size = 'default', title }: {
       )}>
         {icon}
       </span>
-      <span className={cn('min-w-0 font-semibold leading-tight', large ? 'text-[26px] tracking-tight' : 'text-[17.5px]')}>{title}</span>
+      <span className={cn('min-w-0 font-semibold leading-tight', large ? 'text-[26px] tracking-tight' : CHOICE_TEXT)}>{title}</span>
       {large ? (
         <span className={cn(
           'ml-auto flex h-12 w-12 shrink-0 items-center justify-center rounded-full border transition-transform group-hover:translate-x-1',
