@@ -1420,53 +1420,53 @@ export default function CheckInPage() {
             ) : (
               <div className="flex h-full flex-col">
                 <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3 sm:gap-4 sm:p-5">
-                <div className={cn('flex flex-1 flex-col items-center justify-center gap-5 rounded-2xl border p-6 text-center sm:gap-7 sm:p-8 short:gap-2.5 short:px-4 short:py-3', statusTone(status))}>
-                  {/* A soft halo around one badge: soft fill before, solid with a bold tick once checked in. */}
-                  <div className="relative flex h-24 w-24 items-center justify-center sm:h-28 sm:w-28 short:h-20 short:w-20">
-                    <span aria-hidden className="absolute inset-0 rounded-full bg-current opacity-15" />
-                    {status?.attendance ? (
-                      <span className="relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-4 ring-primary/25 sm:h-20 sm:w-20 short:h-16 short:w-16">
-                        <Check className="h-9 w-9 sm:h-10 sm:w-10 short:h-8 short:w-8" strokeWidth={3} />
-                      </span>
-                    ) : (
-                      <span className="relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-current/20 ring-1 ring-current/30 sm:h-20 sm:w-20 short:h-16 short:w-16">
-                        {canCheckIn ? (
-                          <ShieldCheck className="h-9 w-9 sm:h-10 sm:w-10 short:h-8 short:w-8" />
-                        ) : (
-                          <AlertTriangle className="h-9 w-9 sm:h-10 sm:w-10 short:h-8 short:w-8" />
-                        )}
-                      </span>
-                    )}
-                  </div>
-                  {/* Status, name and location sit at one even spacing. */}
-                  <div className="flex max-w-full flex-col items-center gap-4 sm:gap-5 short:gap-2.5">
-                    <h2 className="text-2xl font-bold text-balance leading-tight sm:text-3xl short:text-xl">{statusCopy(status)}</h2>
-                    {status?.staff?.fullName && (
-                      <p className="max-w-full truncate text-lg font-semibold leading-tight sm:text-xl">{status.staff.fullName}</p>
-                    )}
-                    <LocationStatusChip status={status} liveLocation={liveLocation} />
+                {/* The status card and the details card always share the space 6:5, so the page has the
+                    same proportions on every phone. The status card is a size container: its badge,
+                    text and spacing scale with its height (cqh), clamped for very small and large cards. */}
+                <div className={cn('min-h-0 flex-[6] rounded-2xl border [container-type:size]', statusTone(status))}>
+                  <div className="flex h-full flex-col items-center justify-center gap-[clamp(0.5rem,5.5cqh,1.75rem)] p-[clamp(0.75rem,6cqh,2rem)] text-center">
+                    {/* A soft halo around one badge: soft fill before, solid with a bold tick once checked in. */}
+                    <div className="relative flex size-[clamp(3.5rem,25.5cqh,7rem)] shrink-0 items-center justify-center">
+                      <span aria-hidden className="absolute inset-0 rounded-full bg-current opacity-15" />
+                      {status?.attendance ? (
+                        <span className="relative flex size-[76%] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-4 ring-primary/25">
+                          <Check className="size-[50%]" strokeWidth={3} />
+                        </span>
+                      ) : (
+                        <span className="relative flex size-[76%] items-center justify-center rounded-full bg-current/20 ring-1 ring-current/30">
+                          {canCheckIn ? <ShieldCheck className="size-[50%]" /> : <AlertTriangle className="size-[50%]" />}
+                        </span>
+                      )}
+                    </div>
+                    {/* Status, name and location sit at one even spacing. */}
+                    <div className="flex max-w-full flex-col items-center gap-[clamp(0.375rem,4.3cqh,1.25rem)]">
+                      <h2 className="text-[clamp(1.0625rem,6.5cqh,1.875rem)] font-bold text-balance leading-tight">{statusCopy(status)}</h2>
+                      {status?.staff?.fullName && (
+                        <p className="max-w-full truncate text-[clamp(0.9375rem,4.9cqh,1.25rem)] font-semibold leading-tight">{status.staff.fullName}</p>
+                      )}
+                      <LocationStatusChip status={status} liveLocation={liveLocation} />
+                    </div>
                   </div>
                 </div>
 
-                {/* Fixed-height rows, so this card looks the same on every phone (a penalty adds a row);
-                    the status card above takes whatever height is left. */}
-                <div className="flex shrink-0 flex-col rounded-2xl border border-border bg-card px-4 sm:px-5">
-                  <div className="flex h-14 items-center justify-between gap-3">
+                {/* Rows share the card's height evenly (a penalty adds a third row). */}
+                <div className="flex min-h-0 flex-[5] flex-col rounded-2xl border border-border bg-card px-4 sm:px-5">
+                  <div className="flex flex-1 items-center justify-between gap-3">
                     <span className="text-sm text-muted-foreground">Checked in at</span>
                     <span className="font-mono text-xl font-semibold tabular-nums">{status?.attendance ? status.attendance.checkInTime.slice(0, 5) : '-'}</span>
                   </div>
-                  <div className="flex h-14 items-center justify-between gap-3 border-t border-border">
+                  <div className="flex flex-1 items-center justify-between gap-3 border-t border-border">
                     <span className="text-sm text-muted-foreground">Checked out at</span>
                     <span className="font-mono text-xl font-semibold tabular-nums">{status?.attendance?.signOutTime ? status.attendance.signOutTime.slice(0, 5) : '-'}</span>
                   </div>
                   {status?.attendance && Number(status.attendance.computedAmount || 0) > 0 && (
-                    <div className="flex h-14 items-center justify-between gap-3 border-t border-border">
+                    <div className="flex flex-1 items-center justify-between gap-3 border-t border-border">
                       <span className="text-sm text-muted-foreground">Penalty</span>
                       <span className="font-mono text-lg font-semibold text-warning tabular-nums">GHC {Number(status.attendance.computedAmount).toFixed(2)}</span>
                     </div>
                   )}
                   {status?.attendance && Number(status.attendance.computedAmount || 0) === 0 && status.attendance.reason && (
-                    <div className="flex items-center border-t border-border py-3 text-sm text-muted-foreground">
+                    <div className="flex flex-1 items-center border-t border-border py-3 text-sm text-muted-foreground">
                       {status.attendance.reason}
                     </div>
                   )}
