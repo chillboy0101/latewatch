@@ -9,7 +9,7 @@ const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts),
 test('screens slide in and out like an app, and back buttons step back instead of stacking pages', () => {
   const nav = read('src', 'lib', 'app-nav.ts');
   // The visited screens are tracked; back pops them, with each screen's parent as the fallback.
-  assert.match(nav, /else if \(stack\.at\(-2\) === pathname\) stack\.pop\(\);/);
+  assert.match(nav, /\} else if \(stack\.at\(-2\) === pathname\) \{/);
   assert.match(nav, /if \(canGoBack\(\)\) \{\n\s*slideTo\(direction, \(\) => window\.history\.back\(\)\);/);
   assert.match(nav, /replaceTop = true;\n\s*slideTo\(direction, \(\) => router\.replace\(fallbackHref\)\);/);
   // View transitions hold the old screen until the new one has rendered, with reduced motion respected.
@@ -19,7 +19,7 @@ test('screens slide in and out like an app, and back buttons step back instead o
   const css = read('src', 'app', 'globals.css');
   assert.match(css, /html\[data-nav="forward"\]::view-transition-new\(root\) \{[^}]*nav-in-from-right/);
   assert.match(css, /html\[data-nav="back"\]::view-transition-old\(root\) \{[^}]*nav-out-to-right/);
-  assert.match(css, /html\[data-nav="swipe-back"\]::view-transition-old\(root\) \{[^}]*opacity: 0;/);
+  assert.match(css, /html\[data-nav="swipe-back"\]::view-transition-old\(root\),\nhtml\[data-nav="swipe-forward"\]::view-transition-old\(root\) \{[^}]*opacity: 0;/);
 
   // The staff screens use it: portal cards slide forward, back buttons and "Portal Home" step back.
   const portal = read('src', 'components', 'layout', 'portal-ui.tsx');
@@ -32,7 +32,7 @@ test('screens slide in and out like an app, and back buttons step back instead o
 test('the installed app gets an edge swipe back, and every screen is recorded for the back stack', () => {
   const page = read('src', 'components', 'layout', 'app-page.tsx');
   assert.match(page, /display-mode: standalone/);
-  assert.match(page, /touch\.clientX > EDGE_PX/);
+  assert.match(page, /if \(touch\.clientX <= EDGE_PX\) \{/);
   assert.match(page, /document\.querySelector\('\[role="dialog"\]'\)/);
   assert.match(page, /navigateBack\(router, parentPath\(window\.location\.pathname\) \?\? '\/', 'swipe-back'\)/);
   assert.match(page, /clearDrag\(pageRef\.current\);\n\s*recordPathname\(pathname\);/);
@@ -51,4 +51,18 @@ test('back closes the top sheet instead of leaving the screen', () => {
   // A child sheet opening with its parent adds its entry after the parent's, so back closes the child.
   assert.match(drawer, /if \(nested\) queueMicrotask\(addEntry\);\n\s*else addEntry\(\);/);
   assert.match(drawer, /useCloseOnBack\(props\.open, props\.onOpenChange\);\n[\s\S]*useCloseOnBack\(props\.open, props\.onOpenChange, true\);/);
+});
+
+test('a swipe from the right edge reopens the screen just left by going back', () => {
+  const nav = read('src', 'lib', 'app-nav.ts');
+  // Going back remembers the screen left; a new screen clears the way forward, reopening it keeps it.
+  assert.match(nav, /if \(left !== undefined\) forward\.push\(left\);\n\s*stack\.pop\(\);/);
+  assert.match(nav, /if \(forward\.at\(-1\) === pathname\) forward\.pop\(\);\n\s*else forward\.length = 0;/);
+  assert.match(nav, /if \(href\) slideTo\('swipe-forward', \(\) => router\.push\(href\)\);/);
+
+  const page = read('src', 'components', 'layout', 'app-page.tsx');
+  assert.match(page, /touch\.clientX >= window\.innerWidth - EDGE_PX/);
+  assert.match(page, /if \(!forwardPath\(\)\) return;/);
+  assert.match(page, /else navigateToForward\(router\);/);
+  assert.match(read('src', 'app', 'globals.css'), /html\[data-nav="swipe-forward"\]::view-transition-new\(root\) \{[^}]*nav-in-from-right-near/);
 });

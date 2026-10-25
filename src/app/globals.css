@@ -150,7 +150,8 @@ html {
 /* Screens slide like an iPhone app (see lib/app-nav): opening a screen pushes it in from the right
    over the old one, which drifts left and dims; going back slides the screen away to the right and
    the previous one back in from the left. After an edge swipe the screen has already left with the
-   finger, so only the previous screen slides in. */
+   finger, so only the next screen slides in: from the left after a back swipe, from the right after a
+   forward swipe (from the right edge, reopening the screen just left). */
 :root {
   --nav-ease: cubic-bezier(0.32, 0.72, 0, 1);
 }
@@ -181,9 +182,14 @@ html[data-nav="swipe-back"]::view-transition-new(root) {
   animation: 340ms var(--nav-ease) both nav-in-from-left;
 }
 
-html[data-nav="swipe-back"]::view-transition-old(root) {
+html[data-nav="swipe-back"]::view-transition-old(root),
+html[data-nav="swipe-forward"]::view-transition-old(root) {
   animation: none;
   opacity: 0;
+}
+
+html[data-nav="swipe-forward"]::view-transition-new(root) {
+  animation: 340ms var(--nav-ease) both nav-in-from-right-near;
 }
 
 @keyframes nav-in-from-right {
@@ -196,6 +202,10 @@ html[data-nav="swipe-back"]::view-transition-old(root) {
 
 @keyframes nav-out-to-right {
   to { transform: translateX(100%); }
+}
+
+@keyframes nav-in-from-right-near {
+  from { transform: translateX(30%); filter: brightness(0.9); }
 }
 
 @keyframes nav-in-from-left {
