@@ -45,11 +45,16 @@ test('phone or computer is judged by the screen, not the window', () => {
   assert.equal(deviceKindForScreen(1440, 900), 'computer'); // laptop, whatever the window size
 });
 
-test('portal home: live clock on top, the two portals in the bottom panel, no descriptions', () => {
+test('portal home: phones get the clock and bottom panel, computers the wide card with big buttons', () => {
   const home = read('src', 'app', 'page.tsx');
   assert.match(home, /<PortalPickers \/>/);
-  assert.match(home, /<LiveClock \/>\s*<\/div>\s*<ChoicePanel label="Choose a portal">/);
-  assert.match(home, /<ChoiceCard highlight href="\/check-in"[^\n]*title="Attendance Portal" \/>\s*<ChoiceCard href="\/dashboard"[^\n]*title="Admin Portal" \/>/);
   assert.match(home, /useApplyDarkMode\(\);/);
+  // Phones and tablets: clock on top, the two portals in the bottom panel.
+  assert.match(home, /<div className="flex min-h-dvh flex-col lg:hidden">\s*<div[^>]*>\s*<ClockCard now=\{now\} \/>\s*<\/div>\s*<ChoicePanel label="Choose a portal">/);
+  assert.match(home, /<ChoiceCard highlight href="\/check-in"[^\n]*title="Attendance Portal" \/>\s*<ChoiceCard href="\/dashboard"[^\n]*title="Admin Portal" \/>/);
+  // Computers: one wide card, the clock on the left, the portals as big blocks filling the right.
+  assert.match(home, /<div className="hidden min-h-dvh items-center justify-center p-10 lg:flex">/);
+  assert.match(home, /<ClockCard large now=\{now\} \/>\s*<nav className="flex flex-col gap-3" aria-label="Choose a portal">\s*<LargeChoiceCard highlight href="\/check-in"[^\n]*title="Attendance Portal" \/>\s*<LargeChoiceCard href="\/dashboard"[^\n]*title="Admin Portal" \/>/);
+  assert.match(home, /'group flex flex-1 items-center gap-6 rounded-\[28px\]/);
   assert.doesNotMatch(home, /description|Staff check-in and check-out|LateWatchLogo/);
 });
