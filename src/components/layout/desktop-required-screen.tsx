@@ -70,7 +70,7 @@ function ChoiceCard({ highlight, href, icon, title }: {
 // portal (or the portal chooser). The drawing on top, a panel with the choices.
 export function DesktopRequiredScreen() {
   return (
-    <main className="relative flex h-dvh flex-col overflow-hidden overscroll-none bg-background text-foreground lg:hidden">
+    <main className="relative flex min-h-dvh flex-col bg-background text-foreground lg:hidden">
       <header className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-6 pt-[max(1.25rem,env(safe-area-inset-top))]">
         <LateWatchLogo markSize="md" />
         <div className="flex items-center gap-2">
