@@ -4,7 +4,7 @@ import { UserButton, useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowLeft, BellRing, Check, CheckCircle2, ChevronRight, History, Loader2, LogOut, MapPin, MoreHorizontal, Printer, ReceiptText, ShieldCheck, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, BellRing, Check, CheckCircle2, ChevronRight, History, Loader2, LogOut, MapPin, MoreHorizontal, Printer, ReceiptText, ShieldCheck, XCircle, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerNested, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
@@ -275,6 +275,32 @@ function attendanceButtonLabel(status: CheckInStatus | null, submitting: boolean
   if (status && !status.staff) return 'Profile Not Matched';
   if (status?.permission?.permissionType === 'absence') return 'Check In (Excused)';
   return 'Check In';
+}
+
+// The page's main action (check in / out, device transfer), sized and shaped like the portal choice
+// cards (86px, icon tile, arrow) so it is easy to hit with a thumb.
+function ActionButton({ busy, disabled, icon: Icon, label, onClick }: {
+  busy: boolean;
+  disabled: boolean;
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <Button
+      className="h-[86px] w-full justify-start gap-4 whitespace-normal rounded-[22px] px-[18px] text-left text-[17.5px] font-semibold leading-tight shadow-sm active:brightness-95"
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary-foreground/15">
+        {busy ? <Loader2 className="h-[22px] w-[22px] animate-spin" /> : <Icon className="h-[22px] w-[22px]" />}
+      </span>
+      {/* Keep times like "4:30 PM" on one line when a long label wraps. */}
+      <span className="min-w-0">{label.replace(/(\d) ([AP]M)\b/g, '$1\u00a0$2')}</span>
+      {!busy && <ArrowRight className="ml-auto h-5 w-5 shrink-0 opacity-80" />}
+    </Button>
+  );
 }
 
 // Every status follows the theme colour.
@@ -1481,32 +1507,27 @@ export default function CheckInPage() {
 
                 <div className="shrink-0 space-y-2.5 border-t border-border/60 p-3 pt-4 sm:p-4 sm:pt-5">
                   {!(status?.device?.registered && !status.device.trusted) && (
-                    <Button className="h-14 w-full gap-2.5 rounded-2xl text-base font-semibold shadow-sm sm:h-16 sm:text-lg" onClick={() => void submitAttendance()} disabled={(!canCheckIn && !canSubmitSignOut) || checkingIn || locationBlocksAction}>
-                      {checkingIn ? (
-                        <Loader2 className="h-5 w-5 animate-spin sm:h-6 sm:w-6" />
-                      ) : status?.attendance && !status.attendance.signOutTime ? (
-                        <LogOut className="h-5 w-5 sm:h-6 sm:w-6" />
-                      ) : (
-                        <ShieldCheck className="h-5 w-5 sm:h-6 sm:w-6" />
-                      )}
-                      {attendanceButtonLabel(status, checkingIn, liveLocation)}
-                    </Button>
+                    <ActionButton
+                      busy={checkingIn}
+                      disabled={(!canCheckIn && !canSubmitSignOut) || checkingIn || locationBlocksAction}
+                      icon={status?.attendance && !status.attendance.signOutTime ? LogOut : ShieldCheck}
+                      label={attendanceButtonLabel(status, checkingIn, liveLocation)}
+                      onClick={() => void submitAttendance()}
+                    />
                   )}
 
                   {status?.device?.registered && !status.device.trusted && (
-                    <Button
-                      className="h-14 w-full gap-2.5 rounded-2xl text-base font-semibold shadow-sm sm:h-16 sm:text-lg"
+                    <ActionButton
+                      busy={requestingTransfer}
                       disabled={requestingTransfer || transferRequestPending}
-                      onClick={requestDeviceTransfer}
-                      type="button"
-                    >
-                      {requestingTransfer ? <Loader2 className="h-5 w-5 animate-spin sm:h-6 sm:w-6" /> : <ShieldCheck className="h-5 w-5 sm:h-6 sm:w-6" />}
-                      {requestingTransfer
+                      icon={ShieldCheck}
+                      label={requestingTransfer
                         ? 'Checking location...'
                         : transferRequestPending
                           ? 'Transfer Request Pending'
                           : 'Request Device Transfer'}
-                    </Button>
+                      onClick={requestDeviceTransfer}
+                    />
                   )}
                 </div>
               </div>
