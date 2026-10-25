@@ -50,6 +50,8 @@ function useCloseOnBack(
     let closedByBack = false;
 
     const onPopState = () => {
+      // Already closing from an earlier back: the dead end's own step back must not close it again.
+      if (closedByBack) return;
       const top = sheetEntryId();
       if (top === null || top < id) {
         closedByBack = true;
