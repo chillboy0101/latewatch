@@ -2,6 +2,8 @@
 
 import { Check, LayoutDashboard, LogIn } from 'lucide-react';
 import { ChoiceCard, ChoicePanel, PortalPickers, useApplyDarkMode } from './portal-ui';
+import { handwriting } from '@/lib/fonts';
+import { cn } from '@/lib/utils';
 
 // Lines of the drawing: the theme colour lifted toward the text colour, so it reads in every theme
 // and in light and dark mode.
@@ -47,7 +49,7 @@ export function DesktopRequiredScreen() {
       {/* The drawing and the message sit centred in the space between the header and the panel. */}
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-9 px-6 pb-8 pt-24">
         <DevicesIllustration />
-        <h1 className="text-center text-[30px] font-bold leading-[1.1] tracking-tight">
+        <h1 className={cn(handwriting.className, 'text-center text-[44px] leading-[1.05]')}>
           Admin needs
           <span className="block" style={{ color: ink }}>a computer</span>
         </h1>
