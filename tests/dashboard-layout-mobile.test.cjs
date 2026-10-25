@@ -15,6 +15,8 @@ test('on phones the admin portal shows the "admin needs a computer" page', () =>
 
   const screen = read('src', 'components', 'layout', 'desktop-required-screen.tsx');
   assert.match(screen, /<main className="relative flex min-h-dvh flex-col[^"]*">/);
+  // No logo: just the theme and mode buttons at the top.
+  assert.doesNotMatch(screen, /LateWatchLogo/);
   // Applies dark mode itself, since the admin header isn't rendered on phones.
   assert.match(screen, /document\.documentElement\.classList\.toggle\('dark', isDark\)/);
   // The laptop-and-phone drawing, centred above the panel, on the plain background.
