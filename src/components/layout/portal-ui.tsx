@@ -58,12 +58,11 @@ export function ChoiceCard({ highlight, href, icon, title }: {
   );
 }
 
-// The rounded panel at the bottom of a phone screen, holding just the choice cards. On wide
-// screens it becomes a floating rounded card.
+// The rounded panel at the bottom of a phone screen, holding just the choice cards.
 export function ChoicePanel({ children, label }: { children: ReactNode; label: string }) {
   return (
-    <section className="rounded-t-[32px] border-t border-border bg-card px-6 pb-[max(2.25rem,env(safe-area-inset-bottom))] pt-3 lg:rounded-[32px] lg:border lg:pb-6 lg:pt-6 lg:shadow-xl">
-      <div aria-hidden className="mx-auto mb-6 h-[5px] w-10 rounded-full bg-foreground/15 lg:hidden" />
+    <section className="rounded-t-[32px] border-t border-border bg-card px-6 pb-[max(2.25rem,env(safe-area-inset-bottom))] pt-3">
+      <div aria-hidden className="mx-auto mb-6 h-[5px] w-10 rounded-full bg-foreground/15" />
       <nav className="grid gap-3" aria-label={label}>
         {children}
       </nav>
