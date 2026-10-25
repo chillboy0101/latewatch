@@ -19,8 +19,8 @@ test('on phones the admin portal shows the "admin needs a computer" page', () =>
   assert.doesNotMatch(screen, /LateWatchLogo/);
   // Applies dark mode itself, since the admin header isn't rendered on phones.
   assert.match(screen, /useApplyDarkMode\(\);/);
-  // The drawing with the message under it, centred above the panel, on the plain background.
-  assert.match(screen, /<div className="flex min-h-0 flex-1 flex-col items-center justify-center[^"]*">\s*<DevicesIllustration \/>\s*<h1[^>]*>\s*Admin needs\s*<span className="block" style=\{\{ color: ink \}\}>a computer<\/span>\s*<\/h1>/);
+  // The drawing with the message under it in handwritten lettering, centred above the panel.
+  assert.match(screen, /<div className="flex min-h-0 flex-1 flex-col items-center justify-center[^"]*">\s*<DevicesIllustration \/>\s*<h1 className=\{cn\(handwriting\.className, [^)]*\)\}>\s*Admin needs\s*<span className="block" style=\{\{ color: ink \}\}>a computer<\/span>\s*<\/h1>/);
   // The panel holds only the two choice cards: attendance portal first (highlighted), then home.
   assert.match(screen, /<ChoicePanel label="Where to go">\s*<ChoiceCard\s+highlight/);
   // The tick is on the laptop (the right device); the phone is faded.
