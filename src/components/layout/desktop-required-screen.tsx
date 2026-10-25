@@ -43,7 +43,7 @@ export function DesktopRequiredScreen() {
   useApplyDarkMode();
 
   return (
-    <main className="relative flex min-h-dvh flex-col bg-background text-foreground sunray">
+    <main className="relative flex min-h-dvh flex-col bg-background text-foreground">
       <PortalPickers />
 
       {/* The drawing and the message sit centred in the space between the header and the panel. */}
