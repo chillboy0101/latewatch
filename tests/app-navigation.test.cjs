@@ -8,12 +8,16 @@ const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts),
 
 test('screens slide in and out like an app, and back buttons step back instead of stacking pages', () => {
   const nav = read('src', 'lib', 'app-nav.ts');
-  // The visited screens are tracked; back pops them, with each screen's parent as the fallback.
-  assert.match(nav, /else if \(stack\.at\(-2\) === pathname\) stack\.pop\(\);/);
+  // The way back is kept on each history entry, so it can't drift from the real history; back pops
+  // to the previous entry, with each screen's parent as the fallback.
+  assert.match(nav, /if \(own && own\.at\(-1\) === pathname\) \{\n\s*\/\/[^\n]*\n\s*currentStack = own;/);
+  assert.match(nav, /window\.history\.replaceState\(\{ \.\.\.window\.history\.state, \[STACK_STATE\]: currentStack \}, ''\);/);
   // The portal home is the first screen and sign-in screens are dropped: no back swipe into either.
-  assert.match(nav, /if \(pathname === '\/' \|\| \(left !== undefined && isAuthScreen\(left\)\)\) stack\.splice\(0, stack\.length - 1\);/);
+  assert.match(nav, /if \(pathname === '\/' \|\| \(left !== undefined && isAuthScreen\(left\)\)\) stack = \[pathname\];/);
   assert.match(nav, /if \(pathname === '\/' \|\| isAuthScreen\(pathname\)\) return null;/);
-  assert.match(nav, /if \(canGoBack\(\)\) \{\n\s*slideTo\(direction, \(\) => window\.history\.back\(\)\);/);
+  assert.match(nav, /if \(canGoBack\(\)\) \{\n\s*slideTo\(direction, \(\) => \{\n\s*skipSameScreenEntries\(\);\n\s*window\.history\.back\(\);/);
+  // Back never shows the same screen again: leftover entries for it are skipped.
+  assert.match(nav, /if \(window\.location\.pathname === leaving && !sheetOpen && skips < MAX_SAME_SCREEN_SKIPS\) \{\n\s*skips \+= 1;\n\s*window\.history\.back\(\);/);
   assert.match(nav, /replaceTop = true;\n\s*slideTo\(direction, \(\) => router\.replace\(fallbackHref\)\);/);
   // View transitions hold the old screen until the new one has rendered, with reduced motion respected.
   assert.match(nav, /document\.startViewTransition\(\(\) => new Promise<void>/);
@@ -32,7 +36,12 @@ test('screens slide in and out like an app, and back buttons step back instead o
   assert.match(read('src', 'components', 'layout', 'desktop-required-screen.tsx'), /href="\/check-in"\n\s*icon=\{<LogIn className="h-\[22px\] w-\[22px\]" \/>\}\n\s*replace\n/);
   assert.match(portal, /else if \(replace\) navigation\.replace\(href\);/);
   assert.match(nav, /replaceTop = true;\n\s*slideTo\('forward', \(\) => router\.replace\(href\)\);/);
-  assert.match(read('src', 'app', 'check-in', 'page.tsx'), /navigation\.back\('\/'\);/);
+  const checkIn = read('src', 'app', 'check-in', 'page.tsx');
+  assert.match(checkIn, /navigation\.back\('\/'\);/);
+  // "Back to portal" steps back too, a receipt opens with the slide, and the ?receipts=1 strip keeps the entry's state.
+  assert.match(checkIn, /navigation\.back\('\/'\);\n\s*\}\}\n\s*>\n\s*Back to portal/);
+  assert.match(checkIn, /navigation\.forward\(notification\.href\);/);
+  assert.match(checkIn, /window\.history\.replaceState\(window\.history\.state, '', '\/check-in'\);/);
   assert.match(read('src', 'app', 'check-in', 'receipts', '[paymentId]', 'page.tsx'), /navigation\.back\('\/check-in\?receipts=1'\);/);
 });
 

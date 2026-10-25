@@ -235,7 +235,7 @@ test('check-in page exposes auto-disappearing receipt notifications', () => {
   assert.match(source, /setTimeout/);
   assert.match(source, /dismissReceiptNotification/);
   assert.match(source, /\/api\/notifications/);
-  assert.match(source, /router\.push\(notification\.href\)/);
+  assert.match(source, /navigation\.forward\(notification\.href\)/);
   assert.match(source, /subscribeRealtimeChannel/);
   assert.match(source, /channel: 'staff-penalty-history'/);
 });

@@ -2,7 +2,6 @@
 
 import { UserButton, useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { AlertTriangle, ArrowLeft, ArrowRight, BellRing, Check, CheckCircle2, History, Loader2, LogIn, LogOut, MapPin, MoreHorizontal, Printer, ReceiptText, ShieldCheck, XCircle, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -640,7 +639,6 @@ async function locationForAction(readings: LocationEvidence[]): Promise<Location
 export default function CheckInPage() {
   const { isLoaded, user } = useUser();
   const { signOut } = useClerk();
-  const router = useRouter();
   const navigation = useAppNavigation();
   const isDark = useSyncExternalStore(subscribeThemeChange, getIsDarkTheme, () => true);
   const [status, setStatus] = useState<CheckInStatus | null>(null);
@@ -869,8 +867,8 @@ export default function CheckInPage() {
 
   const openReceiptNotification = useCallback((notification: LatenessPaymentReceiptNotification) => {
     void dismissReceiptNotification(notification.id);
-    router.push(notification.href);
-  }, [dismissReceiptNotification, router]);
+    navigation.forward(notification.href);
+  }, [dismissReceiptNotification, navigation]);
 
   // Hide a receipt's transient toast without dismissing it — it stays in the
   // ⋮ menu until the user views or dismisses it there.
@@ -932,7 +930,7 @@ export default function CheckInPage() {
     if (params.get('receipts') === '1') {
       setMenuOpen(true);
       setReceiptsDialogOpen(true);
-      window.history.replaceState({}, '', '/check-in');
+      window.history.replaceState(window.history.state, '', '/check-in');
     }
   }, []);
 
@@ -1695,6 +1693,7 @@ function PenaltyHistoryEntries({ entries }: { entries: PenaltyHistoryEntry[] }) 
 }
 
 function AccessNotSetUp({ email }: { email: string | null }) {
+  const navigation = useAppNavigation();
   return (
     <div className="space-y-4 p-4 text-center sm:p-6">
       <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-warning/25 bg-warning/10 text-warning">
@@ -1713,7 +1712,16 @@ function AccessNotSetUp({ email }: { email: string | null }) {
         </div>
       )}
       <Button asChild variant="outline" className="w-full sm:w-auto">
-        <Link href="/">Back to portal</Link>
+        <Link
+          href="/"
+          onClick={(event) => {
+            if (!isPlainClick(event)) return;
+            event.preventDefault();
+            navigation.back('/');
+          }}
+        >
+          Back to portal
+        </Link>
       </Button>
     </div>
   );
