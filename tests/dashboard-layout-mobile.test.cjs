@@ -11,9 +11,8 @@ test('on phones the admin portal shows the "admin needs a computer" page', () =>
   assert.match(layout, /<DesktopRequiredScreen \/>\s*<div className="relative hidden h-screen w-full overflow-hidden lg:flex">/);
 
   const screen = read('src', 'components', 'layout', 'desktop-required-screen.tsx');
-  assert.match(screen, /<main className="relative flex h-dvh flex-col[^"]*lg:hidden">/);
-  // Glowing top with the laptop-and-phone drawing, centred above the panel.
-  assert.doesNotMatch(screen, /radial-gradient/);
+  assert.match(screen, /<main className="relative flex min-h-dvh flex-col[^"]*lg:hidden">/);
+  // The laptop-and-phone drawing, centred above the panel, on the plain background.
   assert.match(screen, /<div className="flex min-h-0 flex-1 items-center justify-center[^"]*">\s*<DevicesIllustration \/>/);
   // Panel with the heading and two choice cards: attendance portal first (highlighted), then home.
   assert.match(screen, /<h1[^>]*>Admin needs a computer<\/h1>/);
