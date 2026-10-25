@@ -29,32 +29,56 @@ test('on phones the admin portal shows the "admin needs a computer" page', () =>
   assert.match(screen, /href="\/"[\s\S]{0,120}title="Portal Home"/);
   // Cards a little larger than the mockup (86px tall, 48px icons), shared with the portal home.
   const portalUi = read('src', 'components', 'layout', 'portal-ui.tsx');
-  assert.match(portalUi, /'flex h-\[86px\] items-center gap-4 rounded-\[22px\]/);
-  assert.match(portalUi, /'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl'/);
+  assert.match(portalUi, /size\?: 'default' \| 'large'/);
+  assert.match(portalUi, /'h-\[86px\] [^']*'/);
+  assert.match(portalUi, /'h-12 w-12 [^']*'/);
+  // Keyboard focus stays visible in forced-colours mode (outline-hidden, not outline-none).
+  assert.match(portalUi, /focus:outline-hidden/);
+  assert.doesNotMatch(portalUi, /outline-none/);
   assert.match(portalUi, /document\.documentElement\.classList\.toggle\('dark', isDark\)/);
   // Colours come from the theme, so it works in every theme and in light and dark mode.
   assert.match(screen, /color-mix\(in oklab, var\(--primary\) 55%, var\(--foreground\)\)/);
 });
 
-test('phone or computer is judged by the screen, not the window', () => {
+test('phone or computer is judged by the device: touch-first with a small screen', () => {
   require('tsx/cjs');
-  const { deviceKindForScreen } = require('../src/lib/device-kind.ts');
-  assert.equal(deviceKindForScreen(390, 844), 'phone');
-  assert.equal(deviceKindForScreen(844, 390), 'phone'); // phone turned sideways
-  assert.equal(deviceKindForScreen(768, 1024), 'computer'); // iPad in portrait
-  assert.equal(deviceKindForScreen(1440, 900), 'computer'); // laptop, whatever the window size
+  const { deviceKindFor } = require('../src/lib/device-kind.ts');
+  const kind = (width, height, coarsePointer = true) => deviceKindFor({ coarsePointer, height, width });
+  assert.equal(kind(390, 844), 'phone');
+  assert.equal(kind(844, 390), 'phone'); // phone turned sideways
+  assert.equal(kind(768, 1024), 'computer'); // iPad in portrait
+  assert.equal(kind(1440, 900, false), 'computer'); // laptop, whatever the window size
+  assert.equal(kind(1024, 576, false), 'computer'); // 1280x720 laptop at 125% scaling
 });
 
-test('portal home: phones get the clock and bottom panel, computers the wide card with big buttons', () => {
+test('portal home layout: phones and narrow windows compact, computers the wide card', () => {
+  require('tsx/cjs');
+  const { homeViewFor } = require('../src/lib/device-kind.ts');
+  assert.equal(homeViewFor('phone', 390), 'compact');
+  assert.equal(homeViewFor('phone', 1100), 'compact'); // a phone stays compact even if wide
+  assert.equal(homeViewFor('computer', 768), 'compact'); // iPad portrait, half-width laptop window
+  assert.equal(homeViewFor('computer', 1024), 'wide');
+  assert.equal(homeViewFor('computer', 1440), 'wide');
+});
+
+test('portal home renders one layout, with the two portals in order and an office-time clock', () => {
   const home = read('src', 'app', 'page.tsx');
-  assert.match(home, /<PortalPickers \/>/);
+  assert.match(home, /useSyncExternalStore\(subscribeDeviceKind, getHomeView, getServerHomeView\)/);
+  // Each layout renders only when chosen (both only before the browser answers).
+  assert.match(home, /\{view !== 'wide' && \(/);
+  assert.match(home, /\{view !== 'compact' && \(/);
+  // Attendance first (highlighted), then Admin, in both layouts.
+  const links = [...home.matchAll(/<ChoiceCard( highlight)?[^\n]*href="([^"]+)"[^\n]*title="([^"]+)"/g)].map((m) => [Boolean(m[1]), m[2], m[3]]);
+  assert.deepEqual(links, [
+    [true, '/check-in', 'Attendance Portal'],
+    [false, '/dashboard', 'Admin Portal'],
+    [true, '/check-in', 'Attendance Portal'],
+    [false, '/dashboard', 'Admin Portal'],
+  ]);
+  assert.match(home, /<ChoiceCard highlight size="large"/);
+  // The clock shows office (Accra) time and ticks inside its own card.
+  assert.match(home, /timeZone: ACCRA_TIME_ZONE/);
+  assert.match(home, /function ClockCard\([^)]*\) \{\s*const now = useNow\(\);/);
   assert.match(home, /useApplyDarkMode\(\);/);
-  // Phones and tablets: clock on top, the two portals in the bottom panel.
-  assert.match(home, /<div className="flex min-h-dvh flex-col lg:hidden">\s*<div[^>]*>\s*<ClockCard now=\{now\} \/>\s*<\/div>\s*<ChoicePanel label="Choose a portal">/);
-  assert.match(home, /<ChoiceCard highlight href="\/check-in"[^\n]*title="Attendance Portal" \/>\s*<ChoiceCard href="\/dashboard"[^\n]*title="Admin Portal" \/>/);
-  // Computers: one wide card, the clock on the left, the portals as big blocks filling the right.
-  assert.match(home, /<div className="hidden min-h-dvh items-center justify-center p-10 lg:flex">/);
-  assert.match(home, /<ClockCard large now=\{now\} \/>\s*<nav className="flex flex-col gap-3" aria-label="Choose a portal">\s*<LargeChoiceCard highlight href="\/check-in"[^\n]*title="Attendance Portal" \/>\s*<LargeChoiceCard href="\/dashboard"[^\n]*title="Admin Portal" \/>/);
-  assert.match(home, /'group flex flex-1 items-center gap-6 rounded-\[28px\]/);
   assert.doesNotMatch(home, /description|Staff check-in and check-out|LateWatchLogo/);
 });
