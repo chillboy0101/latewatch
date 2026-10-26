@@ -148,8 +148,9 @@ html {
 }
 
 /* Screens slide like an iPhone app (see lib/app-nav): opening a screen pushes it in from the right
-   over the old one, which drifts left and dims; going back slides the screen away to the right and
-   the previous one back in from the left. (The edge swipe back is the phone's own, with its own
+   over the old one, which drifts left; going back slides the screen away to the right and the
+   previous one back in from the left. Only transforms: Safari draws filters and shadows on these
+   slides as a dark layer over the screen. (The edge swipe back is the phone's own, with its own
    slide.) */
 :root {
   --nav-ease: cubic-bezier(0.32, 0.72, 0, 1);
@@ -166,13 +167,11 @@ html[data-nav="forward"]::view-transition-old(root) {
 
 html[data-nav="forward"]::view-transition-new(root) {
   z-index: 1;
-  box-shadow: -12px 0 32px rgb(0 0 0 / 0.18);
   animation: 380ms var(--nav-ease) both nav-in-from-right;
 }
 
 html[data-nav="back"]::view-transition-old(root) {
   z-index: 1;
-  box-shadow: -12px 0 32px rgb(0 0 0 / 0.18);
   animation: 340ms var(--nav-ease) both nav-out-to-right;
 }
 
@@ -185,7 +184,7 @@ html[data-nav="back"]::view-transition-new(root) {
 }
 
 @keyframes nav-drift-left {
-  to { transform: translateX(-30%); filter: brightness(0.9); }
+  to { transform: translateX(-30%); }
 }
 
 @keyframes nav-out-to-right {
@@ -193,7 +192,7 @@ html[data-nav="back"]::view-transition-new(root) {
 }
 
 @keyframes nav-in-from-left {
-  from { transform: translateX(-30%); filter: brightness(0.9); }
+  from { transform: translateX(-30%); }
 }
 
 /* The invisible native switch that gives iPhones their haptic (see HapticSwitch): it covers the
