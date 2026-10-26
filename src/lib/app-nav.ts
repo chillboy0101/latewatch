@@ -18,7 +18,7 @@ const NAV_EASE_WAIT_MS = 1500;
 // Most leftover same-screen entries back skips in one go (see navigateBack).
 const MAX_SAME_SCREEN_SKIPS = 5;
 
-export type NavDirection = 'forward' | 'back';
+export type NavDirection = 'forward' | 'back' | 'swipe-back';
 
 // The screens leading to this one, oldest first, kept on the browser history entry itself. So the
 // way back always matches the real history, through reloads, relaunches and the Android back button
@@ -33,6 +33,10 @@ const isAuthScreen = (pathname: string) => pathname.startsWith('/sign-in') || pa
 
 let currentStack: string[] = [];
 let currentIndex = 0;
+// The app was opened fresh on its first screen entry (nothing behind it in the history), and that
+// entry's index: while on it, iOS has no swipe back, so the app supplies one (canSwipeToParent).
+let historyStartsHere = false;
+let firstIndex: number | null = null;
 let replaceTop = false;
 let finishSlide: (() => void) | null = null;
 
@@ -55,6 +59,10 @@ export function recordPathname(pathname: string) {
     currentStack = stack.slice(-50);
     if (!replaceTop) currentIndex += 1;
     window.history.replaceState({ ...window.history.state, [STACK_STATE]: currentStack, [INDEX_STATE]: currentIndex }, '');
+  }
+  if (firstIndex === null) {
+    firstIndex = currentIndex;
+    historyStartsHere = window.history.length === 1;
   }
   replaceTop = false;
   // The new screen is on the page: let the slide animate to it.
@@ -102,6 +110,14 @@ export function handlePopState() {
 function isDeadEndEntry() {
   const state: unknown = window.history.state;
   return Boolean(state && typeof state === 'object' && (state as Record<string, unknown>)[DEAD_END_STATE]);
+}
+
+/**
+ * True when the app was opened straight onto this screen (nothing behind it, so iOS offers no swipe
+ * back) and it has a parent to go back to: the app's own edge swipe takes over (AppPage).
+ */
+export function canSwipeToParent() {
+  return historyStartsHere && currentIndex === firstIndex && !canGoBack() && parentPath(window.location.pathname) !== null;
 }
 
 /** True when there is an earlier screen from this session to go back to. */

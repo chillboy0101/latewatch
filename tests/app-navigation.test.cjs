@@ -46,9 +46,13 @@ test('screens slide in and out like an app, and back buttons step back instead o
 
 test("the edge swipe back is the phone's own, and no swipe forward reopens a screen", () => {
   const page = read('src', 'components', 'layout', 'app-page.tsx');
-  // No custom swipe on top of the phone's own (iOS draws the previous screen under the finger).
-  assert.doesNotMatch(page, /touchstart|touchmove/);
-  assert.match(page, /useEffect\(\(\) => \{\n\s*recordPathname\(pathname\);\n\s*\}, \[pathname\]\);/);
+  // The app's own swipe only runs where iOS has none: a screen the app was opened straight onto.
+  assert.match(page, /if \(!canSwipeToParent\(\) \|\| document\.querySelector\('\[role="dialog"\]'\)\) return;/);
+  assert.match(page, /navigateBack\(router, parentPath\(window\.location\.pathname\) \?\? '\/', 'swipe-back'\)/);
+  assert.match(page, /clearDrag\(pageRef\.current\);\n\s*recordPathname\(pathname\);/);
+  const navSrc = read('src', 'lib', 'app-nav.ts');
+  assert.match(navSrc, /return historyStartsHere && currentIndex === firstIndex && !canGoBack\(\) && parentPath\(window\.location\.pathname\) !== null;/);
+  assert.match(navSrc, /historyStartsHere = window\.history\.length === 1;/);
   // Going back leaves a dead end ahead, and landing on it (iOS's swipe forward) steps straight back.
   assert.match(page, /window\.addEventListener\('popstate', handlePopState\);/);
   const navFile = read('src', 'lib', 'app-nav.ts');
