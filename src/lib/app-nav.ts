@@ -10,6 +10,8 @@ import { useMemo } from 'react';
 
 const STACK_STATE = 'latewatchStack';
 const DEAD_END_STATE = 'latewatchDeadEnd';
+// How long the dead end stays shown before stepping back off it (see leaveDeadEnd).
+const DEAD_END_SNAPSHOT_MS = 250;
 // Each screen entry's place in the history (counting up as screens open), to tell back from forward.
 const INDEX_STATE = 'latewatchIndex';
 const NAV_EASE_WAIT_MS = 1500;
@@ -64,9 +66,16 @@ export function recordPathname(pathname: string) {
 // a swipe from the right edge; apps have no swipe forward. A new entry drops everything ahead of
 // this screen, so put one in (a copy of this screen marked as a dead end) and step back onto this
 // screen: a swipe forward can now only reach the dead end, which steps straight back (AppPage).
+// The step back waits a moment so iOS has drawn the dead end (this same screen) and keeps a picture
+// of it for the swipe; stepping back at once leaves it blank, and the swipe slides in a white page.
 export function leaveDeadEnd() {
   window.history.pushState({ ...window.history.state, [DEAD_END_STATE]: true }, '');
-  window.history.back();
+  window.requestAnimationFrame(() => {
+    window.setTimeout(() => {
+      // Still on the dead end (no back or new screen in the meantime): step back onto this screen.
+      if (isDeadEndEntry()) window.history.back();
+    }, DEAD_END_SNAPSHOT_MS);
+  });
 }
 
 function entryIndex() {
