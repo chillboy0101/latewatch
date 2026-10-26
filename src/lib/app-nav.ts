@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useMemo } from 'react';
+import { isAppleTouchDevice } from '@/lib/haptics';
 
 // App-style navigation for the staff screens (portal home, attendance, receipts, "admin needs a
 // computer"). Opening a screen slides it in from the right; going back slides it away to the right
@@ -122,9 +123,10 @@ function prefersReducedMotion() {
 
 // Runs a navigation inside a view transition so the old and new screens can slide. The transition
 // holds the old screen until the new one has rendered (or 1.5 s: a slower screen gets no slide). Browsers
-// without view transitions, or with reduced motion on, just navigate.
+// without view transitions, or with reduced motion on, just navigate. So do iPhones and iPads: iOS
+// has its own swipe and slide, and Safari leaves a grey layer over screens after these slides.
 export function slideTo(direction: NavDirection, navigate: () => void) {
-  if (typeof document.startViewTransition !== 'function' || prefersReducedMotion()) {
+  if (typeof document.startViewTransition !== 'function' || prefersReducedMotion() || isAppleTouchDevice()) {
     navigate();
     return;
   }

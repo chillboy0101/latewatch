@@ -10,3 +10,8 @@ const TAPPABLE = 'a[href], button:not(:disabled), [role="button"]:not([aria-disa
 export function isTappable(target: EventTarget | null) {
   return target instanceof Element && target.closest(TAPPABLE) !== null;
 }
+
+// iPhones and iPads (iPadOS reports itself as a Mac with a touch screen).
+export function isAppleTouchDevice() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}

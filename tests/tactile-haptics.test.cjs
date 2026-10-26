@@ -35,7 +35,7 @@ test('phones get a haptic tap on every link and button: vibration on Android, a 
   // iPhone: an invisible native switch the finger toggles, which then clicks its button or link.
   const hapticSwitch = read('src', 'components', 'ui', 'haptic-switch.tsx');
   assert.match(hapticSwitch, /isAppleTouchDevice\(\) \|\| \(typeof navigator\.vibrate !== 'function' && window\.matchMedia\('\(pointer: coarse\)'\)\.matches\)/);
-  assert.match(hapticSwitch, /\/iPad\|iPhone\|iPod\/\.test\(navigator\.userAgent\)/);
+  assert.match(read('src', 'lib', 'haptics.ts'), /\/iPad\|iPhone\|iPod\/\.test\(navigator\.userAgent\)/);
   assert.match(hapticSwitch, /element\?\.setAttribute\('switch', ''\)/);
   assert.match(hapticSwitch, /event\.stopPropagation\(\);[\s\S]*host\?\.click\(\);/);
   const css = read('src', 'app', 'globals.css');

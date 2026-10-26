@@ -1,6 +1,7 @@
 'use client';
 
 import { useSyncExternalStore, type MouseEvent } from 'react';
+import { isAppleTouchDevice } from '@/lib/haptics';
 
 // iPhones have no working vibration API, and since iOS 26.5 a switch toggled from script no longer
 // plays the haptic either: only a finger toggling a native switch does. So on iPhones (and other
@@ -8,12 +9,8 @@ import { useSyncExternalStore, type MouseEvent } from 'react';
 // over its whole area. The tap lands on the switch (the haptic) and is then handed on to the button
 // or link as an ordinary click, so links navigate, forms submit and handlers run as before.
 
-// iPhones and iPads are detected directly (iPadOS reports itself as a Mac with a touch screen), as
-// newer iOS versions may expose a navigator.vibrate that does nothing.
-function isAppleTouchDevice() {
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-}
-
+// iPhones and iPads are detected directly, as newer iOS versions may expose a navigator.vibrate
+// that does nothing.
 function needsSwitchHaptics() {
   return isAppleTouchDevice() || (typeof navigator.vibrate !== 'function' && window.matchMedia('(pointer: coarse)').matches);
 }

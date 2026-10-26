@@ -22,6 +22,8 @@ test('screens slide in and out like an app, and back buttons step back instead o
   // View transitions hold the old screen until the new one has rendered, with reduced motion respected.
   assert.match(nav, /document\.startViewTransition\(\(\) => new Promise<void>/);
   assert.match(nav, /prefers-reduced-motion: reduce/);
+  // iPhones and iPads get no app slides (iOS has its own; Safari leaves a grey layer after them).
+  assert.match(nav, /prefersReducedMotion\(\) \|\| isAppleTouchDevice\(\)\) \{/);
 
   const css = read('src', 'app', 'globals.css');
   assert.match(css, /html\[data-nav="forward"\]::view-transition-new\(root\) \{[^}]*nav-in-from-right/);
