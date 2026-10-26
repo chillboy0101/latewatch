@@ -26,6 +26,11 @@ test('screens slide in and out like an app, and back buttons step back instead o
   const css = read('src', 'app', 'globals.css');
   assert.match(css, /html\[data-nav="forward"\]::view-transition-new\(root\) \{[^}]*nav-in-from-right/);
   assert.match(css, /html\[data-nav="back"\]::view-transition-old\(root\) \{[^}]*nav-out-to-right/);
+  // Only transforms: Safari draws filters and shadows on these slides as a dark layer.
+  const slideCss = css.slice(css.indexOf('html[data-nav]'), css.indexOf('@keyframes nav-in-from-left'));
+  assert.doesNotMatch(slideCss, /filter|box-shadow/);
+  // A screen slower than the wait gets no slide (no old screen sliding over itself).
+  assert.match(nav, /finishSlide = null;\n\s*transition\.skipTransition\(\);\n\s*resolve\(\);/);
 
   // The staff screens use it: portal cards slide forward, back buttons and "Portal Home" step back.
   const portal = read('src', 'components', 'layout', 'portal-ui.tsx');

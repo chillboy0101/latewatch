@@ -121,7 +121,7 @@ function prefersReducedMotion() {
 }
 
 // Runs a navigation inside a view transition so the old and new screens can slide. The transition
-// holds the old screen until the new one has rendered (or 1.5 s, for a slow screen). Browsers
+// holds the old screen until the new one has rendered (or 1.5 s: a slower screen gets no slide). Browsers
 // without view transitions, or with reduced motion on, just navigate.
 export function slideTo(direction: NavDirection, navigate: () => void) {
   if (typeof document.startViewTransition !== 'function' || prefersReducedMotion()) {
@@ -136,7 +136,13 @@ export function slideTo(direction: NavDirection, navigate: () => void) {
       window.clearTimeout(timer);
       resolve();
     };
-    const timer = window.setTimeout(done, NAV_EASE_WAIT_MS);
+    // The new screen is slow to come: no slide (it would slide the old screen over itself); the
+    // new one just appears when it is ready.
+    const timer = window.setTimeout(() => {
+      finishSlide = null;
+      transition.skipTransition();
+      resolve();
+    }, NAV_EASE_WAIT_MS);
     finishSlide = done;
     navigate();
   }));
