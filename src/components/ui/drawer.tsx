@@ -9,6 +9,12 @@ import { cn } from '@/lib/utils';
 // Back (the edge swipe, the Android back button) closes the top sheet instead of leaving the screen,
 // like a sheet in an app. While a sheet is open it has its own history entry (same URL); going back
 // pops it and closes the sheet, and closing the sheet any other way takes the entry back off.
+// When a sheet last opened. On iPhones the tap that opens a sheet can arrive a second time a moment
+// later; it lands behind the new sheet while it is still sliding up, counts as a tap outside, and
+// closes it (and the sheet under it). Taps outside that soon after a sheet opens are ignored.
+let lastSheetOpenedAt = 0;
+const OPEN_GRACE_MS = 600;
+
 let lastSheetId = 0;
 let pendingPops = 0;
 
@@ -43,7 +49,9 @@ function useCloseOnBack(
   });
 
   React.useEffect(() => {
-    if (!open || !closeRef.current) return;
+    if (!open) return;
+    lastSheetOpenedAt = performance.now();
+    if (!closeRef.current) return;
     let id = 0;
     let added = false;
     let cancelled = false;
@@ -144,28 +152,34 @@ DrawerOverlay.displayName = DrawerPrimitive.Overlay.displayName;
 const DrawerContent = React.forwardRef<
   React.ElementRef<typeof DrawerPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Content> & { hideHandle?: boolean }
->(({ className, children, hideHandle = false, ...props }, ref) => (
-  <DrawerPortal>
-    <DrawerOverlay />
-    <DrawerPrimitive.Content
-      ref={ref}
-      className={cn(
-        'drawer-glass fixed inset-x-[9px] bottom-[9px] z-50 mt-24 mx-auto flex h-auto flex-col overflow-hidden rounded-[38px] border border-border/50 shadow-2xl outline-none',
-        'pb-[env(safe-area-inset-bottom)]',
-        'sm:max-w-md',
-        className,
-      )}
-      {...props}
-    >
-      {/* A slim, quiet grabber like the system sheets on iOS and Android. The whole top of the
-          sheet is draggable, so the handle only needs to be seen, not aimed at. */}
-      {!hideHandle && (
-        <div aria-hidden className="mx-auto mt-2.5 h-1.5 w-10 shrink-0 rounded-full bg-muted-foreground/40" />
-      )}
-      {children}
-    </DrawerPrimitive.Content>
-  </DrawerPortal>
-));
+>(({ className, children, hideHandle = false, onPointerDownOutside, ...props }, ref) => {
+  return (
+    <DrawerPortal>
+      <DrawerOverlay />
+      <DrawerPrimitive.Content
+        ref={ref}
+        onPointerDownOutside={(event) => {
+          if (performance.now() - lastSheetOpenedAt < OPEN_GRACE_MS) event.preventDefault();
+          onPointerDownOutside?.(event);
+        }}
+        className={cn(
+          'drawer-glass fixed inset-x-[9px] bottom-[9px] z-50 mt-24 mx-auto flex h-auto flex-col overflow-hidden rounded-[38px] border border-border/50 shadow-2xl outline-none',
+          'pb-[env(safe-area-inset-bottom)]',
+          'sm:max-w-md',
+          className,
+        )}
+        {...props}
+      >
+        {/* A slim, quiet grabber like the system sheets on iOS and Android. The whole top of the
+            sheet is draggable, so the handle only needs to be seen, not aimed at. */}
+        {!hideHandle && (
+          <div aria-hidden className="mx-auto mt-2.5 h-1.5 w-10 shrink-0 rounded-full bg-muted-foreground/40" />
+        )}
+        {children}
+      </DrawerPrimitive.Content>
+    </DrawerPortal>
+  );
+});
 DrawerContent.displayName = 'DrawerContent';
 
 function DrawerHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
