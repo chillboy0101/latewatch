@@ -1,7 +1,8 @@
 'use client';
 
-import { useSyncExternalStore, type MouseEvent } from 'react';
+import { useSyncExternalStore, type MouseEvent, type ReactNode } from 'react';
 import { isAppleTouchDevice } from '@/lib/haptics';
+import { cn } from '@/lib/utils';
 
 // iPhones have no working vibration API, and since iOS 26.5 a switch toggled from script no longer
 // plays the haptic either: only a finger toggling a native switch does. So on iPhones (and other
@@ -21,8 +22,28 @@ function handOnTap(event: MouseEvent<HTMLInputElement>) {
   // The switch is the click's target, so the browser would only toggle it: links wouldn't follow
   // and submit buttons wouldn't submit. Stop this click here and click the button or link itself.
   event.stopPropagation();
-  const host = event.currentTarget.parentElement?.closest<HTMLElement>('a[href], button, [role="button"]');
+  const parent = event.currentTarget.parentElement;
+  const host = parent?.closest<HTMLElement>('a[href], button, [role="button"]')
+    ?? parent?.closest('[data-haptic-host]')?.querySelector<HTMLElement>('button, input:not(.haptic-switch)');
+  // A colour input opens its picker (a click from script may not on every browser).
+  if (host instanceof HTMLInputElement && host.type === 'color' && typeof host.showPicker === 'function') {
+    try {
+      host.showPicker();
+      return;
+    } catch {}
+  }
   host?.click();
+}
+
+// For a control drawn by someone else (the account button): the switch sits over it and hands the
+// tap on to the button or input inside.
+export function HapticHost({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <span className={cn('relative inline-flex', className)} data-haptic-host>
+      {children}
+      <HapticSwitch />
+    </span>
+  );
 }
 
 export function HapticSwitch() {

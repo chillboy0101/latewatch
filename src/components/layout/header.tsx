@@ -16,6 +16,7 @@ import { useNotifications, type Notification } from '@/contexts/notification-con
 import { getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 import { ModePicker } from '@/components/theme/mode-picker';
 import { ThemePicker } from '@/components/theme/theme-picker';
+import { HapticHost } from '@/components/ui/haptic-switch';
 import { cn } from '@/lib/utils';
 
 interface HeaderProps {
@@ -263,7 +264,9 @@ export function Header({ title, userRole }: HeaderProps) {
           )}
           <div className="h-8 w-8">
             {isLoaded ? (
-              <UserButton />
+              <HapticHost className="rounded-full">
+                <UserButton />
+              </HapticHost>
             ) : (
               <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
             )}

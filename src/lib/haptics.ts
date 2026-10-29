@@ -5,7 +5,7 @@ export function haptic() {
 }
 
 // What counts as a tap worth feeling: links, buttons and button-like controls that are enabled.
-const TAPPABLE = 'a[href], button:not(:disabled), [role="button"]:not([aria-disabled="true"]), [role="tab"], [role="menuitem"], [role="option"], [role="switch"]';
+const TAPPABLE = 'a[href], button:not(:disabled), [role="button"]:not([aria-disabled="true"]), [role="tab"], [role="menuitem"], [role="option"], [role="switch"], input[type="color"]';
 
 export function isTappable(target: EventTarget | null) {
   return target instanceof Element && target.closest(TAPPABLE) !== null;

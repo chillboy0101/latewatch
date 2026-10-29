@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { Check, Monitor, Moon, RotateCcw, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { HapticSwitch } from '@/components/ui/haptic-switch';
 import { cn } from '@/lib/utils';
 import { applyThemeAccent, DEFAULT_ACCENT, DEFAULT_ACCENT_COLOR, applyThemePreference, getIsDarkTheme, getThemeAccent, getThemePreference, subscribeThemeChange, type ThemePreference } from '@/lib/theme';
 import { useDismissable } from '@/components/theme/use-dismissable';
@@ -64,13 +65,14 @@ export function ModePicker({
                 setOpen(false);
               }}
               className={cn(
-                'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors',
+                'relative flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors',
                 preference === value ? 'bg-primary/10 font-medium text-foreground' : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground',
               )}
             >
               <Icon className="h-4 w-4" />
               <span className="flex-1 text-left">{label}</span>
               {preference === value && <Check className="h-4 w-4 text-primary" />}
+              <HapticSwitch />
             </button>
           ))}
           {/* Back to the standard blue after picking a colour with the theme colour button. */}
@@ -85,11 +87,12 @@ export function ModePicker({
                   applyThemeAccent(DEFAULT_ACCENT);
                   setOpen(false);
                 }}
-                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
+                className="relative flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
               >
                 <RotateCcw className="h-4 w-4" />
                 <span className="flex-1 whitespace-nowrap text-left">Reset to wine</span>
                 <span aria-hidden className="h-3 w-3 rounded-full" style={{ background: DEFAULT_ACCENT_COLOR }} />
+                <HapticSwitch />
               </button>
             </>
           )}

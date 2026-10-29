@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { AlertTriangle, ArrowLeft, ArrowRight, BellRing, Check, CheckCircle2, History, Loader2, LogIn, LogOut, MapPin, MoreHorizontal, Printer, ReceiptText, ShieldCheck, XCircle, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { HapticSwitch } from '@/components/ui/haptic-switch';
+import { HapticHost, HapticSwitch } from '@/components/ui/haptic-switch';
 import { Card } from '@/components/ui/card';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerNested, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
@@ -1407,9 +1407,11 @@ export default function CheckInPage() {
                 signOutEnabled={signOutReminderEnabled}
               />
             </Drawer>
-            <UserButton
-              appearance={{ elements: { userButtonAvatarBox: 'h-10 w-10 ring-1 ring-border/40' } }}
-            />
+            <HapticHost className="rounded-full">
+              <UserButton
+                appearance={{ elements: { userButtonAvatarBox: 'h-10 w-10 ring-1 ring-border/40' } }}
+              />
+            </HapticHost>
           </div>
         </header>
 
