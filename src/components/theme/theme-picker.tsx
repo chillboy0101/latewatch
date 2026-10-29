@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { Palette } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
-import { HapticSwitch } from '@/components/ui/haptic-switch';
 import { cn } from '@/lib/utils';
 import {
   applyThemeAccent,
@@ -85,7 +84,6 @@ export function ThemePicker({
 
   return (
     <label
-      data-haptic-host
       title="Theme colour"
       className={cn(
         buttonVariants({ size: 'icon', variant: buttonVariant }),
@@ -107,7 +105,8 @@ export function ThemePicker({
         onChange={(event) => previewLive(event.target.value)}
         className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
       />
-      <HapticSwitch />
+      {/* No haptic switch here: iPhones open the colour picker reliably only when the finger lands
+          on the colour input itself, not on a click passed on from a switch. */}
     </label>
   );
 }
