@@ -24,13 +24,12 @@ function handOnTap(event: MouseEvent<HTMLInputElement>) {
   event.stopPropagation();
   const parent = event.currentTarget.parentElement;
   const host = parent?.closest<HTMLElement>('a[href], button, [role="button"]')
-    ?? parent?.closest('[data-haptic-host]')?.querySelector<HTMLElement>('button, input:not(.haptic-switch)');
-  // A colour input opens its picker on this click (on iPhones only a click opens it).
+    ?? parent?.closest('[data-haptic-host]')?.querySelector<HTMLElement>('button');
   host?.click();
 }
 
 // For a control drawn by someone else (the account button): the switch sits over it and hands the
-// tap on to the button or input inside.
+// tap on to the button inside.
 export function HapticHost({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <span className={cn('relative inline-flex', className)} data-haptic-host>
