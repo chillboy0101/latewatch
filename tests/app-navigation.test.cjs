@@ -81,6 +81,9 @@ test('back closes the top sheet instead of leaving the screen', () => {
   assert.match(drawer, /if \(!closedByBack && top !== null && top >= id\) popSheetEntries\(\);/);
   // Never history.go(0), which would reload the page.
   assert.match(drawer, /if \(count === 0\) return;\n[\s\S]*window\.history\.go\(-count\);/);
+  // A late repeat of the opening tap (iPhones) lands behind a sheet still sliding up: ignored.
+  assert.match(drawer, /if \(!open\) return;\n\s*lastSheetOpenedAt = performance\.now\(\);/);
+  assert.match(drawer, /if \(performance\.now\(\) - lastSheetOpenedAt < OPEN_GRACE_MS\) event\.preventDefault\(\);/);
   // Closed sheets are capped off, so a swipe forward can't reopen one.
   assert.match(drawer, /window\.addEventListener\('popstate', \(\) => window\.setTimeout\(leaveDeadEnd, 0\), \{ once: true \}\);/);
   assert.match(drawer, /closeRef\.current\?\.\(false\);\n\s*\/\/[^\n]*\n\s*window\.setTimeout\(leaveDeadEnd, 0\);/);
