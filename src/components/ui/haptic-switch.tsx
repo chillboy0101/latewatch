@@ -25,13 +25,7 @@ function handOnTap(event: MouseEvent<HTMLInputElement>) {
   const parent = event.currentTarget.parentElement;
   const host = parent?.closest<HTMLElement>('a[href], button, [role="button"]')
     ?? parent?.closest('[data-haptic-host]')?.querySelector<HTMLElement>('button, input:not(.haptic-switch)');
-  // A colour input opens its picker (a click from script may not on every browser).
-  if (host instanceof HTMLInputElement && host.type === 'color' && typeof host.showPicker === 'function') {
-    try {
-      host.showPicker();
-      return;
-    } catch {}
-  }
+  // A colour input opens its picker on this click (on iPhones only a click opens it).
   host?.click();
 }
 

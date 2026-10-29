@@ -53,7 +53,8 @@ test('phones get a haptic tap on every link and button: vibration on Android, a 
   assert.match(palette, /<label\n\s*data-haptic-host/);
   assert.match(palette, /<HapticSwitch \/>\n\s*<\/label>/);
   assert.match(hapticSwitch, /closest\('\[data-haptic-host\]'\)\?\.querySelector<HTMLElement>\('button, input:not\(\.haptic-switch\)'\)/);
-  assert.match(hapticSwitch, /host\.showPicker\(\);/);
+  // iPhones open no colour picker from showPicker(): the colour input gets the click itself.
+  assert.doesNotMatch(hapticSwitch, /showPicker/);
   assert.match(haptics, /input\[type="color"\]/);
   for (const file of [['src', 'app', 'check-in', 'page.tsx'], ['src', 'components', 'layout', 'header.tsx']]) {
     assert.match(read(...file), /<HapticHost className="rounded-full">\n\s*<UserButton/);
