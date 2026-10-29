@@ -50,9 +50,14 @@ export function useClerk() {
 
 export function UserButton() {
   return (
-    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+    <button
+      type="button"
+      aria-label="Open user button"
+      onClick={() => { document.body.dataset.userMenu = 'open'; }}
+      className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground"
+    >
       TA
-    </span>
+    </button>
   );
 }
 

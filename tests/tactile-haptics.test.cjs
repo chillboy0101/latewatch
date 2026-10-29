@@ -46,6 +46,18 @@ test('phones get a haptic tap on every link and button: vibration on Android, a 
   assert.match(button, /<Slottable>\{children\}<\/Slottable>\n\s*<HapticSwitch \/>/);
   assert.match(read('src', 'components', 'layout', 'portal-ui.tsx'), /<HapticSwitch \/>\n\s*<\/Link>/);
   assert.match(read('src', 'app', 'check-in', 'page.tsx'), /<HapticSwitch \/>\n\s*<\/button>/);
+  // The light/dark/system menu items, the colour button and the account button carry one too.
+  const mode = read('src', 'components', 'theme', 'mode-picker.tsx');
+  assert.equal([...mode.matchAll(/<HapticSwitch \/>\n\s*<\/button>/g)].length, 2);
+  const palette = read('src', 'components', 'theme', 'theme-picker.tsx');
+  assert.match(palette, /<label\n\s*data-haptic-host/);
+  assert.match(palette, /<HapticSwitch \/>\n\s*<\/label>/);
+  assert.match(hapticSwitch, /closest\('\[data-haptic-host\]'\)\?\.querySelector<HTMLElement>\('button, input:not\(\.haptic-switch\)'\)/);
+  assert.match(hapticSwitch, /host\.showPicker\(\);/);
+  assert.match(haptics, /input\[type="color"\]/);
+  for (const file of [['src', 'app', 'check-in', 'page.tsx'], ['src', 'components', 'layout', 'header.tsx']]) {
+    assert.match(read(...file), /<HapticHost className="rounded-full">\n\s*<UserButton/);
+  }
 });
 
 test('no sunray pattern behind the staff screens', () => {
