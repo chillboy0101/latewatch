@@ -11,7 +11,7 @@ import {
 } from '@/lib/attendance-export-shared';
 import { formatAbsencePermissionReason } from '@/lib/attendance-permissions';
 import { getAccraDateKey } from '@/lib/date-key';
-import { staffTypeOf, staffTypeOn, type StaffType, type StaffTypeChange } from '@/lib/staff-type';
+import { isAwayOnDate, staffTypeOf, staffTypeOn, type StaffType, type StaffTypeChange } from '@/lib/staff-type';
 import { WORKDAY_START_TIME } from '@/lib/work-hours';
 
 export { getAttendanceExportFileName };
@@ -194,13 +194,6 @@ function monthDateKeys(year: number, month: number) {
   return Array.from({ length: lastDay }, (_, index) => dateKey(new Date(Date.UTC(year, month, index + 1))));
 }
 
-// Deactivated or archived on a day, from the person's type history (which records each spell
-// away). Someone with no history is judged by today's status.
-function isAwayOn(member: RosterStaff, key: string) {
-  if (member.typeChanges && member.typeChanges.length > 0) return staffTypeOn(key, member.typeChanges, member) === 'away';
-  return member.active === false;
-}
-
 function exportGroupOf(type: StaffType): AttendanceExportGroup {
   if (type === 'nss') return 'nss';
   return type === 'intern' || type === 'special' ? 'interns' : 'main';
@@ -278,7 +271,7 @@ function resolveDayStatus(
   leavePeriodsByStaff: Map<string, LeavePeriodRow[]>,
   permissionsByStaffDate: Map<string, PermissionRow>,
 ): DayStatus {
-  if (isAwayOn(member, key) || hasLeavePeriod(member.id, key, leavePeriodsByStaff)) return { kind: 'leave' };
+  if (isAwayOnDate(key, member.typeChanges, member) || hasLeavePeriod(member.id, key, leavePeriodsByStaff)) return { kind: 'leave' };
 
   const permission = permissionsByStaffDate.get(`${member.id}:${key}`);
   if (permission?.generalPardonType === 'absence') {
@@ -803,7 +796,8 @@ export async function buildAttendanceExportWorkbook({
   ]);
 
   const { getStaffTypeChanges } = await import('@/lib/staff-type-history');
-  const typeChanges = await getStaffTypeChanges(roster.map((member) => member.id));
+  // Archived staff never get a row, so their history isn't needed.
+  const typeChanges = await getStaffTypeChanges(roster.filter((member) => member.archived !== true).map((member) => member.id));
   const rosterWithHistory = roster.map((member) => ({ ...member, typeChanges: typeChanges.get(member.id) }));
 
   const workbook = await buildAttendanceWorkbookFromData({

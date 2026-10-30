@@ -7,7 +7,7 @@ import { syncLatenessEntriesFromAttendanceForDate } from '@/lib/attendance-laten
 import { isGeneralPardonReason, isPermissionWindowActive, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
 import { attendanceStatusFor } from '@/lib/manual-attendance-correction';
 import { getStaffLeavePeriodsForRange } from '@/lib/staff-leave-service';
-import { staffTypeOn } from '@/lib/staff-type';
+import { isAwayOnDate, penaltyFlagsOn } from '@/lib/staff-type';
 import { getStaffTypeChanges } from '@/lib/staff-type-history';
 import { getActiveLeavePeriod } from '@/lib/staff-leave';
 import { getAttendanceStatusFlags, primaryAttendanceStatus, type AttendanceStatus } from '@/lib/attendance-status';
@@ -94,19 +94,20 @@ export async function GET(request: NextRequest) {
           or(eq(attendancePermission.status, 'approved'), isNotNull(attendancePermission.generalPardonType)),
         ))),
     ]);
-    // Who was on staff that day: a past date still lists someone deactivated since (and their
-    // check-in), and leaves out anyone away then. With no type history, today's status decides.
-    const typeChanges = await requiredAttendanceQuery('staff-type-history', () => getStaffTypeChanges(candidateStaffRows.map((member) => member.id)));
-    const staffRows = candidateStaffRows.filter((member) => {
-      const changes = typeChanges.get(member.id);
-      if (!changes || changes.length === 0) return member.active === true;
-      return staffTypeOn(date, changes, member) !== 'away';
-    });
-    const leavePeriods = await getStaffLeavePeriodsForRange({
-      endDate: date,
-      staffIds: staffRows.map((member) => member.id),
-      startDate: date,
-    });
+    const candidateIds = candidateStaffRows.map((member) => member.id);
+    const [typeChanges, leavePeriods] = await Promise.all([
+      requiredAttendanceQuery('staff-type-history', () => getStaffTypeChanges(candidateIds)),
+      getStaffLeavePeriodsForRange({ endDate: date, staffIds: candidateIds, startDate: date }),
+    ]);
+    // Who was on staff that day, as the type they had then: a past date still lists someone
+    // deactivated since (and their check-in), and leaves out anyone away then. Archived staff
+    // are gone from every list.
+    const staffRows = candidateStaffRows
+      .filter((member) => !isAwayOnDate(date, typeChanges.get(member.id), member))
+      .map((member) => {
+        const changes = typeChanges.get(member.id);
+        return changes && changes.length > 0 ? { ...member, ...penaltyFlagsOn(date, changes, member) } : member;
+      });
 
     const [attemptRows, deviceRows, network, locationRows, transferRows, chargeRows] = await Promise.all([
       optionalAttendanceQuery('attendance-attempts', [], () => db.select()
