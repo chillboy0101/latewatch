@@ -11,6 +11,7 @@ import {
 } from '@/lib/attendance-export-shared';
 import { formatAbsencePermissionReason } from '@/lib/attendance-permissions';
 import { getAccraDateKey } from '@/lib/date-key';
+import { staffTypeOf, staffTypeOn, type StaffType, type StaffTypeChange } from '@/lib/staff-type';
 import { WORKDAY_START_TIME } from '@/lib/work-hours';
 
 export { getAttendanceExportFileName };
@@ -27,6 +28,9 @@ type RosterStaff = {
   isNssPersonnel?: boolean | null;
   rank?: string | null;
   staffNo?: string | null;
+  staffType?: string | null;
+  // Type changes and spells away, oldest first (see staff-type-history).
+  typeChanges?: StaffTypeChange[];
 };
 
 type AttendanceRow = {
@@ -185,15 +189,41 @@ function getHolidaySet(rows: HolidayRow[]) {
   );
 }
 
-function sortedRoster(roster: RosterStaff[], group: AttendanceExportGroup) {
+function monthDateKeys(year: number, month: number) {
+  const lastDay = endOfMonth(new Date(Date.UTC(year, month, 1))).getUTCDate();
+  return Array.from({ length: lastDay }, (_, index) => dateKey(new Date(Date.UTC(year, month, index + 1))));
+}
+
+// Deactivated or archived on a day, from the person's type history (which records each spell
+// away). Someone with no history is judged by today's status.
+function isAwayOn(member: RosterStaff, key: string) {
+  if (member.typeChanges && member.typeChanges.length > 0) return staffTypeOn(key, member.typeChanges, member) === 'away';
+  return member.active === false;
+}
+
+function exportGroupOf(type: StaffType): AttendanceExportGroup {
+  if (type === 'nss') return 'nss';
+  return type === 'intern' || type === 'special' ? 'interns' : 'main';
+}
+
+// The type someone had in the month (on their last day here that month), or null if they were
+// away all month: a person deactivated before the month, or not yet back, has no row in it.
+function typeInMonth(member: RosterStaff, monthKeys: string[]): StaffType | null {
+  if (!member.typeChanges || member.typeChanges.length === 0) return staffTypeOf(member);
+  for (let index = monthKeys.length - 1; index >= 0; index--) {
+    const type = staffTypeOn(monthKeys[index], member.typeChanges, member);
+    if (type !== 'away') return type;
+  }
+  return null;
+}
+
+function sortedRoster(roster: RosterStaff[], group: AttendanceExportGroup, year: number, month: number) {
+  const monthKeys = monthDateKeys(year, month);
   return roster
     .filter((member) => {
       if (member.archived === true) return false;
-      if (group === 'interns') return member.isAttendanceOnly === true;
-      if (member.isAttendanceOnly === true) return false;
-      return group === 'nss'
-        ? member.isNssPersonnel === true
-        : member.isNssPersonnel !== true;
+      const type = typeInMonth(member, monthKeys);
+      return type !== null && exportGroupOf(type) === group;
     })
     .sort((a, b) => {
       const aOrder = Number.isFinite(a.displayOrder) ? Number(a.displayOrder) : Number.MAX_SAFE_INTEGER;
@@ -248,7 +278,7 @@ function resolveDayStatus(
   leavePeriodsByStaff: Map<string, LeavePeriodRow[]>,
   permissionsByStaffDate: Map<string, PermissionRow>,
 ): DayStatus {
-  if (member.active === false || hasLeavePeriod(member.id, key, leavePeriodsByStaff)) return { kind: 'leave' };
+  if (isAwayOn(member, key) || hasLeavePeriod(member.id, key, leavePeriodsByStaff)) return { kind: 'leave' };
 
   const permission = permissionsByStaffDate.get(`${member.id}:${key}`);
   if (permission?.generalPardonType === 'absence') {
@@ -674,7 +704,7 @@ export async function buildAttendanceWorkbookFromData(input: AttendanceWorkbookI
     throw new Error(getAttendanceExportTemplateRestrictionMessage(input.group));
   }
 
-  const roster = sortedRoster(input.roster, input.group);
+  const roster = sortedRoster(input.roster, input.group, input.year, input.month);
   const holidaySet = getHolidaySet(input.holidays);
 
   if (input.template === 'daily-summary') {
@@ -718,6 +748,7 @@ export async function buildAttendanceExportWorkbook({
       isNssPersonnel: schema.staff.isNssPersonnel,
       rank: schema.staff.rank,
       staffNo: schema.staff.staffNo,
+      staffType: schema.staff.staffType,
     })
       .from(schema.staff)
       .orderBy(asc(schema.staff.displayOrder), asc(schema.staff.fullName)),
@@ -771,6 +802,10 @@ export async function buildAttendanceExportWorkbook({
       )),
   ]);
 
+  const { getStaffTypeChanges } = await import('@/lib/staff-type-history');
+  const typeChanges = await getStaffTypeChanges(roster.map((member) => member.id));
+  const rosterWithHistory = roster.map((member) => ({ ...member, typeChanges: typeChanges.get(member.id) }));
+
   const workbook = await buildAttendanceWorkbookFromData({
     attendanceRecords,
     asOfDate: getAccraDateKey(),
@@ -779,7 +814,7 @@ export async function buildAttendanceExportWorkbook({
     leavePeriods,
     month,
     permissions,
-    roster,
+    roster: rosterWithHistory,
     template,
     year,
   });
@@ -789,7 +824,7 @@ export async function buildAttendanceExportWorkbook({
   return {
     buffer,
     fileName: getAttendanceExportFileName({ group, month, template, year }),
-    rosterCount: sortedRoster(roster, group).length,
+    rosterCount: sortedRoster(rosterWithHistory, group, year, month).length,
     template,
   };
 }

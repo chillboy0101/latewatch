@@ -70,6 +70,10 @@ const mocks = {
   },
   '@/lib/attendance-lateness-sync': { syncLatenessEntriesFromAttendanceForDate: async () => undefined },
   '@/lib/staff-leave-service': { getStaffLeavePeriodsForRange: async () => [] },
+  // Type history from the fixture (staffId -> changes); none unless a test sets it.
+  '@/lib/staff-type-history': {
+    getStaffTypeChanges: async (ids) => new Map(ids.filter((id) => fixture.typeChanges?.[id]).map((id) => [id, fixture.typeChanges[id]])),
+  },
   '@/lib/lateness-payment-record': {},
   '@/lib/lateness-payment-receipt-push': {},
 };
@@ -116,6 +120,25 @@ test('attendance totals all charge rows per staff member and keeps decimal strin
   assert.deepEqual(body.rows.map(({ staff, penaltyAmount }) => [staff.id, penaltyAmount]), [
     ['a', '12.75'], ['b', '0.30'], ['c', null], ['d', '0.00'],
   ]);
+});
+
+test('attendance for a date lists who was on staff that day, by their type history', async () => {
+  fixture.staff = [
+    member('here'),
+    member('left-since', { active: false }), // deactivated after the date: still listed that day
+    member('away-then'), // back now, but away on the date
+    member('archived', { active: false, archived: true }),
+    member('inactive-no-history', { active: false }),
+  ];
+  fixture.typeChanges = {
+    'left-since': [{ effectiveFrom: '2000-01-01', staffType: 'main' }, { effectiveFrom: '2026-10-20', staffType: 'away' }],
+    'away-then': [{ effectiveFrom: '2026-09-01', staffType: 'away' }, { effectiveFrom: '2026-10-25', staffType: 'main' }],
+  };
+  const response = await attendanceGET(new Request('http://localhost/api/attendance?date=2026-10-17'));
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.deepEqual(body.rows.map(({ staff }) => staff.id), ['here', 'left-since']);
+  assert.equal(body.totals.totalStaff, 2);
 });
 
 test('filtered payments use the same roster eligibility as the full list, including historical staff', async () => {

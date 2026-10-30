@@ -7,6 +7,8 @@ import { syncLatenessEntriesFromAttendanceForDate } from '@/lib/attendance-laten
 import { isGeneralPardonReason, isPermissionWindowActive, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
 import { attendanceStatusFor } from '@/lib/manual-attendance-correction';
 import { getStaffLeavePeriodsForRange } from '@/lib/staff-leave-service';
+import { staffTypeOn } from '@/lib/staff-type';
+import { getStaffTypeChanges } from '@/lib/staff-type-history';
 import { getActiveLeavePeriod } from '@/lib/staff-leave';
 import { getAttendanceStatusFlags, primaryAttendanceStatus, type AttendanceStatus } from '@/lib/attendance-status';
 import { resolveOfficeLocationForDate } from '@/lib/office-location-policy';
@@ -52,7 +54,7 @@ export async function GET(request: NextRequest) {
 
     await requiredAttendanceQuery('attendance-lateness-sync', () => syncLatenessEntriesFromAttendanceForDate(date));
 
-    const [staffRows, attendanceRows, permissionRows] = await Promise.all([
+    const [candidateStaffRows, attendanceRows, permissionRows] = await Promise.all([
       requiredAttendanceQuery('staff', () => db.select({
         id: staff.id,
         fullName: staff.fullName,
@@ -65,7 +67,7 @@ export async function GET(request: NextRequest) {
         archived: staff.archived,
       })
         .from(staff)
-        .where(and(eq(staff.active, true), eq(staff.archived, false)))
+        .where(eq(staff.archived, false))
         .orderBy(asc(staff.displayOrder), asc(staff.fullName))),
       requiredAttendanceQuery('attendance-records', () => db.select()
         .from(attendanceRecord)
@@ -92,6 +94,14 @@ export async function GET(request: NextRequest) {
           or(eq(attendancePermission.status, 'approved'), isNotNull(attendancePermission.generalPardonType)),
         ))),
     ]);
+    // Who was on staff that day: a past date still lists someone deactivated since (and their
+    // check-in), and leaves out anyone away then. With no type history, today's status decides.
+    const typeChanges = await requiredAttendanceQuery('staff-type-history', () => getStaffTypeChanges(candidateStaffRows.map((member) => member.id)));
+    const staffRows = candidateStaffRows.filter((member) => {
+      const changes = typeChanges.get(member.id);
+      if (!changes || changes.length === 0) return member.active === true;
+      return staffTypeOn(date, changes, member) !== 'away';
+    });
     const leavePeriods = await getStaffLeavePeriodsForRange({
       endDate: date,
       staffIds: staffRows.map((member) => member.id),
