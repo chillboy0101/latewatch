@@ -201,8 +201,11 @@ function exportGroupOf(type: StaffType): AttendanceExportGroup {
 
 // The type someone had in the month (on their last day here that month), or null if they were
 // away all month: a person deactivated before the month, or not yet back, has no row in it.
+// Without history, a deactivated person has no row (as on the attendance page).
 function typeInMonth(member: RosterStaff, monthKeys: string[]): StaffType | null {
-  if (!member.typeChanges || member.typeChanges.length === 0) return staffTypeOf(member);
+  if (!member.typeChanges || member.typeChanges.length === 0) {
+    return member.active === false ? null : staffTypeOf(member);
+  }
   for (let index = monthKeys.length - 1; index >= 0; index--) {
     const type = staffTypeOn(monthKeys[index], member.typeChanges, member);
     if (type !== 'away') return type;

@@ -60,6 +60,12 @@ const baseStaff = [
     isNssPersonnel: false,
     rank: 'ARO',
     staffNo: 'GRA000004',
+    // Away (deactivated) from 1 April and back from 20 April: on April's sheet, on leave on the 1st.
+    typeChanges: [
+      { effectiveFrom: '2000-01-01', staffType: 'main' },
+      { effectiveFrom: '2026-04-01', staffType: 'away' },
+      { effectiveFrom: '2026-04-20', staffType: 'main' },
+    ],
   },
   {
     active: true,
@@ -475,7 +481,7 @@ test('NSS attendance workbooks are limited to weekly validation', async () => {
 
 test('attendance exports use historical leave periods without adding sheet rows', async () => {
   const roster = baseStaff.map((member) => (
-    member.id === 'main-leave' ? { ...member, active: true } : member
+    member.id === 'main-leave' ? { ...member, active: true, typeChanges: undefined } : member
   ));
   const leavePeriods = [
     { endDate: '2026-04-01', staffId: 'main-leave', startDate: '2026-04-01' },
@@ -623,6 +629,13 @@ test('someone deactivated mid-month is on leave only from that day, and gone fro
     template: 'monthly-matrix',
   });
   assert.equal(workbookHasText(may, 'AWAY FROM APRIL 15'), false);
+
+  // Deactivated with no history at all: no row either (the attendance page leaves them out too).
+  const noHistory = await workbookFor({
+    roster: [{ ...deactivatedMidApril, fullName: 'DEACTIVATED NO HISTORY', id: 'no-history', typeChanges: undefined }],
+    template: 'monthly-matrix',
+  });
+  assert.equal(workbookHasText(noHistory, 'DEACTIVATED NO HISTORY'), false);
 });
 
 test('past months keep the days someone was here after they are deactivated', async () => {
