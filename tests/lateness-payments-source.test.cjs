@@ -260,6 +260,15 @@ test('receipt page is print-friendly and uses LateWatch branding', () => {
   assert.match(detailView, /Receipt No/);
 });
 
+test('the receipt PDF uses a small logo, embedded once, so opening a receipt does not freeze', () => {
+  const pdf = fs.readFileSync(path.join(root, 'src/lib/receipt-pdf.ts'), 'utf8');
+  assert.match(pdf, /fetch\('\/latewatch-receipt-logo\.png'/);
+  assert.equal([...pdf.matchAll(/doc\.addImage\(logo, 'PNG', [^;]*, LOGO_ALIAS\);/g)].length, 2);
+  const png = fs.readFileSync(path.join(root, 'public/latewatch-receipt-logo.png'));
+  assert.equal(png.readUInt32BE(16), 384);
+  assert.equal(png.readUInt32BE(20), 384);
+});
+
 test('receipt helper derives stable receipts from existing payment data', () => {
   assert.equal(fs.existsSync(receiptLibPath), true);
   const source = fs.readFileSync(receiptLibPath, 'utf8');
