@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import { addDays, endOfMonth, format, startOfMonth } from 'date-fns';
 import path from 'path';
-import { and, asc, eq, gte, isNotNull, isNull, lte, or } from 'drizzle-orm';
+import { and, asc, eq, gte, isNotNull, lte, or } from 'drizzle-orm';
 import {
   type AttendanceExportGroup,
   type AttendanceExportTemplate,
@@ -11,7 +11,8 @@ import {
 } from '@/lib/attendance-export-shared';
 import { formatAbsencePermissionReason } from '@/lib/attendance-permissions';
 import { getAccraDateKey } from '@/lib/date-key';
-import { isAwayOnDate, staffTypeOf, staffTypeOn, type StaffType, type StaffTypeChange } from '@/lib/staff-type';
+import { getActiveLeavePeriod, type StaffLeavePeriodLike } from '@/lib/staff-leave';
+import { isAwayOnDate, staffTypeOn, type StaffType, type StaffTypeChange } from '@/lib/staff-type';
 import { WORKDAY_START_TIME } from '@/lib/work-hours';
 
 export { getAttendanceExportFileName };
@@ -48,11 +49,7 @@ type PermissionRow = {
   status?: string | null;
 };
 
-type LeavePeriodRow = {
-  endDate?: string | null;
-  staffId: string;
-  startDate: string;
-};
+type LeavePeriodRow = StaffLeavePeriodLike;
 
 type HolidayRow = {
   date: string;
@@ -189,14 +186,6 @@ function getHolidaySet(rows: HolidayRow[]) {
   );
 }
 
-// The month's working days (no weekends or holidays): only these decide whether someone has a
-// row, so leaving on a Saturday the 1st doesn't give a month of On Leave.
-function monthWorkdayKeys(year: number, month: number, holidaySet: Set<string>) {
-  const lastDay = endOfMonth(new Date(Date.UTC(year, month, 1))).getUTCDate();
-  return Array.from({ length: lastDay }, (_, index) => new Date(Date.UTC(year, month, index + 1)))
-    .filter((date) => !isWeekend(date) && !holidaySet.has(dateKey(date)))
-    .map(dateKey);
-}
 
 function exportGroupOf(type: StaffType): AttendanceExportGroup {
   if (type === 'nss') return 'nss';
@@ -204,13 +193,12 @@ function exportGroupOf(type: StaffType): AttendanceExportGroup {
 }
 
 // The type someone had in the month (on their last working day here that month), or null if
-// they were away all month: a person deactivated before the month, or not yet back, has no row in it.
-// Without history, a deactivated person has no row (as on the attendance page).
+// they were away all month: a person deactivated or archived before the month, or not yet back,
+// has no row in it. Without history, a deactivated person has no row (as on the attendance page).
+// Only working days count, so leaving on a Saturday the 1st doesn't give a month of On Leave.
 function typeInMonth(member: RosterStaff, monthKeys: string[]): StaffType | null {
-  if (!member.typeChanges || member.typeChanges.length === 0) {
-    return member.active === false ? null : staffTypeOf(member);
-  }
   for (let index = monthKeys.length - 1; index >= 0; index--) {
+    if (isAwayOnDate(monthKeys[index], member.typeChanges, member)) continue;
     const type = staffTypeOn(monthKeys[index], member.typeChanges, member);
     if (type !== 'away') return type;
   }
@@ -218,10 +206,9 @@ function typeInMonth(member: RosterStaff, monthKeys: string[]): StaffType | null
 }
 
 function sortedRoster(roster: RosterStaff[], group: AttendanceExportGroup, year: number, month: number, holidaySet: Set<string>) {
-  const monthKeys = monthWorkdayKeys(year, month, holidaySet);
+  const monthKeys = monthWorkingDates(year, month, holidaySet, '9999-12-31').map(dateKey);
   return roster
     .filter((member) => {
-      if (member.archived === true) return false;
       const type = typeInMonth(member, monthKeys);
       return type !== null && exportGroupOf(type) === group;
     })
@@ -261,14 +248,10 @@ function leavePeriodMap(rows: LeavePeriodRow[]) {
   return map;
 }
 
+// On leave that day, by the attendance page's rule: an early return ends the leave, and the old
+// deactivation leave rows (now the type history's spells away) don't count.
 function hasLeavePeriod(staffId: string, key: string, leavePeriodsByStaff: Map<string, LeavePeriodRow[]>) {
-  const periods = leavePeriodsByStaff.get(staffId) || [];
-  return periods.some((period) => {
-    const start = normalizeDateKey(period.startDate);
-    const end = normalizeDateKey(period.endDate);
-    if (!start || key < start) return false;
-    return !end || key <= end;
-  });
+  return getActiveLeavePeriod(leavePeriodsByStaff.get(staffId) || [], staffId, key) !== null;
 }
 
 function resolveDayStatus(
@@ -776,19 +759,9 @@ export async function buildAttendanceExportWorkbook({
           isNotNull(schema.attendancePermission.generalPardonType),
         ),
       )),
-    db.select({
-      endDate: schema.staffLeavePeriod.endDate,
-      staffId: schema.staffLeavePeriod.staffId,
-      startDate: schema.staffLeavePeriod.startDate,
-    })
-      .from(schema.staffLeavePeriod)
-      .where(and(
-        lte(schema.staffLeavePeriod.startDate, monthEnd),
-        or(
-          isNull(schema.staffLeavePeriod.endDate),
-          gte(schema.staffLeavePeriod.endDate, monthStart),
-        ),
-      )),
+    import('@/lib/staff-leave-service').then(({ getStaffLeavePeriodsForRange }) => (
+      getStaffLeavePeriodsForRange({ endDate: monthEnd, startDate: monthStart })
+    )),
     db.select({
       date: schema.workCalendar.date,
       isHoliday: schema.workCalendar.isHoliday,
@@ -803,8 +776,7 @@ export async function buildAttendanceExportWorkbook({
   ]);
 
   const { getStaffTypeChanges } = await import('@/lib/staff-type-history');
-  // Archived staff never get a row, so their history isn't needed.
-  const typeChanges = await getStaffTypeChanges(roster.filter((member) => member.archived !== true).map((member) => member.id));
+  const typeChanges = await getStaffTypeChanges(roster.map((member) => member.id));
   const rosterWithHistory = roster.map((member) => ({ ...member, typeChanges: typeChanges.get(member.id) }));
 
   const workbook = await buildAttendanceWorkbookFromData({

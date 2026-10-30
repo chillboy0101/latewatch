@@ -10,6 +10,8 @@ import { publishRealtime } from '@/lib/realtime';
 import { getNonWorkdayLabel } from '@/lib/attendance';
 import { isExcuseOverlapError } from '@/lib/staff-leave';
 import { getLeaveAndDeactivationCoverage } from '@/lib/staff-leave-service';
+import { isAwayOnDate, penaltyFlagsOn } from '@/lib/staff-type';
+import { getStaffTypeChanges } from '@/lib/staff-type-history';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,7 +44,9 @@ export async function POST(request: NextRequest) {
 
     const actorEmail = user.emailAddresses[0]?.emailAddress || 'unknown';
     const actor = { email: actorEmail, id: user.id };
-    const members = await db.select({
+    // Everyone on staff that day (as the attendance page lists them), as the type they had then.
+    const candidates = await db.select({
+      active: staff.active,
       email: staff.email,
       fullName: staff.fullName,
       id: staff.id,
@@ -50,8 +54,11 @@ export async function POST(request: NextRequest) {
       isNssPersonnel: staff.isNssPersonnel,
     })
       .from(staff)
-      .where(and(eq(staff.active, true), eq(staff.archived, false)))
       .orderBy(asc(staff.displayOrder), asc(staff.fullName));
+    const typeChanges = await getStaffTypeChanges(candidates.map((member) => member.id));
+    const members = candidates
+      .filter((member) => !isAwayOnDate(date, typeChanges.get(member.id), member))
+      .map((member) => ({ ...member, ...penaltyFlagsOn(date, typeChanges.get(member.id), member) }));
 
     const now = new Date();
     const permissions = [];
