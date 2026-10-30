@@ -579,3 +579,102 @@ test('attendance export filenames include group, month, year, and template label
     'Attendance_NSS_April_2026_Weekly_Validation.xlsx',
   );
 });
+
+function workbookHasText(workbook, text) {
+  let found = false;
+  workbook.eachSheet((sheet) => sheet.eachRow((row) => row.eachCell((cell) => {
+    if (String(cell.text ?? '').includes(text)) found = true;
+  })));
+  return found;
+}
+
+const deactivatedMidApril = {
+  active: false,
+  archived: false,
+  displayOrder: 1,
+  fullName: 'AWAY FROM APRIL 15',
+  id: 'away-mid-april',
+  isAttendanceOnly: false,
+  isNssPersonnel: false,
+  staffType: 'main',
+  typeChanges: [
+    { effectiveFrom: '2000-01-01', staffType: 'main' },
+    { effectiveFrom: '2026-04-15', staffType: 'away' },
+  ],
+};
+
+test('someone deactivated mid-month is on leave only from that day, and gone from later months', async () => {
+  const april = await workbookFor({
+    attendanceRecords: [{ checkInTime: '08:00', date: '2026-04-01', staffId: 'away-mid-april' }],
+    holidays: april2026WeekdayHolidaysExcept('2026-04-01', '2026-04-20'),
+    roster: [deactivatedMidApril],
+    template: 'monthly-matrix',
+  });
+  const sheet = april.worksheets[0];
+  assert.equal(sheet.getCell('B9').value, 'AWAY FROM APRIL 15');
+  assert.equal(sheet.getCell('G9').value, 'P'); // 1 April: here and present
+  assert.equal(sheet.getCell('Z9').value, 'AP'); // 20 April: away, on leave
+
+  // May: away all month, so no row (it used to show On Leave every day, every month).
+  const may = await workbookFor({
+    holidays: weekdayHolidaysExcept(2026, 4, '2026-05-04'),
+    month: 4,
+    roster: [deactivatedMidApril],
+    template: 'monthly-matrix',
+  });
+  assert.equal(workbookHasText(may, 'AWAY FROM APRIL 15'), false);
+});
+
+test('past months keep the days someone was here after they are deactivated', async () => {
+  // Deactivated in May: April's export still shows April as it was, not On Leave every day.
+  const roster = [{
+    ...deactivatedMidApril,
+    fullName: 'AWAY FROM MAY',
+    id: 'away-may',
+    typeChanges: [
+      { effectiveFrom: '2000-01-01', staffType: 'main' },
+      { effectiveFrom: '2026-05-10', staffType: 'away' },
+    ],
+  }];
+  const april = await workbookFor({
+    attendanceRecords: [{ checkInTime: '08:00', date: '2026-04-01', staffId: 'away-may' }],
+    roster,
+    template: 'monthly-matrix',
+  });
+  const sheet = april.worksheets[0];
+  assert.equal(sheet.getCell('B9').value, 'AWAY FROM MAY');
+  assert.equal(sheet.getCell('G9').value, 'P');
+  assert.notEqual(sheet.getCell('AS9').value, 'On Leave');
+});
+
+test('a type change puts someone in the export group of the type they had that month', async () => {
+  // Intern until 10 April, then main staff: April belongs to the main staff exports.
+  const roster = [{
+    active: true,
+    archived: false,
+    displayOrder: 1,
+    fullName: 'INTERN TURNED STAFF',
+    id: 'intern-to-main',
+    isAttendanceOnly: false,
+    isNssPersonnel: false,
+    staffType: 'main',
+    typeChanges: [
+      { effectiveFrom: '2000-01-01', staffType: 'intern' },
+      { effectiveFrom: '2026-04-10', staffType: 'main' },
+    ],
+  }];
+  const main = await workbookFor({ roster, template: 'monthly-matrix' });
+  assert.equal(main.worksheets[0].getCell('B9').value, 'INTERN TURNED STAFF');
+  const interns = await workbookFor({ group: 'interns', roster, template: 'weekly-validation' });
+  assert.equal(workbookHasText(interns, 'INTERN TURNED STAFF'), false);
+
+  // March (before the change) is still an intern month.
+  const march = await workbookFor({
+    group: 'interns',
+    holidays: weekdayHolidaysExcept(2026, 2, '2026-03-02'),
+    month: 2,
+    roster,
+    template: 'weekly-validation',
+  });
+  assert.equal(workbookHasText(march, 'INTERN TURNED STAFF'), true);
+});
