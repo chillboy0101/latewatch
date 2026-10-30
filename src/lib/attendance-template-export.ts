@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import { addDays, endOfMonth, format, startOfMonth } from 'date-fns';
 import path from 'path';
-import { and, asc, eq, gte, isNotNull, lte, or } from 'drizzle-orm';
+import { and, asc, eq, gte, isNotNull, isNull, lte, or } from 'drizzle-orm';
 import {
   type AttendanceExportGroup,
   type AttendanceExportTemplate,
@@ -11,7 +11,7 @@ import {
 } from '@/lib/attendance-export-shared';
 import { formatAbsencePermissionReason } from '@/lib/attendance-permissions';
 import { getAccraDateKey } from '@/lib/date-key';
-import { getActiveLeavePeriod, type StaffLeavePeriodLike } from '@/lib/staff-leave';
+import { getEffectiveLeaveEndDate, type StaffLeavePeriodLike } from '@/lib/staff-leave';
 import { isAwayOnDate, staffTypeOn, type StaffType, type StaffTypeChange } from '@/lib/staff-type';
 import { WORKDAY_START_TIME } from '@/lib/work-hours';
 
@@ -248,10 +248,14 @@ function leavePeriodMap(rows: LeavePeriodRow[]) {
   return map;
 }
 
-// On leave that day, by the attendance page's rule: an early return ends the leave, and the old
-// deactivation leave rows (now the type history's spells away) don't count.
+// On leave that day; an early return ends the leave. Old deactivation leave rows count too: they
+// are the only record of spells away from before the type history.
 function hasLeavePeriod(staffId: string, key: string, leavePeriodsByStaff: Map<string, LeavePeriodRow[]>) {
-  return getActiveLeavePeriod(leavePeriodsByStaff.get(staffId) || [], staffId, key) !== null;
+  return (leavePeriodsByStaff.get(staffId) || []).some((period) => {
+    const start = normalizeDateKey(period.startDate);
+    const end = getEffectiveLeaveEndDate(period);
+    return Boolean(start) && key >= start && (!end || key <= end);
+  });
 }
 
 function resolveDayStatus(
@@ -759,9 +763,21 @@ export async function buildAttendanceExportWorkbook({
           isNotNull(schema.attendancePermission.generalPardonType),
         ),
       )),
-    import('@/lib/staff-leave-service').then(({ getStaffLeavePeriodsForRange }) => (
-      getStaffLeavePeriodsForRange({ endDate: monthEnd, startDate: monthStart })
-    )),
+    db.select({
+      endDate: schema.staffLeavePeriod.endDate,
+      returnedOn: schema.staffLeavePeriod.returnedOn,
+      source: schema.staffLeavePeriod.source,
+      staffId: schema.staffLeavePeriod.staffId,
+      startDate: schema.staffLeavePeriod.startDate,
+    })
+      .from(schema.staffLeavePeriod)
+      .where(and(
+        lte(schema.staffLeavePeriod.startDate, monthEnd),
+        or(
+          isNull(schema.staffLeavePeriod.endDate),
+          gte(schema.staffLeavePeriod.endDate, monthStart),
+        ),
+      )),
     db.select({
       date: schema.workCalendar.date,
       isHoliday: schema.workCalendar.isHoliday,

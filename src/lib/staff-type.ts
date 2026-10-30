@@ -94,13 +94,25 @@ export function staffTypeOn(dateKey: string, changes: StaffTypeChange[] | undefi
   return type ?? staffTypeOf(current);
 }
 
+type StaffStatusFields = StaffTypeFields & { active?: boolean | null; archived?: boolean | null };
+
 // Deactivated or archived on a day, from the type history (which records each spell away).
-// Someone with no history, or away now with no spell away at the end of their history (it was
-// never written, or an older backup was restored), is judged by today's status.
-export function isAwayOnDate(dateKey: string, changes: StaffTypeChange[] | undefined, current: StaffTypeFields & { active?: boolean | null }) {
-  if (!changes || changes.length === 0) return current.active === false;
-  if (current.active === false && sortStaffTypeChanges(changes).at(-1)?.staffType !== 'away') return true;
+// Someone with no history is judged by today's status. When today's status and the end of the
+// history disagree (a history write failed, or an older backup was restored), today's status
+// decides from the last recorded change on; days before it still follow the history.
+export function isAwayOnDate(dateKey: string, changes: StaffTypeChange[] | undefined, current: StaffStatusFields) {
+  const awayNow = current.active === false || current.archived === true;
+  if (!changes || changes.length === 0) return awayNow;
+  const last = sortStaffTypeChanges(changes).at(-1);
+  if (last && (last.staffType === 'away') !== awayNow && dateKey >= last.effectiveFrom) return awayNow;
   return staffTypeOn(dateKey, changes, current) === 'away';
+}
+
+// Who was on staff on a day (as the attendance page lists them), with the type flags they had then.
+export function staffOnDateFrom<T extends StaffStatusFields & { id: string }>(rows: T[], dateKey: string, changesByStaff: Map<string, StaffTypeChange[]>) {
+  return rows
+    .filter((member) => !isAwayOnDate(dateKey, changesByStaff.get(member.id), member))
+    .map((member) => ({ ...member, ...penaltyFlagsOn(dateKey, changesByStaff.get(member.id), member) }));
 }
 
 export function penaltyFlagsOn(dateKey: string, changes: StaffTypeChange[] | undefined, current: StaffTypeFields) {

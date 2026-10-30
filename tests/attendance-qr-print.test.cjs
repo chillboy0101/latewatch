@@ -130,7 +130,7 @@ test('general pardon API preserves existing permissions while attaching a durabl
   assert.match(source, /pardonType/);
   assert.match(source, /Invalid pardon type/);
   // Everyone on staff that day, by their type history (as the attendance page lists them).
-  assert.match(source, /\.filter\(\(member\) => !isAwayOnDate\(date, typeChanges\.get\(member\.id\), member\)\)/);
+  assert.match(source, /const members = await staffOnDate\(await db\.select\(\{/);
   assert.match(source, /isAttendanceOnly: staff\.isAttendanceOnly/);
   assert.match(source, /isNssPersonnel: staff\.isNssPersonnel/);
   assert.match(source, /reason: 'general pardon'/);

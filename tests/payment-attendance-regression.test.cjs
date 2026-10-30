@@ -6,6 +6,7 @@ const test = require('node:test');
 require('tsx/cjs');
 
 const schema = require('../src/db/schema.ts');
+const { staffOnDateFrom } = require('../src/lib/staff-type.ts');
 const fixture = {};
 const auditEvents = [];
 const realtimeEvents = [];
@@ -72,7 +73,9 @@ const mocks = {
   '@/lib/staff-leave-service': { getStaffLeavePeriodsForRange: async () => [] },
   // Type history from the fixture (staffId -> changes); none unless a test sets it.
   '@/lib/staff-type-history': {
-    getStaffTypeChanges: async (ids) => new Map(ids.filter((id) => fixture.typeChanges?.[id]).map((id) => [id, fixture.typeChanges[id]])),
+    staffOnDate: async (rows, date) => staffOnDateFrom(rows, date, new Map(
+      rows.filter(({ id }) => fixture.typeChanges?.[id]).map(({ id }) => [id, fixture.typeChanges[id]]),
+    )),
   },
   '@/lib/lateness-payment-record': {},
   '@/lib/lateness-payment-receipt-push': {},
@@ -131,18 +134,21 @@ test('attendance for a date lists who was on staff that day, by their type histo
     member('archived-since', { active: false, archived: true }), // archived after the date: listed that day
     member('inactive-no-history', { active: false }),
     member('inactive-no-away-row', { active: false }), // the spell away was never written: today's status
+    member('archived-but-active', { archived: true }), // archived counts as away now, whatever active says
+    member('back-unrecorded'), // restored, but the return was never written: here from the last change on
   ];
   fixture.typeChanges = {
     'archived-since': [{ effectiveFrom: '2000-01-01', staffType: 'main' }, { effectiveFrom: '2026-10-25', staffType: 'away' }],
     'inactive-no-away-row': [{ effectiveFrom: '2000-01-01', staffType: 'intern' }, { effectiveFrom: '2026-06-01', staffType: 'main' }],
+    'back-unrecorded': [{ effectiveFrom: '2000-01-01', staffType: 'main' }, { effectiveFrom: '2026-09-01', staffType: 'away' }],
     'left-since': [{ effectiveFrom: '2000-01-01', staffType: 'main' }, { effectiveFrom: '2026-10-20', staffType: 'away' }],
     'away-then': [{ effectiveFrom: '2026-09-01', staffType: 'away' }, { effectiveFrom: '2026-10-25', staffType: 'main' }],
   };
   const response = await attendanceGET(new Request('http://localhost/api/attendance?date=2026-10-17'));
   assert.equal(response.status, 200);
   const body = await response.json();
-  assert.deepEqual(body.rows.map(({ staff }) => staff.id), ['here', 'left-since', 'archived-since']);
-  assert.equal(body.totals.totalStaff, 3);
+  assert.deepEqual(body.rows.map(({ staff }) => staff.id), ['here', 'left-since', 'archived-since', 'back-unrecorded']);
+  assert.equal(body.totals.totalStaff, 4);
 });
 
 test('attendance for a past date shows each person as the type they were that day', async () => {
