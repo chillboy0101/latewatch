@@ -189,9 +189,13 @@ function getHolidaySet(rows: HolidayRow[]) {
   );
 }
 
-function monthDateKeys(year: number, month: number) {
+// The month's working days (no weekends or holidays): only these decide whether someone has a
+// row, so leaving on a Saturday the 1st doesn't give a month of On Leave.
+function monthWorkdayKeys(year: number, month: number, holidaySet: Set<string>) {
   const lastDay = endOfMonth(new Date(Date.UTC(year, month, 1))).getUTCDate();
-  return Array.from({ length: lastDay }, (_, index) => dateKey(new Date(Date.UTC(year, month, index + 1))));
+  return Array.from({ length: lastDay }, (_, index) => new Date(Date.UTC(year, month, index + 1)))
+    .filter((date) => !isWeekend(date) && !holidaySet.has(dateKey(date)))
+    .map(dateKey);
 }
 
 function exportGroupOf(type: StaffType): AttendanceExportGroup {
@@ -199,8 +203,8 @@ function exportGroupOf(type: StaffType): AttendanceExportGroup {
   return type === 'intern' || type === 'special' ? 'interns' : 'main';
 }
 
-// The type someone had in the month (on their last day here that month), or null if they were
-// away all month: a person deactivated before the month, or not yet back, has no row in it.
+// The type someone had in the month (on their last working day here that month), or null if
+// they were away all month: a person deactivated before the month, or not yet back, has no row in it.
 // Without history, a deactivated person has no row (as on the attendance page).
 function typeInMonth(member: RosterStaff, monthKeys: string[]): StaffType | null {
   if (!member.typeChanges || member.typeChanges.length === 0) {
@@ -213,8 +217,8 @@ function typeInMonth(member: RosterStaff, monthKeys: string[]): StaffType | null
   return null;
 }
 
-function sortedRoster(roster: RosterStaff[], group: AttendanceExportGroup, year: number, month: number) {
-  const monthKeys = monthDateKeys(year, month);
+function sortedRoster(roster: RosterStaff[], group: AttendanceExportGroup, year: number, month: number, holidaySet: Set<string>) {
+  const monthKeys = monthWorkdayKeys(year, month, holidaySet);
   return roster
     .filter((member) => {
       if (member.archived === true) return false;
@@ -700,8 +704,8 @@ export async function buildAttendanceWorkbookFromData(input: AttendanceWorkbookI
     throw new Error(getAttendanceExportTemplateRestrictionMessage(input.group));
   }
 
-  const roster = sortedRoster(input.roster, input.group, input.year, input.month);
   const holidaySet = getHolidaySet(input.holidays);
+  const roster = sortedRoster(input.roster, input.group, input.year, input.month, holidaySet);
 
   if (input.template === 'daily-summary') {
     return buildDailySummary(input, roster, holidaySet);
@@ -821,7 +825,7 @@ export async function buildAttendanceExportWorkbook({
   return {
     buffer,
     fileName: getAttendanceExportFileName({ group, month, template, year }),
-    rosterCount: sortedRoster(rosterWithHistory, group, year, month).length,
+    rosterCount: sortedRoster(rosterWithHistory, group, year, month, getHolidaySet(holidays)).length,
     template,
   };
 }

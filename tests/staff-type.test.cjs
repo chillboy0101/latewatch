@@ -173,6 +173,8 @@ test('the API refuses a type change while away and checks returns before saving 
   const update = read('src/app/api/staff/[id]/route.ts');
   assert.match(update, /if \(typeChanged && wasAway && !comingBack\) \{/);
   assert.match(update, /Bring this person back \(Activate or Restore\) to change their type\./);
+  // A type change and leaving in one request would record only the type: refused, one at a time.
+  assert.match(update, /if \(typeChanged && goingAway\) \{\n[^\n]*\n\s+return NextResponse\.json\(\{ error: 'Change the type and deactivate or archive separately\.' \}, \{ status: 400 \}\);/);
   assert.match(update, /const returnError = staffReturnDateError\(\{\n\s+awayStart: await latestAwayStart\(id\),/);
   // Both checks run before the staff row is written.
   assert.ok(update.indexOf('const returnError') < update.indexOf('const updated = await db.update(staff)'));

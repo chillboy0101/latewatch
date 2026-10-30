@@ -50,7 +50,7 @@ const baseStaff = [
     staffNo: 'GRA000003',
   },
   {
-    active: false,
+    active: true,
     archived: false,
     displayOrder: 4,
     fullName: 'MAIN ON LEAVE',
@@ -60,12 +60,6 @@ const baseStaff = [
     isNssPersonnel: false,
     rank: 'ARO',
     staffNo: 'GRA000004',
-    // Away (deactivated) from 1 April and back from 20 April: on April's sheet, on leave on the 1st.
-    typeChanges: [
-      { effectiveFrom: '2000-01-01', staffType: 'main' },
-      { effectiveFrom: '2026-04-01', staffType: 'away' },
-      { effectiveFrom: '2026-04-20', staffType: 'main' },
-    ],
   },
   {
     active: true,
@@ -116,6 +110,8 @@ async function workbookFor(overrides) {
     attendanceRecords: [],
     group: 'main',
     holidays: april2026WeekdayHolidaysExcept('2026-04-01'),
+    // On leave on 1 April (still on staff).
+    leavePeriods: [{ endDate: '2026-04-01', staffId: 'main-leave', startDate: '2026-04-01' }],
     month: 3,
     permissions: [],
     roster: baseStaff,
@@ -481,7 +477,7 @@ test('NSS attendance workbooks are limited to weekly validation', async () => {
 
 test('attendance exports use historical leave periods without adding sheet rows', async () => {
   const roster = baseStaff.map((member) => (
-    member.id === 'main-leave' ? { ...member, active: true, typeChanges: undefined } : member
+    member.id === 'main-leave' ? { ...member, active: true } : member
   ));
   const leavePeriods = [
     { endDate: '2026-04-01', staffId: 'main-leave', startDate: '2026-04-01' },
@@ -676,9 +672,10 @@ test('a type change puts someone in the export group of the type they had that m
       { effectiveFrom: '2026-04-10', staffType: 'main' },
     ],
   }];
-  const main = await workbookFor({ roster, template: 'monthly-matrix' });
+  const holidays = april2026WeekdayHolidaysExcept('2026-04-01', '2026-04-20');
+  const main = await workbookFor({ holidays, roster, template: 'monthly-matrix' });
   assert.equal(main.worksheets[0].getCell('B9').value, 'INTERN TURNED STAFF');
-  const interns = await workbookFor({ group: 'interns', roster, template: 'weekly-validation' });
+  const interns = await workbookFor({ group: 'interns', holidays, roster, template: 'weekly-validation' });
   assert.equal(workbookHasText(interns, 'INTERN TURNED STAFF'), false);
 
   // March (before the change) is still an intern month.
@@ -690,4 +687,24 @@ test('a type change puts someone in the export group of the type they had that m
     template: 'weekly-validation',
   });
   assert.equal(workbookHasText(march, 'INTERN TURNED STAFF'), true);
+});
+
+test('leaving on a weekend at the start of a month gives no row in that month', async () => {
+  // 1 August 2026 is a Saturday: deactivated that day (away from the 2nd), never here on a workday.
+  const roster = [{
+    ...deactivatedMidApril,
+    fullName: 'LEFT ON A SATURDAY',
+    id: 'left-saturday',
+    typeChanges: [
+      { effectiveFrom: '2000-01-01', staffType: 'main' },
+      { effectiveFrom: '2026-08-02', staffType: 'away' },
+    ],
+  }];
+  const august = await workbookFor({
+    holidays: weekdayHolidaysExcept(2026, 7, '2026-08-03'),
+    month: 7,
+    roster,
+    template: 'monthly-matrix',
+  });
+  assert.equal(workbookHasText(august, 'LEFT ON A SATURDAY'), false);
 });
