@@ -141,6 +141,19 @@ test('attendance for a date lists who was on staff that day, by their type histo
   assert.equal(body.totals.totalStaff, 2);
 });
 
+test('attendance for a past date shows each person as the type they were that day', async () => {
+  // Main staff now, but an intern until 20 October: on the 17th they were an intern.
+  fixture.staff = [member('was-intern')];
+  fixture.typeChanges = {
+    'was-intern': [{ effectiveFrom: '2000-01-01', staffType: 'intern' }, { effectiveFrom: '2026-10-20', staffType: 'main' }],
+  };
+  const body = await (await attendanceGET(new Request('http://localhost/api/attendance?date=2026-10-17'))).json();
+  assert.equal(body.rows[0].staff.isAttendanceOnly, true);
+  assert.equal(body.rows[0].staff.isNssPersonnel, false);
+  const today = await (await attendanceGET(new Request('http://localhost/api/attendance?date=2026-10-21'))).json();
+  assert.equal(today.rows[0].staff.isAttendanceOnly, false);
+});
+
 test('filtered payments use the same roster eligibility as the full list, including historical staff', async () => {
   fixture.staff = [
     member('active'), member('inactive', { active: false }), member('archived', { archived: true }),
