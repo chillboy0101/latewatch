@@ -95,9 +95,11 @@ export function staffTypeOn(dateKey: string, changes: StaffTypeChange[] | undefi
 }
 
 // Deactivated or archived on a day, from the type history (which records each spell away).
-// Someone with no history is judged by today's status.
+// Someone with no history, or away now with no spell away at the end of their history (it was
+// never written, or an older backup was restored), is judged by today's status.
 export function isAwayOnDate(dateKey: string, changes: StaffTypeChange[] | undefined, current: StaffTypeFields & { active?: boolean | null }) {
   if (!changes || changes.length === 0) return current.active === false;
+  if (current.active === false && sortStaffTypeChanges(changes).at(-1)?.staffType !== 'away') return true;
   return staffTypeOn(dateKey, changes, current) === 'away';
 }
 

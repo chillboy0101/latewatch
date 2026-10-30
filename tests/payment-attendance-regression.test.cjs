@@ -128,17 +128,21 @@ test('attendance for a date lists who was on staff that day, by their type histo
     member('left-since', { active: false }), // deactivated after the date: still listed that day
     member('away-then'), // back now, but away on the date
     member('archived', { active: false, archived: true }),
+    member('archived-since', { active: false, archived: true }), // archived after the date: listed that day
     member('inactive-no-history', { active: false }),
+    member('inactive-no-away-row', { active: false }), // the spell away was never written: today's status
   ];
   fixture.typeChanges = {
+    'archived-since': [{ effectiveFrom: '2000-01-01', staffType: 'main' }, { effectiveFrom: '2026-10-25', staffType: 'away' }],
+    'inactive-no-away-row': [{ effectiveFrom: '2000-01-01', staffType: 'intern' }, { effectiveFrom: '2026-06-01', staffType: 'main' }],
     'left-since': [{ effectiveFrom: '2000-01-01', staffType: 'main' }, { effectiveFrom: '2026-10-20', staffType: 'away' }],
     'away-then': [{ effectiveFrom: '2026-09-01', staffType: 'away' }, { effectiveFrom: '2026-10-25', staffType: 'main' }],
   };
   const response = await attendanceGET(new Request('http://localhost/api/attendance?date=2026-10-17'));
   assert.equal(response.status, 200);
   const body = await response.json();
-  assert.deepEqual(body.rows.map(({ staff }) => staff.id), ['here', 'left-since']);
-  assert.equal(body.totals.totalStaff, 2);
+  assert.deepEqual(body.rows.map(({ staff }) => staff.id), ['here', 'left-since', 'archived-since']);
+  assert.equal(body.totals.totalStaff, 3);
 });
 
 test('attendance for a past date shows each person as the type they were that day', async () => {

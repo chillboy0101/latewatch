@@ -708,3 +708,45 @@ test('leaving on a weekend at the start of a month gives no row in that month', 
   });
   assert.equal(workbookHasText(august, 'LEFT ON A SATURDAY'), false);
 });
+
+test('archived staff keep the months they were here, and have no row after', async () => {
+  const roster = [{
+    ...deactivatedMidApril,
+    archived: true,
+    fullName: 'ARCHIVED IN MAY',
+    id: 'archived-may',
+    typeChanges: [
+      { effectiveFrom: '2000-01-01', staffType: 'main' },
+      { effectiveFrom: '2026-05-10', staffType: 'away' },
+    ],
+  }];
+  const april = await workbookFor({
+    attendanceRecords: [{ checkInTime: '08:00', date: '2026-04-01', staffId: 'archived-may' }],
+    roster,
+    template: 'monthly-matrix',
+  });
+  assert.equal(april.worksheets[0].getCell('B9').value, 'ARCHIVED IN MAY');
+  assert.equal(april.worksheets[0].getCell('G9').value, 'P');
+  const june = await workbookFor({
+    holidays: weekdayHolidaysExcept(2026, 5, '2026-06-01'),
+    month: 5,
+    roster,
+    template: 'monthly-matrix',
+  });
+  assert.equal(workbookHasText(june, 'ARCHIVED IN MAY'), false);
+});
+
+test('an early return ends leave, and old deactivation leave rows do not count', async () => {
+  const roster = baseStaff.filter((member) => member.id === 'main-on-time');
+  const april = await workbookFor({
+    attendanceRecords: [{ checkInTime: '08:00', date: '2026-04-01', staffId: 'main-on-time' }],
+    leavePeriods: [
+      // Planned to 30 April, back on 1 April: not on leave that day.
+      { endDate: '2026-04-30', returnedOn: '2026-04-01', source: 'manual', staffId: 'main-on-time', startDate: '2026-03-20' },
+      { endDate: null, source: 'staff_status', staffId: 'main-on-time', startDate: '2026-03-01' },
+    ],
+    roster,
+    template: 'monthly-matrix',
+  });
+  assert.equal(april.worksheets[0].getCell('G9').value, 'P');
+});

@@ -67,7 +67,6 @@ export async function GET(request: NextRequest) {
         archived: staff.archived,
       })
         .from(staff)
-        .where(eq(staff.archived, false))
         .orderBy(asc(staff.displayOrder), asc(staff.fullName))),
       requiredAttendanceQuery('attendance-records', () => db.select()
         .from(attendanceRecord)
@@ -101,8 +100,7 @@ export async function GET(request: NextRequest) {
       getStaffLeavePeriodsForRange({ endDate: date, staffIds: candidateIds, startDate: date }),
     ]);
     // Who was on staff that day, as the type they had then: a past date still lists someone
-    // deactivated since (and their check-in), and leaves out anyone away then. Archived staff
-    // are gone from every list.
+    // deactivated or archived since (and their check-in), and leaves out anyone away then.
     const staffRows = candidateStaffRows
       .filter((member) => !isAwayOnDate(date, typeChanges.get(member.id), member))
       .map((member) => ({ ...member, ...penaltyFlagsOn(date, typeChanges.get(member.id), member) }));
