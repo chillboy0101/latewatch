@@ -8,13 +8,18 @@ function ghc(value: string | number | null | undefined) {
 
 let logoDataUrlPromise: Promise<string | null> | null = null;
 
+// The PDF library decodes and re-compresses the PNG in JavaScript, so the receipt uses a 384px
+// copy of the logo: the full 1024px one froze the screen for a moment when a receipt opened and
+// made a 4 MB file. Embedded once under this alias and drawn twice (watermark and header).
+const LOGO_ALIAS = 'latewatch-receipt-logo';
+
 // Load the LateWatch logo once and cache it as a data URL for embedding.
 function getLogoDataUrl(): Promise<string | null> {
   if (logoDataUrlPromise) return logoDataUrlPromise;
 
   logoDataUrlPromise = (async () => {
     try {
-      const response = await fetch('/latewatch-logo.png', { cache: 'force-cache' });
+      const response = await fetch('/latewatch-receipt-logo.png', { cache: 'force-cache' });
       if (!response.ok) return null;
       const blob = await response.blob();
       return await new Promise<string | null>((resolve) => {
@@ -59,7 +64,7 @@ export async function buildReceiptPdfBlob(detail: ReceiptDetailData): Promise<Bl
       const size = 340;
       doc.saveGraphicsState();
       doc.setGState(doc.GState({ opacity: 0.06 }));
-      doc.addImage(logo, 'PNG', (pageWidth - size) / 2, (pageHeight - size) / 2, size, size);
+      doc.addImage(logo, 'PNG', (pageWidth - size) / 2, (pageHeight - size) / 2, size, size, LOGO_ALIAS);
       doc.restoreGraphicsState();
     } catch {
       // Ignore watermark failures; the receipt still renders.
@@ -69,7 +74,7 @@ export async function buildReceiptPdfBlob(detail: ReceiptDetailData): Promise<Bl
   const titleX = logo ? marginX + 34 : marginX;
   if (logo) {
     try {
-      doc.addImage(logo, 'PNG', marginX, y - 20, 26, 26);
+      doc.addImage(logo, 'PNG', marginX, y - 20, 26, 26, LOGO_ALIAS);
     } catch {
       // Ignore header logo failures.
     }
