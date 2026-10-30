@@ -96,7 +96,8 @@ export async function GET(request: NextRequest) {
     ]);
     const candidateIds = candidateStaffRows.map((member) => member.id);
     const [typeChanges, leavePeriods] = await Promise.all([
-      requiredAttendanceQuery('staff-type-history', () => getStaffTypeChanges(candidateIds)),
+      // Without it, today's status decides who is listed (as for people with no history).
+      optionalAttendanceQuery('staff-type-history', new Map(), () => getStaffTypeChanges(candidateIds)),
       getStaffLeavePeriodsForRange({ endDate: date, staffIds: candidateIds, startDate: date }),
     ]);
     // Who was on staff that day, as the type they had then: a past date still lists someone
@@ -104,10 +105,7 @@ export async function GET(request: NextRequest) {
     // are gone from every list.
     const staffRows = candidateStaffRows
       .filter((member) => !isAwayOnDate(date, typeChanges.get(member.id), member))
-      .map((member) => {
-        const changes = typeChanges.get(member.id);
-        return changes && changes.length > 0 ? { ...member, ...penaltyFlagsOn(date, changes, member) } : member;
-      });
+      .map((member) => ({ ...member, ...penaltyFlagsOn(date, typeChanges.get(member.id), member) }));
 
     const [attemptRows, deviceRows, network, locationRows, transferRows, chargeRows] = await Promise.all([
       optionalAttendanceQuery('attendance-attempts', [], () => db.select()

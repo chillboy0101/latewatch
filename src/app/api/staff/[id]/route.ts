@@ -155,6 +155,10 @@ export async function PUT(
       // Their away days must stay away: the type is picked when they come back.
       return NextResponse.json({ error: 'Bring this person back (Activate or Restore) to change their type.' }, { status: 400 });
     }
+    if (typeChanged && goingAway) {
+      // One change at a time, so the history records both (the type, then the spell away).
+      return NextResponse.json({ error: 'Change the type and deactivate or archive separately.' }, { status: 400 });
+    }
     if (comingBack) {
       const returnError = staffReturnDateError({
         awayStart: await latestAwayStart(id),
