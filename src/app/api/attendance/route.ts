@@ -7,8 +7,7 @@ import { syncLatenessEntriesFromAttendanceForDate } from '@/lib/attendance-laten
 import { isGeneralPardonReason, isPermissionWindowActive, isPermissionWindowOverdue } from '@/lib/attendance-permissions';
 import { attendanceStatusFor } from '@/lib/manual-attendance-correction';
 import { getStaffLeavePeriodsForRange } from '@/lib/staff-leave-service';
-import { isAwayOnDate, penaltyFlagsOn } from '@/lib/staff-type';
-import { getStaffTypeChanges } from '@/lib/staff-type-history';
+import { staffOnDate } from '@/lib/staff-type-history';
 import { getActiveLeavePeriod } from '@/lib/staff-leave';
 import { getAttendanceStatusFlags, primaryAttendanceStatus, type AttendanceStatus } from '@/lib/attendance-status';
 import { resolveOfficeLocationForDate } from '@/lib/office-location-policy';
@@ -93,17 +92,12 @@ export async function GET(request: NextRequest) {
           or(eq(attendancePermission.status, 'approved'), isNotNull(attendancePermission.generalPardonType)),
         ))),
     ]);
-    const candidateIds = candidateStaffRows.map((member) => member.id);
-    const [typeChanges, leavePeriods] = await Promise.all([
-      // Without it, today's status decides who is listed (as for people with no history).
-      optionalAttendanceQuery('staff-type-history', new Map(), () => getStaffTypeChanges(candidateIds)),
-      getStaffLeavePeriodsForRange({ endDate: date, staffIds: candidateIds, startDate: date }),
-    ]);
     // Who was on staff that day, as the type they had then: a past date still lists someone
     // deactivated or archived since (and their check-in), and leaves out anyone away then.
-    const staffRows = candidateStaffRows
-      .filter((member) => !isAwayOnDate(date, typeChanges.get(member.id), member))
-      .map((member) => ({ ...member, ...penaltyFlagsOn(date, typeChanges.get(member.id), member) }));
+    const [staffRows, leavePeriods] = await Promise.all([
+      staffOnDate(candidateStaffRows, date),
+      getStaffLeavePeriodsForRange({ endDate: date, staffIds: candidateStaffRows.map((member) => member.id), startDate: date }),
+    ]);
 
     const [attemptRows, deviceRows, network, locationRows, transferRows, chargeRows] = await Promise.all([
       optionalAttendanceQuery('attendance-attempts', [], () => db.select()

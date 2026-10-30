@@ -736,17 +736,24 @@ test('archived staff keep the months they were here, and have no row after', asy
   assert.equal(workbookHasText(june, 'ARCHIVED IN MAY'), false);
 });
 
-test('an early return ends leave, and old deactivation leave rows do not count', async () => {
+test('an early return ends leave, and old deactivation leave rows still count', async () => {
   const roster = baseStaff.filter((member) => member.id === 'main-on-time');
   const april = await workbookFor({
     attendanceRecords: [{ checkInTime: '08:00', date: '2026-04-01', staffId: 'main-on-time' }],
     leavePeriods: [
       // Planned to 30 April, back on 1 April: not on leave that day.
       { endDate: '2026-04-30', returnedOn: '2026-04-01', source: 'manual', staffId: 'main-on-time', startDate: '2026-03-20' },
-      { endDate: null, source: 'staff_status', staffId: 'main-on-time', startDate: '2026-03-01' },
     ],
     roster,
     template: 'monthly-matrix',
   });
   assert.equal(april.worksheets[0].getCell('G9').value, 'P');
+
+  // An old deactivation leave row (a spell away from before the type history) is still leave.
+  const deactivatedThen = await workbookFor({
+    leavePeriods: [{ endDate: '2026-04-01', source: 'staff_status', staffId: 'main-on-time', startDate: '2026-04-01' }],
+    roster,
+    template: 'monthly-matrix',
+  });
+  assert.equal(deactivatedThen.worksheets[0].getCell('G9').value, 'AP');
 });

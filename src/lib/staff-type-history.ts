@@ -3,7 +3,7 @@ import 'server-only';
 import { and, asc, eq, gt, gte, inArray, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { staff, staffTypeChange } from '@/db/schema';
-import { flagsForStaffType, undoableStaffTypeChange, type StaffType, type StaffTypeChange, type StaffTypeOnDate } from '@/lib/staff-type';
+import { flagsForStaffType, staffOnDateFrom, undoableStaffTypeChange, type StaffType, type StaffTypeChange, type StaffTypeOnDate } from '@/lib/staff-type';
 
 // Each person's type changes, oldest first. People who never changed type have no rows.
 export async function getStaffTypeChanges(staffIds: string[]) {
@@ -26,6 +26,18 @@ export async function getStaffTypeChanges(staffIds: string[]) {
     byStaffId.set(row.staffId, list);
   }
   return byStaffId;
+}
+
+// Who was on staff on a day, as the type they had then: the one rule for the attendance page,
+// the general pardon and permissions. If the history can't be read, today's status decides.
+export async function staffOnDate<T extends Parameters<typeof staffOnDateFrom>[0][number]>(rows: T[], dateKey: string) {
+  let changes = new Map<string, StaffTypeChange[]>();
+  try {
+    changes = await getStaffTypeChanges(rows.map((member) => member.id));
+  } catch (error) {
+    console.error("Staff type history unavailable; using today's status:", error);
+  }
+  return staffOnDateFrom(rows, dateKey, changes);
 }
 
 // Days before someone's first change keep the type they had, from any date in the past.

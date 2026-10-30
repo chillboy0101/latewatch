@@ -18,6 +18,7 @@ import { enforceRole } from '@/lib/auth/roles';
 import { getNonWorkdayLabel } from '@/lib/attendance';
 import { formatPermissionDays, isExcuseOverlapError } from '@/lib/staff-leave';
 import { getLeaveAndDeactivationCoverage } from '@/lib/staff-leave-service';
+import { staffOnDate } from '@/lib/staff-type-history';
 
 export const dynamic = 'force-dynamic';
 
@@ -105,6 +106,8 @@ export async function POST(request: NextRequest) {
     if (!VALID_TYPES.has(permissionType)) return NextResponse.json({ error: 'Invalid permission type' }, { status: 400 });
 
     const [member] = await db.select({
+      active: staff.active,
+      archived: staff.archived,
       email: staff.email,
       fullName: staff.fullName,
       id: staff.id,
@@ -112,10 +115,12 @@ export async function POST(request: NextRequest) {
       isNssPersonnel: staff.isNssPersonnel,
     })
       .from(staff)
-      .where(and(eq(staff.id, staffId), eq(staff.archived, false)))
+      .where(eq(staff.id, staffId))
       .limit(1);
 
-    if (!member) {
+    // Someone archived since can still get a permission for a day they were on staff (the
+    // attendance page lists them on that day).
+    if (!member || (member.archived === true && (await staffOnDate([member], date)).length === 0)) {
       return NextResponse.json({ error: 'Staff member was not found' }, { status: 404 });
     }
 
