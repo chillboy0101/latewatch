@@ -280,12 +280,17 @@ export function buildFixtures(now = new Date()) {
       recentActivity: [],
       staffCount: staff.length,
       // The real week around the harness workday, so "Today" lines up with the clock.
-      weekDays: weekDays.map((day, index) => ({
-        amount: [22, 0, 12, 44, 8][index],
-        day: day.label,
-        entries: [3, 0, 2, 4, 2][index],
-        status: day.key > workdayKey ? 'upcoming' : [3, 0, 2, 4, 2][index] > 0 ? 'penalties' : day.key === workdayKey ? 'today' : 'clear',
-      })),
+      // Days still to come have no entries; statuses follow the dashboard API's order.
+      weekDays: weekDays.map((day, index) => {
+        const future = day.key > workdayKey;
+        const entries = future ? 0 : [3, 0, 2, 4, 2][index];
+        return {
+          amount: future ? 0 : [22, 0, 12, 44, 8][index],
+          day: day.label,
+          entries,
+          status: entries > 0 ? 'penalties' : future ? 'upcoming' : day.key === workdayKey ? 'today' : 'clear',
+        };
+      }),
       weekEnd: weekDays[4].key,
       weekEntryCount: 21,
       weekStart: weekDays[0].key,

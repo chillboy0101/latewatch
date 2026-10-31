@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   Activity,
@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils';
 
 const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const TODAY_REFRESH_DELAY_MS = 15_000;
+const DAY_CHECK_MS = 60_000;
 
 // Today's row label as the dashboard API writes it ("Fri 31"), in Accra time.
 function todayRowLabel(dateKey: string) {
@@ -68,16 +69,21 @@ export default function DashboardPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [todayKey, setTodayKey] = useState(() => getAccraDateKey());
   const [today, setToday] = useState<TodayAttendance | null>(null);
+  // Only the latest request may update the Today card, so a slow older one can't overwrite it.
+  const todayRequestRef = useRef(0);
 
   // Today's attendance for the Today card. If it fails, the rest of the dashboard still shows.
   const fetchToday = useCallback(async () => {
+    const request = ++todayRequestRef.current;
     const dateKey = getAccraDateKey();
     setTodayKey(dateKey);
     try {
       const res = await fetch(`/api/attendance?date=${dateKey}`, { cache: 'no-store' });
       const data = await res.json();
+      if (request !== todayRequestRef.current) return;
       setToday(res.ok && data?.totals && Array.isArray(data.rows) ? data : null);
     } catch (error) {
+      if (request !== todayRequestRef.current) return;
       console.warn('Could not load today\'s attendance:', error);
       setToday(null);
     }
@@ -137,9 +143,20 @@ export default function DashboardPage() {
       }
     })();
 
+    // A dashboard left open past midnight (Accra) moves on to the new day and week.
+    let shownDay = getAccraDateKey();
+    const dayCheck = setInterval(() => {
+      const now = getAccraDateKey();
+      if (now === shownDay) return;
+      shownDay = now;
+      void fetchDashboardData();
+      void fetchToday();
+    }, DAY_CHECK_MS);
+
     return () => {
       mounted = false;
       if (todayTimer) clearTimeout(todayTimer);
+      clearInterval(dayCheck);
       cleanup?.();
     };
   }, [fetchDashboardData, fetchToday]);

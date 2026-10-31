@@ -32,11 +32,17 @@ export function TodayCard({ today }: { today: TodayAttendance }) {
   const late = today.rows
     .filter((row) => hasStatus(row, 'late'))
     .sort((a, b) => (b.attendance?.checkInTime || '').localeCompare(a.attendance?.checkInTime || ''));
-  const notIn = today.rows.filter((row) => hasStatus(row, 'not_checked_in'));
+  // Not in yet: no check-in, plus people with a late-arrival permission who haven't arrived.
+  const notIn = today.rows.flatMap((row) => {
+    if (hasStatus(row, 'not_checked_in')) return [{ detail: '-', row }];
+    if (hasStatus(row, 'permission_overdue')) return [{ detail: 'Overdue', row }];
+    if (hasStatus(row, 'expected_late')) return [{ detail: 'Expected later', row }];
+    return [];
+  });
   const counts = [
     { className: 'bg-success/10 text-success', label: 'on time', value: totals.onTime },
     { className: 'bg-warning/10 text-warning', label: 'late', value: totals.late },
-    { className: 'bg-danger/10 text-danger', label: 'not in', value: totals.notCheckedIn },
+    { className: 'bg-danger/10 text-danger', label: 'not in', value: notIn.length },
     { className: 'bg-muted/15 text-muted-foreground', label: 'on leave', value: totals.onLeave },
   ];
 
@@ -76,7 +82,7 @@ export function TodayCard({ today }: { today: TodayAttendance }) {
               empty="Everyone has checked in"
               label="Not in yet"
               labelClassName="text-danger"
-              rows={notIn.map((row) => ({ detail: '-', id: row.staff.id, name: row.staff.fullName }))}
+              rows={notIn.map(({ detail, row }) => ({ detail, id: row.staff.id, name: row.staff.fullName }))}
             />
           </div>
         )}
