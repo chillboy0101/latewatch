@@ -6,6 +6,7 @@ import { Apple, ArrowRight, CheckCircle2, Download, ExternalLink, Smartphone } f
 import { LateWatchLogo } from '@/components/brand/latewatch-logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { type PhoneOs, detectPhoneOs } from '@/lib/phone-os';
 import { cn } from '@/lib/utils';
 
 type BeforeInstallPromptEvent = Event & {
@@ -13,22 +14,7 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 };
 
-type DeviceKind = 'android' | 'ios' | 'other';
-
-function detectDeviceKind() {
-  if (typeof window === 'undefined') return 'other';
-
-  const userAgent = window.navigator.userAgent.toLowerCase();
-  const platform = window.navigator.platform?.toLowerCase() || '';
-  const maxTouchPoints = window.navigator.maxTouchPoints || 0;
-  const isIpadOS = platform.includes('mac') && maxTouchPoints > 1;
-
-  if (/iphone|ipad|ipod/.test(userAgent) || isIpadOS) return 'ios';
-  if (/android/.test(userAgent)) return 'android';
-  return 'other';
-}
-
-function guidanceForDevice(deviceKind: DeviceKind) {
+function guidanceForDevice(deviceKind: PhoneOs) {
   if (deviceKind === 'ios') {
     return {
       icon: Apple,
@@ -53,7 +39,7 @@ function guidanceForDevice(deviceKind: DeviceKind) {
 }
 
 export default function InstallPage() {
-  const [deviceKind] = useState<DeviceKind>(() => detectDeviceKind());
+  const [deviceKind] = useState<PhoneOs>(() => detectPhoneOs());
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installState, setInstallState] = useState<'idle' | 'installed' | 'prompted'>('idle');
   const guidance = useMemo(() => guidanceForDevice(deviceKind), [deviceKind]);
