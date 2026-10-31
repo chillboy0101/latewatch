@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { crc32, deflateSync } from 'node:zlib';
 import { build } from 'esbuild';
 import { chromium } from 'playwright-core';
-import { buildFixtures } from '../tests/ui/fixtures.mjs';
+import { buildFixtures, harnessWorkday } from '../tests/ui/fixtures.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = path.join(root, 'output', 'ui-shots');
@@ -629,6 +629,8 @@ async function desktopShots(browser) {
   const context = await browser.newContext(DESKTOP);
   await mockApi(context);
   const page = await context.newPage();
+  // A workday morning, so the dashboard's Today card and today's week row show.
+  await page.clock.setFixedTime(harnessWorkday());
   for (const route of ['dashboard', 'entries', 'payments', 'exports', 'attendance/devices']) {
     await page.goto(`${baseUrl}/${route}`, { waitUntil: 'load' });
     // Let the page fetch its (mocked) data and finish its loading state.

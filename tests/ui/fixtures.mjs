@@ -4,9 +4,22 @@
 const pad = (value) => String(value).padStart(2, '0');
 const dateKey = (date) => `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
 
+// The workday the dashboard shots pretend it is: today, or last Friday on a weekend.
+export function harnessWorkday(now = new Date()) {
+  const day = now.getUTCDay();
+  const back = day === 6 ? 1 : day === 0 ? 2 : 0;
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - back, 10, 30));
+}
+
 export function buildFixtures(now = new Date()) {
   const today = dateKey(now);
   const daysAgo = (days) => dateKey(new Date(now.getTime() - days * 86400000));
+  const workday = harnessWorkday(now);
+  const workdayKey = dateKey(workday);
+  const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map((name, index) => {
+    const date = new Date(workday.getTime() + (index + 1 - workday.getUTCDay()) * 86400000);
+    return { key: dateKey(date), label: `${name} ${pad(date.getUTCDate())}` };
+  });
   const staffNames = [
     'Mensah Kofi Adjei', 'Owusu Abena Serwaa', 'Boateng Kwame Yeboah', 'Asante Efua Mansa',
     'Darko Yaw Ofori', 'Agyeman Akosua Dufie', 'Osei Kwabena Frimpong', 'Addo Ama Konadu',
@@ -266,17 +279,33 @@ export function buildFixtures(now = new Date()) {
       penaltyChangePercent: 8,
       recentActivity: [],
       staffCount: staff.length,
-      weekDays: [
-        { amount: 22, day: 'Mon 12', entries: 3, status: 'penalties' },
-        { amount: 0, day: 'Tue 13', entries: 0, status: 'clear' },
-        { amount: 12, day: 'Wed 14', entries: 2, status: 'penalties' },
-        { amount: 0, day: 'Thu 15', entries: 0, status: 'today' },
-        { amount: 0, day: 'Fri 16', entries: 0, status: 'upcoming' },
-      ],
-      weekEnd: daysAgo(-2),
+      // The real week around the harness workday, so "Today" lines up with the clock.
+      weekDays: weekDays.map((day, index) => ({
+        amount: [22, 0, 12, 44, 8][index],
+        day: day.label,
+        entries: [3, 0, 2, 4, 2][index],
+        status: day.key > workdayKey ? 'upcoming' : [3, 0, 2, 4, 2][index] > 0 ? 'penalties' : day.key === workdayKey ? 'today' : 'clear',
+      })),
+      weekEnd: weekDays[4].key,
       weekEntryCount: 21,
-      weekStart: daysAgo(2),
+      weekStart: weekDays[0].key,
       weekTotal: 86,
+    },
+    // Today's attendance on the harness workday: 7 on time, 2 late, 2 not in, 1 on leave.
+    '/api/attendance': {
+      date: workdayKey,
+      rows: staff.map((person, index) => {
+        const status = index < 7 ? 'present' : index < 9 ? 'late' : index < 11 ? 'not_checked_in' : 'on_leave';
+        const checkInTime = status === 'present' ? `08:${pad(5 + index * 3)}:00` : status === 'late' ? `08:${pad(39 + (index - 7) * 8)}:00` : null;
+        return {
+          attendance: checkInTime ? { checkInTime, computedAmount: status === 'late' ? String(3 + (index - 7) * 2) : '0' } : null,
+          penaltyAmount: status === 'late' ? String(3 + (index - 7) * 2) : null,
+          staff: { email: person.email, fullName: person.fullName, id: person.id },
+          status,
+          statuses: [status],
+        };
+      }),
+      totals: { excused: 0, expectedLate: 0, late: 2, noSignOut: 0, notCheckedIn: 2, onLeave: 1, onTime: 7, permissionOverdue: 0, present: 9, totalStaff: 12 },
     },
     '/api/entries': entries,
     '/api/notifications': { notifications: [], unreadCount: 0 },

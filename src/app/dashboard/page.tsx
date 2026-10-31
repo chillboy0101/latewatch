@@ -18,8 +18,18 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
+import { TodayCard, type TodayAttendance } from '@/components/dashboard/today-card';
 import { formatDisplayDateTime, formatShortDisplayDate } from '@/lib/date-format';
+import { getAccraDateKey } from '@/lib/date-key';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
+import { cn } from '@/lib/utils';
+
+const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// Today's row label as the dashboard API writes it ("Fri 31"), in Accra time.
+function todayRowLabel(dateKey: string) {
+  return `${WEEKDAY_NAMES[new Date(`${dateKey}T00:00:00Z`).getUTCDay()]} ${dateKey.slice(8, 10)}`;
+}
 
 interface WeekDayData {
   day: string;
@@ -55,8 +65,25 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [todayKey, setTodayKey] = useState(() => getAccraDateKey());
+  const [today, setToday] = useState<TodayAttendance | null>(null);
+
+  // Today's attendance for the Today card. If it fails, the rest of the dashboard still shows.
+  const fetchToday = useCallback(async () => {
+    const dateKey = getAccraDateKey();
+    setTodayKey(dateKey);
+    try {
+      const res = await fetch(`/api/attendance?date=${dateKey}`, { cache: 'no-store' });
+      const data = await res.json();
+      setToday(res.ok && data?.totals && Array.isArray(data.rows) ? data : null);
+    } catch (error) {
+      console.warn('Could not load today\'s attendance:', error);
+      setToday(null);
+    }
+  }, []);
 
   const fetchDashboardData = useCallback(async () => {
+    void fetchToday();
     try {
       const res = await fetch('/api/dashboard', { cache: 'no-store' });
       const data = await res.json();
@@ -69,7 +96,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchToday]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
@@ -78,11 +105,12 @@ export default function DashboardPage() {
     fetchDashboardData();
 
     (async () => {
-      const unsubscribe = await subscribeRealtimeChannel({
-        channel: 'dashboard',
-        events: ['invalidate'],
-        onEvent: fetchDashboardData,
-      });
+      // Check-ins and permissions change today's attendance, so the Today card follows that channel too.
+      const unsubscribes = await Promise.all([
+        subscribeRealtimeChannel({ channel: 'dashboard', events: ['invalidate'], onEvent: fetchDashboardData }),
+        subscribeRealtimeChannel({ channel: 'attendance', events: ['invalidate'], onEvent: fetchToday }),
+      ]);
+      const unsubscribe = () => unsubscribes.forEach((stop) => stop());
 
       if (mounted) {
         cleanup = unsubscribe;
@@ -95,7 +123,7 @@ export default function DashboardPage() {
       mounted = false;
       cleanup?.();
     };
-  }, [fetchDashboardData]);
+  }, [fetchDashboardData, fetchToday]);
 
   if (loading) {
     return (
@@ -137,6 +165,11 @@ export default function DashboardPage() {
   const penaltyChange = stats?.penaltyChangePercent ?? null;
   const entryChange = stats?.entryChangePercent ?? null;
   const recentActivity = stats?.recentActivity.slice(0, 10) || [];
+  // Today counts only on a workday of this week (not weekends or holidays).
+  const todayLabel = todayRowLabel(todayKey);
+  const todayRow = (stats?.weekDays || []).find((day) => day.day === todayLabel);
+  const todayIsWorkday = Boolean(todayRow && todayRow.status !== 'holiday');
+  const showToday = Boolean(today && todayIsWorkday);
 
   return (
     <DashboardLayout title="Dashboard">
@@ -182,9 +215,12 @@ export default function DashboardPage() {
             value={(stats?.staffCount || 0).toString()}
             change={null}
             icon="users"
-            fallback={null}
+            fallback={showToday && today ? `${today.totals.present} in today` : null}
+            fallbackClassName="text-success"
           />
         </div>
+
+        {showToday && today && <TodayCard today={today} />}
 
         <div className="grid gap-4 md:grid-cols-3">
           <Card className="col-span-1">
@@ -220,7 +256,7 @@ export default function DashboardPage() {
             <CardContent>
               <div className="space-y-2">
                 {(stats?.weekDays || []).map((day) => (
-                  <WeekDayRow key={day.day} {...day} />
+                  <WeekDayRow key={day.day} {...day} isToday={day.day === todayLabel} />
                 ))}
               </div>
               <div className="mt-4 border-t border-border pt-4">
@@ -270,12 +306,14 @@ function StatCard({
   change,
   icon,
   fallback,
+  fallbackClassName = 'text-muted-foreground',
 }: {
   title: string;
   value: string;
   change: number | null;
   icon?: 'penalty' | 'entries' | 'users';
   fallback: string | null;
+  fallbackClassName?: string;
 }) {
   const Icon = icon === 'users' ? Users : icon === 'entries' ? ClipboardList : DollarSign;
 
@@ -294,7 +332,7 @@ function StatCard({
               {change >= 0 ? '+' : ''}{change}% vs last week
             </div>
           ) : fallback ? (
-            <div className="mt-2 text-xs font-medium text-muted-foreground">{fallback}</div>
+            <div className={cn('mt-2 text-xs font-medium', fallbackClassName)}>{fallback}</div>
           ) : (
             <div className="mt-2 h-4" aria-hidden="true" />
           )}
@@ -304,10 +342,10 @@ function StatCard({
   );
 }
 
-function WeekDayRow({ day, entries, amount, status }: WeekDayData) {
+function WeekDayRow({ day, entries, amount, status, isToday }: WeekDayData & { isToday: boolean }) {
   return (
-    <div className="flex items-center justify-between gap-3 text-sm">
-      <span className="font-medium">{day}</span>
+    <div className={cn('flex items-center justify-between gap-3 text-sm', isToday && '-mx-2 rounded-md bg-primary/10 px-2 py-1 font-semibold')}>
+      <span className="font-medium">{isToday ? `${day} · Today` : day}</span>
       <span className={
         status === 'penalties' ? 'text-warning' :
         status === 'clear' ? 'text-success' :
