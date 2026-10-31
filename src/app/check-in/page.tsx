@@ -4,11 +4,12 @@ import { UserButton, useClerk, useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { AlertTriangle, ArrowLeft, ArrowRight, BellRing, Check, CheckCircle2, History, Loader2, LogIn, LogOut, MapPin, MoreHorizontal, Printer, ReceiptText, ShieldCheck, XCircle, type LucideIcon } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, PRESS } from '@/components/ui/button';
 import { HapticHost, HapticSwitch } from '@/components/ui/haptic-switch';
 import { Card } from '@/components/ui/card';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerNested, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
+import { LocationPermissionSheet, type LocationSheetMode } from '@/components/location/location-permission-sheet';
 import { formatDisplayDateTime, formatShortDisplayDate } from '@/lib/date-format';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
 import type { OfficeBoundary } from '@/lib/office-boundary';
@@ -675,6 +676,20 @@ export default function CheckInPage() {
     message: 'Waiting for location.',
     state: 'idle',
   });
+  // Location is only read once the phone allows it: "unknown" while that is being checked,
+  // "waiting" until the person taps Allow on the location sheet.
+  const [locationAccess, setLocationAccess] = useState<'unknown' | 'waiting' | 'ready'>('unknown');
+  const [locationDenied, setLocationDenied] = useState(false);
+  const [locationSheetOpen, setLocationSheetOpen] = useState(false);
+  const [locationSheetMode, setLocationSheetMode] = useState<LocationSheetMode>('ask');
+  // Bumped to restart the location watch after location is turned back on.
+  const [locationWatchKey, setLocationWatchKey] = useState(0);
+  // The "Location is off" sheet opens by itself once per visit; after that the chip and button open it.
+  const blockedSheetShownRef = useRef(false);
+  const locationAccessRef = useRef(locationAccess);
+  useEffect(() => {
+    locationAccessRef.current = locationAccess;
+  }, [locationAccess]);
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
   const clearMessage = useCallback(() => setMessage(null), []);
   const [forcedSessionNotice, setForcedSessionNotice] = useState<string | null>(null);
@@ -999,6 +1014,126 @@ export default function CheckInPage() {
   const locationConfigured = Boolean(status?.locationConfigured);
   const locationPolicy = status?.locationPolicy || null;
 
+  const showBlockedSheetOnce = useCallback(() => {
+    if (blockedSheetShownRef.current) return;
+    blockedSheetShownRef.current = true;
+    setLocationSheetMode('blocked');
+    setLocationSheetOpen(true);
+  }, []);
+
+  // Before the browser asks for location, explain why (the "ask" sheet). A phone that already
+  // allows it starts reading location straight away; one that blocked it gets the steps to fix it.
+  useEffect(() => {
+    if (!locationConfigured) return;
+    // No location support at all: nothing to ask; the watch below shows the error.
+    if (!navigator.geolocation) {
+      setLocationAccess('ready');
+      return;
+    }
+    let active = true;
+    let permission: PermissionStatus | null = null;
+
+    const apply = (state: PermissionState) => {
+      if (!active) return;
+      if (state === 'granted') {
+        setLocationDenied(false);
+        setLocationAccess('ready');
+        setLocationSheetOpen(false);
+      } else if (state === 'denied') {
+        setLocationDenied(true);
+        setLocationAccess('waiting');
+        showBlockedSheetOnce();
+      } else if (locationAccessRef.current !== 'ready') {
+        // "prompt": not asked yet (or reset). Once Allow was tapped, the browser's own popup is up.
+        setLocationAccess('waiting');
+        setLocationSheetMode('ask');
+        setLocationSheetOpen(true);
+      }
+    };
+
+    // No Permissions API (older phones): show the ask sheet once, then let the browser ask.
+    const fallback = () => {
+      if (!active) return;
+      let seen = false;
+      try {
+        seen = localStorage.getItem(LOCATION_PROMPT_SEEN_KEY) === '1';
+      } catch {
+        // Storage blocked: ask again, which is harmless.
+      }
+      if (seen) {
+        setLocationAccess('ready');
+      } else {
+        setLocationAccess('waiting');
+        setLocationSheetMode('ask');
+        setLocationSheetOpen(true);
+      }
+    };
+
+    const onChange = () => {
+      if (!permission) return;
+      apply(permission.state);
+      // Turned back on in Settings while the app was open: start reading again.
+      if (permission.state === 'granted') setLocationWatchKey((key) => key + 1);
+    };
+
+    if (!navigator.permissions?.query) {
+      fallback();
+    } else {
+      navigator.permissions
+        .query({ name: 'geolocation' })
+        .then((result) => {
+          if (!active) return;
+          permission = result;
+          apply(result.state);
+          result.addEventListener('change', onChange);
+        })
+        .catch(fallback);
+    }
+
+    return () => {
+      active = false;
+      permission?.removeEventListener('change', onChange);
+    };
+  }, [locationConfigured, showBlockedSheetOnce]);
+
+  const allowLocation = useCallback(() => {
+    try {
+      localStorage.setItem(LOCATION_PROMPT_SEEN_KEY, '1');
+    } catch {
+      // Storage blocked: the sheet may show again next visit.
+    }
+    setLocationSheetOpen(false);
+    setLocationAccess('ready');
+  }, []);
+
+  // "Try again" on the blocked sheet: true once the phone gives a location (or anything but a block).
+  const retryLocation = useCallback(() => new Promise<boolean>((resolve) => {
+    if (!navigator.geolocation) {
+      resolve(false);
+      return;
+    }
+    const restart = () => {
+      setLocationDenied(false);
+      setLocationAccess('ready');
+      setLocationSheetOpen(false);
+      setLocationWatchKey((key) => key + 1);
+      resolve(true);
+    };
+    navigator.geolocation.getCurrentPosition(
+      restart,
+      (error) => {
+        if (error.code === 1) resolve(false);
+        else restart();
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 },
+    );
+  }), []);
+
+  const openLocationSheet = useCallback(() => {
+    setLocationSheetMode(locationDenied ? 'blocked' : 'ask');
+    setLocationSheetOpen(true);
+  }, [locationDenied]);
+
   useEffect(() => {
     if (!locationConfigured || !locationPolicy || !navigator.geolocation) {
       setLiveLocation(locationConfigured
@@ -1015,6 +1150,13 @@ export default function CheckInPage() {
       return;
     }
 
+    if (locationAccess !== 'ready') {
+      setLiveLocation(locationAccess === 'unknown'
+        ? { blocking: false, message: 'Checking live location...', state: 'checking' }
+        : { blocking: true, message: 'Location is off.', state: 'error' });
+      return;
+    }
+
     let active = true;
     setLiveLocation({ blocking: false, message: 'Checking live location...', state: 'checking' });
 
@@ -1024,10 +1166,16 @@ export default function CheckInPage() {
       rememberReading(readingsRef.current, evidence);
       // A momentary vague reading does not undo a clear one from a few seconds before.
       setLiveLocation(validateLiveLocation(locationPolicy, pickReading(readingsRef.current) || evidence));
+      setLocationDenied(false);
     };
     const onError = (error: GeolocationPositionError) => {
       if (!active) return;
       setLiveLocation({ blocking: true, message: locationErrorMessage(error), state: 'error' });
+      // Blocked (now, or on the browser's popup): show how to turn it back on.
+      if (error.code === 1) {
+        setLocationDenied(true);
+        showBlockedSheetOnce();
+      }
     };
     const options: PositionOptions = {
       enableHighAccuracy: true,
@@ -1042,7 +1190,7 @@ export default function CheckInPage() {
       active = false;
       navigator.geolocation.clearWatch(watchId);
     };
-  }, [locationConfigured, locationPolicy]);
+  }, [locationAccess, locationConfigured, locationPolicy, locationWatchKey, showBlockedSheetOnce]);
 
   const submitAttendance = useCallback(async (options?: { action?: AttendanceAction }) => {
     const action = options?.action || (status?.attendance && !status.attendance.signOutTime ? 'sign_out' : 'check_in');
@@ -1284,6 +1432,8 @@ export default function CheckInPage() {
   );
   const accessNotSetUp = Boolean(status && !status.staff);
   const locationBlocksAction = Boolean(status?.locationConfigured && liveLocation.blocking);
+  // Location not allowed yet, or blocked: the chip and the main button open the location sheet.
+  const needsLocationPermission = Boolean(status?.locationConfigured && (locationAccess === 'waiting' || locationDenied));
   // A registered but untrusted phone gets the device-transfer button instead of check-in.
   const needsTransfer = Boolean(status?.device?.registered && !status.device.trusted);
   const signInReminderEnabled = Boolean(pushReminderStatus?.subscription?.signInEnabled && !pushReminderStatus.subscription.disabledAt);
@@ -1470,7 +1620,11 @@ export default function CheckInPage() {
                       {status?.staff?.fullName && (
                         <p className="max-w-full truncate text-lg font-semibold leading-tight supports-[height:1cqh]:text-[clamp(0.9375rem,4.9cqh,1.25rem)]">{status.staff.fullName}</p>
                       )}
-                      <LocationStatusChip status={status} liveLocation={liveLocation} />
+                      <LocationStatusChip
+                        status={status}
+                        liveLocation={liveLocation}
+                        onClick={needsLocationPermission ? openLocationSheet : undefined}
+                      />
                     </div>
                   </div>
                 </div>
@@ -1507,6 +1661,8 @@ export default function CheckInPage() {
                     && !reminderNudgeSuppressed
                     && notificationPermission !== 'unsupported'
                     && !reminderControlsLocked
+                    // One sheet at a time: the location sheet first, then this one.
+                    && !(status?.locationConfigured && (locationAccess === 'unknown' || locationSheetOpen))
                   }
                   remindersOff={!signInReminderEnabled && !signOutReminderEnabled}
                   failing={pushReminderStatus?.subscription?.failing === true}
@@ -1548,10 +1704,10 @@ export default function CheckInPage() {
                   ) : (
                     <ActionButton
                       busy={checkingIn}
-                      disabled={(!canCheckIn && !canSubmitSignOut) || checkingIn || locationBlocksAction}
+                      disabled={(!canCheckIn && !canSubmitSignOut) || checkingIn || (locationBlocksAction && !needsLocationPermission)}
                       icon={status?.attendance && !status.attendance.signOutTime ? LogOut : ShieldCheck}
                       label={attendanceButtonLabel(status, checkingIn, liveLocation)}
-                      onClick={() => void submitAttendance()}
+                      onClick={needsLocationPermission ? openLocationSheet : () => void submitAttendance()}
                     />
                   )}
                 </div>
@@ -1560,6 +1716,13 @@ export default function CheckInPage() {
           </Card>
         </div>
       </div>
+      <LocationPermissionSheet
+        mode={locationSheetMode}
+        onAllow={allowLocation}
+        onOpenChange={setLocationSheetOpen}
+        onRetry={retryLocation}
+        open={locationSheetOpen}
+      />
     </main>
   );
 }
@@ -2067,6 +2230,8 @@ function RemindersDialog({
 
 const REMINDER_NUDGE_OPTOUT_KEY = 'latewatch-reminder-nudge-optout';
 const REMINDER_PROMPT_SEEN_KEY = 'latewatch-reminder-prompt-seen';
+// Phones without the Permissions API: the location sheet was shown once (then the browser asks).
+const LOCATION_PROMPT_SEEN_KEY = 'latewatch-location-prompt-seen';
 
 // The one reminders pop-up. It appears when both reminders are off, or when they are on but
 // can no longer reach this phone, and at most once a day on a device. "Don't remind me" stops
@@ -2276,16 +2441,28 @@ function ReminderNotificationToggle({
 
 function LocationStatusChip({
   liveLocation,
+  onClick,
   status,
 }: {
   liveLocation: LiveLocation;
+  // Set while location is off: the chip then opens the location sheet.
+  onClick?: () => void;
   status: CheckInStatus | null;
 }) {
   // Every location state follows the theme colour.
-  return (
-    <div className="inline-flex h-9 min-w-0 items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3.5 text-sm font-semibold text-primary">
+  const className = 'inline-flex h-9 min-w-0 items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3.5 text-sm font-semibold text-primary';
+  const content = (
+    <>
       <span className="shrink-0">{locationIcon(liveLocation)}</span>
       <span className="flex min-w-0 items-center truncate">{locationValue(status, liveLocation)}</span>
-    </div>
+    </>
   );
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={cn(className, PRESS)}>
+        {content}
+      </button>
+    );
+  }
+  return <div className={className}>{content}</div>;
 }
