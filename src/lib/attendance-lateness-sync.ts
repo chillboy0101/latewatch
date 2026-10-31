@@ -163,9 +163,6 @@ export async function applyNoShowSignInPenaltiesForDate(dateKey: string) {
   }
 
   const staffRows = await db.select({
-    // Today's status, so a history that disagrees with it can't stop the charges (penaltyFlagsOn).
-    active: staff.active,
-    archived: staff.archived,
     createdAt: staff.createdAt,
     id: staff.id,
     isAttendanceOnly: staff.isAttendanceOnly,
@@ -334,9 +331,6 @@ export async function applyNoShowSignInPenaltiesForRange(startDate: string, endD
   }
 
   const staffRows = await db.select({
-    // Today's status, so a history that disagrees with it can't stop the charges (penaltyFlagsOn).
-    active: staff.active,
-    archived: staff.archived,
     createdAt: staff.createdAt,
     id: staff.id,
     isAttendanceOnly: staff.isAttendanceOnly,
@@ -497,8 +491,6 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     date: attendanceRecord.date,
     id: attendanceRecord.id,
     reason: attendanceRecord.reason,
-    active: staff.active,
-    archived: staff.archived,
     isAttendanceOnly: staff.isAttendanceOnly,
     isNssPersonnel: staff.isNssPersonnel,
     noSignOutWaived: attendanceRecord.noSignOutWaived,
@@ -718,7 +710,7 @@ export async function syncLatenessEntriesFromAttendanceForRange(startDate: strin
     .map((entry) => entry.staffId))];
   const staffFlagRows = unprocessedStaffIds.length === 0
     ? []
-    : await db.select({ active: staff.active, archived: staff.archived, id: staff.id, isAttendanceOnly: staff.isAttendanceOnly, isNssPersonnel: staff.isNssPersonnel })
+    : await db.select({ id: staff.id, isAttendanceOnly: staff.isAttendanceOnly, isNssPersonnel: staff.isNssPersonnel })
       .from(staff)
       .where(inArray(staff.id, unprocessedStaffIds));
   const staffFlagsById = new Map(staffFlagRows.map((member) => [member.id, member]));

@@ -54,33 +54,21 @@ test('people who never changed type keep their current rules on every day', () =
   assert.equal(staffTypeOf({ staffType: 'intern', isAttendanceOnly: true }), 'intern');
 });
 
-test("when today's status and the end of the history disagree, today's status decides from then on", () => {
-  // Back at work, but the return never reached the history (or an older backup was restored).
-  const history = [
-    { effectiveFrom: '2000-01-01', staffType: 'nss' },
-    { effectiveFrom: '2026-10-02', staffType: 'away' },
-  ];
-  const backNow = { active: true, archived: false, staffType: 'nss' };
-  assert.equal(staffTypeOn('2026-11-05', history, backNow), 'nss');
-  assert.deepEqual(penaltyFlagsOn('2026-11-05', history, backNow), { isAttendanceOnly: false, isNssPersonnel: true });
-  // Days before the last change still follow the history.
-  assert.equal(staffTypeOn('2026-09-30', history, backNow), 'nss');
-  // Left, but the spell away never reached the history: away from the last change on.
-  const working = [{ effectiveFrom: '2000-01-01', staffType: 'intern' }, { effectiveFrom: '2026-09-01', staffType: 'main' }];
-  const archivedNow = { active: false, archived: true, staffType: 'main' };
-  assert.equal(staffTypeOn('2026-08-03', working, archivedNow), 'intern');
-  assert.equal(staffTypeOn('2026-10-05', working, archivedNow), 'away');
-  // Without today's status (type flags only) the history alone decides, as before.
-  assert.equal(staffTypeOn('2026-11-05', history, { staffType: 'nss' }), 'away');
-  assert.deepEqual(penaltyFlagsOn('2026-11-05', history, { isAttendanceOnly: false, isNssPersonnel: true }), { isAttendanceOnly: true, isNssPersonnel: false });
-});
-
 test('a type change is written with the staff row, under the per-person lock', () => {
   const history = read('src/lib/staff-type-history.ts');
   assert.match(history, /const results = await db\.batch\(\[\.\.\.staffTypeChangeWrites\(change\), update\]\);/);
   assert.match(history, /SELECT pg_advisory_xact_lock\(hashtext\(\$\{`staff-type:\$\{input\.staffId\}`\}\)\)/);
   // The starting row is added only if they have no history yet, checked after the lock.
-  assert.match(history, /WHERE NOT EXISTS \(SELECT 1 FROM \$\{staffTypeChange\} WHERE staff_id = \$\{input\.staffId\}\)/);
+  assert.match(history, /WHERE NOT EXISTS \(SELECT 1 FROM \$\{staffTypeChange\} WHERE staff_id = \$\{input\.staffId\}\) AND \$\{unchanged\}/);
+  // Every write checks the person is still as the request read them, after the lock; if not,
+  // nothing is saved and the API says so (409) instead of saving over the other change.
+  assert.match(history, /AND \$\{staff\.staffType\} = \$\{input\.previousType\}/);
+  assert.match(history, /\.where\(and\(eq\(staff\.id, staffId\), stillAsRead\(change\)\)\)\.returning\(\)/);
+  assert.match(history, /\.from\(staff\)\.where\(eq\(staff\.id, input\.staffId\)\)\.for\('update'\)/);
+  const update = read('src/app/api/staff/[id]/route.ts');
+  assert.match(update, /\? NextResponse\.json\(\{ error: CHANGED_MEANWHILE \}, \{ status: 409 \}\)/);
+  assert.match(update, /if \(!updated\) return NextResponse\.json\(\{ error: CHANGED_MEANWHILE \}, \{ status: 409 \}\);/);
+  assert.match(read('src/app/api/staff/route.ts'), /if \(!restored\) \{\n\s+return NextResponse\.json\(\{ error: `\$\{existingStaff\.fullName\} was just changed by someone else\. Reload and try again\.` \}, \{ status: 409 \}\);/);
 });
 
 test('interns, special staff and away days are never charged; NSS skips the hourly charge', () => {
@@ -165,7 +153,7 @@ test('the staff API checks type changes, saves them from a date and marks away d
   const create = read('src/app/api/staff/route.ts');
   assert.match(update, /const typeError = staffTypeChangeError\(\{/);
   assert.match(update, /if \(nextType === 'main' && \(!nextStaffNo \|\| !nextRank\)\)/);
-  assert.match(update, /effectiveFrom: nextDateKey\(today\), previousType: beforeType, staffId: id, staffType: 'away' as const, today \}/);
+  assert.match(update, /effectiveFrom: nextDateKey\(today\), expected, previousType: beforeType, staffId: id, staffType: 'away' as const, today \}/);
   assert.match(update, /staffType: 'away' as const,/);
   assert.match(update, /const typeChange = typeChanged \|\| comingBack\n/);
   // The staff row and its history are saved together (one transaction).

@@ -84,10 +84,8 @@ export function undoableStaffTypeChange(changes: StaffTypeChange[] | undefined) 
   };
 }
 
-type StaffStatusFields = StaffTypeFields & { active?: boolean | null; archived?: boolean | null };
-
-// The type from the history alone: the latest change on or before the day.
-function historyTypeOn(dateKey: string, changes: StaffTypeChange[] | undefined, current: StaffTypeFields): StaffTypeOnDate {
+// The type on a day: the latest change on or before it. With no changes the current type applies.
+export function staffTypeOn(dateKey: string, changes: StaffTypeChange[] | undefined, current: StaffTypeFields): StaffTypeOnDate {
   let type: StaffTypeOnDate | null = null;
   for (const change of sortStaffTypeChanges(changes || [])) {
     if (change.effectiveFrom > dateKey) break;
@@ -96,19 +94,7 @@ function historyTypeOn(dateKey: string, changes: StaffTypeChange[] | undefined, 
   return type ?? staffTypeOf(current);
 }
 
-// The type on a day: the latest change on or before it. With no changes the current type applies.
-// When today's status is known and the end of the history disagrees with it, today's status
-// decides from the last change on, as in isAwayOnDate.
-export function staffTypeOn(dateKey: string, changes: StaffTypeChange[] | undefined, current: StaffStatusFields): StaffTypeOnDate {
-  const type = historyTypeOn(dateKey, changes, current);
-  if (typeof current.active !== 'boolean' || !changes || changes.length === 0) return type;
-  const awayNow = current.active === false || current.archived === true;
-  const last = sortStaffTypeChanges(changes).at(-1);
-  if (last && (last.staffType === 'away') !== awayNow && dateKey >= last.effectiveFrom) {
-    return awayNow ? 'away' : staffTypeOf(current);
-  }
-  return type;
-}
+type StaffStatusFields = StaffTypeFields & { active?: boolean | null; archived?: boolean | null };
 
 // Deactivated or archived on a day, from the type history (which records each spell away).
 // Someone with no history is judged by today's status. When today's status and the end of the
@@ -119,7 +105,7 @@ export function isAwayOnDate(dateKey: string, changes: StaffTypeChange[] | undef
   if (!changes || changes.length === 0) return awayNow;
   const last = sortStaffTypeChanges(changes).at(-1);
   if (last && (last.staffType === 'away') !== awayNow && dateKey >= last.effectiveFrom) return awayNow;
-  return historyTypeOn(dateKey, changes, current) === 'away';
+  return staffTypeOn(dateKey, changes, current) === 'away';
 }
 
 // Who was on staff on a day (as the attendance page lists them), with the type flags they had then.
@@ -129,7 +115,7 @@ export function staffOnDateFrom<T extends StaffStatusFields & { id: string }>(ro
     .map((member) => ({ ...member, ...penaltyFlagsOn(dateKey, changesByStaff.get(member.id), member) }));
 }
 
-export function penaltyFlagsOn(dateKey: string, changes: StaffTypeChange[] | undefined, current: StaffStatusFields) {
+export function penaltyFlagsOn(dateKey: string, changes: StaffTypeChange[] | undefined, current: StaffTypeFields) {
   if (!changes || changes.length === 0) {
     return { isAttendanceOnly: current.isAttendanceOnly === true, isNssPersonnel: current.isNssPersonnel === true };
   }

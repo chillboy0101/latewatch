@@ -56,10 +56,21 @@ export async function staffHistorySummary(staffId: string) {
 export interface StaffTypeChangeInput {
   actorEmail?: string | null;
   effectiveFrom: string;
+  // The person as the request read them; if they've changed since (another save or an undo),
+  // nothing is written.
+  expected: { active: boolean | null; archived: boolean | null };
   previousType: StaffType;
   staffId: string;
   staffType: StaffTypeOnDate;
   today: string;
+}
+
+// Still as the request read them (type and status), checked inside the transaction, after the lock.
+function stillAsRead(input: StaffTypeChangeInput) {
+  return sql`EXISTS (SELECT 1 FROM ${staff} WHERE ${staff.id} = ${input.staffId}
+    AND ${staff.staffType} = ${input.previousType}
+    AND ${staff.active} IS NOT DISTINCT FROM ${input.expected.active}
+    AND ${staff.archived} IS NOT DISTINCT FROM ${input.expected.archived})`;
 }
 
 // The history writes for a type (or 'away') from a date. The first change also keeps the earlier
@@ -67,13 +78,16 @@ export interface StaffTypeChangeInput {
 // leaving); one that has started is kept, since returns can't be dated before it.
 function staffTypeChangeWrites(input: StaffTypeChangeInput) {
   const createdByEmail = input.actorEmail || null;
+  const unchanged = stillAsRead(input);
   return [
     // The same lock as the undo: one change to a person's history at a time.
     db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`staff-type:${input.staffId}`}))`),
+    // Locks their staff row, so the checks below hold until the staff update.
+    db.select({ id: staff.id }).from(staff).where(eq(staff.id, input.staffId)).for('update'),
     // Read after the lock, so two saves at once can't both add the starting row.
     db.execute(sql`INSERT INTO ${staffTypeChange} (staff_id, staff_type, effective_from, created_by_email)
       SELECT ${input.staffId}, ${input.previousType}, ${HISTORY_START}, ${createdByEmail}
-      WHERE NOT EXISTS (SELECT 1 FROM ${staffTypeChange} WHERE staff_id = ${input.staffId})`),
+      WHERE NOT EXISTS (SELECT 1 FROM ${staffTypeChange} WHERE staff_id = ${input.staffId}) AND ${unchanged}`),
     db.delete(staffTypeChange).where(and(
       eq(staffTypeChange.staffId, input.staffId),
       or(
@@ -84,25 +98,24 @@ function staffTypeChangeWrites(input: StaffTypeChangeInput) {
           gt(staffTypeChange.effectiveFrom, input.today),
         ),
       ),
+      unchanged,
     )),
-    db.insert(staffTypeChange).values({
-      createdByEmail,
-      effectiveFrom: input.effectiveFrom,
-      staffId: input.staffId,
-      staffType: input.staffType,
-    }),
+    db.execute(sql`INSERT INTO ${staffTypeChange} (staff_id, staff_type, effective_from, created_by_email)
+      SELECT ${input.staffId}, ${input.staffType}, ${input.effectiveFrom}, ${createdByEmail}
+      WHERE ${unchanged}`),
   ] as const;
 }
 
 // Saves the staff row and, with it, their type history in one transaction: both are saved or
-// neither is, so today's status and the history never disagree.
+// neither is, so today's status and the history never disagree. With a type change, an empty
+// result means the person changed (or was deleted) since the request read them: nothing was saved.
 export async function saveStaffWithTypeChange(
   staffId: string,
   values: Partial<typeof staff.$inferInsert>,
   change: StaffTypeChangeInput | null,
 ) {
-  const update = db.update(staff).set(values).where(eq(staff.id, staffId)).returning();
-  if (!change) return update;
+  if (!change) return db.update(staff).set(values).where(eq(staff.id, staffId)).returning();
+  const update = db.update(staff).set(values).where(and(eq(staff.id, staffId), stillAsRead(change))).returning();
   const results = await db.batch([...staffTypeChangeWrites(change), update]);
   return results.at(-1) as Array<typeof staff.$inferSelect>;
 }

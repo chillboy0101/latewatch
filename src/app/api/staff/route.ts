@@ -205,11 +205,15 @@ export async function POST(request: Request) {
         }, {
           actorEmail,
           effectiveFrom: today,
+          expected: { active: existingStaff.active, archived: existingStaff.archived },
           previousType,
           staffId: existingStaff.id,
           staffType,
           today,
         });
+        if (!restored) {
+          return NextResponse.json({ error: `${existingStaff.fullName} was just changed by someone else. Reload and try again.` }, { status: 409 });
+        }
         if (staffType !== previousType) {
           await recalculateStaffStoredPenalties({
             actor: { email: actorEmail, id: actor?.id },

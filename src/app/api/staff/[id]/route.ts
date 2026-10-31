@@ -23,6 +23,9 @@ import {
 } from '@/lib/staff-type';
 import { saveStaffWithTypeChange, staffHistorySummary } from '@/lib/staff-type-history';
 
+// Another save or an undo changed this person after the request read them: nothing was saved.
+const CHANGED_MEANWHILE = 'This person was just changed by someone else. Reload and try again.';
+
 type StaffUpdateBody = {
   active?: boolean;
   archived?: boolean;
@@ -207,17 +210,20 @@ export async function PUT(
     const emailChanged = email !== undefined && previousEmail !== nextEmail;
 
     const actorEmail = actor?.emailAddresses[0]?.emailAddress || null;
+    const expected = { active: before.active, archived: before.archived };
     const typeChange = typeChanged || comingBack
       // Back from away (deactivated or archived) or a new type: from the chosen date on.
-      ? { actorEmail, effectiveFrom: typeEffectiveFrom, previousType: beforeType, staffId: id, staffType: nextType, today }
+      ? { actorEmail, effectiveFrom: typeEffectiveFrom, expected, previousType: beforeType, staffId: id, staffType: nextType, today }
       : goingAway
         // Away from tomorrow: today's sign-in still counts, later days are never charged.
-        ? { actorEmail, effectiveFrom: nextDateKey(today), previousType: beforeType, staffId: id, staffType: 'away' as const, today }
+        ? { actorEmail, effectiveFrom: nextDateKey(today), expected, previousType: beforeType, staffId: id, staffType: 'away' as const, today }
         : null;
     const updated = await saveStaffWithTypeChange(id, updateData, typeChange);
 
     if (!updated.length) {
-      return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
+      return typeChange
+        ? NextResponse.json({ error: CHANGED_MEANWHILE }, { status: 409 })
+        : NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
     }
 
     const auditAction = typeof archived === 'boolean' && before.archived !== archived
@@ -403,6 +409,7 @@ export async function DELETE(
       ? {
         actorEmail: (await currentUser())?.emailAddresses[0]?.emailAddress || null,
         effectiveFrom: nextDateKey(today),
+        expected: { active: before.active, archived: before.archived },
         previousType: staffTypeOf(before),
         staffId: id,
         staffType: 'away' as const,
@@ -414,6 +421,7 @@ export async function DELETE(
       { active: false, archived: true, archivedAt: new Date(), updatedAt: new Date() },
       archiveChange,
     );
+    if (!updated) return NextResponse.json({ error: CHANGED_MEANWHILE }, { status: 409 });
 
     // Archiving frees the person's LateWatch sign-in seat; history and login are kept.
     await unlinkStaffEmailIdentity({ email: before.email, releaseSeat: true, staffId: id });
