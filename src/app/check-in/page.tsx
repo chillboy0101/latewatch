@@ -1399,7 +1399,8 @@ export default function CheckInPage() {
     setMessage(null);
 
     try {
-      const location = await locationForAction(readingsRef.current);
+      // Sent from anywhere: the location goes with it when the phone gives one, for the admin to see.
+      const location = await locationForAction(readingsRef.current).catch(() => null);
       const response = await fetch('/api/attendance/check-in', {
         body: JSON.stringify({
           action: 'request_device_transfer',
@@ -1717,7 +1718,7 @@ export default function CheckInPage() {
                       disabled={requestingTransfer || transferRequestPending}
                       icon={ShieldCheck}
                       label={requestingTransfer
-                        ? 'Checking location...'
+                        ? 'Sending request...'
                         : transferRequestPending
                           ? 'Transfer Request Pending'
                           : 'Request Device Transfer'}
