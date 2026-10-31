@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerNested, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { LocationPermissionSheet, type LocationSheetMode } from '@/components/location/location-permission-sheet';
+import { InstallNudgeToast, takeInstallNudgeTurn } from '@/components/install/install-nudge-toast';
 import { formatDisplayDateTime, formatShortDisplayDate } from '@/lib/date-format';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
 import type { OfficeBoundary } from '@/lib/office-boundary';
@@ -692,7 +693,17 @@ export default function CheckInPage() {
     locationAccessRef.current = locationAccess;
   }, [locationAccess]);
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
-  const clearMessage = useCallback(() => setMessage(null), []);
+  // "Add to Home Screen" banner: offered after a check-in, once its success message has gone.
+  const [installNudgeOpen, setInstallNudgeOpen] = useState(false);
+  const installNudgePendingRef = useRef(false);
+  const hideInstallNudge = useCallback(() => setInstallNudgeOpen(false), []);
+  // Every way the message goes (its timer, a swipe) passes here, so the banner can follow it.
+  const clearMessage = useCallback(() => {
+    setMessage(null);
+    if (!installNudgePendingRef.current) return;
+    installNudgePendingRef.current = false;
+    if (takeInstallNudgeTurn()) setInstallNudgeOpen(true);
+  }, []);
   const [forcedSessionNotice, setForcedSessionNotice] = useState<string | null>(null);
   // This phone's readings from the last minute (see lib/location-readings).
   const readingsRef = useRef<LocationEvidence[]>([]);
@@ -712,12 +723,10 @@ export default function CheckInPage() {
   useEffect(() => {
     if (!message) return;
 
-    const timeout = window.setTimeout(() => {
-      setMessage(null);
-    }, CHECK_IN_FEEDBACK_DISMISS_MS);
+    const timeout = window.setTimeout(clearMessage, CHECK_IN_FEEDBACK_DISMISS_MS);
 
     return () => window.clearTimeout(timeout);
-  }, [message]);
+  }, [clearMessage, message]);
 
   useEffect(() => {
     if (notificationPermission !== 'granted' || !status) return;
@@ -776,7 +785,7 @@ export default function CheckInPage() {
   const fetchStatus = useCallback(async (options?: { preserveMessage?: boolean; silent?: boolean }) => {
     if (!deviceToken) return;
     if (!options?.silent) setLoading(true);
-    if (!options?.preserveMessage) setMessage(null);
+    if (!options?.preserveMessage) clearMessage();
 
     try {
       const response = await fetch('/api/attendance/check-in', {
@@ -805,7 +814,7 @@ export default function CheckInPage() {
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, [deviceToken, handleSessionInvalidated]);
+  }, [clearMessage, deviceToken, handleSessionInvalidated]);
 
   const fetchPushReminderStatus = useCallback(async (options?: { silent?: boolean }) => {
     if (!isLoaded || !user) return;
@@ -1224,6 +1233,7 @@ export default function CheckInPage() {
       if (!response.ok) throw new Error(body.error || 'Check-in failed');
 
       setStatus(body);
+      if (action === 'check_in' && !body.alreadyCheckedIn) installNudgePendingRef.current = true;
       setMessage({
         type: 'success',
         text: body.signedOut
@@ -1580,8 +1590,10 @@ export default function CheckInPage() {
         </header>
 
         <ReceiptNotificationStack
+          installNudgeOpen={installNudgeOpen}
           notifications={receiptNotifications.filter((notification) => !hiddenToastIds.has(notification.id))}
           onHide={hideReceiptToast}
+          onHideInstallNudge={hideInstallNudge}
           onOpen={openReceiptNotification}
         />
 
@@ -1948,19 +1960,25 @@ function StatusMessageToast({
   );
 }
 
+// Banners at the top of the screen: the "Add to Home Screen" one, then payment receipts.
 function ReceiptNotificationStack({
+  installNudgeOpen,
   notifications,
   onHide,
+  onHideInstallNudge,
   onOpen,
 }: {
+  installNudgeOpen: boolean;
   notifications: LatenessPaymentReceiptNotification[];
   onHide: (id: string) => void;
+  onHideInstallNudge: () => void;
   onOpen: (notification: LatenessPaymentReceiptNotification) => void;
 }) {
-  if (notifications.length === 0) return null;
+  if (notifications.length === 0 && !installNudgeOpen) return null;
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+0.75rem)] z-50 flex flex-col items-center gap-2 px-4 sm:inset-x-auto sm:right-4 sm:items-end sm:w-96">
+      {installNudgeOpen && <InstallNudgeToast onHide={onHideInstallNudge} />}
       {notifications.map((notification) => (
         <ReceiptNotificationToast
           key={notification.id}
