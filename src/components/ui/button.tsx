@@ -5,11 +5,13 @@ import { HapticSwitch } from '@/components/ui/haptic-switch';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
-// Buttons look raised and press in when tapped: a light top edge and a soft neutral shadow under
-// them (no coloured glow), which turn into a sunken inner shadow while pressed. The press eases in
-// quickly and springs back slowly (PRESS), so it feels smooth rather than snapping.
+// Buttons look raised and press in when tapped, with a neutral shadow under them (no coloured
+// glow) that turns into a sunken inner shadow while pressed. Solid buttons are one flat colour with
+// a crisp darker bottom edge and a tight shadow, like a physical key; plain ones keep a light top
+// edge. The press eases in quickly and springs back slowly (PRESS), so it feels smooth rather than
+// snapping.
 export const PRESS = 'transition-[color,background-color,border-color,box-shadow,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.97] active:duration-100 motion-reduce:transition-none';
-const RAISED_SOLID = 'shadow-[inset_0_1px_0_rgb(255_255_255/0.2),0_1px_2px_rgb(0_0_0/0.15)] active:shadow-[inset_0_2px_4px_rgb(0_0_0/0.25)]';
+const RAISED_SOLID = 'shadow-[inset_0_-2px_0_rgb(0_0_0/0.28),0_1px_1px_rgb(0_0_0/0.18),0_4px_8px_-3px_rgb(0_0_0/0.3)] active:shadow-[inset_0_3px_6px_rgb(0_0_0/0.35)]';
 const RAISED_PLAIN = 'shadow-[inset_0_1px_0_rgb(255_255_255/0.06),0_1px_2px_rgb(0_0_0/0.08)] active:shadow-[inset_0_1px_3px_rgb(0_0_0/0.12)]';
 
 const buttonVariants = cva(
@@ -17,8 +19,8 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: cn('bg-primary bg-linear-to-b from-white/12 to-transparent text-primary-foreground hover:bg-primary/90', RAISED_SOLID),
-        destructive: cn('bg-danger bg-linear-to-b from-white/12 to-transparent text-danger-foreground hover:bg-danger/90', RAISED_SOLID),
+        default: cn('bg-primary text-primary-foreground hover:bg-primary/90', RAISED_SOLID),
+        destructive: cn('bg-danger text-danger-foreground hover:bg-danger/90', RAISED_SOLID),
         outline: cn('border border-border bg-background hover:bg-card hover:text-foreground', RAISED_PLAIN),
         secondary: cn('bg-card text-foreground hover:bg-card/80', RAISED_PLAIN),
         ghost: 'hover:bg-card hover:text-foreground',

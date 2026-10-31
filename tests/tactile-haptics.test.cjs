@@ -13,9 +13,11 @@ test('buttons and portal cards look raised and press in when tapped', () => {
   assert.doesNotMatch(button, /translate-y-px/);
   // No coloured glow under buttons.
   assert.doesNotMatch(button, /color-mix\(in_oklab,var\(--(primary|danger)\)_55%/);
-  // The solid buttons keep their colour under the sheen (bg-gradient-to-* would make cn drop bg-primary).
-  assert.match(button, /'bg-primary bg-linear-to-b from-white\/12/);
-  assert.doesNotMatch(button, /bg-gradient-to/);
+  // Solid buttons: one flat theme colour (no sheen) with a crisp darker bottom edge. No
+  // bg-gradient-to-*, which would make cn drop bg-primary.
+  assert.match(button, /'bg-primary text-primary-foreground/);
+  assert.match(button, /inset_0_-2px_0_rgb\(0_0_0\/0\.28\)/);
+  assert.doesNotMatch(button, /from-white\/12|bg-gradient-to/);
   assert.match(button, /active:shadow-\[inset_/);
   const portal = read('src', 'components', 'layout', 'portal-ui.tsx');
   assert.match(portal, /export const CHOICE_PRESS = cn\(PRESS,/);
