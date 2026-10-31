@@ -282,7 +282,8 @@ export default function AttendancePage() {
     setError(null);
 
     try {
-      const response = await fetch(`/api/attendance?date=${attendanceDate}`, { cache: 'no-store' });
+      // POST: brings the day's charges up to date, then returns the day (GET only reads).
+      const response = await fetch(`/api/attendance?date=${attendanceDate}`, { cache: 'no-store', method: 'POST' });
       if (!response.ok) throw new Error(`Attendance request failed (${response.status})`);
       setData(await response.json());
       loadedDateRef.current = attendanceDate;
