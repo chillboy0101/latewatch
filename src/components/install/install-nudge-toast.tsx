@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState, type FocusEvent } from 'react';
 import Link from 'next/link';
 import { Smartphone, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -31,9 +31,11 @@ export function takeInstallNudgeTurn() {
   return true;
 }
 
-// "Add to Home Screen" banner, in the same stack and style as the receipt banners. Closing it (×
-// or a swipe) hides it for good; left alone it slides away after a few seconds.
+// "Add to Home Screen" banner, in the same stack as the receipt banners and sized like a phone
+// notification. Closing it (× or a swipe) hides it for good; left alone it slides away after a few
+// seconds, but not while one of its buttons has focus.
 export function InstallNudgeToast({ onHide }: { onHide: () => void }) {
+  const [focused, setFocused] = useState(false);
   const dismiss = () => {
     try {
       localStorage.setItem(DISMISSED_KEY, '1');
@@ -45,32 +47,41 @@ export function InstallNudgeToast({ onHide }: { onHide: () => void }) {
   const { swipeHandlers, swipeStyle } = useSwipeToDismiss(dismiss);
 
   useEffect(() => {
+    if (focused) return;
     const timeout = window.setTimeout(onHide, AUTO_HIDE_MS);
     return () => window.clearTimeout(timeout);
-  }, [onHide]);
+  }, [focused, onHide]);
+
+  const onBlur = (event: FocusEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
+  };
 
   return (
     <div
       {...swipeHandlers}
       style={swipeStyle}
-      className="pointer-events-auto flex w-full max-w-sm select-none items-center gap-3 overflow-hidden rounded-xl border border-border bg-card/90 py-2.5 pl-3 pr-1.5 shadow-lg ring-1 ring-border/60 backdrop-blur-md animate-in fade-in-0 slide-in-from-top-2 duration-300 ease-out"
+      onBlur={onBlur}
+      onFocus={() => setFocused(true)}
+      className="pointer-events-auto flex w-full max-w-md select-none flex-col gap-3 overflow-hidden rounded-2xl border border-border bg-card/90 p-3.5 shadow-lg ring-1 ring-border/60 backdrop-blur-md animate-in fade-in-0 slide-in-from-top-2 duration-300 ease-out"
       role="status"
     >
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-        <Smartphone className="h-4 w-4" />
+      <div className="flex items-center gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+          <Smartphone className="h-6 w-6" />
+        </div>
+        <p className="min-w-0 flex-1 text-base font-semibold text-foreground">Add to Home Screen</p>
+        <button
+          aria-label="Close"
+          className="-mr-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground"
+          onClick={dismiss}
+          type="button"
+        >
+          <X className="h-5 w-5" />
+        </button>
       </div>
-      <p className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">Add to Home Screen</p>
-      <Button asChild className="h-8 shrink-0 px-3 text-xs" size="sm">
+      <Button asChild className="h-11 w-full rounded-xl text-[15px] font-semibold">
         <Link href="/install" onClick={onHide}>Show me</Link>
       </Button>
-      <button
-        aria-label="Close"
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground"
-        onClick={dismiss}
-        type="button"
-      >
-        <X className="h-4 w-4" />
-      </button>
     </div>
   );
 }
