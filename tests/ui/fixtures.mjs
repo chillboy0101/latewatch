@@ -286,6 +286,7 @@ export function buildFixtures(now = new Date()) {
         const entries = future ? 0 : [3, 0, 2, 4, 2][index];
         return {
           amount: future ? 0 : [22, 0, 12, 44, 8][index],
+          date: day.key,
           day: day.label,
           entries,
           status: entries > 0 ? 'penalties' : future ? 'upcoming' : day.key === workdayKey ? 'today' : 'clear',

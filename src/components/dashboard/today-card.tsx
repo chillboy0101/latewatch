@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 
 // Today's attendance, as /api/attendance returns it (only the parts this card uses).
 export interface TodayAttendance {
@@ -17,13 +17,14 @@ export interface TodayAttendance {
 
 const MAX_NAMES = 5;
 
+// Same rule as the attendance overview's rowStatuses: fall back to `status` when `statuses` is missing or empty.
 function hasStatus(row: TodayAttendance['rows'][number], status: string) {
-  return row.statuses ? row.statuses.includes(status) : row.status === status;
+  return (row.statuses?.length ? row.statuses : [row.status]).includes(status);
 }
 
 function ghc(value: string | null | undefined) {
   const amount = Number(value || 0);
-  return amount > 0 ? `GHC ${amount.toLocaleString()}` : null;
+  return amount > 0 ? formatCurrency(amount) : null;
 }
 
 // Who is late and who isn't in yet, today. Sits under the stat cards; the rest of the dashboard is unchanged.
@@ -63,7 +64,9 @@ export function TodayCard({ today }: { today: TodayAttendance }) {
       </CardHeader>
       <CardContent>
         {late.length === 0 && notIn.length === 0 ? (
-          <p className="py-2 text-center text-sm text-muted-foreground">Everyone is in</p>
+          <p className="py-2 text-center text-sm text-muted-foreground">
+            {totals.present > 0 ? 'Everyone is in' : 'No one is in'}
+          </p>
         ) : (
           <div className="grid gap-6 md:grid-cols-2">
             <TodayList
