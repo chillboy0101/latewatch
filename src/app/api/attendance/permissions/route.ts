@@ -18,7 +18,6 @@ import { enforceRole } from '@/lib/auth/roles';
 import { getNonWorkdayLabel } from '@/lib/attendance';
 import { formatPermissionDays, isExcuseOverlapError } from '@/lib/staff-leave';
 import { getLeaveAndDeactivationCoverage } from '@/lib/staff-leave-service';
-import { staffOnDate } from '@/lib/staff-type-history';
 
 export const dynamic = 'force-dynamic';
 
@@ -118,9 +117,9 @@ export async function POST(request: NextRequest) {
       .where(eq(staff.id, staffId))
       .limit(1);
 
-    // Someone archived since can still get a permission for a day they were on staff (the
-    // attendance page lists them on that day).
-    if (!member || (member.archived === true && (await staffOnDate([member], date)).length === 0)) {
+    // Someone deactivated or archived since can still get a permission for the days they were on
+    // staff (the attendance page lists them on those days); their days away are skipped below.
+    if (!member) {
       return NextResponse.json({ error: 'Staff member was not found' }, { status: 404 });
     }
 
@@ -181,8 +180,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'The selected period has no workdays' }, { status: 400 });
     }
 
-    // Days already on leave are excused by the leave, and a deactivated person isn't charged:
-    // those days are skipped (and reported) instead of failing the whole period part-way.
+    // Days already on leave are excused by the leave, and days someone was away (deactivated or
+    // archived) aren't charged: those days are skipped (and reported), not the whole period.
     const coverage = await getLeaveAndDeactivationCoverage({ endDate: appliedDates[appliedDates.length - 1], staffIds: [staffId], startDate: appliedDates[0] });
     const leaveDates = appliedDates.filter((day) => coverage(staffId, day) === 'leave');
     const deactivatedDates = appliedDates.filter((day) => coverage(staffId, day) === 'deactivated');

@@ -7,10 +7,13 @@ import {
   latenessDebtPardonEntry,
   latenessEntry,
   latenessPaymentAllocation,
+  staff,
   staffLeavePeriod,
 } from '@/db/schema';
 import { writeAuditEvent } from '@/lib/audit';
 import { formatPermissionDays, isStaffLeaveDate } from '@/lib/staff-leave';
+import { isAwayOnDate } from '@/lib/staff-type';
+import { getStaffTypeChanges } from '@/lib/staff-type-history';
 
 export async function getStaffLeavePeriodsForRange(input: {
   endDate: string;
@@ -282,21 +285,27 @@ export type DayCoverage = 'leave' | 'deactivated' | null;
 
 // Which days already have leave or a deactivation for these staff. A permission can't be stored
 // on those days (the database keeps one excuse per day), and none is needed: leave already
-// excuses the day, and a deactivated person isn't charged.
+// excuses the day, and a deactivated person isn't charged. Days away (deactivated or archived)
+// come from the type history, as on the attendance page, plus older inactive periods.
 export async function getLeaveAndDeactivationCoverage(input: {
   endDate: string;
   staffIds: string[];
   startDate: string;
 }) {
   if (input.staffIds.length === 0) return (): DayCoverage => null;
-  const [periods, inactive] = await Promise.all([
+  const [periods, inactive, statusRows, typeChanges] = await Promise.all([
     getStaffLeavePeriodsForRange(input),
     getInactivePeriods(input),
+    db.select({ active: staff.active, archived: staff.archived, id: staff.id }).from(staff).where(inArray(staff.id, input.staffIds)),
+    getStaffTypeChanges(input.staffIds),
   ]);
+  const statusById = new Map(statusRows.map((row) => [row.id, row]));
   return (staffId: string, date: string): DayCoverage => {
     if (isStaffLeaveDate(periods, staffId, date)) return 'leave';
+    const status = statusById.get(staffId);
     const deactivated = inactive.some((row) => row.staff_id === staffId
-      && row.start_date <= date && (!row.reactivated_on || date < row.reactivated_on));
+      && row.start_date <= date && (!row.reactivated_on || date < row.reactivated_on))
+      || Boolean(status && isAwayOnDate(date, typeChanges.get(staffId), status));
     return deactivated ? 'deactivated' : null;
   };
 }

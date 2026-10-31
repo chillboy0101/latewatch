@@ -161,3 +161,16 @@ test('a permission is skipped as "on leave" only for the one-excuse-per-day refu
   const page = read('src/app/attendance/overview/page.tsx');
   assert.doesNotMatch(page, /disabled=\{isEditingPermission\}/);
 });
+
+test('a permission skips every day the person was away, deactivated or archived', () => {
+  // One shared rule for the permission routes and the restore after a leave change: days away
+  // come from the type history (like the attendance page), plus older inactive periods.
+  const service = read('src/lib/staff-leave-service.ts');
+  assert.match(service, /getStaffTypeChanges\(input\.staffIds\),/);
+  assert.match(service, /\|\| Boolean\(status && isAwayOnDate\(date, typeChanges\.get\(staffId\), status\)\);/);
+  const route = read('src/app/api/attendance/permissions/route.ts');
+  assert.match(route, /appliedDates = appliedDates\.filter\(\(day\) => !coverage\(staffId, day\)\);/);
+  // Only a missing person is "not found"; someone away on every day gets the covered-days message.
+  assert.match(route, /if \(!member\) \{\n\s+return NextResponse\.json\(\{ error: 'Staff member was not found' \}, \{ status: 404 \}\);/);
+  assert.doesNotMatch(route, /staffOnDate\(/);
+});
