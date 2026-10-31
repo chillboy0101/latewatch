@@ -78,7 +78,7 @@ export default function DashboardPage() {
         todayAgainRef.current = false;
         try {
           // Read-only, and no date: the server picks today (Accra), so a wrong laptop clock can't shift it.
-          const res = await fetch('/api/attendance?sync=0', { cache: 'no-store' });
+          const res = await fetch('/api/attendance', { cache: 'no-store' });
           const data = await res.json();
           if (res.ok && typeof data?.date === 'string' && data.totals && Array.isArray(data.rows)) setToday(data);
         } catch (error) {

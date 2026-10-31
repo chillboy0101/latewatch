@@ -6,14 +6,23 @@ const test = require('node:test');
 
 const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
 
-test('the dashboard Today card only reads today\'s attendance and refreshes at once', () => {
+test('GET /api/attendance only reads; POST brings charges up to date first', () => {
   const route = read('src/app/api/attendance/route.ts');
-  // sync=0 skips bringing the day's charges up to date; every other caller still syncs first.
-  assert.match(route, /if \(url\.searchParams\.get\('sync'\) !== '0'\) \{\n\s+await requiredAttendanceQuery\('attendance-lateness-sync'/);
+  // A plain GET (a link, a page load) can never change charges.
+  assert.match(route, /export async function GET\(request: NextRequest\) \{\n\s+return attendanceResponse\(request, \{ sync: false \}\);/);
+  assert.match(route, /export async function POST\(request: NextRequest\) \{\n\s+return attendanceResponse\(request, \{ sync: true \}\);/);
+  assert.match(route, /if \(sync\) \{\n\s+await requiredAttendanceQuery\('attendance-lateness-sync'/);
+  assert.doesNotMatch(route, /searchParams\.get\('sync'\)/);
 
+  // The attendance overview still brings the day up to date, through POST.
+  const overview = read('src/app/attendance/overview/page.tsx');
+  assert.match(overview, /fetch\(`\/api\/attendance\?date=\$\{attendanceDate\}`, \{ cache: 'no-store', method: 'POST' \}\)/);
+});
+
+test('the dashboard Today card only reads today\'s attendance and refreshes at once', () => {
   const page = read('src/app/dashboard/page.tsx');
-  // No date: the server picks today, so the card never follows a wrong laptop clock.
-  assert.match(page, /fetch\('\/api\/attendance\?sync=0'/);
+  // A plain GET with no date: read-only, and the server picks today, so a wrong laptop clock can't shift it.
+  assert.match(page, /fetch\('\/api\/attendance', \{ cache: 'no-store' \}\)/);
   // A failed load keeps the last good data instead of removing the card.
   assert.doesNotMatch(page, /setToday\(null\)/);
   // Today's week row is found by its date, not by rebuilding the "Fri 31" label.

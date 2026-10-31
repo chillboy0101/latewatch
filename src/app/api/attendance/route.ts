@@ -42,7 +42,17 @@ function isOnTimeAttendanceRow(row: { attendance: { checkInTime: string | null }
   return isOnTimeCheckIn(row.attendance?.checkInTime);
 }
 
+// GET only reads, so opening a link can never change charges.
 export async function GET(request: NextRequest) {
+  return attendanceResponse(request, { sync: false });
+}
+
+// POST brings the day's charges up to date first (the attendance overview), then returns the same data.
+export async function POST(request: NextRequest) {
+  return attendanceResponse(request, { sync: true });
+}
+
+async function attendanceResponse(request: NextRequest, { sync }: { sync: boolean }) {
   try {
     const url = new URL(request.url);
     const clock = getAccraClock();
@@ -51,9 +61,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
     }
 
-    // sync=0 only reads what's stored (the dashboard): check-ins write their own charges and the
-    // scheduled job adds no sign-ins. Without it, the day's charges are brought up to date first.
-    if (url.searchParams.get('sync') !== '0') {
+    if (sync) {
       await requiredAttendanceQuery('attendance-lateness-sync', () => syncLatenessEntriesFromAttendanceForDate(date));
     }
 
