@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { crc32, deflateSync } from 'node:zlib';
 import { build } from 'esbuild';
 import { chromium } from 'playwright-core';
-import { buildFixtures } from '../tests/ui/fixtures.mjs';
+import { buildFixtures, harnessWorkday } from '../tests/ui/fixtures.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = path.join(root, 'output', 'ui-shots');
@@ -63,8 +63,8 @@ async function waitForServer(timeoutMs = 120_000) {
   throw new Error(`next dev did not start on ${baseUrl}`);
 }
 
-async function mockApi(context, adjust) {
-  const fixtures = buildFixtures();
+async function mockApi(context, adjust, now) {
+  const fixtures = buildFixtures(now);
   adjust?.(fixtures);
   await context.route('**/api/**', async (route) => {
     const { pathname } = new URL(route.request().url());
@@ -627,8 +627,12 @@ async function paymentsShots(browser) {
 
 async function desktopShots(browser) {
   const context = await browser.newContext(DESKTOP);
-  await mockApi(context);
+  // A workday morning, so the dashboard's Today card and today's week row show. The data and the
+  // page clock use the same day, so every page shows the same date and month.
+  const workday = harnessWorkday();
+  await mockApi(context, undefined, workday);
   const page = await context.newPage();
+  await page.clock.setFixedTime(workday);
   for (const route of ['dashboard', 'entries', 'payments', 'exports', 'attendance/devices']) {
     await page.goto(`${baseUrl}/${route}`, { waitUntil: 'load' });
     // Let the page fetch its (mocked) data and finish its loading state.

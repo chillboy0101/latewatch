@@ -89,7 +89,7 @@ export async function GET() {
           : dateStr > today
             ? 'upcoming'
             : dateStr === today ? 'today' : 'clear';
-      return { amount, day, entries: dayEntries.length, status };
+      return { amount, date: dateStr, day, entries: dayEntries.length, status };
     });
 
     // Build recent entries

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   Activity,
@@ -18,10 +18,16 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
+import { TodayCard, type TodayAttendance } from '@/components/dashboard/today-card';
 import { formatDisplayDateTime, formatShortDisplayDate } from '@/lib/date-format';
+import { getAccraDateKey } from '@/lib/date-key';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
+import { cn } from '@/lib/utils';
+
+const DAY_CHECK_MS = 60_000;
 
 interface WeekDayData {
+  date: string;
   day: string;
   entries: number;
   amount: number;
@@ -55,6 +61,34 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [today, setToday] = useState<TodayAttendance | null>(null);
+  // One Today request at a time. Events that arrive meanwhile trigger exactly one more load right after.
+  const todayLoadingRef = useRef(false);
+  const todayAgainRef = useRef(false);
+
+  // Today's attendance for the Today card. If a load fails, the last good data stays on screen.
+  const fetchToday = useCallback(async () => {
+    if (todayLoadingRef.current) {
+      todayAgainRef.current = true;
+      return;
+    }
+    todayLoadingRef.current = true;
+    try {
+      do {
+        todayAgainRef.current = false;
+        try {
+          // Read-only, and no date: the server picks today (Accra), so a wrong laptop clock can't shift it.
+          const res = await fetch('/api/attendance?sync=0', { cache: 'no-store' });
+          const data = await res.json();
+          if (res.ok && typeof data?.date === 'string' && data.totals && Array.isArray(data.rows)) setToday(data);
+        } catch (error) {
+          console.warn('Could not load today\'s attendance:', error);
+        }
+      } while (todayAgainRef.current);
+    } finally {
+      todayLoadingRef.current = false;
+    }
+  }, []);
 
   const fetchDashboardData = useCallback(async () => {
     try {
@@ -75,14 +109,22 @@ export default function DashboardPage() {
     let cleanup: (() => void) | undefined;
     let mounted = true;
 
-    fetchDashboardData();
+    void fetchDashboardData();
+    void fetchToday();
 
     (async () => {
-      const unsubscribe = await subscribeRealtimeChannel({
-        channel: 'dashboard',
-        events: ['invalidate'],
-        onEvent: fetchDashboardData,
-      });
+      const unsubscribes = await Promise.all([
+        subscribeRealtimeChannel({
+          channel: 'dashboard',
+          events: ['invalidate'],
+          onEvent: () => {
+            void fetchDashboardData();
+            void fetchToday();
+          },
+        }),
+        subscribeRealtimeChannel({ channel: 'attendance', events: ['invalidate'], onEvent: () => void fetchToday() }),
+      ]);
+      const unsubscribe = () => unsubscribes.forEach((stop) => stop());
 
       if (mounted) {
         cleanup = unsubscribe;
@@ -91,11 +133,22 @@ export default function DashboardPage() {
       }
     })();
 
+    // A dashboard left open past midnight (Accra) moves on to the new day and week.
+    let shownDay = getAccraDateKey();
+    const dayCheck = setInterval(() => {
+      const now = getAccraDateKey();
+      if (now === shownDay) return;
+      shownDay = now;
+      void fetchDashboardData();
+      void fetchToday();
+    }, DAY_CHECK_MS);
+
     return () => {
       mounted = false;
+      clearInterval(dayCheck);
       cleanup?.();
     };
-  }, [fetchDashboardData]);
+  }, [fetchDashboardData, fetchToday]);
 
   if (loading) {
     return (
@@ -137,6 +190,12 @@ export default function DashboardPage() {
   const penaltyChange = stats?.penaltyChangePercent ?? null;
   const entryChange = stats?.entryChangePercent ?? null;
   const recentActivity = stats?.recentActivity.slice(0, 10) || [];
+  // Today counts only on a workday of this week (not weekends or holidays).
+  // The server's date for today, from the attendance response, so the label and the card always match.
+  const todayKey = today?.date;
+  const todayRow = (stats?.weekDays || []).find((day) => day.date === todayKey);
+  const todayIsWorkday = Boolean(todayRow && todayRow.status !== 'holiday');
+  const showToday = Boolean(today && todayIsWorkday);
 
   return (
     <DashboardLayout title="Dashboard">
@@ -182,9 +241,12 @@ export default function DashboardPage() {
             value={(stats?.staffCount || 0).toString()}
             change={null}
             icon="users"
-            fallback={null}
+            fallback={showToday && today ? `${today.totals.present} in today` : null}
+            fallbackClassName="text-success"
           />
         </div>
+
+        {showToday && today && <TodayCard today={today} />}
 
         <div className="grid gap-4 md:grid-cols-3">
           <Card className="col-span-1">
@@ -220,7 +282,7 @@ export default function DashboardPage() {
             <CardContent>
               <div className="space-y-2">
                 {(stats?.weekDays || []).map((day) => (
-                  <WeekDayRow key={day.day} {...day} />
+                  <WeekDayRow key={day.day} {...day} isToday={day.date === todayKey} />
                 ))}
               </div>
               <div className="mt-4 border-t border-border pt-4">
@@ -270,12 +332,14 @@ function StatCard({
   change,
   icon,
   fallback,
+  fallbackClassName = 'text-muted-foreground',
 }: {
   title: string;
   value: string;
   change: number | null;
   icon?: 'penalty' | 'entries' | 'users';
   fallback: string | null;
+  fallbackClassName?: string;
 }) {
   const Icon = icon === 'users' ? Users : icon === 'entries' ? ClipboardList : DollarSign;
 
@@ -294,7 +358,7 @@ function StatCard({
               {change >= 0 ? '+' : ''}{change}% vs last week
             </div>
           ) : fallback ? (
-            <div className="mt-2 text-xs font-medium text-muted-foreground">{fallback}</div>
+            <div className={cn('mt-2 text-xs font-medium', fallbackClassName)}>{fallback}</div>
           ) : (
             <div className="mt-2 h-4" aria-hidden="true" />
           )}
@@ -304,10 +368,10 @@ function StatCard({
   );
 }
 
-function WeekDayRow({ day, entries, amount, status }: WeekDayData) {
+function WeekDayRow({ day, entries, amount, status, isToday }: WeekDayData & { isToday: boolean }) {
   return (
-    <div className="flex items-center justify-between gap-3 text-sm">
-      <span className="font-medium">{day}</span>
+    <div className={cn('flex items-center justify-between gap-3 text-sm', isToday && '-mx-2 rounded-md bg-primary/10 px-2 py-1 font-semibold')}>
+      <span className="font-medium">{isToday ? `${day} · Today` : day}</span>
       <span className={
         status === 'penalties' ? 'text-warning' :
         status === 'clear' ? 'text-success' :
