@@ -25,6 +25,7 @@ import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 
 const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const TODAY_REFRESH_DELAY_MS = 15_000;
 
 // Today's row label as the dashboard API writes it ("Fri 31"), in Accra time.
 function todayRowLabel(dateKey: string) {
@@ -83,7 +84,6 @@ export default function DashboardPage() {
   }, []);
 
   const fetchDashboardData = useCallback(async () => {
-    void fetchToday();
     try {
       const res = await fetch('/api/dashboard', { cache: 'no-store' });
       const data = await res.json();
@@ -96,19 +96,37 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [fetchToday]);
+  }, []);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     let mounted = true;
+    let todayTimer: ReturnType<typeof setTimeout> | null = null;
 
-    fetchDashboardData();
+    void fetchDashboardData();
+    void fetchToday();
+
+    // Loading today's attendance also re-checks the day's lateness charges on the server, so a burst
+    // of check-ins (each sends both a dashboard and an attendance update) makes one reload, not one each.
+    const scheduleToday = () => {
+      if (todayTimer) return;
+      todayTimer = setTimeout(() => {
+        todayTimer = null;
+        void fetchToday();
+      }, TODAY_REFRESH_DELAY_MS);
+    };
 
     (async () => {
-      // Check-ins and permissions change today's attendance, so the Today card follows that channel too.
       const unsubscribes = await Promise.all([
-        subscribeRealtimeChannel({ channel: 'dashboard', events: ['invalidate'], onEvent: fetchDashboardData }),
-        subscribeRealtimeChannel({ channel: 'attendance', events: ['invalidate'], onEvent: fetchToday }),
+        subscribeRealtimeChannel({
+          channel: 'dashboard',
+          events: ['invalidate'],
+          onEvent: () => {
+            void fetchDashboardData();
+            scheduleToday();
+          },
+        }),
+        subscribeRealtimeChannel({ channel: 'attendance', events: ['invalidate'], onEvent: scheduleToday }),
       ]);
       const unsubscribe = () => unsubscribes.forEach((stop) => stop());
 
@@ -121,6 +139,7 @@ export default function DashboardPage() {
 
     return () => {
       mounted = false;
+      if (todayTimer) clearTimeout(todayTimer);
       cleanup?.();
     };
   }, [fetchDashboardData, fetchToday]);
