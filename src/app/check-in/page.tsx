@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerNested, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { LocationPermissionSheet, type LocationSheetMode } from '@/components/location/location-permission-sheet';
+import { InstallNudgeToast, takeInstallNudgeTurn } from '@/components/install/install-nudge-toast';
 import { formatDisplayDateTime, formatShortDisplayDate } from '@/lib/date-format';
 import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
 import type { OfficeBoundary } from '@/lib/office-boundary';
@@ -892,6 +893,16 @@ export default function CheckInPage() {
     navigation.forward(notification.href);
   }, [dismissReceiptNotification, navigation]);
 
+  // "Add to Home Screen" banner: offered after a check-in, once its success message has gone.
+  const [installNudgeOpen, setInstallNudgeOpen] = useState(false);
+  const installNudgePendingRef = useRef(false);
+  const hideInstallNudge = useCallback(() => setInstallNudgeOpen(false), []);
+  useEffect(() => {
+    if (message || !installNudgePendingRef.current) return;
+    installNudgePendingRef.current = false;
+    if (takeInstallNudgeTurn()) setInstallNudgeOpen(true);
+  }, [message]);
+
   // Hide a receipt's transient toast without dismissing it — it stays in the
   // ⋮ menu until the user views or dismisses it there.
   const hideReceiptToast = useCallback((id: string) => {
@@ -1224,6 +1235,7 @@ export default function CheckInPage() {
       if (!response.ok) throw new Error(body.error || 'Check-in failed');
 
       setStatus(body);
+      if (action === 'check_in' && !body.alreadyCheckedIn) installNudgePendingRef.current = true;
       setMessage({
         type: 'success',
         text: body.signedOut
@@ -1580,8 +1592,10 @@ export default function CheckInPage() {
         </header>
 
         <ReceiptNotificationStack
+          installNudgeOpen={installNudgeOpen}
           notifications={receiptNotifications.filter((notification) => !hiddenToastIds.has(notification.id))}
           onHide={hideReceiptToast}
+          onHideInstallNudge={hideInstallNudge}
           onOpen={openReceiptNotification}
         />
 
@@ -1948,19 +1962,25 @@ function StatusMessageToast({
   );
 }
 
+// Banners at the top of the screen: the "Add to Home Screen" one, then payment receipts.
 function ReceiptNotificationStack({
+  installNudgeOpen,
   notifications,
   onHide,
+  onHideInstallNudge,
   onOpen,
 }: {
+  installNudgeOpen: boolean;
   notifications: LatenessPaymentReceiptNotification[];
   onHide: (id: string) => void;
+  onHideInstallNudge: () => void;
   onOpen: (notification: LatenessPaymentReceiptNotification) => void;
 }) {
-  if (notifications.length === 0) return null;
+  if (notifications.length === 0 && !installNudgeOpen) return null;
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+0.75rem)] z-50 flex flex-col items-center gap-2 px-4 sm:inset-x-auto sm:right-4 sm:items-end sm:w-96">
+      {installNudgeOpen && <InstallNudgeToast onHide={onHideInstallNudge} />}
       {notifications.map((notification) => (
         <ReceiptNotificationToast
           key={notification.id}
