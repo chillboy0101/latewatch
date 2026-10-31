@@ -63,8 +63,9 @@ async function waitForServer(timeoutMs = 120_000) {
   throw new Error(`next dev did not start on ${baseUrl}`);
 }
 
-async function mockApi(context) {
+async function mockApi(context, adjust) {
   const fixtures = buildFixtures();
+  adjust?.(fixtures);
   await context.route('**/api/**', async (route) => {
     const { pathname } = new URL(route.request().url());
     // No live updates in the harness: realtime answers "unavailable" and pages stay on the fixtures.
@@ -242,6 +243,53 @@ async function serveEsriOffline(context, geocoder) {
 }
 
 // Office Location on a desktop: Esri's map and tools, a proposed area, then editing it.
+// The staff check-in with an office location set, so the location sheet and live location show.
+function withOfficeLocation(fixtures) {
+  const office = fixtures['/api/attendance/location'].location;
+  fixtures['/api/attendance/check-in'] = {
+    ...fixtures['/api/attendance/check-in'],
+    locationConfigured: true,
+    locationPolicy: {
+      id: office.id,
+      latitude: office.latitude,
+      longitude: office.longitude,
+      maxAccuracyMeters: office.maxAccuracyMeters,
+      name: office.name,
+      radiusMeters: office.radiusMeters,
+    },
+  };
+}
+
+async function locationSheetShots(browser) {
+  // Location not allowed yet: the sheet says why before the browser asks.
+  let context = await browser.newContext(PHONE);
+  await mockApi(context, withOfficeLocation);
+  let page = await context.newPage();
+  await page.goto(`${baseUrl}/check-in`, { waitUntil: 'load' });
+  await page.getByRole('dialog', { name: 'Turn on location' }).waitFor({ timeout: 60_000 });
+  await shoot(page, 'phone-location-ask');
+  // Headless Chromium turns down the browser's own popup, so Allow leads to the "off" sheet.
+  await page.getByRole('button', { name: 'Allow location' }).click();
+  await page.getByRole('dialog', { name: 'Location is off' }).waitFor({ timeout: 30_000 });
+  await shoot(page, 'phone-location-off');
+  await context.close();
+
+  // Location already allowed, at the office: no sheet, straight to check-in.
+  context = await browser.newContext({
+    ...PHONE,
+    geolocation: { accuracy: 10, latitude: 5.5658293, longitude: -0.1775282 },
+    permissions: ['geolocation'],
+  });
+  await mockApi(context, withOfficeLocation);
+  page = await context.newPage();
+  await page.goto(`${baseUrl}/check-in`, { waitUntil: 'load' });
+  await page.getByText('At office').waitFor({ timeout: 60_000 });
+  const reminders = page.getByRole('dialog', { name: /reminders/i });
+  if (await reminders.isVisible().catch(() => false)) await page.getByRole('button', { name: 'Not now' }).click();
+  await shoot(page, 'phone-location-allowed');
+  await context.close();
+}
+
 async function locationShots(browser) {
   const check = (condition, message) => {
     if (!condition) throw new Error(`Office Location check failed: ${message}`);
@@ -568,7 +616,7 @@ try {
   try {
     // UI_SHOTS_ONLY=location,payments runs just those groups.
     const only = process.env.UI_SHOTS_ONLY?.split(',');
-    const groups = { phone: phoneShots, location: locationShots, payments: paymentsShots, desktop: desktopShots };
+    const groups = { phone: phoneShots, locationSheet: locationSheetShots, location: locationShots, payments: paymentsShots, desktop: desktopShots };
     for (const [name, run] of Object.entries(groups)) {
       if (!only || only.includes(name)) await run(browser);
     }
