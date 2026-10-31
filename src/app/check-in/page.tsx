@@ -997,7 +997,14 @@ export default function CheckInPage() {
   }, [pushReminderStatus?.publicKey]);
 
   const locationConfigured = Boolean(status?.locationConfigured);
-  const locationPolicy = status?.locationPolicy || null;
+  // The status refreshes every 30 seconds with a new (but usually identical) office policy object.
+  // Tracking restarts only when the policy itself changes, so a refresh doesn't wipe the current
+  // reading and show "Ready to check in" to someone outside until the next fix arrives.
+  const locationPolicyKey = status?.locationPolicy ? JSON.stringify(status.locationPolicy) : '';
+  const locationPolicy = useMemo(
+    () => (locationPolicyKey ? JSON.parse(locationPolicyKey) as NonNullable<CheckInStatus['locationPolicy']> : null),
+    [locationPolicyKey],
+  );
 
   useEffect(() => {
     if (!locationConfigured || !locationPolicy || !navigator.geolocation) {

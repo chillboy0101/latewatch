@@ -86,3 +86,12 @@ test('the status card is not "Ready to check in" while location stops the check-
   // No check badge while location blocks it.
   assert.match(source, /canCheckIn && !locationBlocksAction \? <ShieldCheck/);
 });
+
+test('a status refresh does not restart location tracking for the same office policy', () => {
+  const source = fs.readFileSync(checkInPagePath, 'utf8');
+
+  // The policy is keyed by its content, so the 30-second refresh keeps the current reading.
+  assert.match(source, /const locationPolicyKey = status\?\.locationPolicy \? JSON\.stringify\(status\.locationPolicy\) : '';/);
+  assert.match(source, /\[locationPolicyKey\],\n\s+\);/);
+  assert.match(source, /\}, \[locationConfigured, locationPolicy\]\);/);
+});
