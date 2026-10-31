@@ -21,7 +21,7 @@ import {
   staffTypeOf,
   type StaffType,
 } from '@/lib/staff-type';
-import { latestAwayStart, latestStaffTypeChangeDate, recordStaffTypeChange } from '@/lib/staff-type-history';
+import { saveStaffWithTypeChange, staffHistorySummary } from '@/lib/staff-type-history';
 
 type StaffUpdateBody = {
   active?: boolean;
@@ -150,7 +150,8 @@ export async function PUT(
     const nextArchived = updateData.archived ?? before.archived;
     const goingAway = !wasAway && (nextActive !== true || nextArchived === true);
     const comingBack = wasAway && nextActive === true && nextArchived !== true;
-    const latestChangeDate = typeChanged || comingBack ? await latestStaffTypeChangeDate(id) : null;
+    const history = typeChanged || comingBack ? await staffHistorySummary(id) : null;
+    const latestChangeDate = history?.latestChangeDate ?? null;
     if (typeChanged && wasAway && !comingBack) {
       // Their away days must stay away: the type is picked when they come back.
       return NextResponse.json({ error: 'Bring this person back (Activate or Restore) to change their type.' }, { status: 400 });
@@ -161,7 +162,7 @@ export async function PUT(
     }
     if (comingBack) {
       const returnError = staffReturnDateError({
-        awayStart: await latestAwayStart(id),
+        awayStart: history?.awayStart ?? null,
         effectiveFrom: typeEffectiveFrom,
         latestChangeDate,
         today,
@@ -205,36 +206,18 @@ export async function PUT(
       : previousEmail;
     const emailChanged = email !== undefined && previousEmail !== nextEmail;
 
-    const updated = await db.update(staff)
-      .set(updateData)
-      .where(eq(staff.id, id))
-      .returning();
+    const actorEmail = actor?.emailAddresses[0]?.emailAddress || null;
+    const typeChange = typeChanged || comingBack
+      // Back from away (deactivated or archived) or a new type: from the chosen date on.
+      ? { actorEmail, effectiveFrom: typeEffectiveFrom, previousType: beforeType, staffId: id, staffType: nextType, today }
+      : goingAway
+        // Away from tomorrow: today's sign-in still counts, later days are never charged.
+        ? { actorEmail, effectiveFrom: nextDateKey(today), previousType: beforeType, staffId: id, staffType: 'away' as const, today }
+        : null;
+    const updated = await saveStaffWithTypeChange(id, updateData, typeChange);
 
     if (!updated.length) {
       return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
-    }
-
-    const actorEmail = actor?.emailAddresses[0]?.emailAddress || null;
-    if (typeChanged || comingBack) {
-      // Back from away (deactivated or archived) or a new type: from the chosen date on.
-      await recordStaffTypeChange({
-        actorEmail,
-        effectiveFrom: typeEffectiveFrom,
-        previousType: beforeType,
-        staffId: id,
-        staffType: nextType,
-        today,
-      });
-    } else if (goingAway) {
-      // Away from tomorrow: today's sign-in still counts, later days are never charged.
-      await recordStaffTypeChange({
-        actorEmail,
-        effectiveFrom: nextDateKey(today),
-        previousType: beforeType,
-        staffId: id,
-        staffType: 'away',
-        today,
-      });
     }
 
     const auditAction = typeof archived === 'boolean' && before.archived !== archived
@@ -414,23 +397,23 @@ export async function DELETE(
       return NextResponse.json({ success: true, deleted: true, purgedEntryCount: purgeRecords ? totalEntries : 0 });
     }
 
-    const [updated] = await db.update(staff)
-      .set({ active: false, archived: true, archivedAt: new Date(), updatedAt: new Date() })
-      .where(eq(staff.id, id))
-      .returning();
-
-    if (before.active === true && before.archived !== true) {
-      // Away from tomorrow, on the same profile: restoring brings them back from a chosen date.
-      const actor = await currentUser();
-      await recordStaffTypeChange({
-        actorEmail: actor?.emailAddresses[0]?.emailAddress || null,
-        effectiveFrom: nextDateKey(getAccraDateKey()),
+    // Away from tomorrow, on the same profile: restoring brings them back from a chosen date.
+    const today = getAccraDateKey();
+    const archiveChange = before.active === true && before.archived !== true
+      ? {
+        actorEmail: (await currentUser())?.emailAddresses[0]?.emailAddress || null,
+        effectiveFrom: nextDateKey(today),
         previousType: staffTypeOf(before),
         staffId: id,
-        staffType: 'away',
-        today: getAccraDateKey(),
-      });
-    }
+        staffType: 'away' as const,
+        today,
+      }
+      : null;
+    const [updated] = await saveStaffWithTypeChange(
+      id,
+      { active: false, archived: true, archivedAt: new Date(), updatedAt: new Date() },
+      archiveChange,
+    );
 
     // Archiving frees the person's LateWatch sign-in seat; history and login are kept.
     await unlinkStaffEmailIdentity({ email: before.email, releaseSeat: true, staffId: id });

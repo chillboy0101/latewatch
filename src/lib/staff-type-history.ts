@@ -43,54 +43,68 @@ export async function staffOnDate<T extends Parameters<typeof staffOnDateFrom>[0
 // Days before someone's first change keep the type they had, from any date in the past.
 const HISTORY_START = '2000-01-01';
 
-export async function latestStaffTypeChangeDate(staffId: string) {
+// From one read of their history: when the latest type change started (the next can't start
+// before it) and when their latest time away began (null if they were never away).
+export async function staffHistorySummary(staffId: string) {
   const changes = (await getStaffTypeChanges([staffId])).get(staffId) || [];
-  return changes.filter((change) => change.staffType !== 'away').at(-1)?.effectiveFrom ?? null;
+  return {
+    awayStart: changes.filter((change) => change.staffType === 'away').at(-1)?.effectiveFrom ?? null,
+    latestChangeDate: changes.filter((change) => change.staffType !== 'away').at(-1)?.effectiveFrom ?? null,
+  };
 }
 
-// When their latest time away began (null if they were never away).
-export async function latestAwayStart(staffId: string) {
-  const changes = (await getStaffTypeChanges([staffId])).get(staffId) || [];
-  return changes.filter((change) => change.staffType === 'away').at(-1)?.effectiveFrom ?? null;
-}
-
-// Saves a type (or 'away') from a date. The first change also keeps the earlier type for every
-// day before it. An 'away' that hasn't started yet is dropped (brought back before leaving);
-// one that has started is kept, since returns can't be dated before it.
-export async function recordStaffTypeChange(input: {
+export interface StaffTypeChangeInput {
   actorEmail?: string | null;
   effectiveFrom: string;
   previousType: StaffType;
   staffId: string;
   staffType: StaffTypeOnDate;
   today: string;
-}) {
-  const existing = (await getStaffTypeChanges([input.staffId])).get(input.staffId) || [];
-  if (existing.length === 0) {
-    await db.insert(staffTypeChange).values({
-      createdByEmail: input.actorEmail || null,
-      effectiveFrom: HISTORY_START,
-      staffId: input.staffId,
-      staffType: input.previousType,
-    });
-  }
-  await db.delete(staffTypeChange).where(and(
-    eq(staffTypeChange.staffId, input.staffId),
-    or(
-      eq(staffTypeChange.effectiveFrom, input.effectiveFrom),
-      and(
-        eq(staffTypeChange.staffType, 'away'),
-        gte(staffTypeChange.effectiveFrom, input.effectiveFrom),
-        gt(staffTypeChange.effectiveFrom, input.today),
+}
+
+// The history writes for a type (or 'away') from a date. The first change also keeps the earlier
+// type for every day before it. An 'away' that hasn't started yet is dropped (brought back before
+// leaving); one that has started is kept, since returns can't be dated before it.
+function staffTypeChangeWrites(input: StaffTypeChangeInput) {
+  const createdByEmail = input.actorEmail || null;
+  return [
+    // The same lock as the undo: one change to a person's history at a time.
+    db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`staff-type:${input.staffId}`}))`),
+    // Read after the lock, so two saves at once can't both add the starting row.
+    db.execute(sql`INSERT INTO ${staffTypeChange} (staff_id, staff_type, effective_from, created_by_email)
+      SELECT ${input.staffId}, ${input.previousType}, ${HISTORY_START}, ${createdByEmail}
+      WHERE NOT EXISTS (SELECT 1 FROM ${staffTypeChange} WHERE staff_id = ${input.staffId})`),
+    db.delete(staffTypeChange).where(and(
+      eq(staffTypeChange.staffId, input.staffId),
+      or(
+        eq(staffTypeChange.effectiveFrom, input.effectiveFrom),
+        and(
+          eq(staffTypeChange.staffType, 'away'),
+          gte(staffTypeChange.effectiveFrom, input.effectiveFrom),
+          gt(staffTypeChange.effectiveFrom, input.today),
+        ),
       ),
-    ),
-  ));
-  await db.insert(staffTypeChange).values({
-    createdByEmail: input.actorEmail || null,
-    effectiveFrom: input.effectiveFrom,
-    staffId: input.staffId,
-    staffType: input.staffType,
-  });
+    )),
+    db.insert(staffTypeChange).values({
+      createdByEmail,
+      effectiveFrom: input.effectiveFrom,
+      staffId: input.staffId,
+      staffType: input.staffType,
+    }),
+  ] as const;
+}
+
+// Saves the staff row and, with it, their type history in one transaction: both are saved or
+// neither is, so today's status and the history never disagree.
+export async function saveStaffWithTypeChange(
+  staffId: string,
+  values: Partial<typeof staff.$inferInsert>,
+  change: StaffTypeChangeInput | null,
+) {
+  const update = db.update(staff).set(values).where(eq(staff.id, staffId)).returning();
+  if (!change) return update;
+  const results = await db.batch([...staffTypeChangeWrites(change), update]);
+  return results.at(-1) as Array<typeof staff.$inferSelect>;
 }
 
 // Undoes the latest type change (see undoableStaffTypeChange), but only the one the admin

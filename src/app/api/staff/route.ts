@@ -13,7 +13,7 @@ import { enforceRole } from '@/lib/auth/roles';
 import { getActiveLeavePeriod } from '@/lib/staff-leave';
 import { recalculateStaffStoredPenalties } from '@/lib/staff-penalty-recalculation-server';
 import { flagsForStaffType, isStaffType, penaltyFlagsOn, staffReturnDateError, staffTypeChangeError, staffTypeOf, type StaffType } from '@/lib/staff-type';
-import { getStaffTypeChanges, latestAwayStart, latestStaffTypeChangeDate, recordStaffTypeChange } from '@/lib/staff-type-history';
+import { getStaffTypeChanges, saveStaffWithTypeChange, staffHistorySummary } from '@/lib/staff-type-history';
 
 export const dynamic = 'force-dynamic';
 
@@ -171,7 +171,7 @@ export async function POST(request: Request) {
       if (existingStaff.archived) {
         const previousType = staffTypeOf(existingStaff);
         const today = getAccraDateKey();
-        const latestChangeDate = await latestStaffTypeChangeDate(existingStaff.id);
+        const { awayStart, latestChangeDate } = await staffHistorySummary(existingStaff.id);
         const typeError = staffTypeChangeError({
           effectiveFrom: today,
           from: previousType,
@@ -179,7 +179,7 @@ export async function POST(request: Request) {
           to: staffType,
           today,
         }) || staffReturnDateError({
-          awayStart: await latestAwayStart(existingStaff.id),
+          awayStart,
           effectiveFrom: today,
           latestChangeDate,
           today,
@@ -187,30 +187,26 @@ export async function POST(request: Request) {
         if (typeError) {
           return NextResponse.json({ error: `${existingStaff.fullName} is archived. ${typeError}` }, { status: 400 });
         }
-        const [restored] = await db.update(staff)
-          .set({
-            active: true,
-            archived: false,
-            archivedAt: null,
-            email: normalizedEmail ?? existingStaff.email,
-            staffNo: normalizedStaffNo ?? existingStaff.staffNo,
-            gender: normalizedGender ?? existingStaff.gender,
-            rank: normalizedRank ?? existingStaff.rank,
-            department: normalizedDepartment ?? existingStaff.department,
-            unit: normalizedUnit ?? existingStaff.unit,
-            isAttendanceOnly,
-            isNssPersonnel,
-            staffType,
-            updatedAt: new Date(),
-          })
-          .where(eq(staff.id, existingStaff.id))
-          .returning();
         const actorEmail = actor?.emailAddresses[0]?.emailAddress || null;
-        await recordStaffTypeChange({
+        const [restored] = await saveStaffWithTypeChange(existingStaff.id, {
+          active: true,
+          archived: false,
+          archivedAt: null,
+          email: normalizedEmail ?? existingStaff.email,
+          staffNo: normalizedStaffNo ?? existingStaff.staffNo,
+          gender: normalizedGender ?? existingStaff.gender,
+          rank: normalizedRank ?? existingStaff.rank,
+          department: normalizedDepartment ?? existingStaff.department,
+          unit: normalizedUnit ?? existingStaff.unit,
+          isAttendanceOnly,
+          isNssPersonnel,
+          staffType,
+          updatedAt: new Date(),
+        }, {
           actorEmail,
           effectiveFrom: today,
           previousType,
-          staffId: restored.id,
+          staffId: existingStaff.id,
           staffType,
           today,
         });
