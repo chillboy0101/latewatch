@@ -76,3 +76,13 @@ test('check-in status icon: a bold tick on a solid badge once checked in, no cha
   assert.match(page, /rounded-full bg-current\/20 ring-1 ring-current\/30[\s\S]{0,200}<ShieldCheck /);
   assert.doesNotMatch(page, /chargeStatus/);
 });
+
+test('the status card is not "Ready to check in" while location stops the check-in', () => {
+  const source = fs.readFileSync(checkInPagePath, 'utf8');
+
+  // Title follows the live location, like the button below it.
+  assert.match(source, /\{statusCopy\(status, liveLocation\)\}/);
+  assert.match(source, /if \(liveLocation\.blocking\) \{\n\s+if \(liveLocation\.state === 'outside'\) return 'Not at the office';\n\s+if \(liveLocation\.state === 'weak'\) return 'Waiting for a clearer location';\n\s+return 'Location needed to check in';\n\s+\}\n\s+return 'Ready to check in';/);
+  // No check badge while location blocks it.
+  assert.match(source, /canCheckIn && !locationBlocksAction \? <ShieldCheck/);
+});

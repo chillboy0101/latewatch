@@ -206,7 +206,7 @@ function hasLateCheckInPenalty(status: CheckInStatus | null) {
   return status.attendance.status === 'late' && !hasNoSignOutPenalty(status);
 }
 
-function statusCopy(status: CheckInStatus | null) {
+function statusCopy(status: CheckInStatus | null, liveLocation: LiveLocation) {
   if (!status) return 'Checking your attendance status';
   if (!status.locationConfigured) return 'Office location not configured';
   if (!status.staff) return 'Profile not matched';
@@ -221,6 +221,12 @@ function statusCopy(status: CheckInStatus | null) {
   // On time, or late with an approved permission (stored as "excused").
   if (status.attendance?.checkInTime) return 'Checked in';
   if (status.isAfterWorkdayEnd) return 'Check-ins closed';
+  // Not ready while the phone's location stops the check-in (the button says why too).
+  if (liveLocation.blocking) {
+    if (liveLocation.state === 'outside') return 'Not at the office';
+    if (liveLocation.state === 'weak') return 'Waiting for a clearer location';
+    return 'Location needed to check in';
+  }
   return 'Ready to check in';
 }
 
@@ -1454,13 +1460,13 @@ export default function CheckInPage() {
                         </span>
                       ) : (
                         <span className="relative flex size-[76%] items-center justify-center rounded-full bg-current/20 ring-1 ring-current/30">
-                          {canCheckIn ? <ShieldCheck className="size-[50%]" /> : <AlertTriangle className="size-[50%]" />}
+                          {canCheckIn && !locationBlocksAction ? <ShieldCheck className="size-[50%]" /> : <AlertTriangle className="size-[50%]" />}
                         </span>
                       )}
                     </div>
                     {/* Status, name and location sit at one even spacing. */}
                     <div className="flex max-w-full flex-col items-center gap-4 supports-[height:1cqh]:gap-[clamp(0.375rem,4.3cqh,1.25rem)]">
-                      <h2 className="text-2xl font-bold text-balance leading-tight supports-[height:1cqh]:text-[clamp(1.0625rem,6.5cqh,1.875rem)]">{statusCopy(status)}</h2>
+                      <h2 className="text-2xl font-bold text-balance leading-tight supports-[height:1cqh]:text-[clamp(1.0625rem,6.5cqh,1.875rem)]">{statusCopy(status, liveLocation)}</h2>
                       {status?.staff?.fullName && (
                         <p className="max-w-full truncate text-lg font-semibold leading-tight supports-[height:1cqh]:text-[clamp(0.9375rem,4.9cqh,1.25rem)]">{status.staff.fullName}</p>
                       )}
