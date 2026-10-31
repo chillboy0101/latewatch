@@ -73,7 +73,7 @@ test('check-in status icon: a bold tick on a solid badge once checked in, no cha
   assert.match(page, /bg-primary text-primary-foreground[\s\S]{0,200}<Check className="[^"]*" strokeWidth=\{3\} \/>/);
   assert.doesNotMatch(page, /<CheckCircle2 className="h-10 w-10/);
   // Before check-in: a soft fill of the card's colour (option C), not a dark outlined circle.
-  assert.match(page, /rounded-full bg-current\/20 ring-1 ring-current\/30[\s\S]{0,200}<ShieldCheck /);
+  assert.match(page, /rounded-full bg-current\/20 ring-1 ring-current\/30[\s\S]{0,400}<ShieldCheck /);
   assert.doesNotMatch(page, /chargeStatus/);
 });
 
@@ -82,9 +82,9 @@ test('the status card is not "Ready to check in" while location stops the check-
 
   // Title follows the live location, like the button below it.
   assert.match(source, /\{statusCopy\(status, liveLocation\)\}/);
-  assert.match(source, /if \(liveLocation\.blocking\) \{\n\s+if \(liveLocation\.state === 'outside'\) return 'Not at the office';\n\s+if \(liveLocation\.state === 'weak'\) return 'Waiting for a clearer location';\n\s+return 'Location needed to check in';\n\s+\}\n\s+return 'Ready to check in';/);
-  // No check badge while location blocks it.
-  assert.match(source, /canCheckIn && !locationBlocksAction \? <ShieldCheck/);
+  assert.match(source, /if \(liveLocation\.blocking\) \{\n\s+if \(liveLocation\.state === 'outside'\) return 'Not at the office';\n\s+if \(liveLocation\.state === 'weak'\) return 'Waiting for a clearer location';\n\s+return 'Location needed to check in';\n\s+\}\n\s+if \(liveLocation\.state === 'checking'\) return 'Checking your location';\n\s+return 'Ready to check in';/);
+  // No check badge while location blocks it, and a spinner while the first reading comes in.
+  assert.match(source, /canCheckIn && !locationBlocksAction && liveLocation\.state === 'checking'\n\s+\? <Loader2 className="size-\[50%\] animate-spin" \/>\n\s+: canCheckIn && !locationBlocksAction \? <ShieldCheck/);
 });
 
 test('a status refresh does not restart location tracking for the same office policy', () => {

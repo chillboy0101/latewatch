@@ -227,6 +227,7 @@ function statusCopy(status: CheckInStatus | null, liveLocation: LiveLocation) {
     if (liveLocation.state === 'weak') return 'Waiting for a clearer location';
     return 'Location needed to check in';
   }
+  if (liveLocation.state === 'checking') return 'Checking your location';
   return 'Ready to check in';
 }
 
@@ -1467,7 +1468,9 @@ export default function CheckInPage() {
                         </span>
                       ) : (
                         <span className="relative flex size-[76%] items-center justify-center rounded-full bg-current/20 ring-1 ring-current/30">
-                          {canCheckIn && !locationBlocksAction ? <ShieldCheck className="size-[50%]" /> : <AlertTriangle className="size-[50%]" />}
+                          {canCheckIn && !locationBlocksAction && liveLocation.state === 'checking'
+                            ? <Loader2 className="size-[50%] animate-spin" />
+                            : canCheckIn && !locationBlocksAction ? <ShieldCheck className="size-[50%]" /> : <AlertTriangle className="size-[50%]" />}
                         </span>
                       )}
                     </div>
