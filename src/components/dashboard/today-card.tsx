@@ -5,6 +5,7 @@ import { cn, formatCurrency } from '@/lib/utils';
 
 // Today's attendance, as /api/attendance returns it (only the parts this card uses).
 export interface TodayAttendance {
+  date: string;
   rows: {
     attendance: { checkInTime: string; computedAmount: string } | null;
     penaltyAmount?: string | null;

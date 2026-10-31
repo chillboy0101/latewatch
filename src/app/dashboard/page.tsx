@@ -24,15 +24,10 @@ import { getAccraDateKey } from '@/lib/date-key';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 
-const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_CHECK_MS = 60_000;
 
-// Today's row label as the dashboard API writes it ("Fri 31"), in Accra time.
-function todayRowLabel(dateKey: string) {
-  return `${WEEKDAY_NAMES[new Date(`${dateKey}T00:00:00Z`).getUTCDay()]} ${dateKey.slice(8, 10)}`;
-}
-
 interface WeekDayData {
+  date: string;
   day: string;
   entries: number;
   amount: number;
@@ -66,26 +61,32 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [todayKey, setTodayKey] = useState(() => getAccraDateKey());
   const [today, setToday] = useState<TodayAttendance | null>(null);
-  // Only the latest request may update the Today card, so a slow older one can't overwrite it.
-  const todayRequestRef = useRef(0);
+  // One Today request at a time. Events that arrive meanwhile trigger exactly one more load right after.
+  const todayLoadingRef = useRef(false);
+  const todayAgainRef = useRef(false);
 
-  // Today's attendance for the Today card. If it fails, the rest of the dashboard still shows.
+  // Today's attendance for the Today card. If a load fails, the last good data stays on screen.
   const fetchToday = useCallback(async () => {
-    const request = ++todayRequestRef.current;
-    const dateKey = getAccraDateKey();
-    setTodayKey(dateKey);
+    if (todayLoadingRef.current) {
+      todayAgainRef.current = true;
+      return;
+    }
+    todayLoadingRef.current = true;
     try {
-      // Read-only: shows what's stored (check-ins write their own charges), so it can refresh at once.
-      const res = await fetch(`/api/attendance?date=${dateKey}&sync=0`, { cache: 'no-store' });
-      const data = await res.json();
-      if (request !== todayRequestRef.current) return;
-      setToday(res.ok && data?.totals && Array.isArray(data.rows) ? data : null);
-    } catch (error) {
-      if (request !== todayRequestRef.current) return;
-      console.warn('Could not load today\'s attendance:', error);
-      setToday(null);
+      do {
+        todayAgainRef.current = false;
+        try {
+          // Read-only, and no date: the server picks today (Accra), so a wrong laptop clock can't shift it.
+          const res = await fetch('/api/attendance?sync=0', { cache: 'no-store' });
+          const data = await res.json();
+          if (res.ok && typeof data?.date === 'string' && data.totals && Array.isArray(data.rows)) setToday(data);
+        } catch (error) {
+          console.warn('Could not load today\'s attendance:', error);
+        }
+      } while (todayAgainRef.current);
+    } finally {
+      todayLoadingRef.current = false;
     }
   }, []);
 
@@ -190,8 +191,9 @@ export default function DashboardPage() {
   const entryChange = stats?.entryChangePercent ?? null;
   const recentActivity = stats?.recentActivity.slice(0, 10) || [];
   // Today counts only on a workday of this week (not weekends or holidays).
-  const todayLabel = todayRowLabel(todayKey);
-  const todayRow = (stats?.weekDays || []).find((day) => day.day === todayLabel);
+  // The server's date for today, from the attendance response, so the label and the card always match.
+  const todayKey = today?.date;
+  const todayRow = (stats?.weekDays || []).find((day) => day.date === todayKey);
   const todayIsWorkday = Boolean(todayRow && todayRow.status !== 'holiday');
   const showToday = Boolean(today && todayIsWorkday);
 
@@ -280,7 +282,7 @@ export default function DashboardPage() {
             <CardContent>
               <div className="space-y-2">
                 {(stats?.weekDays || []).map((day) => (
-                  <WeekDayRow key={day.day} {...day} isToday={day.day === todayLabel} />
+                  <WeekDayRow key={day.day} {...day} isToday={day.date === todayKey} />
                 ))}
               </div>
               <div className="mt-4 border-t border-border pt-4">
