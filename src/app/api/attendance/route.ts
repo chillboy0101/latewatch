@@ -51,7 +51,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
     }
 
-    await requiredAttendanceQuery('attendance-lateness-sync', () => syncLatenessEntriesFromAttendanceForDate(date));
+    // sync=0 only reads what's stored (the dashboard): check-ins write their own charges and the
+    // scheduled job adds no sign-ins. Without it, the day's charges are brought up to date first.
+    if (url.searchParams.get('sync') !== '0') {
+      await requiredAttendanceQuery('attendance-lateness-sync', () => syncLatenessEntriesFromAttendanceForDate(date));
+    }
 
     const [candidateStaffRows, attendanceRows, permissionRows] = await Promise.all([
       requiredAttendanceQuery('staff', () => db.select({

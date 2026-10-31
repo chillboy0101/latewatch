@@ -25,7 +25,6 @@ import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 
 const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const TODAY_REFRESH_DELAY_MS = 15_000;
 const DAY_CHECK_MS = 60_000;
 
 // Today's row label as the dashboard API writes it ("Fri 31"), in Accra time.
@@ -78,7 +77,8 @@ export default function DashboardPage() {
     const dateKey = getAccraDateKey();
     setTodayKey(dateKey);
     try {
-      const res = await fetch(`/api/attendance?date=${dateKey}`, { cache: 'no-store' });
+      // Read-only: shows what's stored (check-ins write their own charges), so it can refresh at once.
+      const res = await fetch(`/api/attendance?date=${dateKey}&sync=0`, { cache: 'no-store' });
       const data = await res.json();
       if (request !== todayRequestRef.current) return;
       setToday(res.ok && data?.totals && Array.isArray(data.rows) ? data : null);
@@ -107,20 +107,9 @@ export default function DashboardPage() {
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     let mounted = true;
-    let todayTimer: ReturnType<typeof setTimeout> | null = null;
 
     void fetchDashboardData();
     void fetchToday();
-
-    // Loading today's attendance also re-checks the day's lateness charges on the server, so a burst
-    // of check-ins (each sends both a dashboard and an attendance update) makes one reload, not one each.
-    const scheduleToday = () => {
-      if (todayTimer) return;
-      todayTimer = setTimeout(() => {
-        todayTimer = null;
-        void fetchToday();
-      }, TODAY_REFRESH_DELAY_MS);
-    };
 
     (async () => {
       const unsubscribes = await Promise.all([
@@ -129,10 +118,10 @@ export default function DashboardPage() {
           events: ['invalidate'],
           onEvent: () => {
             void fetchDashboardData();
-            scheduleToday();
+            void fetchToday();
           },
         }),
-        subscribeRealtimeChannel({ channel: 'attendance', events: ['invalidate'], onEvent: scheduleToday }),
+        subscribeRealtimeChannel({ channel: 'attendance', events: ['invalidate'], onEvent: () => void fetchToday() }),
       ]);
       const unsubscribe = () => unsubscribes.forEach((stop) => stop());
 
@@ -155,7 +144,6 @@ export default function DashboardPage() {
 
     return () => {
       mounted = false;
-      if (todayTimer) clearTimeout(todayTimer);
       clearInterval(dayCheck);
       cleanup?.();
     };
