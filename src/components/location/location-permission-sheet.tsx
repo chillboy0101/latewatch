@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Clock, Loader2, MapPin, MapPinOff, RotateCw, ShieldCheck } from 'lucide-react';
+import { Loader2, MapPin, MapPinOff, RotateCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from '@/components/ui/drawer';
 import { detectPhoneOs } from '@/lib/phone-os';
@@ -81,7 +81,7 @@ export function LocationPermissionSheet({
               {blocked ? 'Location is off' : 'Turn on location'}
             </DrawerTitle>
             <DrawerDescription className="text-[15px] text-muted-foreground">
-              {blocked ? 'Turn it on to check in.' : 'We check you are at the office when you check in.'}
+              {blocked ? 'Turn it on to check in.' : 'Needed to check in.'}
             </DrawerDescription>
           </div>
 
@@ -118,23 +118,7 @@ export function LocationPermissionSheet({
                 <p role="status" className="text-sm font-medium text-warning">Still off. Follow the steps, then try again.</p>
               )}
             </>
-          ) : (
-            <>
-              <ul className="w-full divide-y divide-border rounded-2xl border border-border bg-card px-4 text-left">
-                <li className="flex min-h-12 items-center gap-3 text-sm">
-                  <Clock aria-hidden className="size-5 shrink-0" />
-                  Only while the app is open
-                </li>
-                <li className="flex min-h-12 items-center gap-3 text-sm">
-                  <ShieldCheck aria-hidden className="size-5 shrink-0" />
-                  Never in the background
-                </li>
-              </ul>
-              <p className="text-sm text-muted-foreground">
-                Tap <strong className="text-foreground">Allow</strong> on the next popup.
-              </p>
-            </>
-          )}
+          ) : null}
 
           <div className="grid w-full gap-1.5">
             {blocked ? (
