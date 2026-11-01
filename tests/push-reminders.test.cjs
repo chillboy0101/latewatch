@@ -626,3 +626,18 @@ test('validateReminderCronRequest fails closed on a missing or wrong CRON_SECRET
     else process.env.CRON_SECRET = originalSecret;
   }
 });
+
+test('the "Add to Home Screen" banner shows when the check-in page opens in a phone browser', () => {
+  const page = fs.readFileSync(path.join(__dirname, '../src/app/check-in/page.tsx'), 'utf8');
+  // On open, before any check-in (not after one).
+  assert.match(page, /useEffect\(\(\) => \{\n\s*if \(takeInstallNudgeTurn\(\)\) setInstallNudgeOpen\(true\);\n\s*\}, \[\]\);/);
+  assert.doesNotMatch(page, /installNudgePendingRef/);
+  // Install first: the reminders sheet waits until the banner has gone.
+  assert.match(page, /&& !installNudgeOpen\n/);
+  // Only in a phone's browser, never in the installed app; once a day; closed for good.
+  const nudge = fs.readFileSync(path.join(__dirname, '../src/components/install/install-nudge-toast.tsx'), 'utf8');
+  assert.match(nudge, /if \(detectPhoneOs\(\) === 'other' \|\| isInstalled\(\)\) return false;/);
+  assert.match(nudge, /\(navigator as Navigator & \{ standalone\?: boolean \}\)\.standalone === true/);
+  assert.match(nudge, /window\.matchMedia\('\(display-mode: standalone\)'\)\.matches/);
+  assert.match(nudge, /if \(localStorage\.getItem\(DISMISSED_KEY\) === '1'\) return false;/);
+});
