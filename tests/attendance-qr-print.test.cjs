@@ -522,7 +522,13 @@ test('a device transfer can be requested any day, from anywhere; check-ins keep 
   assert.ok(transfer < source.indexOf('if (!locationValidation.ok)'));
   // The location is still read and kept with the request for the admin, but never blocks it.
   const branch = source.slice(transfer, source.indexOf("return block('WEEKEND_CLOSED'"));
-  assert.match(branch, /const locationValidation = validateRequestLocation\(officeLocation\);/);
+  assert.match(branch, /const checked = validateRequestLocation\(officeLocation\);/);
+  // With no office set, the phone's reading is still kept (never as verified).
+  assert.match(branch, /const evidence = officeLocation \? null : normalizeLocationEvidence\(body\?\.location\);/);
+  // The approval row says when the reading was taken, and when no office location is set.
+  const overview = fs.readFileSync(attendancePagePath, 'utf8');
+  assert.match(overview, /reading at \$\{formatDisplayDateTime\(request\.locationAt\)\}/);
+  assert.match(overview, /case 'OFFICE_LOCATION_NOT_CONFIGURED':/);
   assert.match(branch, /\.\.\.locationForDb\(locationValidation\)/);
   assert.doesNotMatch(branch, /if \(!locationValidation\.ok\)/);
   assert.match(branch, /isWeekend: isWeekendDate\(clock\.dateKey\)/);

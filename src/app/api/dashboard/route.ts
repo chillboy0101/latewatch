@@ -125,6 +125,8 @@ export async function GET() {
     });
 
     return NextResponse.json({
+      // The day (Accra) these numbers are for, so the dashboard knows when the week has moved on.
+      date: today,
       missedReminders,
       weekTotal,
       weekEntryCount: weekEntriesResult.length,

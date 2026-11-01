@@ -156,7 +156,9 @@ function transferLocationLabel(request: DeviceTransferRequest): { className?: st
   const meters = (value: string | null) => (value ? `${Math.round(Number(value))}m` : null);
   const distance = meters(request.distanceMeters);
   const accuracy = meters(request.accuracyMeters);
-  const accuracyDetail = accuracy ? `${accuracy} accuracy` : 'Accuracy unknown';
+  // When the reading was taken: a request can wait a while, and the phone may have moved since.
+  const takenAt = request.locationAt ? ` · reading at ${formatDisplayDateTime(request.locationAt)}` : '';
+  const accuracyDetail = `${accuracy ? `${accuracy} accuracy` : 'Accuracy unknown'}${takenAt}`;
   switch (request.verificationResult) {
     case 'LOCATION_VERIFIED':
       return { className: 'text-success', detail: accuracyDetail, title: distance ? `At the office · ${distance}` : 'At the office' };
@@ -168,6 +170,14 @@ function transferLocationLabel(request: DeviceTransferRequest): { className?: st
       return { className: 'text-danger', detail: 'The phone reported a fake location', title: 'Fake location' };
     case 'LOCATION_STALE':
       return { className: 'text-warning', detail: 'The reading was too old to trust', title: 'Old location reading' };
+    case 'OFFICE_LOCATION_NOT_CONFIGURED':
+      return {
+        className: 'text-warning',
+        detail: request.accuracyMeters
+          ? `Can't be checked: no office location is set${takenAt}`
+          : 'No office location is set, so it can\'t be checked',
+        title: 'Office location not set',
+      };
     default:
       return { className: 'text-muted-foreground', detail: 'Sent without a location', title: 'No location shared' };
   }

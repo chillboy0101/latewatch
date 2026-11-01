@@ -69,24 +69,28 @@ export default function DashboardPage() {
   // One Today request at a time. Events that arrive meanwhile trigger exactly one more load right after.
   const todayLoadingRef = useRef(false);
   const todayAgainRef = useRef(false);
-  // The day (server, Accra) the stats were last loaded for, and the latest day the server reported.
-  // When today moves past the stats' day, the week rows reload (again each minute until it works).
+  // The day (server, Accra) the stats on screen are for, as the dashboard API says. When today's
+  // attendance reports a later day, the stats reload (again each minute until that works).
   const statsDateRef = useRef<string | null>(null);
-  const todayDateRef = useRef<string | null>(null);
+  // Only the latest stats request may update the screen, so a slow older one can't put back old numbers.
+  const statsRequestRef = useRef(0);
 
   const fetchDashboardData = useCallback(async () => {
+    const request = ++statsRequestRef.current;
     try {
       const res = await fetch('/api/dashboard', { cache: 'no-store' });
       const data = await res.json();
+      if (request !== statsRequestRef.current) return;
       if (!res.ok) throw new Error(data.error || `Dashboard request failed (${res.status})`);
       setStats(data);
       setLoadError(null);
-      statsDateRef.current = todayDateRef.current;
+      statsDateRef.current = typeof data.date === 'string' ? data.date : null;
     } catch (error) {
+      if (request !== statsRequestRef.current) return;
       console.error('Failed to fetch dashboard data:', error);
       setLoadError(error instanceof Error ? error.message : 'Failed to load dashboard data');
     } finally {
-      setLoading(false);
+      if (request === statsRequestRef.current) setLoading(false);
     }
   }, []);
 
@@ -108,11 +112,9 @@ export default function DashboardPage() {
             const res = await fetch('/api/attendance', { cache: 'no-store', signal: controller.signal });
             const data = await res.json();
             if (res.ok && typeof data?.date === 'string' && data.totals && Array.isArray(data.rows)) {
-              todayDateRef.current = data.date;
-              // First report of the day: the stats loaded alongside it are for this day.
-              if (statsDateRef.current === null) statsDateRef.current = data.date;
               setToday(data);
-              if (statsDateRef.current !== data.date) void fetchDashboardData();
+              // Today has moved past the day the stats are for: reload them.
+              if (statsDateRef.current !== null && statsDateRef.current !== data.date) void fetchDashboardData();
             }
           } finally {
             clearTimeout(timeout);

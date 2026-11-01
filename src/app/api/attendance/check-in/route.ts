@@ -28,7 +28,7 @@ import { attendanceStatusFor } from '@/lib/manual-attendance-correction';
 import { findStaffForEmails, verifiedEmailAddresses } from '@/lib/auth/signed-in-staff';
 import { getDeviceTokenFromRequest } from '@/lib/device-binding';
 import { resolveDeviceHash } from '@/lib/device-rekey';
-import { type LocationValidationResult, validateAttendanceLocation } from '@/lib/geo-location';
+import { type LocationValidationResult, normalizeLocationEvidence, validateAttendanceLocation } from '@/lib/geo-location';
 import { type OfficeBoundary, parseOfficeBoundary } from '@/lib/office-boundary';
 import { allowRequest } from '@/lib/rate-limit';
 import { maybeRunMissedReminderBatch } from '@/lib/reminder-fallback';
@@ -818,7 +818,13 @@ export async function POST(request: NextRequest) {
     // approves it, and the location (if the phone gave one) is kept for them to see.
     if (action === 'request_device_transfer') {
       const officeLocation = await readActiveOfficeLocation();
-      const locationValidation = validateRequestLocation(officeLocation);
+      const checked = validateRequestLocation(officeLocation);
+      // With no office set, the check can't say where the phone is: keep its reading anyway (never
+      // as verified), so the admin still sees where the request came from.
+      const evidence = officeLocation ? null : normalizeLocationEvidence(body?.location);
+      const locationValidation: LocationValidationResult = evidence
+        ? { ...checked, accuracy: evidence.accuracy, latitude: evidence.latitude, locationAt: evidence.locationAt, longitude: evidence.longitude }
+        : checked;
       const responseLocationPolicy = serializeLocationPolicy(officeLocation);
       const officeLocationExtra = { officeLocationId: officeLocation?.id };
       // Nobody can claim a phone that is already another person's attendance device.

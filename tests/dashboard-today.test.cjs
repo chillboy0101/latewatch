@@ -44,8 +44,12 @@ test('the Today card keeps itself current and never gets stuck', () => {
   // The day changes by the server's date, not the laptop clock; the week rows reload with it, and
   // again each minute until that works.
   assert.doesNotMatch(page, /getAccraDateKey/);
-  assert.match(page, /if \(statsDateRef\.current !== data\.date\) void fetchDashboardData\(\);/);
-  assert.match(page, /setLoadError\(null\);\n\s*statsDateRef\.current = todayDateRef\.current;/);
+  // The stats carry their own day from the API, and only the latest stats request can update them.
+  assert.match(page, /if \(statsDateRef\.current !== null && statsDateRef\.current !== data\.date\) void fetchDashboardData\(\);/);
+  assert.match(page, /statsDateRef\.current = typeof data\.date === 'string' \? data\.date : null;/);
+  assert.match(page, /const request = \+\+statsRequestRef\.current;/);
+  assert.match(page, /if \(request !== statsRequestRef\.current\) return;/);
+  assert.match(read('src/app/api/dashboard/route.ts'), /date: today,\n\s*missedReminders,/);
   // A hidden tab doesn't poll; coming back to it reloads at once.
   assert.match(page, /if \(document\.visibilityState !== 'hidden'\) void fetchToday\(\);/);
   assert.match(page, /document\.addEventListener\('visibilitychange', onVisible\);/);
