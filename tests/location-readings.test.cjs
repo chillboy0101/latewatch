@@ -49,7 +49,7 @@ test('the check-in screen sends the best reading and only waits when every readi
   const page = read('src', 'app', 'check-in', 'page.tsx');
   // Check-in waits for a reading; a device transfer request goes even without one.
   assert.equal(page.match(/const location = await locationForAction\(readingsRef\.current\);/g).length, 1);
-  assert.equal(page.match(/const location = await locationForAction\(readingsRef\.current\)\.catch\(\(\) => null\);/g).length, 1);
+  assert.equal(page.match(/const location = pickReading\(readingsRef\.current\) \?\? null;/g).length, 1);
   assert.match(page, /if \(ready && ready\.accuracy <= CLEAR_READING_METERS\) return ready;/);
   assert.match(page, /setLiveLocation\(validateLiveLocation\(locationPolicy, pickReading\(readingsRef\.current\) \|\| evidence\)\);/);
 });

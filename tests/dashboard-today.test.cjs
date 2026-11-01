@@ -38,11 +38,15 @@ test('the Today card keeps itself current and never gets stuck', () => {
   const page = read('src/app/dashboard/page.tsx');
   // Every minute, so passing times ("Expected later" to "Overdue") and a failed load are picked up.
   assert.match(page, /const TODAY_REFRESH_MS = 60_000;/);
-  assert.match(page, /const todayRefresh = setInterval\(\(\) => void fetchToday\(\), TODAY_REFRESH_MS\);/);
-  // The day changes by the server's date, not the laptop clock; the week rows reload with it.
+  assert.match(page, /const todayRefresh = setInterval\(\(\) => \{/);
+  // The day changes by the server's date, not the laptop clock; the week rows reload with it, and
+  // again each minute until that works.
   assert.doesNotMatch(page, /getAccraDateKey/);
-  assert.match(page, /const dayChanged = todayDateRef\.current !== null && todayDateRef\.current !== data\.date;/);
-  assert.match(page, /if \(dayChanged\) void fetchDashboardData\(\);/);
+  assert.match(page, /if \(statsDateRef\.current !== data\.date\) void fetchDashboardData\(\);/);
+  assert.match(page, /setLoadError\(null\);\n\s*statsDateRef\.current = todayDateRef\.current;/);
+  // A hidden tab doesn't poll; coming back to it reloads at once.
+  assert.match(page, /if \(document\.visibilityState !== 'hidden'\) void fetchToday\(\);/);
+  assert.match(page, /document\.addEventListener\('visibilitychange', onVisible\);/);
   // A hung request gives up after 15 seconds, so the one-at-a-time guard always clears.
   assert.match(page, /const timeout = setTimeout\(\(\) => controller\.abort\(\), TODAY_TIMEOUT_MS\);/);
   assert.match(page, /\} finally \{\n\s+clearTimeout\(timeout\);/);
@@ -50,9 +54,9 @@ test('the Today card keeps itself current and never gets stuck', () => {
 
 test('the Today card counts each person once and copes with a missing check-in time', () => {
   const card = read('src/components/dashboard/today-card.tsx');
-  assert.match(card, /Boolean\(row\.attendance\?\.checkInTime\) && !hasStatus\(row, 'late'\) && !hasStatus\(row, 'on_leave'\)/);
-  assert.match(card, /label: 'on time', value: onTime \}/);
-  assert.doesNotMatch(card, /totals\.onTime/);
+  // On time is the API's count (checked in on time, not on leave), the same as the attendance overview.
+  assert.match(card, /label: 'on time', value: totals\.onTime \}/);
+  assert.match(read('src/app/api/attendance/route.ts'), /if \(isOnTimeAttendanceRow\(row\) && !row\.statuses\.includes\('on_leave'\)\) acc\.onTime \+= 1;/);
   assert.match(card, /checkInTime: string \| null;/);
   assert.match(card, /row\.attendance\?\.checkInTime\?\.slice\(0, 5\)/);
 });

@@ -220,8 +220,9 @@ test('attendance present and on-time filters stay distinct', () => {
   assert.match(pageSource, /auto-cols-\[minmax\(7\.75rem,1fr\)\][\s\S]*xl:grid-cols-10/);
 
   assert.match(apiSource, /if \(row\.attendance\?\.checkInTime\) acc\.present \+= 1/);
-  assert.match(apiSource, /if \(isOnTimeAttendanceRow\(row\)\) acc\.onTime \+= 1/);
-  assert.match(apiSource, /if \(isOnTimeAttendanceRow\(row\)\) acc\.onTime \+= 1;\s*if \(row\.statuses\.includes\('late'\)\) acc\.late \+= 1/);
+  // On time: checked in on time and not on leave (one group per person); the page uses the same rule.
+  assert.match(apiSource, /if \(isOnTimeAttendanceRow\(row\) && !row\.statuses\.includes\('on_leave'\)\) acc\.onTime \+= 1;\s*if \(row\.statuses\.includes\('late'\)\) acc\.late \+= 1/);
+  assert.match(pageSource, /return isOnTimeCheckIn\(row\.attendance\?\.checkInTime\) && !rowStatuses\(row\)\.includes\('on_leave'\);/);
   assert.match(apiSource, /if \(row\.statuses\.includes\('not_checked_in'\)\) acc\.notCheckedIn \+= 1/);
   assert.doesNotMatch(apiSource, /else acc\.notCheckedIn \+= 1/);
   assert.doesNotMatch(apiSource, /if \(row\.status === 'present'\) acc\.onTime \+= 1/);
@@ -521,7 +522,7 @@ test('a device transfer can be requested any day, from anywhere; check-ins keep 
   assert.ok(transfer < source.indexOf('if (!locationValidation.ok)'));
   // The location is still read and kept with the request for the admin, but never blocks it.
   const branch = source.slice(transfer, source.indexOf("return block('WEEKEND_CLOSED'"));
-  assert.match(branch, /const locationValidation = validateAttendanceLocation\(/);
+  assert.match(branch, /const locationValidation = validateRequestLocation\(officeLocation\);/);
   assert.match(branch, /\.\.\.locationForDb\(locationValidation\)/);
   assert.doesNotMatch(branch, /if \(!locationValidation\.ok\)/);
   assert.match(branch, /isWeekend: isWeekendDate\(clock\.dateKey\)/);
@@ -529,7 +530,8 @@ test('a device transfer can be requested any day, from anywhere; check-ins keep 
 
   // The phone sends it even when location is off.
   const page = fs.readFileSync(path.join(__dirname, '../src/app/check-in/page.tsx'), 'utf8');
-  assert.match(page, /const location = await locationForAction\(readingsRef\.current\)\.catch\(\(\) => null\);/);
+  // Straight away, with the best reading it already has (never waiting for a new one).
+  assert.match(page, /const location = pickReading\(readingsRef\.current\) \?\? null;/);
 });
 
 test('attendance device binding rejects browser tokens already linked to another active staff member', () => {
@@ -550,16 +552,20 @@ test('attendance device binding rejects browser tokens already linked to another
 test('check-in and transfer request block reused attendance devices before binding or requesting transfer', () => {
   const route = fs.readFileSync(attendanceCheckInApiPath, 'utf8');
 
-  // A transfer request checks it first, inside its own branch, before any request is written.
+  // One shared check (audited, then refused) for both.
+  assert.match(route, /async function blockSharedDevice\(/);
+  assert.match(route, /reason: 'attendance-shared-device-block',/);
+  assert.match(route, /return block\(SHARED_ATTENDANCE_DEVICE_RESULT, SHARED_ATTENDANCE_DEVICE_MESSAGE, 403,/);
+  const sharedCheck = 'const sharedDeviceBlock = await blockSharedDevice(staffMember, trustedDeviceHash, locationValidation, officeLocationExtra);';
+  // A transfer request runs it first, inside its own branch, before any request is written.
   const transfer = route.indexOf("if (action === 'request_device_transfer')");
-  const transferSharedCheck = route.indexOf('reason: \'attendance-shared-device-block\'', transfer);
+  const transferSharedCheck = route.indexOf(sharedCheck, transfer);
   assert.ok(transfer > -1 && transferSharedCheck > transfer);
   assert.ok(transferSharedCheck < route.indexOf('const transferGate = await allowRequest('));
-  // Check-ins check it before binding a device.
-  const checkInSharedCheck = route.indexOf('reason: \'attendance-shared-device-block\'', route.indexOf("return block('WEEKEND_CLOSED'"));
+  // Check-ins run it before binding a device.
+  const checkInSharedCheck = route.indexOf(sharedCheck, route.indexOf("return block('WEEKEND_CLOSED'"));
   assert.ok(checkInSharedCheck > -1);
   assert.ok(checkInSharedCheck < route.indexOf('async function syncTrustedDevice()'));
-  assert.match(route, /return block\(\s*SHARED_ATTENDANCE_DEVICE_RESULT,\s*SHARED_ATTENDANCE_DEVICE_MESSAGE,\s*403/);
   assert.match(route, /entityType: 'staff_device'/);
   assert.match(route, /linkedStaffId: input\.sharedDeviceOwner\.staffId/);
 });

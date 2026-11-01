@@ -1399,8 +1399,9 @@ export default function CheckInPage() {
     setMessage(null);
 
     try {
-      // Sent from anywhere: the location goes with it when the phone gives one, for the admin to see.
-      const location = await locationForAction(readingsRef.current).catch(() => null);
+      // Sent from anywhere, straight away: the best reading the phone already has goes with it, for
+      // the admin to see. It never waits for a new one.
+      const location = pickReading(readingsRef.current) ?? null;
       const response = await fetch('/api/attendance/check-in', {
         body: JSON.stringify({
           action: 'request_device_transfer',

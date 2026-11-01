@@ -67,7 +67,9 @@ export default function DashboardPage() {
   // One Today request at a time. Events that arrive meanwhile trigger exactly one more load right after.
   const todayLoadingRef = useRef(false);
   const todayAgainRef = useRef(false);
-  // The day the server last said it was (Accra); when it moves on, the week rows reload too.
+  // The day (server, Accra) the stats were last loaded for, and the latest day the server reported.
+  // When today moves past the stats' day, the week rows reload (again each minute until it works).
+  const statsDateRef = useRef<string | null>(null);
   const todayDateRef = useRef<string | null>(null);
 
   const fetchDashboardData = useCallback(async () => {
@@ -77,6 +79,7 @@ export default function DashboardPage() {
       if (!res.ok) throw new Error(data.error || `Dashboard request failed (${res.status})`);
       setStats(data);
       setLoadError(null);
+      statsDateRef.current = todayDateRef.current;
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
       setLoadError(error instanceof Error ? error.message : 'Failed to load dashboard data');
@@ -103,10 +106,11 @@ export default function DashboardPage() {
             const res = await fetch('/api/attendance', { cache: 'no-store', signal: controller.signal });
             const data = await res.json();
             if (res.ok && typeof data?.date === 'string' && data.totals && Array.isArray(data.rows)) {
-              const dayChanged = todayDateRef.current !== null && todayDateRef.current !== data.date;
               todayDateRef.current = data.date;
+              // First report of the day: the stats loaded alongside it are for this day.
+              if (statsDateRef.current === null) statsDateRef.current = data.date;
               setToday(data);
-              if (dayChanged) void fetchDashboardData();
+              if (statsDateRef.current !== data.date) void fetchDashboardData();
             }
           } finally {
             clearTimeout(timeout);
@@ -147,12 +151,20 @@ export default function DashboardPage() {
     })();
 
     // Every minute: picks up times that pass, a load that failed, and the change of day (by the
-    // server's date, so a wrong laptop clock can't shift it).
-    const todayRefresh = setInterval(() => void fetchToday(), TODAY_REFRESH_MS);
+    // server's date, so a wrong laptop clock can't shift it). Not while the tab is hidden; coming
+    // back to it reloads at once.
+    const todayRefresh = setInterval(() => {
+      if (document.visibilityState !== 'hidden') void fetchToday();
+    }, TODAY_REFRESH_MS);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void fetchToday();
+    };
+    document.addEventListener('visibilitychange', onVisible);
 
     return () => {
       mounted = false;
       clearInterval(todayRefresh);
+      document.removeEventListener('visibilitychange', onVisible);
       cleanup?.();
     };
   }, [fetchDashboardData, fetchToday]);

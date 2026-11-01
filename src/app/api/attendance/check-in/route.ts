@@ -744,6 +744,42 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  // A phone already linked to another active staff member can't be used by this one (for a check-in
+  // or a transfer request): the attempt is audited and refused.
+  async function blockSharedDevice(
+    staffMember: { fullName: string; id: string },
+    deviceHash: string,
+    location: LocationValidationResult,
+    extra: Record<string, unknown>,
+  ) {
+    const sharedDeviceOwner = await findSharedAttendanceDeviceOwner({ deviceHash, staffId: staffMember.id });
+    if (!sharedDeviceOwner) return null;
+    await auditSharedAttendanceDeviceBlock({
+      location,
+      reason: 'attendance-shared-device-block',
+      sharedDeviceOwner,
+      staffMember: { fullName: staffMember.fullName, id: staffMember.id },
+    });
+    return block(SHARED_ATTENDANCE_DEVICE_RESULT, SHARED_ATTENDANCE_DEVICE_MESSAGE, 403, staffMember.id, location, extra);
+  }
+
+  // The phone's location reading against the office (the same check for check-ins and transfers).
+  function validateRequestLocation(officeLocation: Awaited<ReturnType<typeof readActiveOfficeLocation>>) {
+    return validateAttendanceLocation({
+      evidence: body?.location,
+      now: clock.now,
+      office: officeLocation
+        ? {
+            boundary: officeLocation.boundaryJson,
+            latitude: officeLocation.latitude,
+            longitude: officeLocation.longitude,
+            maxAccuracyMeters: officeLocation.maxAccuracyMeters,
+            radiusMeters: officeLocation.radiusMeters,
+          }
+        : null,
+    });
+  }
+
   try {
     if (actorEmail === 'unknown') {
       return block('NO_EMAIL', 'Your login account has no verified email address.');
@@ -782,43 +818,12 @@ export async function POST(request: NextRequest) {
     // approves it, and the location (if the phone gave one) is kept for them to see.
     if (action === 'request_device_transfer') {
       const officeLocation = await readActiveOfficeLocation();
-      const locationValidation = validateAttendanceLocation({
-        evidence: body?.location,
-        now: clock.now,
-        office: officeLocation
-          ? {
-              boundary: officeLocation.boundaryJson,
-              latitude: officeLocation.latitude,
-              longitude: officeLocation.longitude,
-              maxAccuracyMeters: officeLocation.maxAccuracyMeters,
-              radiusMeters: officeLocation.radiusMeters,
-            }
-          : null,
-      });
+      const locationValidation = validateRequestLocation(officeLocation);
       const responseLocationPolicy = serializeLocationPolicy(officeLocation);
       const officeLocationExtra = { officeLocationId: officeLocation?.id };
       // Nobody can claim a phone that is already another person's attendance device.
-      const sharedDeviceOwner = await findSharedAttendanceDeviceOwner({
-        deviceHash: trustedDeviceHash,
-        staffId: staffMember.id,
-      });
-      if (sharedDeviceOwner) {
-        await auditSharedAttendanceDeviceBlock({
-          location: locationValidation,
-          reason: 'attendance-shared-device-block',
-          sharedDeviceOwner,
-          staffMember: { fullName: staffMember.fullName, id: staffMember.id },
-        });
-        return block(
-          SHARED_ATTENDANCE_DEVICE_RESULT,
-          SHARED_ATTENDANCE_DEVICE_MESSAGE,
-          403,
-          staffMember.id,
-          locationValidation,
-          officeLocationExtra,
-        );
-      }
-      const transferHoliday = await getHolidayForDate(clock.dateKey);
+      const sharedDeviceBlock = await blockSharedDevice(staffMember, trustedDeviceHash, locationValidation, officeLocationExtra);
+      if (sharedDeviceBlock) return sharedDeviceBlock;
 
       if (!registeredDevice) {
         return block(
@@ -907,6 +912,8 @@ export async function POST(request: NextRequest) {
       publishRealtime('attendance', 'invalidate', { reason: 'attendance-device-transfer-request' });
       publishRealtime('notifications', 'invalidate', { reason: 'attendance-device-transfer-request' });
 
+      const transferHoliday = await getHolidayForDate(clock.dateKey);
+
       return NextResponse.json({
         success: true,
         transferRequested: true,
@@ -920,7 +927,7 @@ export async function POST(request: NextRequest) {
           isHoliday: Boolean(transferHoliday),
           isAfterWorkdayEnd: isSignInClosed(clock.timeKey),
           isWeekend: isWeekendDate(clock.dateKey),
-          locationConfigured: true,
+          locationConfigured: Boolean(officeLocation),
           locationPolicy: responseLocationPolicy,
           networkConfigured: true,
           permission: serializePermission(permission),
@@ -950,19 +957,7 @@ export async function POST(request: NextRequest) {
     }
 
     const officeLocation = await readActiveOfficeLocation();
-    const locationValidation = validateAttendanceLocation({
-      evidence: body?.location,
-      now: clock.now,
-      office: officeLocation
-        ? {
-            boundary: officeLocation.boundaryJson,
-            latitude: officeLocation.latitude,
-            longitude: officeLocation.longitude,
-            maxAccuracyMeters: officeLocation.maxAccuracyMeters,
-            radiusMeters: officeLocation.radiusMeters,
-          }
-        : null,
-    });
+    const locationValidation = validateRequestLocation(officeLocation);
 
     if (!locationValidation.ok) {
       return block(
@@ -976,26 +971,8 @@ export async function POST(request: NextRequest) {
     }
     const responseLocationPolicy = serializeLocationPolicy(officeLocation);
     const officeLocationExtra = { officeLocationId: officeLocation?.id };
-    const sharedDeviceOwner = await findSharedAttendanceDeviceOwner({
-      deviceHash: trustedDeviceHash,
-      staffId: staffMember.id,
-    });
-    if (sharedDeviceOwner) {
-      await auditSharedAttendanceDeviceBlock({
-        location: locationValidation,
-        reason: 'attendance-shared-device-block',
-        sharedDeviceOwner,
-        staffMember: { fullName: staffMember.fullName, id: staffMember.id },
-      });
-      return block(
-        SHARED_ATTENDANCE_DEVICE_RESULT,
-        SHARED_ATTENDANCE_DEVICE_MESSAGE,
-        403,
-        staffMember.id,
-        locationValidation,
-        officeLocationExtra,
-      );
-    }
+    const sharedDeviceBlock = await blockSharedDevice(staffMember, trustedDeviceHash, locationValidation, officeLocationExtra);
+    if (sharedDeviceBlock) return sharedDeviceBlock;
 
 
     if (registeredDevice && registeredDevice.deviceHash !== trustedDeviceHash) {

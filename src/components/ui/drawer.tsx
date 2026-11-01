@@ -17,12 +17,29 @@ const OPEN_GRACE_MS = 600;
 
 let lastSheetId = 0;
 let pendingPops = 0;
-// Steps back still on their way (history.go lands a moment later), and sheets that opened meanwhile:
-// their entries go in once the step back has landed, so it can't take the new entry off instead.
-let popsInFlight = 0;
-const openingAfterPops: Array<() => void> = [];
+// Steps back still on their way (history.go lands a moment later), oldest first, and sheets that
+// opened meanwhile: their entries go in once every step back has landed, so a step back can't take
+// the new entry off instead. Each popstate lands the oldest step (they land in the order sent).
+const popsInFlight: Array<{ fallback: number }> = [];
+const openingAfterPops: Array<() => boolean> = [];
 // If a step back never reports landing, stop waiting for it after this long.
 const POP_SETTLE_MS = 1000;
+
+function settlePop(pop: { fallback: number } | undefined) {
+  if (!pop) return;
+  window.clearTimeout(pop.fallback);
+  if (popsInFlight.length > 0) return;
+  window.removeEventListener('popstate', onPopLanded);
+  // A sheet opened while the steps back were on their way: its new entry also drops the closed
+  // sheets' entries ahead, so no dead end is needed (unless it closed again before going in).
+  const added = openingAfterPops.splice(0).map((addEntry) => addEntry()).some(Boolean);
+  // Otherwise the closed sheets' entries stay ahead, where a swipe forward would land: cap them off.
+  if (!added) window.setTimeout(leaveDeadEnd, 0);
+}
+
+function onPopLanded() {
+  settlePop(popsInFlight.shift());
+}
 
 function popSheetEntries() {
   // Sheets closing together (a parent with its child) take all their entries off in one step.
@@ -32,26 +49,14 @@ function popSheetEntries() {
     const count = pendingPops;
     pendingPops = 0;
     if (count === 0) return;
-    popsInFlight += 1;
-    let landed = false;
-    const onLanded = () => {
-      if (landed) return;
-      landed = true;
-      window.removeEventListener('popstate', onLanded);
-      window.clearTimeout(fallback);
-      popsInFlight -= 1;
-      const opening = popsInFlight === 0 ? openingAfterPops.splice(0) : [];
-      if (opening.length > 0) {
-        // A sheet opened while this step back was on its way: its new entry also drops the
-        // closed sheets' entries ahead, so no dead end is needed.
-        opening.forEach((addEntry) => addEntry());
-      } else {
-        // The closed sheets' entries stay ahead, where a swipe forward would land: cap them off.
-        window.setTimeout(leaveDeadEnd, 0);
-      }
+    const pop = {
+      fallback: window.setTimeout(() => {
+        const index = popsInFlight.indexOf(pop);
+        if (index !== -1) settlePop(popsInFlight.splice(index, 1)[0]);
+      }, POP_SETTLE_MS),
     };
-    const fallback = window.setTimeout(onLanded, POP_SETTLE_MS);
-    window.addEventListener('popstate', onLanded);
+    if (popsInFlight.length === 0) window.addEventListener('popstate', onPopLanded);
+    popsInFlight.push(pop);
     window.history.go(-count);
   });
 }
@@ -93,12 +98,13 @@ function useCloseOnBack(
       }
     };
 
-    const addEntry = () => {
-      if (cancelled) return;
+    // True when this sheet's entry went in (false if it closed before it could).
+    const addEntry = (): boolean => {
+      if (cancelled) return false;
       // Another sheet's entry is still coming off: wait until it has, then go in.
-      if (popsInFlight > 0) {
+      if (popsInFlight.length > 0) {
         openingAfterPops.push(addEntry);
-        return;
+        return true;
       }
       added = true;
       id = ++lastSheetId;
@@ -117,6 +123,7 @@ function useCloseOnBack(
         window.history.pushState(state, '');
       }
       window.addEventListener('popstate', onPopState);
+      return true;
     };
 
     // Effects run child first, so a child sheet opening together with its parent waits a tick:
