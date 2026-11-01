@@ -20,11 +20,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { TodayCard, type TodayAttendance } from '@/components/dashboard/today-card';
 import { formatDisplayDateTime, formatShortDisplayDate } from '@/lib/date-format';
-import { getAccraDateKey } from '@/lib/date-key';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 
-const DAY_CHECK_MS = 60_000;
+// The Today card reloads every minute, so times that pass ("Expected later" becoming "Overdue")
+// and the change of day show up without an event. Each load gives up after 15 seconds.
+const TODAY_REFRESH_MS = 60_000;
+const TODAY_TIMEOUT_MS = 15_000;
 
 interface WeekDayData {
   date: string;
@@ -65,30 +67,8 @@ export default function DashboardPage() {
   // One Today request at a time. Events that arrive meanwhile trigger exactly one more load right after.
   const todayLoadingRef = useRef(false);
   const todayAgainRef = useRef(false);
-
-  // Today's attendance for the Today card. If a load fails, the last good data stays on screen.
-  const fetchToday = useCallback(async () => {
-    if (todayLoadingRef.current) {
-      todayAgainRef.current = true;
-      return;
-    }
-    todayLoadingRef.current = true;
-    try {
-      do {
-        todayAgainRef.current = false;
-        try {
-          // Read-only, and no date: the server picks today (Accra), so a wrong laptop clock can't shift it.
-          const res = await fetch('/api/attendance', { cache: 'no-store' });
-          const data = await res.json();
-          if (res.ok && typeof data?.date === 'string' && data.totals && Array.isArray(data.rows)) setToday(data);
-        } catch (error) {
-          console.warn('Could not load today\'s attendance:', error);
-        }
-      } while (todayAgainRef.current);
-    } finally {
-      todayLoadingRef.current = false;
-    }
-  }, []);
+  // The day the server last said it was (Accra); when it moves on, the week rows reload too.
+  const todayDateRef = useRef<string | null>(null);
 
   const fetchDashboardData = useCallback(async () => {
     try {
@@ -105,6 +85,41 @@ export default function DashboardPage() {
     }
   }, []);
 
+  // Today's attendance for the Today card. If a load fails, the last good data stays on screen.
+  const fetchToday = useCallback(async () => {
+    if (todayLoadingRef.current) {
+      todayAgainRef.current = true;
+      return;
+    }
+    todayLoadingRef.current = true;
+    try {
+      do {
+        todayAgainRef.current = false;
+        try {
+          // Read-only, and no date: the server picks today (Accra), so a wrong laptop clock can't shift it.
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), TODAY_TIMEOUT_MS);
+          try {
+            const res = await fetch('/api/attendance', { cache: 'no-store', signal: controller.signal });
+            const data = await res.json();
+            if (res.ok && typeof data?.date === 'string' && data.totals && Array.isArray(data.rows)) {
+              const dayChanged = todayDateRef.current !== null && todayDateRef.current !== data.date;
+              todayDateRef.current = data.date;
+              setToday(data);
+              if (dayChanged) void fetchDashboardData();
+            }
+          } finally {
+            clearTimeout(timeout);
+          }
+        } catch (error) {
+          console.warn('Could not load today\'s attendance:', error);
+        }
+      } while (todayAgainRef.current);
+    } finally {
+      todayLoadingRef.current = false;
+    }
+  }, [fetchDashboardData]);
+
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     let mounted = true;
@@ -117,10 +132,8 @@ export default function DashboardPage() {
         subscribeRealtimeChannel({
           channel: 'dashboard',
           events: ['invalidate'],
-          onEvent: () => {
-            void fetchDashboardData();
-            void fetchToday();
-          },
+          // Check-ins and permissions also send an attendance event, which reloads the Today card.
+          onEvent: () => void fetchDashboardData(),
         }),
         subscribeRealtimeChannel({ channel: 'attendance', events: ['invalidate'], onEvent: () => void fetchToday() }),
       ]);
@@ -133,19 +146,13 @@ export default function DashboardPage() {
       }
     })();
 
-    // A dashboard left open past midnight (Accra) moves on to the new day and week.
-    let shownDay = getAccraDateKey();
-    const dayCheck = setInterval(() => {
-      const now = getAccraDateKey();
-      if (now === shownDay) return;
-      shownDay = now;
-      void fetchDashboardData();
-      void fetchToday();
-    }, DAY_CHECK_MS);
+    // Every minute: picks up times that pass, a load that failed, and the change of day (by the
+    // server's date, so a wrong laptop clock can't shift it).
+    const todayRefresh = setInterval(() => void fetchToday(), TODAY_REFRESH_MS);
 
     return () => {
       mounted = false;
-      clearInterval(dayCheck);
+      clearInterval(todayRefresh);
       cleanup?.();
     };
   }, [fetchDashboardData, fetchToday]);
