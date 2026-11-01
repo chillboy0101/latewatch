@@ -693,17 +693,15 @@ export default function CheckInPage() {
     locationAccessRef.current = locationAccess;
   }, [locationAccess]);
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
-  // "Add to Home Screen" banner: offered after a check-in, once its success message has gone.
+  // "Add to Home Screen" banner: shown as soon as the page opens in a phone's browser (not the
+  // installed app), before any check-in, so people install it first. At most once a day; closing it
+  // hides it for good.
   const [installNudgeOpen, setInstallNudgeOpen] = useState(false);
-  const installNudgePendingRef = useRef(false);
   const hideInstallNudge = useCallback(() => setInstallNudgeOpen(false), []);
-  // Every way the message goes (its timer, a swipe) passes here, so the banner can follow it.
-  const clearMessage = useCallback(() => {
-    setMessage(null);
-    if (!installNudgePendingRef.current) return;
-    installNudgePendingRef.current = false;
+  useEffect(() => {
     if (takeInstallNudgeTurn()) setInstallNudgeOpen(true);
   }, []);
+  const clearMessage = useCallback(() => setMessage(null), []);
   const [forcedSessionNotice, setForcedSessionNotice] = useState<string | null>(null);
   // This phone's readings from the last minute (see lib/location-readings).
   const readingsRef = useRef<LocationEvidence[]>([]);
@@ -1233,7 +1231,6 @@ export default function CheckInPage() {
       if (!response.ok) throw new Error(body.error || 'Check-in failed');
 
       setStatus(body);
-      if (action === 'check_in' && !body.alreadyCheckedIn) installNudgePendingRef.current = true;
       setMessage({
         type: 'success',
         text: body.signedOut
@@ -1687,6 +1684,8 @@ export default function CheckInPage() {
                     && !reminderControlsLocked
                     // One sheet at a time: the location sheet first, then this one.
                     && !(status?.locationConfigured && (locationAccess === 'unknown' || locationSheetOpen))
+                    // Install first: reminders wait until the "Add to Home Screen" banner has gone.
+                    && !installNudgeOpen
                   }
                   remindersOff={!signInReminderEnabled && !signOutReminderEnabled}
                   failing={pushReminderStatus?.subscription?.failing === true}
