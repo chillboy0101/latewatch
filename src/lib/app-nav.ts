@@ -63,6 +63,15 @@ export function recordPathname(pathname: string) {
   finishSlide = null;
 }
 
+/** The current entry's state without the dead-end mark, for an entry that takes its place. */
+export function stateWithoutDeadEnd(): Record<string, unknown> {
+  const state: unknown = window.history.state;
+  if (!state || typeof state !== 'object') return {};
+  const rest = { ...(state as Record<string, unknown>) };
+  delete rest[DEAD_END_STATE];
+  return rest;
+}
+
 // After going back, the screen just left is still ahead in the history, and iOS would reopen it on
 // a swipe from the right edge; apps have no swipe forward. A new entry drops everything ahead of
 // this screen, so put one in (a copy of this screen marked as a dead end) and step back onto this
@@ -100,7 +109,7 @@ export function handlePopState() {
 }
 
 /** True on the dead end left ahead of a screen after going back. */
-function isDeadEndEntry() {
+export function isDeadEndEntry() {
   const state: unknown = window.history.state;
   return Boolean(state && typeof state === 'object' && (state as Record<string, unknown>)[DEAD_END_STATE]);
 }
