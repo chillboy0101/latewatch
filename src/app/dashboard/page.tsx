@@ -27,6 +27,8 @@ import { cn } from '@/lib/utils';
 // and the change of day show up without an event. Each load gives up after 15 seconds.
 const TODAY_REFRESH_MS = 60_000;
 const TODAY_TIMEOUT_MS = 15_000;
+// A check-in sends a dashboard and an attendance event together: events this close make one reload.
+const TODAY_EVENT_BATCH_MS = 300;
 
 interface WeekDayData {
   date: string;
@@ -131,15 +133,28 @@ export default function DashboardPage() {
     void fetchDashboardData();
     void fetchToday();
 
+    // Any change (check-ins, permissions, staff added or archived, holidays) reloads the Today card,
+    // once for events that arrive together.
+    let todayEventTimer: ReturnType<typeof setTimeout> | null = null;
+    const reloadTodayForEvent = () => {
+      if (todayEventTimer) return;
+      todayEventTimer = setTimeout(() => {
+        todayEventTimer = null;
+        void fetchToday();
+      }, TODAY_EVENT_BATCH_MS);
+    };
+
     (async () => {
       const unsubscribes = await Promise.all([
         subscribeRealtimeChannel({
           channel: 'dashboard',
           events: ['invalidate'],
-          // Check-ins and permissions also send an attendance event, which reloads the Today card.
-          onEvent: () => void fetchDashboardData(),
+          onEvent: () => {
+            void fetchDashboardData();
+            reloadTodayForEvent();
+          },
         }),
-        subscribeRealtimeChannel({ channel: 'attendance', events: ['invalidate'], onEvent: () => void fetchToday() }),
+        subscribeRealtimeChannel({ channel: 'attendance', events: ['invalidate'], onEvent: reloadTodayForEvent }),
       ]);
       const unsubscribe = () => unsubscribes.forEach((stop) => stop());
 
@@ -164,6 +179,7 @@ export default function DashboardPage() {
     return () => {
       mounted = false;
       clearInterval(todayRefresh);
+      if (todayEventTimer) clearTimeout(todayEventTimer);
       document.removeEventListener('visibilitychange', onVisible);
       cleanup?.();
     };

@@ -209,9 +209,11 @@ const DrawerContent = React.forwardRef<
           'drawer-glass fixed inset-x-[9px] bottom-[9px] z-50 mt-24 mx-auto flex h-auto flex-col overflow-hidden rounded-[38px] border border-border/50 shadow-2xl outline-none',
           // A sheet sliding away never catches a tap: it goes to what's underneath (the sheet below),
           // as on a phone. Otherwise a quick tap after a swipe down hits the leaving sheet and is
-          // lost, or counts as a tap outside the sheet below and closes it. (!) beats the inline
-          // pointer-events Radix sets.
-          'data-[state=closed]:pointer-events-none!',
+          // lost, or counts as a tap outside the sheet below and closes it. And an open sheet always
+          // takes taps: Radix blocks the sheet below until the one above has finished sliding away;
+          // while a child sheet is really open, its own backdrop covers the parent anyway. (!) beats
+          // the inline pointer-events Radix sets.
+          'data-[state=closed]:pointer-events-none! data-[state=open]:pointer-events-auto!',
           'pb-[env(safe-area-inset-bottom)]',
           'sm:max-w-md',
           className,

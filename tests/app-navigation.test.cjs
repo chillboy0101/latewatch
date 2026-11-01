@@ -115,5 +115,7 @@ test('a sheet opened while another is closing keeps its place in the history and
   assert.match(nav, /delete rest\[DEAD_END_STATE\];/);
   // A sheet or backdrop sliding away never catches a tap (Radix sets an inline pointer-events, hence !).
   assert.match(drawer, /'fixed inset-0 z-50 data-\[state=closed\]:pointer-events-none!'/);
-  assert.match(drawer, /'data-\[state=closed\]:pointer-events-none!',/);
+  // An open sheet always takes taps, even while the child above it is still sliding away (Radix keeps
+  // the parent blocked until the child unmounts; a really open child's backdrop covers the parent).
+  assert.match(drawer, /'data-\[state=closed\]:pointer-events-none! data-\[state=open\]:pointer-events-auto!',/);
 });

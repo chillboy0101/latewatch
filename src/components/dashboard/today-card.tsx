@@ -41,12 +41,14 @@ export function TodayCard({ today }: { today: TodayAttendance }) {
     if (hasStatus(row, 'expected_late')) return [{ detail: 'Expected later', row }];
     return [];
   });
+  const onLeave = today.rows.filter((row) => hasStatus(row, 'on_leave') && !hasStatus(row, 'late')).length;
   const counts = [
     // Same count as the attendance overview's On time (checked in on time, not on leave).
     { className: 'bg-success/10 text-success', label: 'on time', value: totals.onTime },
     { className: 'bg-warning/10 text-warning', label: 'late', value: totals.late },
     { className: 'bg-danger/10 text-danger', label: 'not in', value: notIn.length },
-    { className: 'bg-muted/15 text-muted-foreground', label: 'on leave', value: totals.onLeave },
+    // Someone on leave who still checked in late is counted once, under late.
+    { className: 'bg-muted/15 text-muted-foreground', label: 'on leave', value: onLeave },
   ];
 
   return (

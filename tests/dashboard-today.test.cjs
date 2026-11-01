@@ -27,10 +27,12 @@ test('the dashboard Today card only reads today\'s attendance and refreshes at o
   assert.doesNotMatch(page, /setToday\(null\)/);
   // Today's week row is found by its date, not by rebuilding the "Fri 31" label.
   assert.match(page, /find\(\(day\) => day\.date === todayKey\)/);
-  // Each check-in or permission event reloads the card straight away, once: the attendance event does it,
-  // and the dashboard event (sent alongside it) only reloads the stats.
-  assert.match(page, /channel: 'attendance', events: \['invalidate'\], onEvent: \(\) => void fetchToday\(\)/);
-  assert.match(page, /onEvent: \(\) => void fetchDashboardData\(\),/);
+  // Any change reloads the card at once (staff and holiday changes too), and a check-in's dashboard and
+  // attendance events, sent together, make one reload.
+  assert.match(page, /const TODAY_EVENT_BATCH_MS = 300;/);
+  assert.match(page, /channel: 'attendance', events: \['invalidate'\], onEvent: reloadTodayForEvent \}/);
+  assert.match(page, /void fetchDashboardData\(\);\n\s*reloadTodayForEvent\(\);/);
+  assert.match(page, /if \(todayEventTimer\) return;/);
   assert.doesNotMatch(page, /TODAY_REFRESH_DELAY_MS|scheduleToday/);
 });
 
@@ -56,6 +58,9 @@ test('the Today card counts each person once and copes with a missing check-in t
   const card = read('src/components/dashboard/today-card.tsx');
   // On time is the API's count (checked in on time, not on leave), the same as the attendance overview.
   assert.match(card, /label: 'on time', value: totals\.onTime \}/);
+  // On leave but checked in late: counted once, under late.
+  assert.match(card, /const onLeave = today\.rows\.filter\(\(row\) => hasStatus\(row, 'on_leave'\) && !hasStatus\(row, 'late'\)\)\.length;/);
+  assert.match(card, /label: 'on leave', value: onLeave \}/);
   assert.match(read('src/app/api/attendance/route.ts'), /if \(isOnTimeAttendanceRow\(row\) && !row\.statuses\.includes\('on_leave'\)\) acc\.onTime \+= 1;/);
   assert.match(card, /checkInTime: string \| null;/);
   assert.match(card, /row\.attendance\?\.checkInTime\?\.slice\(0, 5\)/);
