@@ -133,7 +133,7 @@ test('check-in page replaces auto attendance controls with reminder notification
   assert.match(source, /This browser could not be identified\. Refresh the page and try again\./);
   assert.match(source, /disabled=\{requestingTransfer \|\| transferRequestPending\}/);
   assert.doesNotMatch(source, /disabled=\{requestingTransfer \|\| transferRequestPending \|\| locationBlocksAction\}/);
-  assert.match(source, /\? 'Checking location\.\.\.'/);
+  assert.match(source, /\? 'Sending request\.\.\.'/);
   assert.match(source, /\? 'Transfer Request Pending'/);
   assert.doesNotMatch(source, /disabled=\{disabled \|\| !configured \|\| notificationPermission === 'unsupported'\}/);
   assert.match(source, /disabled=\{disabled \|\| notificationPermission === 'unsupported'\}/);

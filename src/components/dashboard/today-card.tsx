@@ -7,7 +7,7 @@ import { cn, formatCurrency } from '@/lib/utils';
 export interface TodayAttendance {
   date: string;
   rows: {
-    attendance: { checkInTime: string; computedAmount: string } | null;
+    attendance: { checkInTime: string | null; computedAmount: string } | null;
     penaltyAmount?: string | null;
     staff: { fullName: string; id: string };
     statuses?: string[];
@@ -41,11 +41,14 @@ export function TodayCard({ today }: { today: TodayAttendance }) {
     if (hasStatus(row, 'expected_late')) return [{ detail: 'Expected later', row }];
     return [];
   });
+  const onLeave = today.rows.filter((row) => hasStatus(row, 'on_leave') && !hasStatus(row, 'late')).length;
   const counts = [
+    // Same count as the attendance overview's On time (checked in on time, not on leave).
     { className: 'bg-success/10 text-success', label: 'on time', value: totals.onTime },
     { className: 'bg-warning/10 text-warning', label: 'late', value: totals.late },
     { className: 'bg-danger/10 text-danger', label: 'not in', value: notIn.length },
-    { className: 'bg-muted/15 text-muted-foreground', label: 'on leave', value: totals.onLeave },
+    // Someone on leave who still checked in late is counted once, under late.
+    { className: 'bg-muted/15 text-muted-foreground', label: 'on leave', value: onLeave },
   ];
 
   return (
@@ -77,7 +80,7 @@ export function TodayCard({ today }: { today: TodayAttendance }) {
               rows={late.map((row) => ({
                 id: row.staff.id,
                 name: row.staff.fullName,
-                detail: [row.attendance?.checkInTime.slice(0, 5), ghc(row.penaltyAmount ?? row.attendance?.computedAmount)]
+                detail: [row.attendance?.checkInTime?.slice(0, 5), ghc(row.penaltyAmount ?? row.attendance?.computedAmount)]
                   .filter(Boolean)
                   .join(' · '),
               }))}

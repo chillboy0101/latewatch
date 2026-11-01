@@ -84,10 +84,38 @@ test('back closes the top sheet instead of leaving the screen', () => {
   // A late repeat of the opening tap (iPhones) lands behind a sheet still sliding up: ignored.
   assert.match(drawer, /if \(!open\) return;\n\s*lastSheetOpenedAt = performance\.now\(\);/);
   assert.match(drawer, /if \(performance\.now\(\) - lastSheetOpenedAt < OPEN_GRACE_MS\) event\.preventDefault\(\);/);
-  // Closed sheets are capped off, so a swipe forward can't reopen one.
-  assert.match(drawer, /window\.addEventListener\('popstate', \(\) => window\.setTimeout\(leaveDeadEnd, 0\), \{ once: true \}\);/);
+  // Closed sheets are capped off, so a swipe forward can't reopen one (unless a sheet opened meanwhile,
+  // whose new entry drops them anyway).
+  assert.match(drawer, /popsInFlight\.push\(pop\);\n\s*window\.history\.go\(-count\);/);
+  assert.match(drawer, /if \(!added\) window\.setTimeout\(leaveDeadEnd, 0\);/);
   assert.match(drawer, /closeRef\.current\?\.\(false\);\n\s*\/\/[^\n]*\n\s*window\.setTimeout\(leaveDeadEnd, 0\);/);
   // A child sheet opening with its parent adds its entry after the parent's, so back closes the child.
   assert.match(drawer, /if \(nested\) queueMicrotask\(addEntry\);\n\s*else addEntry\(\);/);
   assert.match(drawer, /useCloseOnBack\(props\.open, props\.onOpenChange\);\n[\s\S]*useCloseOnBack\(props\.open, props\.onOpenChange, true\);/);
+});
+
+test('a sheet opened while another is closing keeps its place in the history and gets the tap', () => {
+  const drawer = read('src', 'components', 'ui', 'drawer.tsx');
+  // Opened while a closed sheet's entry is still coming off: its entry goes in after that lands.
+  assert.match(drawer, /if \(popsInFlight\.length > 0\) \{\n\s*openingAfterPops\.push\(addEntry\);\n\s*return true;\n\s*\}/);
+  // Steps back land in the order sent: each popstate lands the oldest, and sheets go in after the last.
+  assert.match(drawer, /function onPopLanded\(\) \{\n\s*settlePop\(popsInFlight\.shift\(\)\);/);
+  assert.match(drawer, /if \(popsInFlight\.length > 0\) return;/);
+  // A sheet that closed before its entry went in adds nothing, and the closed entries are capped off.
+  assert.match(drawer, /const added = openingAfterPops\.splice\(0\)\.map\(\(addEntry\) => addEntry\(\)\)\.some\(Boolean\);/);
+  assert.match(drawer, /if \(cancelled\) return false;/);
+  // A step back that never reports landing doesn't keep sheets waiting.
+  assert.match(drawer, /\}, POP_SETTLE_MS\),/);
+  // On the dead end left by a close, the new sheet's entry takes its place, without the dead-end mark
+  // (an entry carrying it would be stepped off, closing the new sheet and the one under it).
+  assert.match(drawer, /const state = \{ \.\.\.stateWithoutDeadEnd\(\), latewatchSheet: id \};/);
+  assert.match(drawer, /\} else if \(isDeadEndEntry\(\)\) \{\n\s*\/\/[^\n]*\n\s*window\.history\.replaceState\(state, ''\);/);
+  const nav = read('src', 'lib', 'app-nav.ts');
+  assert.match(nav, /export function stateWithoutDeadEnd\(\)/);
+  assert.match(nav, /delete rest\[DEAD_END_STATE\];/);
+  // A sheet or backdrop sliding away never catches a tap (Radix sets an inline pointer-events, hence !).
+  assert.match(drawer, /'fixed inset-0 z-50 data-\[state=closed\]:pointer-events-none!'/);
+  // An open sheet always takes taps, even while the child above it is still sliding away (Radix keeps
+  // the parent blocked until the child unmounts; a really open child's backdrop covers the parent).
+  assert.match(drawer, /'data-\[state=closed\]:pointer-events-none! data-\[state=open\]:pointer-events-auto!',/);
 });

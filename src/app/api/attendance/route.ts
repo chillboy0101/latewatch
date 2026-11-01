@@ -272,7 +272,8 @@ async function attendanceResponse(request: NextRequest, { sync }: { sync: boolea
     const currentIp = currentIpInfo.ip;
     const totals = rows.reduce((acc, row) => {
       if (row.attendance?.checkInTime) acc.present += 1;
-      if (isOnTimeAttendanceRow(row)) acc.onTime += 1;
+      // On time: checked in on time and not on leave, so nobody is counted in two groups.
+      if (isOnTimeAttendanceRow(row) && !row.statuses.includes('on_leave')) acc.onTime += 1;
       if (row.statuses.includes('late')) acc.late += 1;
       if (row.statuses.includes('excused')) acc.excused += 1;
       if (row.statuses.includes('on_leave')) acc.onLeave += 1;

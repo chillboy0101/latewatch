@@ -20,11 +20,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LoadingBuffer } from '@/components/ui/loading-buffer';
 import { TodayCard, type TodayAttendance } from '@/components/dashboard/today-card';
 import { formatDisplayDateTime, formatShortDisplayDate } from '@/lib/date-format';
-import { getAccraDateKey } from '@/lib/date-key';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { cn } from '@/lib/utils';
 
-const DAY_CHECK_MS = 60_000;
+// The Today card reloads every minute, so times that pass ("Expected later" becoming "Overdue")
+// and the change of day show up without an event. Each load gives up after 15 seconds.
+const TODAY_REFRESH_MS = 60_000;
+const TODAY_TIMEOUT_MS = 15_000;
+// A check-in sends a dashboard and an attendance event together: events this close make one reload.
+const TODAY_EVENT_BATCH_MS = 300;
 
 interface WeekDayData {
   date: string;
@@ -65,6 +69,30 @@ export default function DashboardPage() {
   // One Today request at a time. Events that arrive meanwhile trigger exactly one more load right after.
   const todayLoadingRef = useRef(false);
   const todayAgainRef = useRef(false);
+  // The day (server, Accra) the stats on screen are for, as the dashboard API says. When today's
+  // attendance reports a later day, the stats reload (again each minute until that works).
+  const statsDateRef = useRef<string | null>(null);
+  // Only the latest stats request may update the screen, so a slow older one can't put back old numbers.
+  const statsRequestRef = useRef(0);
+
+  const fetchDashboardData = useCallback(async () => {
+    const request = ++statsRequestRef.current;
+    try {
+      const res = await fetch('/api/dashboard', { cache: 'no-store' });
+      const data = await res.json();
+      if (request !== statsRequestRef.current) return;
+      if (!res.ok) throw new Error(data.error || `Dashboard request failed (${res.status})`);
+      setStats(data);
+      setLoadError(null);
+      statsDateRef.current = typeof data.date === 'string' ? data.date : null;
+    } catch (error) {
+      if (request !== statsRequestRef.current) return;
+      console.error('Failed to fetch dashboard data:', error);
+      setLoadError(error instanceof Error ? error.message : 'Failed to load dashboard data');
+    } finally {
+      if (request === statsRequestRef.current) setLoading(false);
+    }
+  }, []);
 
   // Today's attendance for the Today card. If a load fails, the last good data stays on screen.
   const fetchToday = useCallback(async () => {
@@ -78,9 +106,19 @@ export default function DashboardPage() {
         todayAgainRef.current = false;
         try {
           // Read-only, and no date: the server picks today (Accra), so a wrong laptop clock can't shift it.
-          const res = await fetch('/api/attendance', { cache: 'no-store' });
-          const data = await res.json();
-          if (res.ok && typeof data?.date === 'string' && data.totals && Array.isArray(data.rows)) setToday(data);
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), TODAY_TIMEOUT_MS);
+          try {
+            const res = await fetch('/api/attendance', { cache: 'no-store', signal: controller.signal });
+            const data = await res.json();
+            if (res.ok && typeof data?.date === 'string' && data.totals && Array.isArray(data.rows)) {
+              setToday(data);
+              // Today has moved past the day the stats are for: reload them.
+              if (statsDateRef.current !== null && statsDateRef.current !== data.date) void fetchDashboardData();
+            }
+          } finally {
+            clearTimeout(timeout);
+          }
         } catch (error) {
           console.warn('Could not load today\'s attendance:', error);
         }
@@ -88,22 +126,7 @@ export default function DashboardPage() {
     } finally {
       todayLoadingRef.current = false;
     }
-  }, []);
-
-  const fetchDashboardData = useCallback(async () => {
-    try {
-      const res = await fetch('/api/dashboard', { cache: 'no-store' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `Dashboard request failed (${res.status})`);
-      setStats(data);
-      setLoadError(null);
-    } catch (error) {
-      console.error('Failed to fetch dashboard data:', error);
-      setLoadError(error instanceof Error ? error.message : 'Failed to load dashboard data');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  }, [fetchDashboardData]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
@@ -112,6 +135,17 @@ export default function DashboardPage() {
     void fetchDashboardData();
     void fetchToday();
 
+    // Any change (check-ins, permissions, staff added or archived, holidays) reloads the Today card,
+    // once for events that arrive together.
+    let todayEventTimer: ReturnType<typeof setTimeout> | null = null;
+    const reloadTodayForEvent = () => {
+      if (todayEventTimer) return;
+      todayEventTimer = setTimeout(() => {
+        todayEventTimer = null;
+        void fetchToday();
+      }, TODAY_EVENT_BATCH_MS);
+    };
+
     (async () => {
       const unsubscribes = await Promise.all([
         subscribeRealtimeChannel({
@@ -119,10 +153,10 @@ export default function DashboardPage() {
           events: ['invalidate'],
           onEvent: () => {
             void fetchDashboardData();
-            void fetchToday();
+            reloadTodayForEvent();
           },
         }),
-        subscribeRealtimeChannel({ channel: 'attendance', events: ['invalidate'], onEvent: () => void fetchToday() }),
+        subscribeRealtimeChannel({ channel: 'attendance', events: ['invalidate'], onEvent: reloadTodayForEvent }),
       ]);
       const unsubscribe = () => unsubscribes.forEach((stop) => stop());
 
@@ -133,19 +167,22 @@ export default function DashboardPage() {
       }
     })();
 
-    // A dashboard left open past midnight (Accra) moves on to the new day and week.
-    let shownDay = getAccraDateKey();
-    const dayCheck = setInterval(() => {
-      const now = getAccraDateKey();
-      if (now === shownDay) return;
-      shownDay = now;
-      void fetchDashboardData();
-      void fetchToday();
-    }, DAY_CHECK_MS);
+    // Every minute: picks up times that pass, a load that failed, and the change of day (by the
+    // server's date, so a wrong laptop clock can't shift it). Not while the tab is hidden; coming
+    // back to it reloads at once.
+    const todayRefresh = setInterval(() => {
+      if (document.visibilityState !== 'hidden') void fetchToday();
+    }, TODAY_REFRESH_MS);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void fetchToday();
+    };
+    document.addEventListener('visibilitychange', onVisible);
 
     return () => {
       mounted = false;
-      clearInterval(dayCheck);
+      clearInterval(todayRefresh);
+      if (todayEventTimer) clearTimeout(todayEventTimer);
+      document.removeEventListener('visibilitychange', onVisible);
       cleanup?.();
     };
   }, [fetchDashboardData, fetchToday]);

@@ -150,6 +150,39 @@ interface AttendanceQrResponse {
   type: string;
 }
 
+// Where a device transfer request came from, as its location reading says. Requests can be sent from
+// anywhere, so only a verified reading reads as "At the office"; the admin decides with that in view.
+function transferLocationLabel(request: DeviceTransferRequest): { className?: string; detail: string; title: string } {
+  const meters = (value: string | null) => (value ? `${Math.round(Number(value))}m` : null);
+  const distance = meters(request.distanceMeters);
+  const accuracy = meters(request.accuracyMeters);
+  // When the reading was taken: a request can wait a while, and the phone may have moved since.
+  const takenAt = request.locationAt ? ` · reading at ${formatDisplayDateTime(request.locationAt)}` : '';
+  const accuracyDetail = `${accuracy ? `${accuracy} accuracy` : 'Accuracy unknown'}${takenAt}`;
+  switch (request.verificationResult) {
+    case 'LOCATION_VERIFIED':
+      return { className: 'text-success', detail: accuracyDetail, title: distance ? `At the office · ${distance}` : 'At the office' };
+    case 'LOCATION_ACCURACY_WEAK':
+      return { className: 'text-warning', detail: accuracyDetail, title: 'Near the office, weak signal' };
+    case 'OUTSIDE_OFFICE_LOCATION':
+      return { className: 'text-warning', detail: accuracyDetail, title: distance ? `Not at the office · ${distance} away` : 'Not at the office' };
+    case 'LOCATION_MOCKED':
+      return { className: 'text-danger', detail: 'The phone reported a fake location', title: 'Fake location' };
+    case 'LOCATION_STALE':
+      return { className: 'text-warning', detail: 'The reading was too old to trust', title: 'Old location reading' };
+    case 'OFFICE_LOCATION_NOT_CONFIGURED':
+      return {
+        className: 'text-warning',
+        detail: request.accuracyMeters
+          ? `Can't be checked: no office location is set${takenAt}`
+          : 'No office location is set, so it can\'t be checked',
+        title: 'Office location not set',
+      };
+    default:
+      return { className: 'text-muted-foreground', detail: 'Sent without a location', title: 'No location shared' };
+  }
+}
+
 function todayKey() {
   return getAccraDateKey();
 }
@@ -216,8 +249,9 @@ function permissionSummary(permission: AttendancePermission) {
   return `${summary} / ${pardonLabel}`;
 }
 
+// Same rule as the API's totals.onTime: checked in on time and not on leave.
 function isOnTimeAttendanceRow(row: AttendanceRow) {
-  return isOnTimeCheckIn(row.attendance?.checkInTime);
+  return isOnTimeCheckIn(row.attendance?.checkInTime) && !rowStatuses(row).includes('on_leave');
 }
 
 export default function AttendancePage() {
@@ -1087,12 +1121,15 @@ export default function AttendancePage() {
                     </p>
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium">
-                      {request.distanceMeters ? `${Math.round(Number(request.distanceMeters))}m from office` : 'Location captured'}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {request.accuracyMeters ? `${Math.round(Number(request.accuracyMeters))}m accuracy` : request.verificationResult || 'Verified location'}
-                    </p>
+                    {(() => {
+                      const where = transferLocationLabel(request);
+                      return (
+                        <>
+                          <p className={cn('text-sm font-medium', where.className)}>{where.title}</p>
+                          <p className="text-xs text-muted-foreground">{where.detail}</p>
+                        </>
+                      );
+                    })()}
                   </div>
                   <div className="flex gap-2 xl:justify-end">
                     <Button

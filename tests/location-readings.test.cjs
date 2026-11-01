@@ -47,7 +47,9 @@ test('readings are kept once, in order, for a minute', () => {
 test('the check-in screen sends the best reading and only waits when every reading is vague', () => {
   assert.equal(CLEAR_READING_WAIT_MS, 2_000);
   const page = read('src', 'app', 'check-in', 'page.tsx');
-  assert.equal(page.match(/const location = await locationForAction\(readingsRef\.current\);/g).length, 2);
+  // Check-in waits for a reading; a device transfer request goes even without one.
+  assert.equal(page.match(/const location = await locationForAction\(readingsRef\.current\);/g).length, 1);
+  assert.equal(page.match(/const location = pickReading\(readingsRef\.current\) \?\? null;/g).length, 1);
   assert.match(page, /if \(ready && ready\.accuracy <= CLEAR_READING_METERS\) return ready;/);
   assert.match(page, /setLiveLocation\(validateLiveLocation\(locationPolicy, pickReading\(readingsRef\.current\) \|\| evidence\)\);/);
 });

@@ -200,15 +200,18 @@ export async function PATCH(
         }, { status: 409 });
       }
 
+      // Requests can come from anywhere: the device counts as verified at the office only when the
+      // request's own location reading was.
+      const verifiedAtOffice = transfer.verificationResult === 'LOCATION_VERIFIED';
       const deviceValues = {
         clerkSessionId: transfer.clerkSessionId,
         deviceHash: transfer.deviceHash,
         deviceLabel: transfer.deviceLabel,
-        lastDistanceMeters: transfer.distanceMeters,
+        lastDistanceMeters: verifiedAtOffice ? transfer.distanceMeters : null,
         lastSeenAt: now,
         lastSeenIp: transfer.networkIp,
-        lastVerificationMethod: 'office_location_transfer',
-        lastVerifiedAt: now,
+        lastVerificationMethod: verifiedAtOffice ? 'office_location_transfer' : 'admin_approved_transfer',
+        lastVerifiedAt: verifiedAtOffice ? now : null,
         registeredIp: transfer.networkIp,
         staffId: transfer.staffId,
         updatedAt: now,

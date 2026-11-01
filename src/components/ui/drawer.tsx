@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Drawer as DrawerPrimitive } from 'vaul';
 
-import { leaveDeadEnd } from '@/lib/app-nav';
+import { isDeadEndEntry, leaveDeadEnd, stateWithoutDeadEnd } from '@/lib/app-nav';
 import { cn } from '@/lib/utils';
 
 // Back (the edge swipe, the Android back button) closes the top sheet instead of leaving the screen,
@@ -17,6 +17,29 @@ const OPEN_GRACE_MS = 600;
 
 let lastSheetId = 0;
 let pendingPops = 0;
+// Steps back still on their way (history.go lands a moment later), oldest first, and sheets that
+// opened meanwhile: their entries go in once every step back has landed, so a step back can't take
+// the new entry off instead. Each popstate lands the oldest step (they land in the order sent).
+const popsInFlight: Array<{ fallback: number }> = [];
+const openingAfterPops: Array<() => boolean> = [];
+// If a step back never reports landing, stop waiting for it after this long.
+const POP_SETTLE_MS = 1000;
+
+function settlePop(pop: { fallback: number } | undefined) {
+  if (!pop) return;
+  window.clearTimeout(pop.fallback);
+  if (popsInFlight.length > 0) return;
+  window.removeEventListener('popstate', onPopLanded);
+  // A sheet opened while the steps back were on their way: its new entry also drops the closed
+  // sheets' entries ahead, so no dead end is needed (unless it closed again before going in).
+  const added = openingAfterPops.splice(0).map((addEntry) => addEntry()).some(Boolean);
+  // Otherwise the closed sheets' entries stay ahead, where a swipe forward would land: cap them off.
+  if (!added) window.setTimeout(leaveDeadEnd, 0);
+}
+
+function onPopLanded() {
+  settlePop(popsInFlight.shift());
+}
 
 function popSheetEntries() {
   // Sheets closing together (a parent with its child) take all their entries off in one step.
@@ -26,8 +49,14 @@ function popSheetEntries() {
     const count = pendingPops;
     pendingPops = 0;
     if (count === 0) return;
-    // The closed sheets' entries stay ahead, where a swipe forward would land: cap them off.
-    window.addEventListener('popstate', () => window.setTimeout(leaveDeadEnd, 0), { once: true });
+    const pop = {
+      fallback: window.setTimeout(() => {
+        const index = popsInFlight.indexOf(pop);
+        if (index !== -1) settlePop(popsInFlight.splice(index, 1)[0]);
+      }, POP_SETTLE_MS),
+    };
+    if (popsInFlight.length === 0) window.addEventListener('popstate', onPopLanded);
+    popsInFlight.push(pop);
     window.history.go(-count);
   });
 }
@@ -69,20 +98,32 @@ function useCloseOnBack(
       }
     };
 
-    const addEntry = () => {
-      if (cancelled) return;
+    // True when this sheet's entry went in (false if it closed before it could).
+    const addEntry = (): boolean => {
+      if (cancelled) return false;
+      // Another sheet's entry is still coming off: wait until it has, then go in.
+      if (popsInFlight.length > 0) {
+        openingAfterPops.push(addEntry);
+        return true;
+      }
       added = true;
       id = ++lastSheetId;
-      // Keep the router's own state on the entry so it treats it as the same screen. A sheet that
-      // was closed and reopened straight away (or remounted) reuses the entry still waiting to go.
-      const state = { ...(window.history.state ?? {}), latewatchSheet: id };
+      // Keep the router's own state on the entry so it treats it as the same screen (never the
+      // dead-end mark, or the entry would be stepped off like a dead end).
+      const state = { ...stateWithoutDeadEnd(), latewatchSheet: id };
       if (pendingPops > 0 && sheetEntryId() !== null) {
+        // A sheet that was closed and reopened straight away (or remounted) reuses the entry still
+        // waiting to go.
         pendingPops -= 1;
+        window.history.replaceState(state, '');
+      } else if (isDeadEndEntry()) {
+        // On the dead end left after a sheet closed: this sheet's entry takes its place.
         window.history.replaceState(state, '');
       } else {
         window.history.pushState(state, '');
       }
       window.addEventListener('popstate', onPopState);
+      return true;
     };
 
     // Effects run child first, so a child sheet opening together with its parent waits a tick:
@@ -143,7 +184,9 @@ const DrawerOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DrawerPrimitive.Overlay
     ref={ref}
-    className={cn('fixed inset-0 z-50 data-[state=closed]:pointer-events-none', className)}
+    // Radix puts an inline pointer-events: auto on the backdrop, so this has to win over it (!): a
+    // closed sheet's backdrop fades out for a moment and must not catch taps meant for the sheet below.
+    className={cn('fixed inset-0 z-50 data-[state=closed]:pointer-events-none!', className)}
     {...props}
   />
 ));
@@ -164,6 +207,13 @@ const DrawerContent = React.forwardRef<
         }}
         className={cn(
           'drawer-glass fixed inset-x-[9px] bottom-[9px] z-50 mt-24 mx-auto flex h-auto flex-col overflow-hidden rounded-[38px] border border-border/50 shadow-2xl outline-none',
+          // A sheet sliding away never catches a tap: it goes to what's underneath (the sheet below),
+          // as on a phone. Otherwise a quick tap after a swipe down hits the leaving sheet and is
+          // lost, or counts as a tap outside the sheet below and closes it. And an open sheet always
+          // takes taps: Radix blocks the sheet below until the one above has finished sliding away;
+          // while a child sheet is really open, its own backdrop covers the parent anyway. (!) beats
+          // the inline pointer-events Radix sets.
+          'data-[state=closed]:pointer-events-none! data-[state=open]:pointer-events-auto!',
           'pb-[env(safe-area-inset-bottom)]',
           'sm:max-w-md',
           className,
