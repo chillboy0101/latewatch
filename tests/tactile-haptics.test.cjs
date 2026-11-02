@@ -69,23 +69,31 @@ test('no sunray pattern behind the staff screens', () => {
   }
 });
 
-test('the attendance "more" sheet rows are solid, like the portal choice cards and the check-in button', () => {
+const portal_ui = () => read('src', 'components', 'layout', 'portal-ui.tsx');
+
+test('the attendance "more" sheet rows stay plain; only the portal home and admin redirect cards are solid', () => {
   const page = read('src', 'app', 'check-in', 'page.tsx');
-  assert.match(page, /className=\{cn\(CHOICE_PRESS, CHOICE_SOLID, CHOICE_SIZE, 'w-full gap-4 px-\[18px\] text-left'\)\}/);
+  assert.match(page, /className=\{cn\(CHOICE_PRESS, CHOICE_PLAIN, CHOICE_SIZE, 'w-full gap-4 px-\[18px\] text-left'\)\}/);
   assert.match(page, /<ul className="mt-4 grid grid-cols-\[minmax\(0,1fr\)\] gap-3">\n\s*<MenuRow/);
-  // Status colours become a dot: coloured text would not read on the solid row.
-  assert.match(page, /const MENU_TONE_DOT = \{ attention: 'bg-primary-foreground', success: 'bg-success', warning: 'bg-warning' \} as const;/);
-  assert.doesNotMatch(page, /statusClassName/);
+  assert.doesNotMatch(page, /CHOICE_SOLID|MENU_TONE_DOT/);
+  // Coloured status text on each row: new receipts, what's owed, reminders off.
+  assert.match(page, /statusClassName=\{receiptNotifications\.length > 0 \? 'font-medium text-primary' : undefined\}/);
+  assert.match(page, /statusClassName=\{penaltyHistory \? \(owedNow > 0 \? 'text-warning' : 'text-success'\) : undefined\}/);
+  assert.match(page, /statusClassName=\{!signInReminderEnabled && !signOutReminderEnabled \? 'text-warning' : undefined\}/);
+  assert.match(page, /<span className=\{cn\('mt-0\.5 block min-h-5 truncate text-sm text-muted-foreground', statusClassName\)\}>\{status\}<\/span>/);
+  // One plain icon tile, and the line height lives in CHOICE_TEXT (tailwind-merge drops a separate leading-*).
+  assert.equal([...page.matchAll(/cn\(CHOICE_ICON, CHOICE_ICON_PLAIN\)/g)].length, 3);
+  assert.match(portal_ui(), /export const CHOICE_TEXT = 'text-\[17\.5px\]\/tight';/);
   const portal = read('src', 'components', 'layout', 'portal-ui.tsx');
-  // ChoiceCard uses the same shared classes, solid like the check-in button.
+  // ChoiceCard (portal home, admin redirect) is solid, like the check-in button.
   assert.match(portal, /export const CHOICE_SOLID = cn\('border-primary bg-primary text-primary-foreground hover:bg-primary\/90', RAISED_SOLID\);/);
   assert.match(portal, /CHOICE_PRESS,\n\s*large \?[^\n]*\n\s*CHOICE_SOLID,/);
 });
 
 test('the reminders sheet toggles and the receipt rows keep the portal card shape, plain', () => {
   const page = read('src', 'app', 'check-in', 'page.tsx');
-  // Lists and switches stay plain: the reminder toggles and the receipt rows.
-  assert.equal([...page.matchAll(/className=\{cn\(CHOICE_PRESS, CHOICE_PLAIN, CHOICE_SIZE, 'w-full gap-4 px-\[18px\] text-left/g)].length, 2);
+  // The more-sheet rows, the reminder toggles and the receipt rows are all plain.
+  assert.equal([...page.matchAll(/className=\{cn\(CHOICE_PRESS, CHOICE_PLAIN, CHOICE_SIZE, 'w-full gap-4 px-\[18px\] text-left/g)].length, 3);
   assert.match(page, /<div className="grid grid-cols-\[minmax\(0,1fr\)\] gap-3">\n\s*<ReminderNotificationToggle/);
   assert.match(page, /<ul className="grid grid-cols-\[minmax\(0,1fr\)\] gap-3">\n\s*\{notifications\.map/);
   assert.equal([...page.matchAll(/<HapticSwitch \/>/g)].length, 3);

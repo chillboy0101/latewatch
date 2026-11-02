@@ -29,7 +29,7 @@ import { ModePicker } from '@/components/theme/mode-picker';
 import { ThemePicker } from '@/components/theme/theme-picker';
 import { isPlainClick, useAppNavigation } from '@/lib/app-nav';
 import { cn } from '@/lib/utils';
-import { CHOICE_ICON, CHOICE_ICON_SOLID, CHOICE_PLAIN, CHOICE_PRESS, CHOICE_SIZE, CHOICE_SOLID, CHOICE_TEXT } from '@/components/layout/portal-ui';
+import { CHOICE_ICON, CHOICE_ICON_PLAIN, CHOICE_PLAIN, CHOICE_PRESS, CHOICE_SIZE, CHOICE_TEXT } from '@/components/layout/portal-ui';
 
 interface CheckInStatus {
   attendance: {
@@ -560,39 +560,33 @@ function reminderSummary(signIn: boolean, signOut: boolean) {
   return 'Off';
 }
 
-// A dot before the status line: coloured text would not read on the solid row.
-const MENU_TONE_DOT = { attention: 'bg-primary-foreground', success: 'bg-success', warning: 'bg-warning' } as const;
-
 function MenuRow({
   icon,
   onClick,
   status,
+  statusClassName,
   title,
-  tone,
 }: {
   icon: React.ReactNode;
   title: string;
   onClick: () => void;
   status: string;
-  tone?: keyof typeof MENU_TONE_DOT;
+  statusClassName?: string;
 }) {
   return (
     <li>
-      {/* Solid and pressed like the portal choice cards and the check-in button. */}
+      {/* The portal cards' shape and press, plain (the portal home's cards are solid). */}
       <button
         type="button"
         onClick={onClick}
-        className={cn(CHOICE_PRESS, CHOICE_SOLID, CHOICE_SIZE, 'w-full gap-4 px-[18px] text-left')}
+        className={cn(CHOICE_PRESS, CHOICE_PLAIN, CHOICE_SIZE, 'w-full gap-4 px-[18px] text-left')}
       >
-        <span className={cn(CHOICE_ICON, CHOICE_ICON_SOLID)}>{icon}</span>
+        <span className={cn(CHOICE_ICON, CHOICE_ICON_PLAIN)}>{icon}</span>
         <span className="min-w-0 flex-1">
-          <span className={cn('block font-semibold leading-tight', CHOICE_TEXT)}>{title}</span>
-          <span className={cn('mt-0.5 flex min-h-5 min-w-0 items-center gap-1.5 text-sm text-primary-foreground/80', tone && 'font-medium text-primary-foreground')}>
-            {tone && <span aria-hidden className={cn('size-2 shrink-0 rounded-full ring-2 ring-white/30', MENU_TONE_DOT[tone])} />}
-            <span className="truncate">{status}</span>
-          </span>
+          <span className={cn('block font-semibold text-foreground', CHOICE_TEXT)}>{title}</span>
+          <span className={cn('mt-0.5 block min-h-5 truncate text-sm text-muted-foreground', statusClassName)}>{status}</span>
         </span>
-        <ArrowRight className="h-5 w-5 shrink-0 text-primary-foreground/80" />
+        <ArrowRight className="h-5 w-5 shrink-0 text-muted-foreground" />
         <HapticSwitch />
       </button>
     </li>
@@ -874,22 +868,30 @@ export default function CheckInPage() {
     fetchStatus();
   }, [fetchStatus]);
 
-  const fetchPenaltyHistory = useCallback(async () => {
-    setPenaltyHistoryLoading(true);
-    setPenaltyHistoryError(null);
-
-    try {
-      const response = await fetch('/api/attendance/check-in/penalty-history', { cache: 'no-store' });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || `Penalty history failed (${response.status})`);
-      setPenaltyHistory(body);
-    } catch (error) {
-      console.warn('Penalty history could not load:', error);
-      setPenaltyHistory(null);
-      setPenaltyHistoryError(error instanceof Error ? error.message : 'Could not load penalty history');
-    } finally {
-      setPenaltyHistoryLoading(false);
-    }
+  // One request at a time: opening the menu and then tapping Penalty history share it, so one
+  // result can't overwrite the other or end the loading state early.
+  const penaltyFetchRef = useRef<Promise<void> | null>(null);
+  const fetchPenaltyHistory = useCallback(() => {
+    if (penaltyFetchRef.current) return penaltyFetchRef.current;
+    const request = (async () => {
+      setPenaltyHistoryLoading(true);
+      setPenaltyHistoryError(null);
+      try {
+        const response = await fetch('/api/attendance/check-in/penalty-history', { cache: 'no-store' });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || `Penalty history failed (${response.status})`);
+        setPenaltyHistory(body);
+      } catch (error) {
+        console.warn('Penalty history could not load:', error);
+        // Keep the last figures: a failed refresh shouldn't wipe "You owe" from the menu.
+        setPenaltyHistoryError(error instanceof Error ? error.message : 'Could not load penalty history');
+      } finally {
+        setPenaltyHistoryLoading(false);
+        penaltyFetchRef.current = null;
+      }
+    })();
+    penaltyFetchRef.current = request;
+    return request;
   }, []);
 
   function openPenaltyHistory() {
@@ -1550,21 +1552,21 @@ export default function CheckInPage() {
                     title="Payment receipts"
                     onClick={() => setReceiptsDialogOpen(true)}
                     status={receiptNotifications.length > 0 ? `${receiptNotifications.length} new` : 'All seen'}
-                    tone={receiptNotifications.length > 0 ? 'attention' : undefined}
+                    statusClassName={receiptNotifications.length > 0 ? 'font-medium text-primary' : undefined}
                   />
                   <MenuRow
                     icon={<History className="h-[22px] w-[22px]" />}
                     title="Penalty history"
                     onClick={openPenaltyHistory}
                     status={penaltyHistory ? (owedNow > 0 ? `You owe ${ghc(owedNow)}` : 'Nothing owed') : ''}
-                    tone={penaltyHistory ? (owedNow > 0 ? 'warning' : 'success') : undefined}
+                    statusClassName={penaltyHistory ? (owedNow > 0 ? 'text-warning' : 'text-success') : undefined}
                   />
                   <MenuRow
                     icon={<BellRing className="h-[22px] w-[22px]" />}
                     title="Reminders"
                     onClick={() => setRemindersDialogOpen(true)}
                     status={reminderSummary(signInReminderEnabled, signOutReminderEnabled)}
-                    tone={!signInReminderEnabled && !signOutReminderEnabled ? 'warning' : undefined}
+                    statusClassName={!signInReminderEnabled && !signOutReminderEnabled ? 'text-warning' : undefined}
                   />
                 </ul>
               </DrawerContent>
@@ -2251,13 +2253,13 @@ function ReceiptsDialog({
                 <ul className="grid grid-cols-[minmax(0,1fr)] gap-3">
                   {notifications.map((notification) => (
                     <li key={notification.id}>
-                      {/* Looks and presses like the portal choice cards and the "more" sheet rows. */}
+                      {/* Plain, like the "more" sheet rows. */}
                       <button
                         type="button"
                         onClick={() => selectReceipt(notification)}
                         className={cn(CHOICE_PRESS, CHOICE_PLAIN, CHOICE_SIZE, 'w-full gap-4 px-[18px] text-left')}
                       >
-                        <span className={cn(CHOICE_ICON, 'bg-foreground/5 text-primary')}><ReceiptText className="h-[22px] w-[22px]" /></span>
+                        <span className={cn(CHOICE_ICON, CHOICE_ICON_PLAIN)}><ReceiptText className="h-[22px] w-[22px]" /></span>
                         <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 items-center gap-2">
                             <p className="font-mono text-base font-semibold tabular-nums text-foreground">{ghc(notification.amount)}</p>
@@ -2513,10 +2515,10 @@ function ReminderNotificationToggle({
       aria-label={label}
       disabled={disabled || loading}
       onClick={onToggle}
-      // Looks and presses like the portal choice cards and the "more" sheet rows.
+      // Plain, like the "more" sheet rows.
       className={cn(CHOICE_PRESS, CHOICE_PLAIN, CHOICE_SIZE, 'w-full gap-4 px-[18px] text-left disabled:cursor-not-allowed disabled:opacity-55')}
     >
-      <span className={cn(CHOICE_ICON, 'bg-foreground/5 text-primary')}><Icon className="h-[22px] w-[22px]" /></span>
+      <span className={cn(CHOICE_ICON, CHOICE_ICON_PLAIN)}><Icon className="h-[22px] w-[22px]" /></span>
       <span className="min-w-0 flex-1">
         <span className={cn('block font-semibold leading-tight', CHOICE_TEXT)}>{label}</span>
         <span className="mt-0.5 block text-sm text-muted-foreground">{time}</span>
