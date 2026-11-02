@@ -57,7 +57,6 @@ export function DesktopRequiredScreen() {
 
       <ChoicePanel label="Where to go">
         <ChoiceCard
-          highlight
           href="/check-in"
           icon={<LogIn className="h-[22px] w-[22px]" />}
           replace

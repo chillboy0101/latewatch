@@ -46,15 +46,18 @@ export const CHOICE_TEXT = 'text-[17.5px]';
 export const CHOICE_PRESS = cn(PRESS, 'group relative flex items-center border hover:brightness-105 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/50 active:brightness-95');
 export const CHOICE_PLAIN = 'border-border bg-background/40 shadow-[inset_0_1px_0_rgb(255_255_255/0.08),0_1px_3px_rgb(0_0_0/0.06)] active:shadow-[inset_0_2px_5px_rgb(0_0_0/0.08)]';
 export const CHOICE_ICON = 'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl';
+// Solid in the theme colour, like the attendance portal's check-in button: for rows that take you
+// somewhere (portal choices, the "more" sheet). Lists and switches stay plain.
+export const CHOICE_SOLID = cn('border-primary bg-primary text-primary-foreground hover:bg-primary/90', RAISED_SOLID);
+export const CHOICE_ICON_SOLID = 'bg-white/15 text-primary-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.2)]';
 
-// A portal choice: an icon tile, the name and an arrow. The highlighted one is solid in the theme
-// colour, like the attendance portal's check-in button; the others stay plain. "large" fills the space it is given (the
+// A portal choice: an icon tile, the name and an arrow, solid in the theme colour like the
+// attendance portal's check-in button. "large" fills the space it is given (the
 // portal home's wide card on computers). Opening it slides the screen in; a "back" card (like
 // Portal Home from the admin redirect) steps back to the previous screen instead, and a "replace"
 // card opens its screen in place of this one, so back skips this screen.
-export function ChoiceCard({ back, highlight, href, icon, replace, size = 'default', title }: {
+export function ChoiceCard({ back, href, icon, replace, size = 'default', title }: {
   back?: boolean;
-  highlight?: boolean;
   href: string;
   icon: ReactNode;
   replace?: boolean;
@@ -76,28 +79,19 @@ export function ChoiceCard({ back, highlight, href, icon, replace, size = 'defau
       className={cn(
         CHOICE_PRESS,
         large ? 'flex-1 gap-6 rounded-[28px] px-8' : [CHOICE_SIZE, 'gap-4 px-[18px]'],
-        highlight
-          ? cn('border-primary bg-primary text-primary-foreground hover:bg-primary/90', RAISED_SOLID)
-          : CHOICE_PLAIN,
+        CHOICE_SOLID,
       )}
     >
-      <span className={cn(
-        CHOICE_ICON,
-        large && 'h-[72px] w-[72px] rounded-[22px]',
-        highlight ? 'bg-white/15 text-primary-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.2)]' : 'bg-foreground/5 text-primary',
-      )}>
+      <span className={cn(CHOICE_ICON, CHOICE_ICON_SOLID, large && 'h-[72px] w-[72px] rounded-[22px]')}>
         {icon}
       </span>
       <span className={cn('min-w-0 font-semibold leading-tight', large ? 'text-[26px] tracking-tight' : CHOICE_TEXT)}>{title}</span>
       {large ? (
-        <span className={cn(
-          'ml-auto flex h-12 w-12 shrink-0 items-center justify-center rounded-full border transition-transform group-hover:translate-x-1',
-          highlight ? 'border-white/25 bg-white/10 text-primary-foreground' : 'border-border text-muted-foreground',
-        )}>
+        <span className="ml-auto flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/25 bg-white/10 text-primary-foreground transition-transform group-hover:translate-x-1">
           <ArrowRight className="h-5 w-5" />
         </span>
       ) : (
-        <ArrowRight className={cn('ml-auto h-5 w-5 shrink-0', highlight ? 'text-primary-foreground/80' : 'text-muted-foreground')} />
+        <ArrowRight className="ml-auto h-5 w-5 shrink-0 text-primary-foreground/80" />
       )}
       <HapticSwitch />
     </Link>

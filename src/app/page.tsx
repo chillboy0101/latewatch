@@ -147,7 +147,7 @@ export default function Home() {
             <ClockCard size="compact" />
           </div>
           <ChoicePanel label="Choose a portal">
-            <ChoiceCard highlight href="/check-in" icon={<LogIn className="h-[22px] w-[22px]" />} title="Attendance Portal" />
+            <ChoiceCard href="/check-in" icon={<LogIn className="h-[22px] w-[22px]" />} title="Attendance Portal" />
             <ChoiceCard href="/dashboard" icon={<LayoutDashboard className="h-[22px] w-[22px]" />} title="Admin Portal" />
           </ChoicePanel>
         </div>
@@ -159,7 +159,7 @@ export default function Home() {
           <div className="grid w-full max-w-5xl grid-cols-2 gap-3 rounded-[36px] border border-border bg-card p-3 shadow-xl">
             <ClockCard size="large" />
             <nav className="flex flex-col gap-3" aria-label="Choose a portal">
-              <ChoiceCard highlight size="large" href="/check-in" icon={<LogIn className="h-8 w-8" />} title="Attendance Portal" />
+              <ChoiceCard size="large" href="/check-in" icon={<LogIn className="h-8 w-8" />} title="Attendance Portal" />
               <ChoiceCard size="large" href="/dashboard" icon={<LayoutDashboard className="h-8 w-8" />} title="Admin Portal" />
             </nav>
           </div>
