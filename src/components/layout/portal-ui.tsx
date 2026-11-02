@@ -38,14 +38,16 @@ export function PortalPickers() {
 // Size of a portal choice card (and of any big action button meant to match it, like the
 // attendance portal's check-in button).
 export const CHOICE_SIZE = 'h-[86px] rounded-[22px]';
-export const CHOICE_TEXT = 'text-[17.5px]';
+// Line height is part of the size: tailwind-merge drops a separate leading-* class when a text size follows it.
+export const CHOICE_TEXT = 'text-[17.5px]/tight';
 
-// The look of a choice card, shared with other big tappable rows (like the attendance portal's
-// "more" sheet) so they all feel the same: raised like a button and pressed in smoothly when tapped
-// (see the Button component).
+// The shape and press shared by the choice cards and other big tappable rows: raised like a button
+// and pressed in smoothly when tapped (see the Button component).
 export const CHOICE_PRESS = cn(PRESS, 'group relative flex items-center border hover:brightness-105 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/50 active:brightness-95');
-export const CHOICE_PLAIN = 'border-border bg-background/40 shadow-[inset_0_1px_0_rgb(255_255_255/0.08),0_1px_3px_rgb(0_0_0/0.06)] active:shadow-[inset_0_2px_5px_rgb(0_0_0/0.08)]';
 export const CHOICE_ICON = 'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl';
+// Plain rows: the attendance portal's "more" sheet, receipt rows and reminder toggles.
+export const CHOICE_PLAIN = 'border-border bg-background/40 shadow-[inset_0_1px_0_rgb(255_255_255/0.08),0_1px_3px_rgb(0_0_0/0.06)] active:shadow-[inset_0_2px_5px_rgb(0_0_0/0.08)]';
+export const CHOICE_ICON_PLAIN = 'bg-foreground/5 text-primary';
 // Solid in the theme colour, like the attendance portal's check-in button: the portal choices on
 // the portal home and the "admin needs a computer" screen. The attendance portal's sheets stay plain.
 export const CHOICE_SOLID = cn('border-primary bg-primary text-primary-foreground hover:bg-primary/90', RAISED_SOLID);

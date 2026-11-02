@@ -29,7 +29,7 @@ import { ModePicker } from '@/components/theme/mode-picker';
 import { ThemePicker } from '@/components/theme/theme-picker';
 import { isPlainClick, useAppNavigation } from '@/lib/app-nav';
 import { cn } from '@/lib/utils';
-import { CHOICE_ICON, CHOICE_PLAIN, CHOICE_PRESS, CHOICE_SIZE, CHOICE_TEXT } from '@/components/layout/portal-ui';
+import { CHOICE_ICON, CHOICE_ICON_PLAIN, CHOICE_PLAIN, CHOICE_PRESS, CHOICE_SIZE, CHOICE_TEXT } from '@/components/layout/portal-ui';
 
 interface CheckInStatus {
   attendance: {
@@ -575,15 +575,15 @@ function MenuRow({
 }) {
   return (
     <li>
-      {/* Looks and presses like the portal choice cards. */}
+      {/* The portal cards' shape and press, plain (the portal home's cards are solid). */}
       <button
         type="button"
         onClick={onClick}
         className={cn(CHOICE_PRESS, CHOICE_PLAIN, CHOICE_SIZE, 'w-full gap-4 px-[18px] text-left')}
       >
-        <span className={cn(CHOICE_ICON, 'bg-foreground/5 text-primary')}>{icon}</span>
+        <span className={cn(CHOICE_ICON, CHOICE_ICON_PLAIN)}>{icon}</span>
         <span className="min-w-0 flex-1">
-          <span className={cn('block font-semibold leading-tight text-foreground', CHOICE_TEXT)}>{title}</span>
+          <span className={cn('block font-semibold text-foreground', CHOICE_TEXT)}>{title}</span>
           <span className={cn('mt-0.5 block min-h-5 truncate text-sm text-muted-foreground', statusClassName)}>{status}</span>
         </span>
         <ArrowRight className="h-5 w-5 shrink-0 text-muted-foreground" />
@@ -868,22 +868,30 @@ export default function CheckInPage() {
     fetchStatus();
   }, [fetchStatus]);
 
-  const fetchPenaltyHistory = useCallback(async () => {
-    setPenaltyHistoryLoading(true);
-    setPenaltyHistoryError(null);
-
-    try {
-      const response = await fetch('/api/attendance/check-in/penalty-history', { cache: 'no-store' });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || `Penalty history failed (${response.status})`);
-      setPenaltyHistory(body);
-    } catch (error) {
-      console.warn('Penalty history could not load:', error);
-      setPenaltyHistory(null);
-      setPenaltyHistoryError(error instanceof Error ? error.message : 'Could not load penalty history');
-    } finally {
-      setPenaltyHistoryLoading(false);
-    }
+  // One request at a time: opening the menu and then tapping Penalty history share it, so one
+  // result can't overwrite the other or end the loading state early.
+  const penaltyFetchRef = useRef<Promise<void> | null>(null);
+  const fetchPenaltyHistory = useCallback(() => {
+    if (penaltyFetchRef.current) return penaltyFetchRef.current;
+    const request = (async () => {
+      setPenaltyHistoryLoading(true);
+      setPenaltyHistoryError(null);
+      try {
+        const response = await fetch('/api/attendance/check-in/penalty-history', { cache: 'no-store' });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || `Penalty history failed (${response.status})`);
+        setPenaltyHistory(body);
+      } catch (error) {
+        console.warn('Penalty history could not load:', error);
+        // Keep the last figures: a failed refresh shouldn't wipe "You owe" from the menu.
+        setPenaltyHistoryError(error instanceof Error ? error.message : 'Could not load penalty history');
+      } finally {
+        setPenaltyHistoryLoading(false);
+        penaltyFetchRef.current = null;
+      }
+    })();
+    penaltyFetchRef.current = request;
+    return request;
   }, []);
 
   function openPenaltyHistory() {
@@ -2245,13 +2253,13 @@ function ReceiptsDialog({
                 <ul className="grid grid-cols-[minmax(0,1fr)] gap-3">
                   {notifications.map((notification) => (
                     <li key={notification.id}>
-                      {/* Looks and presses like the portal choice cards and the "more" sheet rows. */}
+                      {/* Plain, like the "more" sheet rows. */}
                       <button
                         type="button"
                         onClick={() => selectReceipt(notification)}
                         className={cn(CHOICE_PRESS, CHOICE_PLAIN, CHOICE_SIZE, 'w-full gap-4 px-[18px] text-left')}
                       >
-                        <span className={cn(CHOICE_ICON, 'bg-foreground/5 text-primary')}><ReceiptText className="h-[22px] w-[22px]" /></span>
+                        <span className={cn(CHOICE_ICON, CHOICE_ICON_PLAIN)}><ReceiptText className="h-[22px] w-[22px]" /></span>
                         <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 items-center gap-2">
                             <p className="font-mono text-base font-semibold tabular-nums text-foreground">{ghc(notification.amount)}</p>
@@ -2507,10 +2515,10 @@ function ReminderNotificationToggle({
       aria-label={label}
       disabled={disabled || loading}
       onClick={onToggle}
-      // Looks and presses like the portal choice cards and the "more" sheet rows.
+      // Plain, like the "more" sheet rows.
       className={cn(CHOICE_PRESS, CHOICE_PLAIN, CHOICE_SIZE, 'w-full gap-4 px-[18px] text-left disabled:cursor-not-allowed disabled:opacity-55')}
     >
-      <span className={cn(CHOICE_ICON, 'bg-foreground/5 text-primary')}><Icon className="h-[22px] w-[22px]" /></span>
+      <span className={cn(CHOICE_ICON, CHOICE_ICON_PLAIN)}><Icon className="h-[22px] w-[22px]" /></span>
       <span className="min-w-0 flex-1">
         <span className={cn('block font-semibold leading-tight', CHOICE_TEXT)}>{label}</span>
         <span className="mt-0.5 block text-sm text-muted-foreground">{time}</span>

@@ -302,6 +302,10 @@ test('the ⋯ menu shows the status of each sheet at a glance', () => {
   assert.match(source, /owedNow > 0 \? `You owe \$\{ghc\(owedNow\)\}` : 'Nothing owed'/);
   assert.match(source, /if \(signIn && signOut\) return 'On · 8:15 AM & 4:30 PM';/);
   assert.match(source, /if \(next\) void fetchPenaltyHistory\(\);/);
+  // One penalty-history request at a time (menu open + row tap share it); a failed refresh keeps the last figures.
+  assert.match(source, /if \(penaltyFetchRef\.current\) return penaltyFetchRef\.current;/);
+  assert.match(source, /penaltyFetchRef\.current = null;\n\s*\}\n\s*\}\)\(\);/);
+  assert.doesNotMatch(source, /setPenaltyHistory\(null\)/);
 });
 
 test('former staff can pay, and a payment is recorded once, atomically', () => {
