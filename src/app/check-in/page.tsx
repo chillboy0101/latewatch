@@ -178,6 +178,7 @@ type LocalCatchUpReminderType = 'sign_in' | 'sign_out';
 type DeviceTransferReviewStatus = 'approved' | 'rejected';
 
 const CHECK_IN_FEEDBACK_DISMISS_MS = 4_000;
+const PENALTY_HISTORY_TIMEOUT_MS = 15_000;
 // Errors carry a second line to read, so they stay a little longer.
 const CHECK_IN_ERROR_DISMISS_MS = 6_000;
 const LOCAL_CATCH_UP_REMINDER_STORAGE_PREFIX = 'latewatch.local-reminder.v1';
@@ -306,7 +307,7 @@ function ActionButton({ busy, disabled, icon: Icon, label, onClick }: {
   return (
     <>
       <Button
-        className={cn('w-full gap-2.5 whitespace-normal px-5 text-center font-semibold leading-tight active:brightness-95', CHOICE_SIZE, CHOICE_TEXT)}
+        className={cn('w-full gap-2.5 whitespace-normal px-5 text-center font-semibold active:brightness-95', CHOICE_SIZE, CHOICE_TEXT)}
         disabled={disabled}
         onClick={onClick}
         type="button"
@@ -869,29 +870,39 @@ export default function CheckInPage() {
   }, [fetchStatus]);
 
   // One request at a time: opening the menu and then tapping Penalty history share it, so one
-  // result can't overwrite the other or end the loading state early.
-  const penaltyFetchRef = useRef<Promise<void> | null>(null);
+  // result can't overwrite the other or end the loading state early. It gives up after
+  // PENALTY_HISTORY_TIMEOUT_MS, so a stalled request never blocks the next refresh.
+  const penaltyFetchRef = useRef<{ promise: Promise<void> } | null>(null);
   const fetchPenaltyHistory = useCallback(() => {
-    if (penaltyFetchRef.current) return penaltyFetchRef.current;
-    const request = (async () => {
+    if (penaltyFetchRef.current) return penaltyFetchRef.current.promise;
+    // Registered before the request starts, and cleared only by this request.
+    const entry: { promise: Promise<void> } = { promise: Promise.resolve() };
+    penaltyFetchRef.current = entry;
+    entry.promise = (async () => {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), PENALTY_HISTORY_TIMEOUT_MS);
       setPenaltyHistoryLoading(true);
       setPenaltyHistoryError(null);
       try {
-        const response = await fetch('/api/attendance/check-in/penalty-history', { cache: 'no-store' });
-        const body = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(body.error || `Penalty history failed (${response.status})`);
+        const response = await fetch('/api/attendance/check-in/penalty-history', { cache: 'no-store', signal: controller.signal });
+        const body = await response.json().catch(() => null);
+        if (!response.ok || !body || typeof body !== 'object') {
+          throw new Error(body?.error || `Penalty history failed (${response.status})`);
+        }
         setPenaltyHistory(body);
       } catch (error) {
         console.warn('Penalty history could not load:', error);
-        // Keep the last figures: a failed refresh shouldn't wipe "You owe" from the menu.
-        setPenaltyHistoryError(error instanceof Error ? error.message : 'Could not load penalty history');
+        // Keep the last figures (the sheet says they may be out of date) rather than wiping "You owe".
+        setPenaltyHistoryError(controller.signal.aborted
+          ? 'Penalty history took too long to load.'
+          : error instanceof Error ? error.message : 'Could not load penalty history');
       } finally {
+        window.clearTimeout(timeout);
         setPenaltyHistoryLoading(false);
-        penaltyFetchRef.current = null;
+        if (penaltyFetchRef.current === entry) penaltyFetchRef.current = null;
       }
     })();
-    penaltyFetchRef.current = request;
-    return request;
+    return entry.promise;
   }, []);
 
   function openPenaltyHistory() {
@@ -961,6 +972,7 @@ export default function CheckInPage() {
         events: ['invalidate'],
         onEvent: () => {
           void fetchReceiptNotifications();
+          void fetchPenaltyHistory();
         },
       });
 
@@ -975,7 +987,7 @@ export default function CheckInPage() {
       mounted = false;
       cleanup?.();
     };
-  }, [fetchReceiptNotifications, isLoaded, user]);
+  }, [fetchPenaltyHistory, fetchReceiptNotifications, isLoaded, user]);
 
   // Register the service worker on load so its static-asset cache is active for
   // every visitor (not only those who enable reminders), speeding up repeat and
@@ -985,6 +997,11 @@ export default function CheckInPage() {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
   }, []);
+
+  // Fresh numbers for the "You owe" line each time the menu opens, however it was opened.
+  useEffect(() => {
+    if (menuOpen) void fetchPenaltyHistory();
+  }, [fetchPenaltyHistory, menuOpen]);
 
   // Returning from a receipt page (Back → /check-in?receipts=1) reopens the ⋮
   // menu and the receipts drawer, then strips the param so it doesn't re-fire.
@@ -1518,11 +1535,7 @@ export default function CheckInPage() {
             <ModePicker buttonVariant="glass" buttonClassName="h-10 w-10 rounded-full" />
             <Drawer
               open={menuOpen}
-              onOpenChange={(next) => {
-                setMenuOpen(next);
-                // Fresh numbers for the "You owe" line each time the menu opens.
-                if (next) void fetchPenaltyHistory();
-              }}
+              onOpenChange={setMenuOpen}
             >
               <DrawerTrigger asChild>
                 <Button
@@ -1565,8 +1578,8 @@ export default function CheckInPage() {
                     icon={<BellRing className="h-[22px] w-[22px]" />}
                     title="Reminders"
                     onClick={() => setRemindersDialogOpen(true)}
-                    status={reminderSummary(signInReminderEnabled, signOutReminderEnabled)}
-                    statusClassName={!signInReminderEnabled && !signOutReminderEnabled ? 'text-warning' : undefined}
+                    status={pushReminderStatus ? reminderSummary(signInReminderEnabled, signOutReminderEnabled) : ''}
+                    statusClassName={pushReminderStatus && !signInReminderEnabled && !signOutReminderEnabled ? 'text-warning' : undefined}
                   />
                 </ul>
               </DrawerContent>
@@ -1797,6 +1810,12 @@ function PenaltyHistoryDialog({
   const currentWeek = history?.currentWeek || null;
   const weeks = penaltyWeeks(history);
   const owed = penaltyOwed(history);
+  // A refresh failed but older figures are still shown: say so.
+  const staleNote = error && history ? (
+    <p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning" role="status">
+      Couldn&apos;t refresh. These figures may be out of date.
+    </p>
+  ) : null;
 
   return (
     <DrawerNested open={open} onOpenChange={onOpenChange}>
@@ -1818,6 +1837,7 @@ function PenaltyHistoryDialog({
           </div>
         ) : weeks.length > 0 ? (
           <div data-vaul-no-drag className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-6">
+            {staleNote}
             <div className="rounded-2xl border border-border bg-background px-4 py-4">
               {owed > 0 ? (
                 <>
@@ -1844,7 +1864,8 @@ function PenaltyHistoryDialog({
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 pb-6 text-center">
-            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+            {staleNote}
+            <span className={cn('flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary', error && 'mt-4')}>
               <History className="h-6 w-6" />
             </span>
             <p className="mt-3 text-base font-semibold text-foreground">No penalties yet</p>
@@ -2520,7 +2541,7 @@ function ReminderNotificationToggle({
     >
       <span className={cn(CHOICE_ICON, CHOICE_ICON_PLAIN)}><Icon className="h-[22px] w-[22px]" /></span>
       <span className="min-w-0 flex-1">
-        <span className={cn('block font-semibold leading-tight', CHOICE_TEXT)}>{label}</span>
+        <span className={cn('block font-semibold', CHOICE_TEXT)}>{label}</span>
         <span className="mt-0.5 block text-sm text-muted-foreground">{time}</span>
       </span>
       {loading ? (

@@ -69,8 +69,6 @@ test('no sunray pattern behind the staff screens', () => {
   }
 });
 
-const portal_ui = () => read('src', 'components', 'layout', 'portal-ui.tsx');
-
 test('the attendance "more" sheet rows stay plain; only the portal home and admin redirect cards are solid', () => {
   const page = read('src', 'app', 'check-in', 'page.tsx');
   assert.match(page, /className=\{cn\(CHOICE_PRESS, CHOICE_PLAIN, CHOICE_SIZE, 'w-full gap-4 px-\[18px\] text-left'\)\}/);
@@ -79,12 +77,17 @@ test('the attendance "more" sheet rows stay plain; only the portal home and admi
   // Coloured status text on each row: new receipts, what's owed, reminders off.
   assert.match(page, /statusClassName=\{receiptNotifications\.length > 0 \? 'font-medium text-primary' : undefined\}/);
   assert.match(page, /statusClassName=\{penaltyHistory \? \(owedNow > 0 \? 'text-warning' : 'text-success'\) : undefined\}/);
-  assert.match(page, /statusClassName=\{!signInReminderEnabled && !signOutReminderEnabled \? 'text-warning' : undefined\}/);
+  // Reminders: no "Off" warning while the settings are still loading or couldn't load.
+  assert.match(page, /status=\{pushReminderStatus \? reminderSummary\(signInReminderEnabled, signOutReminderEnabled\) : ''\}/);
+  assert.match(page, /statusClassName=\{pushReminderStatus && !signInReminderEnabled && !signOutReminderEnabled \? 'text-warning' : undefined\}/);
   assert.match(page, /<span className=\{cn\('mt-0\.5 block min-h-5 truncate text-sm text-muted-foreground', statusClassName\)\}>\{status\}<\/span>/);
   // One plain icon tile, and the line height lives in CHOICE_TEXT (tailwind-merge drops a separate leading-*).
   assert.equal([...page.matchAll(/cn\(CHOICE_ICON, CHOICE_ICON_PLAIN\)/g)].length, 3);
-  assert.match(portal_ui(), /export const CHOICE_TEXT = 'text-\[17\.5px\]\/tight';/);
   const portal = read('src', 'components', 'layout', 'portal-ui.tsx');
+  assert.match(portal, /export const CHOICE_TEXT = 'text-\[17\.5px\]\/tight';/);
+  // No leading-* next to a text size: tailwind-merge would drop it.
+  assert.doesNotMatch(page + portal, /leading-tight', (CHOICE_TEXT|large)/);
+  assert.match(portal, /large \? 'text-\[26px\]\/tight tracking-tight' : CHOICE_TEXT/);
   // ChoiceCard (portal home, admin redirect) is solid, like the check-in button.
   assert.match(portal, /export const CHOICE_SOLID = cn\('border-primary bg-primary text-primary-foreground hover:bg-primary\/90', RAISED_SOLID\);/);
   assert.match(portal, /CHOICE_PRESS,\n\s*large \?[^\n]*\n\s*CHOICE_SOLID,/);
