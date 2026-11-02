@@ -130,7 +130,7 @@ test('check-in page replaces auto attendance controls with reminder notification
   assert.match(source, /device_transfer_review/);
   assert.match(source, /Device transfer approved/);
   assert.match(source, /const transferRequestPending = status\?\.transferRequest\?\.status === 'pending'/);
-  assert.match(source, /This browser could not be identified\. Refresh the page and try again\./);
+  assert.match(source, /text: "Couldn't identify this browser",\n\s*detail: 'Refresh the page and try again\.',/);
   assert.match(source, /disabled=\{requestingTransfer \|\| transferRequestPending\}/);
   assert.doesNotMatch(source, /disabled=\{requestingTransfer \|\| transferRequestPending \|\| locationBlocksAction\}/);
   assert.match(source, /\? 'Sending request\.\.\.'/);
