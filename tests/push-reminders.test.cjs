@@ -629,10 +629,15 @@ test('validateReminderCronRequest fails closed on a missing or wrong CRON_SECRET
 
 test('the "Add to Home Screen" banner shows when the check-in page opens in a phone browser', () => {
   const page = fs.readFileSync(path.join(__dirname, '../src/app/check-in/page.tsx'), 'utf8');
-  // On open, before any check-in (not after one).
-  assert.match(page, /useEffect\(\(\) => \{\n\s*if \(takeInstallNudgeTurn\(\)\) setInstallNudgeOpen\(true\);\n\s*\}, \[\]\);/);
+  // On open, before any check-in (not after one), once the location sheet is out of the way.
+  assert.match(page, /const locationSheetPending = Boolean\(status\?\.locationConfigured && \(locationAccess === 'unknown' \|\| locationSheetOpen\)\);/);
+  assert.match(page, /const installNudgeReady = \(status !== null \|\| !loading\) && !locationSheetPending;/);
+  assert.match(page, /if \(installTurnTakenRef\.current \|\| !installNudgeReady\) return;\n\s*installTurnTakenRef\.current = true;\n\s*if \(takeInstallNudgeTurn\(\)\) setInstallNudgeOpen\(true\);\n\s*\}, \[installNudgeReady\]\);/);
   assert.doesNotMatch(page, /installNudgePendingRef/);
-  // Install first: the reminders sheet waits until the banner has gone.
+  // Hidden while the location sheet is up (opened later by hand); back once it closes.
+  assert.match(page, /installNudgeOpen=\{installNudgeOpen && !locationSheetOpen\}/);
+  // Install first: the reminders sheet waits until the banner has gone, and for the location sheet.
+  assert.match(page, /&& !locationSheetPending\n/);
   assert.match(page, /&& !installNudgeOpen\n/);
   // Only in a phone's browser, never in the installed app; once a day; closed for good.
   const nudge = fs.readFileSync(path.join(__dirname, '../src/components/install/install-nudge-toast.tsx'), 'utf8');
@@ -640,4 +645,8 @@ test('the "Add to Home Screen" banner shows when the check-in page opens in a ph
   assert.match(nudge, /\(navigator as Navigator & \{ standalone\?: boolean \}\)\.standalone === true/);
   assert.match(nudge, /window\.matchMedia\('\(display-mode: standalone\)'\)\.matches/);
   assert.match(nudge, /if \(localStorage\.getItem\(DISMISSED_KEY\) === '1'\) return false;/);
+  // "Show me" keeps the banner up until the install page opens (a fallback hides it if it never does).
+  assert.match(nudge, /<Link href="\/install" onClick=\{\(\) => setLeaving\(true\)\}>Show me<\/Link>/);
+  assert.match(nudge, /if \(focused && !leaving\) return;/);
+  assert.match(nudge, /window\.setTimeout\(onHide, leaving \? LEAVING_HIDE_MS : AUTO_HIDE_MS\)/);
 });

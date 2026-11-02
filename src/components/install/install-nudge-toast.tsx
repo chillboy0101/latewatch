@@ -10,6 +10,8 @@ import { useSwipeToDismiss } from '@/lib/use-swipe-to-dismiss';
 const DISMISSED_KEY = 'latewatch-install-nudge-dismissed';
 const SEEN_KEY = 'latewatch-install-nudge-seen';
 const AUTO_HIDE_MS = 8_000;
+// After "Show me": how long it stays up if the install page never opens.
+const LEAVING_HIDE_MS = 5_000;
 
 function isInstalled() {
   const standalone = (navigator as Navigator & { standalone?: boolean }).standalone === true;
@@ -33,9 +35,11 @@ export function takeInstallNudgeTurn() {
 
 // "Add to Home Screen" banner, in the same stack as the receipt banners and sized like a phone
 // notification. Closing it (× or a swipe) hides it for good; left alone it slides away after a few
-// seconds, but not while one of its buttons has focus.
+// seconds, but not while one of its buttons has focus. After "Show me" it stays up until the install
+// page opens, so nothing else (the reminders sheet) pops up in between.
 export function InstallNudgeToast({ onHide }: { onHide: () => void }) {
   const [focused, setFocused] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const dismiss = () => {
     try {
       localStorage.setItem(DISMISSED_KEY, '1');
@@ -47,10 +51,10 @@ export function InstallNudgeToast({ onHide }: { onHide: () => void }) {
   const { swipeHandlers, swipeStyle } = useSwipeToDismiss(dismiss);
 
   useEffect(() => {
-    if (focused) return;
-    const timeout = window.setTimeout(onHide, AUTO_HIDE_MS);
+    if (focused && !leaving) return;
+    const timeout = window.setTimeout(onHide, leaving ? LEAVING_HIDE_MS : AUTO_HIDE_MS);
     return () => window.clearTimeout(timeout);
-  }, [focused, onHide]);
+  }, [focused, leaving, onHide]);
 
   const onBlur = (event: FocusEvent<HTMLDivElement>) => {
     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
@@ -80,7 +84,7 @@ export function InstallNudgeToast({ onHide }: { onHide: () => void }) {
         </button>
       </div>
       <Button asChild className="h-11 w-full rounded-xl text-[15px] font-semibold">
-        <Link href="/install" onClick={onHide}>Show me</Link>
+        <Link href="/install" onClick={() => setLeaving(true)}>Show me</Link>
       </Button>
     </div>
   );

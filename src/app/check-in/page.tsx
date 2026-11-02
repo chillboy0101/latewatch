@@ -693,14 +693,21 @@ export default function CheckInPage() {
     locationAccessRef.current = locationAccess;
   }, [locationAccess]);
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+  // The location sheet comes first: while it is still to be answered, other prompts wait.
+  const locationSheetPending = Boolean(status?.locationConfigured && (locationAccess === 'unknown' || locationSheetOpen));
   // "Add to Home Screen" banner: shown as soon as the page opens in a phone's browser (not the
-  // installed app), before any check-in, so people install it first. At most once a day; closing it
+  // installed app), before any check-in, so people install it first. It waits for the location
+  // sheet, which would cover it (and it would slide away unseen). At most once a day; closing it
   // hides it for good.
   const [installNudgeOpen, setInstallNudgeOpen] = useState(false);
+  const installTurnTakenRef = useRef(false);
   const hideInstallNudge = useCallback(() => setInstallNudgeOpen(false), []);
+  const installNudgeReady = (status !== null || !loading) && !locationSheetPending;
   useEffect(() => {
+    if (installTurnTakenRef.current || !installNudgeReady) return;
+    installTurnTakenRef.current = true;
     if (takeInstallNudgeTurn()) setInstallNudgeOpen(true);
-  }, []);
+  }, [installNudgeReady]);
   const clearMessage = useCallback(() => setMessage(null), []);
   const [forcedSessionNotice, setForcedSessionNotice] = useState<string | null>(null);
   // This phone's readings from the last minute (see lib/location-readings).
@@ -1589,7 +1596,8 @@ export default function CheckInPage() {
         </header>
 
         <ReceiptNotificationStack
-          installNudgeOpen={installNudgeOpen}
+          // Out of the way while the location sheet is up; back (with a fresh timer) once it closes.
+          installNudgeOpen={installNudgeOpen && !locationSheetOpen}
           notifications={receiptNotifications.filter((notification) => !hiddenToastIds.has(notification.id))}
           onHide={hideReceiptToast}
           onHideInstallNudge={hideInstallNudge}
@@ -1683,7 +1691,7 @@ export default function CheckInPage() {
                     && notificationPermission !== 'unsupported'
                     && !reminderControlsLocked
                     // One sheet at a time: the location sheet first, then this one.
-                    && !(status?.locationConfigured && (locationAccess === 'unknown' || locationSheetOpen))
+                    && !locationSheetPending
                     // Install first: reminders wait until the "Add to Home Screen" banner has gone.
                     && !installNudgeOpen
                   }
