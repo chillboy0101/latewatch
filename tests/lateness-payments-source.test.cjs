@@ -301,11 +301,19 @@ test('the ⋯ menu shows the status of each sheet at a glance', () => {
   assert.match(source, /const owed = penaltyOwed\(history\);/);
   assert.match(source, /owedNow > 0 \? `You owe \$\{ghc\(owedNow\)\}` : 'Nothing owed'/);
   assert.match(source, /if \(signIn && signOut\) return 'On · 8:15 AM & 4:30 PM';/);
-  assert.match(source, /if \(next\) void fetchPenaltyHistory\(\);/);
-  // One penalty-history request at a time (menu open + row tap share it); a failed refresh keeps the last figures.
-  assert.match(source, /if \(penaltyFetchRef\.current\) return penaltyFetchRef\.current;/);
-  assert.match(source, /penaltyFetchRef\.current = null;\n\s*\}\n\s*\}\)\(\);/);
+  // Every way of opening the menu (the button, ?receipts=1, the reminder nudge) refreshes "You owe".
+  assert.match(source, /useEffect\(\(\) => \{\n\s*if \(menuOpen\) void fetchPenaltyHistory\(\);\n\s*\}, \[fetchPenaltyHistory, menuOpen\]\);/);
+  // A payment or penalty change refreshes it too, not just the receipts.
+  assert.match(source, /void fetchReceiptNotifications\(\);\n\s*void fetchPenaltyHistory\(\);/);
+  // One request at a time, with a time limit; only its own request clears the slot.
+  assert.match(source, /if \(penaltyFetchRef\.current\) return penaltyFetchRef\.current\.promise;/);
+  assert.match(source, /window\.setTimeout\(\(\) => controller\.abort\(\), PENALTY_HISTORY_TIMEOUT_MS\)/);
+  assert.match(source, /if \(penaltyFetchRef\.current === entry\) penaltyFetchRef\.current = null;/);
+  // A non-JSON success (e.g. a sign-in page) is an error, not "Nothing owed".
+  assert.match(source, /if \(!response\.ok \|\| !body \|\| typeof body !== 'object'\)/);
+  // A failed refresh keeps the last figures, and the sheet says they may be out of date.
   assert.doesNotMatch(source, /setPenaltyHistory\(null\)/);
+  assert.match(source, /const staleNote = error && history \?/);
 });
 
 test('former staff can pay, and a payment is recorded once, atomically', () => {

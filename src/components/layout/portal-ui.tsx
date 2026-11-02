@@ -87,7 +87,7 @@ export function ChoiceCard({ back, href, icon, replace, size = 'default', title 
       <span className={cn(CHOICE_ICON, CHOICE_ICON_SOLID, large && 'h-[72px] w-[72px] rounded-[22px]')}>
         {icon}
       </span>
-      <span className={cn('min-w-0 font-semibold leading-tight', large ? 'text-[26px] tracking-tight' : CHOICE_TEXT)}>{title}</span>
+      <span className={cn('min-w-0 font-semibold', large ? 'text-[26px]/tight tracking-tight' : CHOICE_TEXT)}>{title}</span>
       {large ? (
         <span className="ml-auto flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/25 bg-white/10 text-primary-foreground transition-transform group-hover:translate-x-1">
           <ArrowRight className="h-5 w-5" />
