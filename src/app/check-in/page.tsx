@@ -865,6 +865,19 @@ export default function CheckInPage() {
     void fetchPushReminderStatus();
   }, [fetchPushReminderStatus]);
 
+  // The reminder toggles stay off until the saved settings are known. If they couldn't load,
+  // opening the Reminders sheet tries once more (once per opening, so a failure can't loop).
+  const reminderRetryTriedRef = useRef(false);
+  useEffect(() => {
+    if (!remindersDialogOpen) {
+      reminderRetryTriedRef.current = false;
+      return;
+    }
+    if (reminderRetryTriedRef.current || pushReminderStatus !== null || pushReminderLoading) return;
+    reminderRetryTriedRef.current = true;
+    void fetchPushReminderStatus();
+  }, [fetchPushReminderStatus, pushReminderLoading, pushReminderStatus, remindersDialogOpen]);
+
   useEffect(() => {
     fetchStatus();
   }, [fetchStatus]);

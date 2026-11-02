@@ -87,7 +87,7 @@ test('the attendance "more" sheet rows stay plain; only the portal home and admi
   assert.match(portal, /export const CHOICE_TEXT = 'text-\[17\.5px\]\/tight';/);
   // No leading-* next to a text size: tailwind-merge would drop it.
   for (const call of (page + portal).match(/cn\([^;]*?\)/g) || []) {
-    if (/CHOICE_TEXT|text-\[\d/.test(call)) assert.doesNotMatch(call, /\bleading-[a-z0-9]/, call);
+    if (/CHOICE_TEXT|\btext-(?:xs|sm|base|lg|[2-9]?xl|\[\d)/.test(call)) assert.doesNotMatch(call, /\bleading-[a-z0-9]/, call);
   }
   assert.match(portal, /large \? 'text-\[26px\]\/tight tracking-tight' : CHOICE_TEXT/);
   // ChoiceCard (portal home, admin redirect) is solid, like the check-in button.
