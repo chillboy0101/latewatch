@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 // edge. The press eases in quickly and springs back slowly (PRESS), so it feels smooth rather than
 // snapping.
 export const PRESS = 'transition-[color,background-color,border-color,box-shadow,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.97] active:duration-100 motion-reduce:transition-none';
-const RAISED_SOLID = 'shadow-[inset_0_-2px_0_rgb(0_0_0/0.28),0_1px_1px_rgb(0_0_0/0.18),0_4px_8px_-3px_rgb(0_0_0/0.3)] active:shadow-[inset_0_3px_6px_rgb(0_0_0/0.35)]';
+export const RAISED_SOLID = 'shadow-[inset_0_-2px_0_rgb(0_0_0/0.28),0_1px_1px_rgb(0_0_0/0.18),0_4px_8px_-3px_rgb(0_0_0/0.3)] active:shadow-[inset_0_3px_6px_rgb(0_0_0/0.35)]';
 const RAISED_PLAIN = 'shadow-[inset_0_1px_0_rgb(255_255_255/0.06),0_1px_2px_rgb(0_0_0/0.08)] active:shadow-[inset_0_1px_3px_rgb(0_0_0/0.12)]';
 
 const buttonVariants = cva(
