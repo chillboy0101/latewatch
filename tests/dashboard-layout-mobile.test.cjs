@@ -21,11 +21,12 @@ test('on phones the admin portal shows the "admin needs a computer" page', () =>
   assert.match(screen, /useApplyDarkMode\(\);/);
   // The drawing with the message under it in handwritten lettering, centred above the panel.
   assert.match(screen, /<div className="flex min-h-0 flex-1 flex-col items-center justify-center[^"]*">\s*<DevicesIllustration \/>\s*<h1 className=\{cn\(handwriting\.className, [^)]*\)\}>\s*Admin needs\s*<span className="block" style=\{\{ color: ink \}\}>a computer<\/span>\s*<\/h1>/);
-  // The panel holds only the two choice cards: attendance portal first (highlighted), then home.
-  assert.match(screen, /<ChoicePanel label="Where to go">\s*<ChoiceCard\s+highlight/);
+  // The panel holds only the two choice cards (both solid): attendance portal first, then home.
+  assert.match(screen, /<ChoicePanel label="Where to go">\s*<ChoiceCard\s+href="\/check-in"/);
+  assert.doesNotMatch(screen, /highlight/);
   // The tick is on the laptop (the right device); the phone is faded.
   assert.match(screen, /h-\[118px\] w-\[184px\][\s\S]*?<Check className="h-4 w-4"[\s\S]*?<\/div>\s*<div className="absolute -left-3\.5/);
-  assert.match(screen, /highlight\s+href="\/check-in"[\s\S]{0,120}title="Attendance Portal"/);
+  assert.match(screen, /href="\/check-in"[\s\S]{0,120}title="Attendance Portal"/);
   assert.match(screen, /href="\/"[\s\S]{0,120}title="Portal Home"/);
   // Cards a little larger than the mockup (86px tall, 48px icons), shared with the portal home.
   const portalUi = read('src', 'components', 'layout', 'portal-ui.tsx');
@@ -67,15 +68,16 @@ test('portal home renders one layout, with the two portals in order and an offic
   // Each layout renders only when chosen (both only before the browser answers).
   assert.match(home, /\{view !== 'wide' && \(/);
   assert.match(home, /\{view !== 'compact' && \(/);
-  // Attendance first (highlighted), then Admin, in both layouts.
-  const links = [...home.matchAll(/<ChoiceCard( highlight)?[^\n]*href="([^"]+)"[^\n]*title="([^"]+)"/g)].map((m) => [Boolean(m[1]), m[2], m[3]]);
+  // Attendance first, then Admin, in both layouts (all solid, like the check-in button).
+  const links = [...home.matchAll(/<ChoiceCard[^\n]*href="([^"]+)"[^\n]*title="([^"]+)"/g)].map((m) => [m[1], m[2]]);
   assert.deepEqual(links, [
-    [true, '/check-in', 'Attendance Portal'],
-    [false, '/dashboard', 'Admin Portal'],
-    [true, '/check-in', 'Attendance Portal'],
-    [false, '/dashboard', 'Admin Portal'],
+    ['/check-in', 'Attendance Portal'],
+    ['/dashboard', 'Admin Portal'],
+    ['/check-in', 'Attendance Portal'],
+    ['/dashboard', 'Admin Portal'],
   ]);
-  assert.match(home, /<ChoiceCard highlight size="large"/);
+  assert.doesNotMatch(home, /highlight/);
+  assert.match(home, /<ChoiceCard size="large"/);
   // The clock shows office (Accra) time and ticks inside its own card.
   assert.match(home, /timeZone: ACCRA_TIME_ZONE/);
   assert.match(home, /function ClockCard\([^)]*\) \{\s*const now = useNow\(\);/);

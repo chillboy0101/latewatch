@@ -69,19 +69,23 @@ test('no sunray pattern behind the staff screens', () => {
   }
 });
 
-test('the attendance "more" sheet rows look and press like the portal choice cards', () => {
+test('the attendance "more" sheet rows are solid, like the portal choice cards and the check-in button', () => {
   const page = read('src', 'app', 'check-in', 'page.tsx');
-  assert.match(page, /className=\{cn\(CHOICE_PRESS, CHOICE_PLAIN, CHOICE_SIZE, 'w-full gap-4 px-\[18px\] text-left'\)\}/);
+  assert.match(page, /className=\{cn\(CHOICE_PRESS, CHOICE_SOLID, CHOICE_SIZE, 'w-full gap-4 px-\[18px\] text-left'\)\}/);
   assert.match(page, /<ul className="mt-4 grid grid-cols-\[minmax\(0,1fr\)\] gap-3">\n\s*<MenuRow/);
+  // Status colours become a dot: coloured text would not read on the solid row.
+  assert.match(page, /const MENU_TONE_DOT = \{ attention: 'bg-primary-foreground', success: 'bg-success', warning: 'bg-warning' \} as const;/);
+  assert.doesNotMatch(page, /statusClassName/);
   const portal = read('src', 'components', 'layout', 'portal-ui.tsx');
-  // ChoiceCard uses the same shared classes.
-  assert.match(portal, /CHOICE_PRESS,\n\s*large \?/);
-  assert.match(portal, /: CHOICE_PLAIN,/);
+  // ChoiceCard uses the same shared classes, solid like the check-in button.
+  assert.match(portal, /export const CHOICE_SOLID = cn\('border-primary bg-primary text-primary-foreground hover:bg-primary\/90', RAISED_SOLID\);/);
+  assert.match(portal, /CHOICE_PRESS,\n\s*large \?[^\n]*\n\s*CHOICE_SOLID,/);
 });
 
-test('the reminders sheet toggles and the receipt rows match the portal cards too', () => {
+test('the reminders sheet toggles and the receipt rows keep the portal card shape, plain', () => {
   const page = read('src', 'app', 'check-in', 'page.tsx');
-  assert.equal([...page.matchAll(/className=\{cn\(CHOICE_PRESS, CHOICE_PLAIN, CHOICE_SIZE, 'w-full gap-4 px-\[18px\] text-left/g)].length, 3); // more-sheet rows, reminder toggles, receipts
+  // Lists and switches stay plain: the reminder toggles and the receipt rows.
+  assert.equal([...page.matchAll(/className=\{cn\(CHOICE_PRESS, CHOICE_PLAIN, CHOICE_SIZE, 'w-full gap-4 px-\[18px\] text-left/g)].length, 2);
   assert.match(page, /<div className="grid grid-cols-\[minmax\(0,1fr\)\] gap-3">\n\s*<ReminderNotificationToggle/);
   assert.match(page, /<ul className="grid grid-cols-\[minmax\(0,1fr\)\] gap-3">\n\s*\{notifications\.map/);
   assert.equal([...page.matchAll(/<HapticSwitch \/>/g)].length, 3);
