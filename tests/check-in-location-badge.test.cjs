@@ -18,7 +18,7 @@ test('check-in page uses compact location badge copy', () => {
   assert.doesNotMatch(source, /'Not at office'/);
   assert.match(source, /return distanceLabel \? `\$\{distanceLabel\} away` : 'Move closer';/);
   // Location off: what to do, not "Location needed" under "Location needed to check in".
-  assert.match(source, /if \(liveLocation\.state === 'error'\) return canTurnOn \? 'Turn on location' : 'Location unavailable';/);
+  assert.match(source, /if \(liveLocation\.state === 'error'\) return canTurnOn \? 'Location off' : 'Location unavailable';/);
   assert.match(source, /locationValue\(status, liveLocation, Boolean\(onClick\)\)/);
 });
 
@@ -30,10 +30,10 @@ test('check-in feedback shows in the status island', () => {
   assert.match(source, /rounded-\[1\.75rem\] bg-neutral-950/);
   assert.match(source, /closing \? 'status-island-out' : 'status-island-in'/);
   assert.match(source, /success \? 'bg-success' : 'bg-danger'/);
-  // Check-in: the time up top, how it went below.
-  assert.match(source, /text: `You're checked in\$\{clockLabel\(attendance\?\.checkInTime\)\}`, detail/);
-  assert.match(source, /\? `Late · GHC \$\{charge\.toFixed\(2\)\} charge`/);
-  assert.match(source, /: 'On time · no charge';/);
+  // Check-in: just "You're checked in"; the card shows the time and any charge.
+  assert.match(source, /return "You're checked in";/);
+  assert.match(source, /setMessage\(\{ type: 'success', text: attendanceFeedback\(body\) \}\);/);
+  assert.doesNotMatch(source, /no charge'/);
   assert.match(source, /text: action === 'sign_out' \? "Couldn't check out" : "Couldn't check in", detail: errorMessage/);
   // Errors stay a little longer; a swipe isn't also a tap.
   assert.match(source, /message\.type === 'error' \? CHECK_IN_ERROR_DISMISS_MS : CHECK_IN_FEEDBACK_DISMISS_MS/);
@@ -50,7 +50,12 @@ test('check-in page keeps location blocking states intact', () => {
   assert.match(source, /state: 'weak'/);
   assert.match(source, /state: 'outside'/);
   assert.match(source, /locationBlocksAction/);
-  assert.match(source, /Improve GPS Accuracy/);
+  // The button keeps its action name and is greyed out; with location off it turns location on.
+  assert.doesNotMatch(source, /Outside Office|Improve GPS Accuracy|Location Required/);
+  assert.match(source, /if \(opensLocationSheet\) return 'Turn On Location';/);
+  assert.match(source, /const opensLocationSheet = needsLocationPermission && \(canCheckIn \|\| canSubmitSignOut\);/);
+  assert.match(source, /icon=\{opensLocationSheet \? MapPin : /);
+  assert.match(source, /attendanceButtonLabel\(status, checkingIn, opensLocationSheet\)/);
 });
 
 test('check-in page uses concise attendance status copy', () => {

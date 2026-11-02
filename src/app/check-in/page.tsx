@@ -270,22 +270,20 @@ function locationValue(status: CheckInStatus | null, liveLocation: LiveLocation,
       </span>
     );
   }
-  if (liveLocation.state === 'error') return canTurnOn ? 'Turn on location' : 'Location unavailable';
+  if (liveLocation.state === 'error') return canTurnOn ? 'Location off' : 'Location unavailable';
 
   return (
     <span className="max-w-36 truncate">{status.locationPolicy?.name || 'Office set'}</span>
   );
 }
 
-function attendanceButtonLabel(status: CheckInStatus | null, submitting: boolean, liveLocation: LiveLocation) {
+// The button names the action. When location stops it, it keeps that name and is greyed out:
+// the card above already says why. With location off it is the way to turn it on.
+function attendanceButtonLabel(status: CheckInStatus | null, submitting: boolean, opensLocationSheet: boolean) {
   if (submitting) return status?.attendance && !status.attendance.signOutTime ? 'Checking out' : 'Checking in';
   if (status?.attendance?.signOutTime) return 'Already Checked Out';
   if (status?.device?.registered && !status.device.trusted) return 'Registered Device Required';
-  if (status?.locationConfigured && liveLocation.blocking) {
-    if (liveLocation.state === 'outside') return 'Outside Office';
-    if (liveLocation.state === 'weak') return 'Improve GPS Accuracy';
-    return 'Location Required';
-  }
+  if (opensLocationSheet) return 'Turn On Location';
   if (status?.attendance) return canSignOut(status) ? 'Check Out' : `Check Out Opens ${status.signOutStartLabel.replace(' ', '\u00a0')}` /* keep "4:30 PM" on one line */;
   if (status?.isHoliday) return 'Closed - Holiday';
   if (status?.isWeekend) return 'Closed - Weekend';
@@ -355,33 +353,13 @@ function locationErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Could not read this device location.';
 }
 
-function clockLabel(time: string | null | undefined) {
-  return time ? ` · ${time.slice(0, 5)}` : '';
-}
-
-// The status island after a check-in or check-out: the time up top, how it went below.
-function attendanceFeedback(body: {
-  alreadyCheckedIn?: boolean;
-  alreadySignedOut?: boolean;
-  attendance?: CheckInStatus['attendance'];
-  signedOut?: boolean;
-}): Omit<StatusMessage, 'type'> {
-  const attendance = body.attendance;
-  if (body.signedOut) return { text: `You're checked out${clockLabel(attendance?.signOutTime)}`, detail: 'Have a good evening' };
-  if (body.alreadySignedOut) return { text: `Already checked out${clockLabel(attendance?.signOutTime)}` };
-  if (body.alreadyCheckedIn) return { text: `Already checked in${clockLabel(attendance?.checkInTime)}` };
-
-  const charge = Number(attendance?.computedAmount || 0);
-  // Stored as "excused" when a late arrival or absence was approved.
-  const state: string = attendance?.status ?? '';
-  const detail = charge > 0
-    ? `Late · GHC ${charge.toFixed(2)} charge`
-    : state === 'late'
-      ? 'Late · no charge'
-      : state === 'excused'
-        ? 'Excused · no charge'
-        : 'On time · no charge';
-  return { text: `You're checked in${clockLabel(attendance?.checkInTime)}`, detail };
+// The status island after a check-in or check-out: just what happened. The card below already shows
+// the time and any charge.
+function attendanceFeedback(body: { alreadyCheckedIn?: boolean; alreadySignedOut?: boolean; signedOut?: boolean }) {
+  if (body.signedOut) return "You're checked out";
+  if (body.alreadySignedOut) return 'Already checked out';
+  if (body.alreadyCheckedIn) return 'Already checked in';
+  return "You're checked in";
 }
 
 async function showReminderToggleConfirmation(confirmation: ReminderToggleConfirmation) {
@@ -1280,7 +1258,7 @@ export default function CheckInPage() {
       if (!response.ok) throw new Error(body.error || 'Check-in failed');
 
       setStatus(body);
-      setMessage({ type: 'success', ...attendanceFeedback(body) });
+      setMessage({ type: 'success', text: attendanceFeedback(body) });
     } catch (error) {
       console.warn('Attendance action could not complete:', error);
       const errorMessage = locationErrorMessage(error);
@@ -1492,6 +1470,8 @@ export default function CheckInPage() {
   const locationBlocksAction = Boolean(status?.locationConfigured && liveLocation.blocking);
   // Location not allowed yet, or blocked: the chip and the main button open the location sheet.
   const needsLocationPermission = Boolean(status?.locationConfigured && (locationAccess === 'waiting' || locationDenied));
+  // Location off while check-in (or check-out) is open: the main button turns location on.
+  const opensLocationSheet = needsLocationPermission && (canCheckIn || canSubmitSignOut);
   // A registered but untrusted phone gets the device-transfer button instead of check-in.
   const needsTransfer = Boolean(status?.device?.registered && !status.device.trusted);
   const signInReminderEnabled = Boolean(pushReminderStatus?.subscription?.signInEnabled && !pushReminderStatus.subscription.disabledAt);
@@ -1771,8 +1751,8 @@ export default function CheckInPage() {
                     <ActionButton
                       busy={checkingIn}
                       disabled={(!canCheckIn && !canSubmitSignOut) || checkingIn || (locationBlocksAction && !needsLocationPermission)}
-                      icon={status?.attendance && !status.attendance.signOutTime ? LogOut : ShieldCheck}
-                      label={attendanceButtonLabel(status, checkingIn, liveLocation)}
+                      icon={opensLocationSheet ? MapPin : status?.attendance && !status.attendance.signOutTime ? LogOut : ShieldCheck}
+                      label={attendanceButtonLabel(status, checkingIn, opensLocationSheet)}
                       onClick={needsLocationPermission ? openLocationSheet : () => void submitAttendance()}
                     />
                   )}
