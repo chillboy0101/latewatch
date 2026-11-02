@@ -122,7 +122,8 @@ test('check-in page replaces auto attendance controls with reminder notification
   assert.match(source, /requireInteraction: true/);
   assert.match(source, /renotify: true/);
   assert.match(source, /const reminderControlsLocked = Boolean\(!status\?\.device\?\.registered \|\| !status\.device\.trusted\)/);
-  assert.match(source, /disabled=\{!status\?\.staff \|\| reminderControlsLocked \|\| pushReminderLoading \|\| savingPushReminder\}/);
+  // Toggles wait until the saved choices are known, so a toggle can't overwrite unknown settings.
+  assert.match(source, /disabled=\{!status\?\.staff \|\| reminderControlsLocked \|\| pushReminderLoading \|\| savingPushReminder \|\| pushReminderStatus === null\}/);
   assert.match(source, /'x-latewatch-device': deviceToken/);
   assert.match(source, /JSON\.stringify\(\{ deviceToken, endpoint: currentEndpoint \}\)/);
   assert.match(source, /deviceToken,\s+signInEnabled: next\.signInEnabled/);
