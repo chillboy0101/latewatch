@@ -130,7 +130,7 @@ test('check-in page replaces auto attendance controls with reminder notification
   assert.match(source, /device_transfer_review/);
   assert.match(source, /Device transfer approved/);
   assert.match(source, /const transferRequestPending = status\?\.transferRequest\?\.status === 'pending'/);
-  assert.match(source, /This browser could not be identified\. Refresh the page and try again\./);
+  assert.match(source, /text: "Couldn't identify this browser",\n\s*detail: 'Refresh the page and try again\.',/);
   assert.match(source, /disabled=\{requestingTransfer \|\| transferRequestPending\}/);
   assert.doesNotMatch(source, /disabled=\{requestingTransfer \|\| transferRequestPending \|\| locationBlocksAction\}/);
   assert.match(source, /\? 'Sending request\.\.\.'/);
@@ -625,4 +625,30 @@ test('validateReminderCronRequest fails closed on a missing or wrong CRON_SECRET
     if (originalSecret === undefined) delete process.env.CRON_SECRET;
     else process.env.CRON_SECRET = originalSecret;
   }
+});
+
+test('the "Add to Home Screen" banner shows when the check-in page opens in a phone browser', () => {
+  const page = fs.readFileSync(path.join(__dirname, '../src/app/check-in/page.tsx'), 'utf8');
+  // On open, before any check-in (not after one), once the location sheet is out of the way.
+  assert.match(page, /const locationSheetPending = Boolean\(status\?\.locationConfigured && \(locationAccess === 'unknown' \|\| locationSheetOpen\)\);/);
+  assert.match(page, /const installNudgeReady = \(status !== null \|\| !loading\) && !locationSheetPending;/);
+  assert.match(page, /if \(installTurnTakenRef\.current \|\| !installNudgeReady\) return;\n\s*installTurnTakenRef\.current = true;\n\s*if \(takeInstallNudgeTurn\(\)\) setInstallNudgeOpen\(true\);\n\s*setInstallNudgeDecided\(true\);\n\s*\}, \[installNudgeReady\]\);/);
+  // The reminders sheet waits until the banner's turn is decided, not just while it is open.
+  assert.match(page, /&& installNudgeDecided\n\s*&& !installNudgeOpen\n/);
+  assert.doesNotMatch(page, /installNudgePendingRef/);
+  // Hidden while the location sheet is up (opened later by hand); back once it closes.
+  assert.match(page, /installNudgeOpen=\{installNudgeOpen && !locationSheetOpen\}/);
+  // Install first: the reminders sheet waits until the banner has gone, and for the location sheet.
+  assert.match(page, /&& !locationSheetPending\n/);
+  assert.match(page, /&& !installNudgeOpen\n/);
+  // Only in a phone's browser, never in the installed app; once a day; closed for good.
+  const nudge = fs.readFileSync(path.join(__dirname, '../src/components/install/install-nudge-toast.tsx'), 'utf8');
+  assert.match(nudge, /if \(detectPhoneOs\(\) === 'other' \|\| isInstalled\(\)\) return false;/);
+  assert.match(nudge, /\(navigator as Navigator & \{ standalone\?: boolean \}\)\.standalone === true/);
+  assert.match(nudge, /window\.matchMedia\('\(display-mode: standalone\)'\)\.matches/);
+  assert.match(nudge, /if \(localStorage\.getItem\(DISMISSED_KEY\) === '1'\) return false;/);
+  // "Show me" keeps the banner up until the install page opens (a fallback hides it if it never does).
+  assert.match(nudge, /<Link href="\/install" onClick=\{\(\) => setLeaving\(true\)\}>Show me<\/Link>/);
+  assert.match(nudge, /if \(focused && !leaving\) return;/);
+  assert.match(nudge, /window\.setTimeout\(onHide, leaving \? LEAVING_HIDE_MS : AUTO_HIDE_MS\)/);
 });

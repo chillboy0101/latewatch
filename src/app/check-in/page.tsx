@@ -171,11 +171,15 @@ type LiveLocation =
   | { blocking: false; message: string; state: 'checking' }
   | { blocking: true; distanceMeters?: number | null; message: string; state: 'error' | 'outside' | 'weak' };
 type AttendanceAction = 'check_in' | 'sign_out';
+// What the status island says: a short line up top, and an optional second line.
+type StatusMessage = { detail?: string; text: string; type: 'error' | 'success' };
 type BrowserNotificationPermission = NotificationPermission | 'unsupported';
 type LocalCatchUpReminderType = 'sign_in' | 'sign_out';
 type DeviceTransferReviewStatus = 'approved' | 'rejected';
 
 const CHECK_IN_FEEDBACK_DISMISS_MS = 4_000;
+// Errors carry a second line to read, so they stay a little longer.
+const CHECK_IN_ERROR_DISMISS_MS = 6_000;
 const LOCAL_CATCH_UP_REMINDER_STORAGE_PREFIX = 'latewatch.local-reminder.v1';
 const DEVICE_TRANSFER_REVIEW_STORAGE_PREFIX = 'latewatch.device-transfer-review.v1';
 const SIGN_IN_REMINDER_START_MINUTE = 8 * 60 + 15;
@@ -233,7 +237,8 @@ function statusCopy(status: CheckInStatus | null, liveLocation: LiveLocation) {
   return 'Ready to check in';
 }
 
-function locationValue(status: CheckInStatus | null, liveLocation: LiveLocation) {
+// The chip under the card title adds to it, never repeats it: how far away, or what to do.
+function locationValue(status: CheckInStatus | null, liveLocation: LiveLocation, canTurnOn: boolean) {
   if (!status?.locationConfigured) return 'Not set';
 
   if (liveLocation.state === 'checking') return 'Checking...';
@@ -252,7 +257,10 @@ function locationValue(status: CheckInStatus | null, liveLocation: LiveLocation)
       </span>
     );
   }
-  if (liveLocation.state === 'outside') return 'Not at office';
+  if (liveLocation.state === 'outside') {
+    const distanceLabel = locationDistanceLabel(liveLocation.distanceMeters);
+    return distanceLabel ? `${distanceLabel} away` : 'Move closer';
+  }
   if (liveLocation.state === 'weak') {
     return (
       <span className="inline-flex min-w-0 items-center gap-1.5">
@@ -262,22 +270,20 @@ function locationValue(status: CheckInStatus | null, liveLocation: LiveLocation)
       </span>
     );
   }
-  if (liveLocation.state === 'error') return 'Location needed';
+  if (liveLocation.state === 'error') return canTurnOn ? 'Location off' : 'Location unavailable';
 
   return (
     <span className="max-w-36 truncate">{status.locationPolicy?.name || 'Office set'}</span>
   );
 }
 
-function attendanceButtonLabel(status: CheckInStatus | null, submitting: boolean, liveLocation: LiveLocation) {
+// The button names the action. When location stops it, it keeps that name and is greyed out:
+// the card above already says why. With location off it is the way to turn it on.
+function attendanceButtonLabel(status: CheckInStatus | null, submitting: boolean, opensLocationSheet: boolean) {
   if (submitting) return status?.attendance && !status.attendance.signOutTime ? 'Checking out' : 'Checking in';
   if (status?.attendance?.signOutTime) return 'Already Checked Out';
   if (status?.device?.registered && !status.device.trusted) return 'Registered Device Required';
-  if (status?.locationConfigured && liveLocation.blocking) {
-    if (liveLocation.state === 'outside') return 'Outside Office';
-    if (liveLocation.state === 'weak') return 'Improve GPS Accuracy';
-    return 'Location Required';
-  }
+  if (opensLocationSheet) return 'Turn On Location';
   if (status?.attendance) return canSignOut(status) ? 'Check Out' : `Check Out Opens ${status.signOutStartLabel.replace(' ', '\u00a0')}` /* keep "4:30 PM" on one line */;
   if (status?.isHoliday) return 'Closed - Holiday';
   if (status?.isWeekend) return 'Closed - Weekend';
@@ -345,6 +351,15 @@ function locationErrorMessage(error: unknown) {
   }
 
   return error instanceof Error ? error.message : 'Could not read this device location.';
+}
+
+// The status island after a check-in or check-out: just what happened. The card below already shows
+// the time and any charge.
+function attendanceFeedback(body: { alreadyCheckedIn?: boolean; alreadySignedOut?: boolean; signedOut?: boolean }) {
+  if (body.signedOut) return "You're checked out";
+  if (body.alreadySignedOut) return 'Already checked out';
+  if (body.alreadyCheckedIn) return 'Already checked in';
+  return "You're checked in";
 }
 
 async function showReminderToggleConfirmation(confirmation: ReminderToggleConfirmation) {
@@ -692,18 +707,27 @@ export default function CheckInPage() {
   useEffect(() => {
     locationAccessRef.current = locationAccess;
   }, [locationAccess]);
-  const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
-  // "Add to Home Screen" banner: offered after a check-in, once its success message has gone.
+  const [message, setMessage] = useState<StatusMessage | null>(null);
+  // The location sheet comes first: while it is still to be answered, other prompts wait.
+  const locationSheetPending = Boolean(status?.locationConfigured && (locationAccess === 'unknown' || locationSheetOpen));
+  // "Add to Home Screen" banner: shown as soon as the page opens in a phone's browser (not the
+  // installed app), before any check-in, so people install it first. It waits for the location
+  // sheet, which would cover it (and it would slide away unseen). At most once a day; closing it
+  // hides it for good.
   const [installNudgeOpen, setInstallNudgeOpen] = useState(false);
-  const installNudgePendingRef = useRef(false);
+  // Set once the banner's turn has been decided (shown or not). The reminders sheet waits for it:
+  // its own effect runs before this page's, so it would otherwise open in the same moment.
+  const [installNudgeDecided, setInstallNudgeDecided] = useState(false);
+  const installTurnTakenRef = useRef(false);
   const hideInstallNudge = useCallback(() => setInstallNudgeOpen(false), []);
-  // Every way the message goes (its timer, a swipe) passes here, so the banner can follow it.
-  const clearMessage = useCallback(() => {
-    setMessage(null);
-    if (!installNudgePendingRef.current) return;
-    installNudgePendingRef.current = false;
+  const installNudgeReady = (status !== null || !loading) && !locationSheetPending;
+  useEffect(() => {
+    if (installTurnTakenRef.current || !installNudgeReady) return;
+    installTurnTakenRef.current = true;
     if (takeInstallNudgeTurn()) setInstallNudgeOpen(true);
-  }, []);
+    setInstallNudgeDecided(true);
+  }, [installNudgeReady]);
+  const clearMessage = useCallback(() => setMessage(null), []);
   const [forcedSessionNotice, setForcedSessionNotice] = useState<string | null>(null);
   // This phone's readings from the last minute (see lib/location-readings).
   const readingsRef = useRef<LocationEvidence[]>([]);
@@ -723,7 +747,7 @@ export default function CheckInPage() {
   useEffect(() => {
     if (!message) return;
 
-    const timeout = window.setTimeout(clearMessage, CHECK_IN_FEEDBACK_DISMISS_MS);
+    const timeout = window.setTimeout(clearMessage, message.type === 'error' ? CHECK_IN_ERROR_DISMISS_MS : CHECK_IN_FEEDBACK_DISMISS_MS);
 
     return () => window.clearTimeout(timeout);
   }, [clearMessage, message]);
@@ -766,9 +790,10 @@ export default function CheckInPage() {
     window.localStorage.setItem(storageKey, new Date().toISOString());
     setMessage({
       type: reviewStatus === 'approved' ? 'success' : 'error',
-      text: reviewStatus === 'approved'
-        ? 'Device transfer approved. You can use this browser for attendance now.'
-        : 'Device transfer rejected. Ask an admin if this device should be reviewed again.',
+      text: reviewStatus === 'approved' ? 'Device transfer approved' : 'Device transfer rejected',
+      detail: reviewStatus === 'approved'
+        ? 'You can use this browser for attendance now.'
+        : 'Ask an admin if this device should be reviewed again.',
     });
     void showDeviceTransferReviewNotification(reviewStatus);
   }, [status]);
@@ -1233,22 +1258,12 @@ export default function CheckInPage() {
       if (!response.ok) throw new Error(body.error || 'Check-in failed');
 
       setStatus(body);
-      if (action === 'check_in' && !body.alreadyCheckedIn) installNudgePendingRef.current = true;
-      setMessage({
-        type: 'success',
-        text: body.signedOut
-          ? 'You have checked out for today.'
-          : body.alreadySignedOut
-            ? 'You already checked out today.'
-            : body.alreadyCheckedIn
-              ? 'You already checked in today.'
-              : 'You have checked in for today.',
-      });
+      setMessage({ type: 'success', text: attendanceFeedback(body) });
     } catch (error) {
       console.warn('Attendance action could not complete:', error);
       const errorMessage = locationErrorMessage(error);
       await fetchStatus();
-      setMessage({ type: 'error', text: errorMessage });
+      setMessage({ type: 'error', text: action === 'sign_out' ? "Couldn't check out" : "Couldn't check in", detail: errorMessage });
     } finally {
       setCheckingIn(false);
     }
@@ -1294,7 +1309,7 @@ export default function CheckInPage() {
         if (!response.ok) throw new Error(body.error || 'Could not disable reminders');
         setPushReminderStatus(body);
         setReminderNudgeSuppressed(true);
-        setMessage({ type: 'success', text: 'Reminder notifications disabled.' });
+        setMessage({ type: 'success', text: 'Reminders turned off' });
         return;
       }
 
@@ -1348,11 +1363,11 @@ export default function CheckInPage() {
       if (enabledReminderConfirmation) {
         void showReminderToggleConfirmation(enabledReminderConfirmation);
       }
-      setMessage({ type: 'success', text: 'Reminder notifications updated.' });
+      setMessage({ type: 'success', text: 'Reminders updated' });
     } catch (error) {
       const errorMessage = pushSubscriptionErrorMessage(error);
       console.warn('Reminder settings could not update:', errorMessage);
-      if (!silent) setMessage({ type: 'error', text: errorMessage });
+      if (!silent) setMessage({ type: 'error', text: "Couldn't update reminders", detail: errorMessage });
       await fetchPushReminderStatus({ silent: true });
     } finally {
       if (!silent) {
@@ -1390,7 +1405,8 @@ export default function CheckInPage() {
     if (!deviceToken) {
       setMessage({
         type: 'error',
-        text: 'This browser could not be identified. Refresh the page and try again.',
+        text: "Couldn't identify this browser",
+        detail: 'Refresh the page and try again.',
       });
       return;
     }
@@ -1420,12 +1436,12 @@ export default function CheckInPage() {
       if (!response.ok) throw new Error(body.error || 'Could not request device transfer');
 
       setStatus(body);
-      setMessage({ type: 'success', text: 'Device transfer request sent. Ask an admin to approve it.' });
+      setMessage({ type: 'success', text: 'Device transfer request sent', detail: 'Ask an admin to approve it.' });
     } catch (error) {
       console.warn('Device transfer request could not complete:', error);
       const errorMessage = locationErrorMessage(error);
       await fetchStatus();
-      setMessage({ type: 'error', text: errorMessage });
+      setMessage({ type: 'error', text: "Couldn't send the request", detail: errorMessage });
     } finally {
       setRequestingTransfer(false);
     }
@@ -1454,6 +1470,8 @@ export default function CheckInPage() {
   const locationBlocksAction = Boolean(status?.locationConfigured && liveLocation.blocking);
   // Location not allowed yet, or blocked: the chip and the main button open the location sheet.
   const needsLocationPermission = Boolean(status?.locationConfigured && (locationAccess === 'waiting' || locationDenied));
+  // Location off while check-in (or check-out) is open: the main button turns location on.
+  const opensLocationSheet = needsLocationPermission && (canCheckIn || canSubmitSignOut);
   // A registered but untrusted phone gets the device-transfer button instead of check-in.
   const needsTransfer = Boolean(status?.device?.registered && !status.device.trusted);
   const signInReminderEnabled = Boolean(pushReminderStatus?.subscription?.signInEnabled && !pushReminderStatus.subscription.disabledAt);
@@ -1592,14 +1610,15 @@ export default function CheckInPage() {
         </header>
 
         <ReceiptNotificationStack
-          installNudgeOpen={installNudgeOpen}
+          // Out of the way while the location sheet is up; back (with a fresh timer) once it closes.
+          installNudgeOpen={installNudgeOpen && !locationSheetOpen}
           notifications={receiptNotifications.filter((notification) => !hiddenToastIds.has(notification.id))}
           onHide={hideReceiptToast}
           onHideInstallNudge={hideInstallNudge}
           onOpen={openReceiptNotification}
         />
 
-        <StatusMessageToast message={message} onDismiss={clearMessage} />
+        <StatusIsland message={message} onDismiss={clearMessage} />
 
         <div className="flex min-h-0 flex-1 py-3 sm:py-4">
           <Card className="flex h-full w-full flex-col overflow-hidden rounded-2xl">
@@ -1686,7 +1705,10 @@ export default function CheckInPage() {
                     && notificationPermission !== 'unsupported'
                     && !reminderControlsLocked
                     // One sheet at a time: the location sheet first, then this one.
-                    && !(status?.locationConfigured && (locationAccess === 'unknown' || locationSheetOpen))
+                    && !locationSheetPending
+                    // Install first: reminders wait until the "Add to Home Screen" banner has gone.
+                    && installNudgeDecided
+                    && !installNudgeOpen
                   }
                   remindersOff={!signInReminderEnabled && !signOutReminderEnabled}
                   failing={pushReminderStatus?.subscription?.failing === true}
@@ -1729,8 +1751,8 @@ export default function CheckInPage() {
                     <ActionButton
                       busy={checkingIn}
                       disabled={(!canCheckIn && !canSubmitSignOut) || checkingIn || (locationBlocksAction && !needsLocationPermission)}
-                      icon={status?.attendance && !status.attendance.signOutTime ? LogOut : ShieldCheck}
-                      label={attendanceButtonLabel(status, checkingIn, liveLocation)}
+                      icon={opensLocationSheet ? MapPin : status?.attendance && !status.attendance.signOutTime ? LogOut : ShieldCheck}
+                      label={attendanceButtonLabel(status, checkingIn, opensLocationSheet)}
                       onClick={needsLocationPermission ? openLocationSheet : () => void submitAttendance()}
                     />
                   )}
@@ -1833,7 +1855,7 @@ function locationDistanceLabel(distanceMeters: number | null | undefined) {
 
 function locationIcon(liveLocation: LiveLocation) {
   if (liveLocation.state === 'checking') return <Loader2 className="h-4 w-4 animate-spin" />;
-  if (liveLocation.state === 'outside' || liveLocation.state === 'error') return <XCircle className="h-4 w-4" />;
+  if (liveLocation.state === 'error') return <XCircle className="h-4 w-4" />;
   if (liveLocation.state === 'weak') return <AlertTriangle className="h-4 w-4" />;
   return <MapPin className="h-4 w-4" />;
 }
@@ -1922,41 +1944,88 @@ function AccessNotSetUp({ email }: { email: string | null }) {
   );
 }
 
-function StatusMessageToast({
+// How long the island takes to shrink away.
+const STATUS_ISLAND_EXIT_MS = 220;
+
+// The status island: a dark pill at the top of the screen after an action, like the phone's own
+// island. It springs open, says what happened (a green tick or a red "!"), and shrinks away when the
+// page clears the message; a tap or a sideways swipe closes it sooner.
+function StatusIsland({
   message,
   onDismiss,
 }: {
-  message: { type: 'error' | 'success'; text: string } | null;
+  message: StatusMessage | null;
   onDismiss: () => void;
 }) {
-  const { swipeHandlers, swipeStyle } = useSwipeToDismiss(onDismiss);
+  // The message on screen, kept through the exit animation after the page clears it.
+  const [shown, setShown] = useState(message);
+  // Bumped per message so each one springs open, even a repeat of the same text.
+  const [version, setVersion] = useState(0);
+  // Swiped away: it is already off screen, so it goes without the exit animation.
+  const [swiped, setSwiped] = useState(false);
+  if (message && message !== shown) {
+    setShown(message);
+    setVersion((value) => value + 1);
+    setSwiped(false);
+  }
+  if (!message && shown && swiped) {
+    setShown(null);
+    setSwiped(false);
+  }
+  const closing = !message && shown !== null;
 
-  // Auto-dismiss ~4s after a new message. `onDismiss` is stable (useCallback in
-  // the parent), so the timer resets only when the message changes.
   useEffect(() => {
-    if (!message) return;
-    const timeout = window.setTimeout(onDismiss, 4000);
+    if (!closing) return;
+    const timeout = window.setTimeout(() => setShown(null), STATUS_ISLAND_EXIT_MS);
     return () => window.clearTimeout(timeout);
-  }, [message, onDismiss]);
+  }, [closing]);
 
-  if (!message) return null;
-  const success = message.type === 'success';
+  const swipeAway = useCallback(() => {
+    setSwiped(true);
+    onDismiss();
+  }, [onDismiss]);
+  const { swipeHandlers, swipeStyle } = useSwipeToDismiss(swipeAway);
+  // Where the finger went down: a tap closes it, the end of a swipe does not.
+  const pressXRef = useRef(0);
+
+  if (!shown) return null;
+  const success = shown.type === 'success';
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+0.75rem)] z-[100] flex justify-center px-4 sm:inset-x-auto sm:right-4 sm:justify-end">
+    <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+0.5rem)] z-[100] flex justify-center px-4">
       <div
+        key={version}
         {...swipeHandlers}
-        style={swipeStyle}
+        aria-live={success ? 'polite' : 'assertive'}
         className={cn(
-          'pointer-events-auto relative flex w-full max-w-sm select-none items-start gap-3 overflow-hidden rounded-xl border bg-card/90 p-3.5 shadow-lg ring-1 backdrop-blur-md animate-in fade-in-0 slide-in-from-top-2 duration-300 ease-out',
-          success ? 'border-success/30 ring-success/15' : 'border-danger/30 ring-danger/15',
+          'pointer-events-auto flex w-fit min-w-64 max-w-sm cursor-default select-none items-center gap-3 rounded-[1.75rem] bg-neutral-950 py-2.5 pl-2.5 pr-5 text-white shadow-[0_14px_34px_rgba(0,0,0,0.35)] ring-1 ring-white/10',
+          closing ? 'status-island-out' : 'status-island-in',
         )}
-        role="status"
+        onClick={(event) => {
+          if (Math.abs(event.clientX - pressXRef.current) < 10) onDismiss();
+        }}
+        onPointerDownCapture={(event) => {
+          pressXRef.current = event.clientX;
+        }}
+        role={success ? 'status' : 'alert'}
+        style={swipeStyle}
       >
-        <span className={cn('mt-0.5 shrink-0', success ? 'text-success' : 'text-danger')}>
-          {success ? <CheckCircle2 className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
+        <span className={cn('relative flex size-10 shrink-0 items-center justify-center rounded-full', success ? 'bg-success' : 'bg-danger')}>
+          {/* One soft ring as it opens. */}
+          <span aria-hidden className={cn('status-island-ring absolute inset-0 rounded-full', success ? 'bg-success' : 'bg-danger')} />
+          {success ? (
+            <Check className="relative size-[22px]" strokeWidth={3} />
+          ) : (
+            <svg aria-hidden className="relative size-[22px]" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth={3} viewBox="0 0 24 24">
+              <path d="M12 7v6" />
+              <path d="M12 17h.01" />
+            </svg>
+          )}
         </span>
-        <p className="min-w-0 flex-1 text-sm font-medium leading-5 text-foreground">{message.text}</p>
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="text-[15px] font-semibold leading-5">{shown.text}</span>
+          {shown.detail && <span className="text-[13px] leading-[1.125rem] text-white/65">{shown.detail}</span>}
+        </span>
       </div>
     </div>
   );
@@ -2484,7 +2553,7 @@ function LocationStatusChip({
   const content = (
     <>
       <span className="shrink-0">{locationIcon(liveLocation)}</span>
-      <span className="flex min-w-0 items-center truncate">{locationValue(status, liveLocation)}</span>
+      <span className="flex min-w-0 items-center truncate">{locationValue(status, liveLocation, Boolean(onClick))}</span>
     </>
   );
   if (onClick) {

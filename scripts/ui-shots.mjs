@@ -299,24 +299,15 @@ async function installNudgeShots(browser) {
     permissions: ['geolocation'],
     userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
   });
-  let checkedIn = null;
   await mockApi(context, (fixtures) => {
     withOfficeLocation(fixtures);
-    checkedIn = fixtures['/api/attendance/check-in'];
-    fixtures['/api/attendance/check-in'] = { ...checkedIn, attendance: null };
+    fixtures['/api/attendance/check-in'] = { ...fixtures['/api/attendance/check-in'], attendance: null };
     fixtures['/api/attendance/check-in/receipt-notifications'] = { notifications: [], receipts: [] };
   });
-  // Registered after mockApi, so it answers the check-in itself with the checked-in status.
-  await context.route('**/api/attendance/check-in', (route) => (route.request().method() === 'POST'
-    ? route.fulfill({ body: JSON.stringify(checkedIn), contentType: 'application/json', status: 200 })
-    : route.fallback()));
   const page = await context.newPage();
   await page.goto(`${baseUrl}/check-in`, { waitUntil: 'load' });
-  await page.getByText('At office').waitFor({ timeout: 60_000 });
-  const reminders = page.getByRole('dialog', { name: /reminders/i });
-  if (await reminders.isVisible().catch(() => false)) await page.getByRole('button', { name: 'Not now' }).click();
-  await page.getByRole('button', { name: 'Check In', exact: true }).click();
-  await page.getByText('Add to Home Screen').waitFor({ timeout: 15_000 });
+  // Shown as soon as the page opens in a phone browser, before any check-in.
+  await page.getByText('Add to Home Screen').waitFor({ timeout: 60_000 });
   await shoot(page, 'phone-install-nudge');
   await context.close();
 }

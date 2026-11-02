@@ -362,6 +362,60 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   animation: notification-count-pop 180ms ease-out;
 }
 
+/* The status island on the check-in page: it springs open from a small pill and shrinks away.
+   Opening fills backwards only, so a sideways swipe can still move it once it is open. */
+@keyframes status-island-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.55, 0.7);
+  }
+}
+
+@keyframes status-island-out {
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.7, 0.8);
+  }
+}
+
+@keyframes status-island-ring {
+  from {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+.status-island-in {
+  animation: status-island-in 520ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
+.status-island-out {
+  animation: status-island-out 200ms ease-in forwards;
+}
+
+.status-island-ring {
+  animation: status-island-ring 900ms ease-out 120ms both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-island-in,
+  .status-island-ring {
+    animation: none;
+  }
+
+  .status-island-ring {
+    opacity: 0;
+  }
+
+  .status-island-out {
+    animation-duration: 1ms;
+  }
+}
+
 @keyframes loading-buffer-spin {
   to {
     transform: rotate(360deg);
