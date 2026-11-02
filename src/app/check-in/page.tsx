@@ -737,6 +737,9 @@ export default function CheckInPage() {
   // sheet, which would cover it (and it would slide away unseen). At most once a day; closing it
   // hides it for good.
   const [installNudgeOpen, setInstallNudgeOpen] = useState(false);
+  // Set once the banner's turn has been decided (shown or not). The reminders sheet waits for it:
+  // its own effect runs before this page's, so it would otherwise open in the same moment.
+  const [installNudgeDecided, setInstallNudgeDecided] = useState(false);
   const installTurnTakenRef = useRef(false);
   const hideInstallNudge = useCallback(() => setInstallNudgeOpen(false), []);
   const installNudgeReady = (status !== null || !loading) && !locationSheetPending;
@@ -744,6 +747,7 @@ export default function CheckInPage() {
     if (installTurnTakenRef.current || !installNudgeReady) return;
     installTurnTakenRef.current = true;
     if (takeInstallNudgeTurn()) setInstallNudgeOpen(true);
+    setInstallNudgeDecided(true);
   }, [installNudgeReady]);
   const clearMessage = useCallback(() => setMessage(null), []);
   const [forcedSessionNotice, setForcedSessionNotice] = useState<string | null>(null);
@@ -1723,6 +1727,7 @@ export default function CheckInPage() {
                     // One sheet at a time: the location sheet first, then this one.
                     && !locationSheetPending
                     // Install first: reminders wait until the "Add to Home Screen" banner has gone.
+                    && installNudgeDecided
                     && !installNudgeOpen
                   }
                   remindersOff={!signInReminderEnabled && !signOutReminderEnabled}

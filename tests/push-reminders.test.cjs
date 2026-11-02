@@ -632,7 +632,9 @@ test('the "Add to Home Screen" banner shows when the check-in page opens in a ph
   // On open, before any check-in (not after one), once the location sheet is out of the way.
   assert.match(page, /const locationSheetPending = Boolean\(status\?\.locationConfigured && \(locationAccess === 'unknown' \|\| locationSheetOpen\)\);/);
   assert.match(page, /const installNudgeReady = \(status !== null \|\| !loading\) && !locationSheetPending;/);
-  assert.match(page, /if \(installTurnTakenRef\.current \|\| !installNudgeReady\) return;\n\s*installTurnTakenRef\.current = true;\n\s*if \(takeInstallNudgeTurn\(\)\) setInstallNudgeOpen\(true\);\n\s*\}, \[installNudgeReady\]\);/);
+  assert.match(page, /if \(installTurnTakenRef\.current \|\| !installNudgeReady\) return;\n\s*installTurnTakenRef\.current = true;\n\s*if \(takeInstallNudgeTurn\(\)\) setInstallNudgeOpen\(true\);\n\s*setInstallNudgeDecided\(true\);\n\s*\}, \[installNudgeReady\]\);/);
+  // The reminders sheet waits until the banner's turn is decided, not just while it is open.
+  assert.match(page, /&& installNudgeDecided\n\s*&& !installNudgeOpen\n/);
   assert.doesNotMatch(page, /installNudgePendingRef/);
   // Hidden while the location sheet is up (opened later by hand); back once it closes.
   assert.match(page, /installNudgeOpen=\{installNudgeOpen && !locationSheetOpen\}/);
