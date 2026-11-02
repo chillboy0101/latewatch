@@ -29,7 +29,7 @@ import { ModePicker } from '@/components/theme/mode-picker';
 import { ThemePicker } from '@/components/theme/theme-picker';
 import { isPlainClick, useAppNavigation } from '@/lib/app-nav';
 import { cn } from '@/lib/utils';
-import { CHOICE_ICON, CHOICE_ICON_SOLID, CHOICE_PLAIN, CHOICE_PRESS, CHOICE_SIZE, CHOICE_SOLID, CHOICE_TEXT } from '@/components/layout/portal-ui';
+import { CHOICE_ICON, CHOICE_PLAIN, CHOICE_PRESS, CHOICE_SIZE, CHOICE_TEXT } from '@/components/layout/portal-ui';
 
 interface CheckInStatus {
   attendance: {
@@ -560,39 +560,33 @@ function reminderSummary(signIn: boolean, signOut: boolean) {
   return 'Off';
 }
 
-// A dot before the status line: coloured text would not read on the solid row.
-const MENU_TONE_DOT = { attention: 'bg-primary-foreground', success: 'bg-success', warning: 'bg-warning' } as const;
-
 function MenuRow({
   icon,
   onClick,
   status,
+  statusClassName,
   title,
-  tone,
 }: {
   icon: React.ReactNode;
   title: string;
   onClick: () => void;
   status: string;
-  tone?: keyof typeof MENU_TONE_DOT;
+  statusClassName?: string;
 }) {
   return (
     <li>
-      {/* Solid and pressed like the portal choice cards and the check-in button. */}
+      {/* Looks and presses like the portal choice cards. */}
       <button
         type="button"
         onClick={onClick}
-        className={cn(CHOICE_PRESS, CHOICE_SOLID, CHOICE_SIZE, 'w-full gap-4 px-[18px] text-left')}
+        className={cn(CHOICE_PRESS, CHOICE_PLAIN, CHOICE_SIZE, 'w-full gap-4 px-[18px] text-left')}
       >
-        <span className={cn(CHOICE_ICON, CHOICE_ICON_SOLID)}>{icon}</span>
+        <span className={cn(CHOICE_ICON, 'bg-foreground/5 text-primary')}>{icon}</span>
         <span className="min-w-0 flex-1">
-          <span className={cn('block font-semibold leading-tight', CHOICE_TEXT)}>{title}</span>
-          <span className={cn('mt-0.5 flex min-h-5 min-w-0 items-center gap-1.5 text-sm text-primary-foreground/80', tone && 'font-medium text-primary-foreground')}>
-            {tone && <span aria-hidden className={cn('size-2 shrink-0 rounded-full ring-2 ring-white/30', MENU_TONE_DOT[tone])} />}
-            <span className="truncate">{status}</span>
-          </span>
+          <span className={cn('block font-semibold leading-tight text-foreground', CHOICE_TEXT)}>{title}</span>
+          <span className={cn('mt-0.5 block min-h-5 truncate text-sm text-muted-foreground', statusClassName)}>{status}</span>
         </span>
-        <ArrowRight className="h-5 w-5 shrink-0 text-primary-foreground/80" />
+        <ArrowRight className="h-5 w-5 shrink-0 text-muted-foreground" />
         <HapticSwitch />
       </button>
     </li>
@@ -1550,21 +1544,21 @@ export default function CheckInPage() {
                     title="Payment receipts"
                     onClick={() => setReceiptsDialogOpen(true)}
                     status={receiptNotifications.length > 0 ? `${receiptNotifications.length} new` : 'All seen'}
-                    tone={receiptNotifications.length > 0 ? 'attention' : undefined}
+                    statusClassName={receiptNotifications.length > 0 ? 'font-medium text-primary' : undefined}
                   />
                   <MenuRow
                     icon={<History className="h-[22px] w-[22px]" />}
                     title="Penalty history"
                     onClick={openPenaltyHistory}
                     status={penaltyHistory ? (owedNow > 0 ? `You owe ${ghc(owedNow)}` : 'Nothing owed') : ''}
-                    tone={penaltyHistory ? (owedNow > 0 ? 'warning' : 'success') : undefined}
+                    statusClassName={penaltyHistory ? (owedNow > 0 ? 'text-warning' : 'text-success') : undefined}
                   />
                   <MenuRow
                     icon={<BellRing className="h-[22px] w-[22px]" />}
                     title="Reminders"
                     onClick={() => setRemindersDialogOpen(true)}
                     status={reminderSummary(signInReminderEnabled, signOutReminderEnabled)}
-                    tone={!signInReminderEnabled && !signOutReminderEnabled ? 'warning' : undefined}
+                    statusClassName={!signInReminderEnabled && !signOutReminderEnabled ? 'text-warning' : undefined}
                   />
                 </ul>
               </DrawerContent>
