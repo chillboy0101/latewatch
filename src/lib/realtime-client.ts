@@ -7,7 +7,8 @@ export type RealtimeStatus = 'connecting' | 'live' | 'offline';
 type SubscribeRealtimeOptions = {
   channel: string;
   events: string[];
-  onEvent: (eventName: string) => void;
+  // `data` is what the server published with the event (e.g. which staff member it is about).
+  onEvent: (eventName: string, data?: unknown) => void;
   onStatus?: (status: RealtimeStatus) => void;
 };
 
@@ -40,7 +41,7 @@ export async function subscribeRealtimeChannel({
     const handleError = () => setStatus('offline');
     const sseHandlers = events.map((eventName) => ({
       eventName,
-      handler: () => onEvent(eventName),
+      handler: (event: Event) => onEvent(eventName, parseEventData((event as MessageEvent).data)),
     }));
 
     eventSource.addEventListener('connected', handleConnected);
@@ -67,7 +68,7 @@ export async function subscribeRealtimeChannel({
     const ablyChannel = ably.channels.get(`latewatch:${channel}`);
     const handlers = events.map((eventName) => ({
       eventName,
-      handler: () => onEvent(eventName),
+      handler: (message: { data?: unknown }) => onEvent(eventName, message?.data),
     }));
 
     for (const { eventName, handler } of handlers) {
@@ -115,4 +116,14 @@ export async function subscribeRealtimeChannel({
     sseCleanup?.();
     setStatus('offline');
   };
+}
+
+// SSE sends the data as a JSON string (empty when there is none).
+function parseEventData(raw: unknown) {
+  if (typeof raw !== 'string' || raw === '') return undefined;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return undefined;
+  }
 }

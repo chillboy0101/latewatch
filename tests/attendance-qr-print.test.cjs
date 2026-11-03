@@ -250,7 +250,10 @@ test('staff sign-out syncs penalties and invalidates entries and payment views',
   assert.match(source, /await syncLatenessEntriesFromAttendanceForDate\(clock\.dateKey\)/);
   assert.match(source, /publishRealtime\('entries', 'invalidate', \{ reason: 'attendance-sign-out' \}\)/);
   assert.match(source, /publishRealtime\('payments', 'invalidate', \{ date: clock\.dateKey, reason: 'attendance-sign-out' \}\)/);
-  assert.match(source, /publishRealtime\('staff-penalty-history', 'invalidate', \{ date: clock\.dateKey, reason: 'attendance-sign-out' \}\)/);
+  // Tagged with the staff member, so other people's open pages skip it.
+  assert.match(source, /publishRealtime\('staff-penalty-history', 'invalidate', \{ date: clock\.dateKey, reason: 'attendance-sign-out', staffId: staffMember\.id \}\)/);
+  assert.match(source, /publishRealtime\('attendance', 'invalidate', \{ reason: 'attendance-sign-out', staffId: staffMember\.id \}\)/);
+  assert.match(source, /publishRealtime\('notifications', 'invalidate', \{ reason: 'attendance-check-in', staffId: staffMember\.id \}\)/);
 });
 
 test('system notifications read weekly penalties without running reconciliation', () => {
@@ -323,7 +326,7 @@ test('attendance device reset also disables old push notification subscriptions'
   // Sessions and reminders are revoked even with no device linked, so every reset is audited.
   assert.ok(route.indexOf('if (before)') < route.indexOf('await writeAuditEvent({'));
   assert.match(route, /deviceRemoved: Boolean\(before\)/);
-  assert.match(route, /publishRealtime\('attendance', 'invalidate', \{ reason: 'attendance-device-reset' \}\)/);
+  assert.match(route, /publishRealtime\('attendance', 'invalidate', \{ reason: 'attendance-device-reset', staffId \}\)/);
   assert.match(page, /old notification device/);
   assert.match(page, /Reminders must be enabled again on the new device/);
 });

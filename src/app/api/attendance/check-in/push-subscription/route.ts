@@ -175,8 +175,8 @@ export async function PUT(request: NextRequest) {
     })
     .returning();
 
-  publishRealtime('attendance', 'invalidate', { reason: 'push-subscription-change' });
-  publishRealtime('notifications', 'invalidate', { reason: 'push-subscription-change' });
+  publishRealtime('attendance', 'invalidate', { reason: 'push-subscription-change', staffId: resolved.staffMember.id });
+  publishRealtime('notifications', 'invalidate', { reason: 'push-subscription-change', staffId: resolved.staffMember.id });
 
   return NextResponse.json(publicPayload(savedSubscription || null), {
     headers: { 'Cache-Control': 'no-store' },
@@ -207,8 +207,8 @@ export async function DELETE(request: NextRequest) {
       endpoint ? eq(pushSubscription.endpoint, endpoint) : isNull(pushSubscription.disabledAt),
     ));
 
-  publishRealtime('attendance', 'invalidate', { reason: 'push-subscription-change' });
-  publishRealtime('notifications', 'invalidate', { reason: 'push-subscription-change' });
+  publishRealtime('attendance', 'invalidate', { reason: 'push-subscription-change', staffId: resolved.staffMember.id });
+  publishRealtime('notifications', 'invalidate', { reason: 'push-subscription-change', staffId: resolved.staffMember.id });
 
   return NextResponse.json(publicPayload(null), {
     headers: { 'Cache-Control': 'no-store' },

@@ -265,10 +265,10 @@ export async function PATCH(
       reason: 'attendance-device-transfer-review',
     });
 
-    publishRealtime('attendance', 'invalidate', { reason: 'attendance-device-transfer-review' });
+    publishRealtime('attendance', 'invalidate', { reason: 'attendance-device-transfer-review', staffId: transfer.staffId });
     publishRealtime('dashboard', 'invalidate', { reason: 'attendance-device-transfer-review' });
     publishRealtime('audit-trail', 'invalidate', { reason: 'attendance-device-transfer-review' });
-    publishRealtime('notifications', 'invalidate', { reason: 'attendance-device-transfer-review' });
+    publishRealtime('notifications', 'invalidate', { reason: 'attendance-device-transfer-review', staffId: transfer.staffId });
 
     return NextResponse.json({
       disabledPushSubscriptions,

@@ -380,3 +380,26 @@ test('an admin can undo a mistaken payment, with a reason that is audited', () =
   // Credits are not a thing: kept cash is corrected, not carried.
   assert.doesNotMatch(fs.readFileSync(paymentsApiPath, 'utf8'), /credit/i);
 });
+
+test('staff pages skip realtime events about other people, and loaders keep only the latest reply', () => {
+  const page = fs.readFileSync(path.join(__dirname, '../src/app/check-in/page.tsx'), 'utf8');
+  const client = fs.readFileSync(path.join(__dirname, '../src/lib/realtime-client.ts'), 'utf8');
+  const receipt = fs.readFileSync(path.join(__dirname, '../src/app/api/attendance/reminders/delivery-receipt/route.ts'), 'utf8');
+  // The event's data reaches the page (SSE as JSON text, Ably as an object).
+  assert.match(client, /onEvent: \(eventName: string, data\?: unknown\) => void;/);
+  assert.match(client, /onEvent\(eventName, parseEventData\(\(event as MessageEvent\)\.data\)\)/);
+  assert.match(client, /onEvent\(eventName, message\?\.data\)/);
+  // Events about someone else are skipped; events about everyone still refresh.
+  assert.match(page, /return typeof staffId !== 'string' \|\| !myStaffIdRef\.current \|\| staffId === myStaffIdRef\.current;/);
+  assert.equal((page.match(/if \(!isAboutMe\(data\)\) return;/g) || []).length, 2);
+  // Reminder delivery receipts (one per staff member at 8:15 and 4:30) say whose they are.
+  assert.match(receipt, /staffId: pushReminderDelivery\.staffId,/);
+  assert.equal((receipt.match(/staffId: delivery\.staffId,/g) || []).length, 2);
+  // Latest reply wins for the status, reminder settings and receipts; local writes overtake older requests.
+  assert.match(page, /if \(requestId === statusRequestRef\.current\) setStatus\(body\);/);
+  assert.match(page, /if \(requestId === pushReminderRequestRef\.current\) setPushReminderStatus\(body\);/);
+  assert.match(page, /if \(requestId !== receiptRequestRef\.current\) return;/);
+  assert.equal((page.match(/statusRequestRef\.current \+= 1;/g) || []).length, 2);
+  assert.equal((page.match(/pushReminderRequestRef\.current \+= 1;/g) || []).length, 3);
+  assert.match(page, /const dismissReceiptNotification = useCallback\(async \(id: string\) => \{\n\s*receiptRequestRef\.current \+= 1;/);
+});

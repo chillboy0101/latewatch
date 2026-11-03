@@ -808,8 +808,27 @@ export default function CheckInPage() {
     }, 1600);
   }, [signOut]);
 
+  // Request numbers for "latest reply wins" (see each loader).
+  const statusRequestRef = useRef(0);
+  const pushReminderRequestRef = useRef(0);
+  const receiptRequestRef = useRef(0);
+  // This staff member's id, so realtime events about other people can be skipped.
+  const myStaffIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    myStaffIdRef.current = status?.staff?.id ?? null;
+  }, [status?.staff?.id]);
+  // Events name the staff member they are about when they can (check-in, sign-out, payments,
+  // reminder deliveries). Other people's are skipped, so one person's sign-out doesn't make every
+  // open page reload; events about everyone (or no one in particular) still refresh.
+  const isAboutMe = useCallback((data: unknown) => {
+    const staffId = data && typeof data === 'object' ? (data as { staffId?: unknown }).staffId : undefined;
+    return typeof staffId !== 'string' || !myStaffIdRef.current || staffId === myStaffIdRef.current;
+  }, []);
+
   const fetchStatus = useCallback(async (options?: { preserveMessage?: boolean; silent?: boolean }) => {
     if (!deviceToken) return;
+    // Latest wins: a reply to an older request (or one overtaken by a check-in) is dropped.
+    const requestId = ++statusRequestRef.current;
     if (!options?.silent) setLoading(true);
     if (!options?.preserveMessage) clearMessage();
 
@@ -831,10 +850,11 @@ export default function CheckInPage() {
       if (!contentType.includes('application/json')) {
         throw new Error('Could not load check-in status');
       }
-      setStatus(await response.json());
+      const body = await response.json();
+      if (requestId === statusRequestRef.current) setStatus(body);
     } catch (error) {
       console.warn('Check-in status could not load:', error);
-      if (!options?.silent) {
+      if (!options?.silent && requestId === statusRequestRef.current) {
         setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Could not load check-in status' });
       }
     } finally {
@@ -844,16 +864,17 @@ export default function CheckInPage() {
 
   const fetchPushReminderStatus = useCallback(async (options?: { silent?: boolean }) => {
     if (!isLoaded || !user) return;
+    const requestId = ++pushReminderRequestRef.current;
     if (!options?.silent) setPushReminderLoading(true);
 
     try {
       const response = await fetch('/api/attendance/check-in/push-subscription', { cache: 'no-store' });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Could not load reminder settings');
-      setPushReminderStatus(body);
+      if (requestId === pushReminderRequestRef.current) setPushReminderStatus(body);
     } catch (error) {
       console.warn('Reminder settings could not load:', error);
-      if (!options?.silent) {
+      if (!options?.silent && requestId === pushReminderRequestRef.current) {
         setPushReminderStatus(null);
       }
     } finally {
@@ -957,11 +978,13 @@ export default function CheckInPage() {
 
   const fetchReceiptNotifications = useCallback(async () => {
     if (!isLoaded || !user) return;
+    const requestId = ++receiptRequestRef.current;
 
     try {
       const response = await fetch('/api/attendance/check-in/receipt-notifications', { cache: 'no-store' });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || `Receipt notifications failed (${response.status})`);
+      if (requestId !== receiptRequestRef.current) return;
       setReceiptNotifications(Array.isArray(body.notifications) ? body.notifications : []);
       setReceiptHistory(Array.isArray(body.receipts) ? body.receipts : []);
     } catch (error) {
@@ -970,6 +993,7 @@ export default function CheckInPage() {
   }, [isLoaded, user]);
 
   const dismissReceiptNotification = useCallback(async (id: string) => {
+    receiptRequestRef.current += 1;
     setReceiptNotifications((current) => current.filter((notification) => notification.id !== id));
     // Seen now: the receipts list drops its "New" badge straight away.
     setReceiptHistory((current) => current.map((receipt) => (receipt.id === id ? { ...receipt, read: true } : receipt)));
@@ -1015,7 +1039,8 @@ export default function CheckInPage() {
       const unsubscribe = await subscribeRealtimeChannel({
         channel: 'staff-penalty-history',
         events: ['invalidate'],
-        onEvent: () => {
+        onEvent: (_event, data) => {
+          if (!isAboutMe(data)) return;
           void fetchReceiptNotifications();
           // Only while "You owe" is on screen: this event reaches every staff member's page on
           // anyone's sign-out or payment, and the menu loads fresh figures each time it opens.
@@ -1034,7 +1059,7 @@ export default function CheckInPage() {
       mounted = false;
       cleanup?.();
     };
-  }, [fetchPenaltyHistory, fetchReceiptNotifications, isLoaded, user]);
+  }, [fetchPenaltyHistory, fetchReceiptNotifications, isAboutMe, isLoaded, user]);
 
   // Register the service worker on load so its static-asset cache is active for
   // every visitor (not only those who enable reminders), speeding up repeat and
@@ -1078,7 +1103,8 @@ export default function CheckInPage() {
           subscribeRealtimeChannel({
             channel,
             events: ['invalidate'],
-            onEvent: () => {
+            onEvent: (_event, data) => {
+              if (!isAboutMe(data)) return;
               void fetchStatus({ preserveMessage: true, silent: true });
               void fetchPushReminderStatus({ silent: true });
             },
@@ -1097,7 +1123,7 @@ export default function CheckInPage() {
       mounted = false;
       cleanups.forEach((unsubscribe) => unsubscribe());
     };
-  }, [deviceToken, fetchPushReminderStatus, fetchStatus, isLoaded, user]);
+  }, [deviceToken, fetchPushReminderStatus, fetchStatus, isAboutMe, isLoaded, user]);
 
   useEffect(() => {
     if (!deviceToken) return;
@@ -1116,6 +1142,7 @@ export default function CheckInPage() {
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body.error || 'Could not load reminder setup.');
 
+    pushReminderRequestRef.current += 1;
     setPushReminderStatus(body);
     if (body?.publicKey) return body.publicKey as string;
 
@@ -1333,6 +1360,7 @@ export default function CheckInPage() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Check-in failed');
 
+      statusRequestRef.current += 1;
       setStatus(body);
       setMessage({ type: 'success', text: attendanceFeedback(body) });
     } catch (error) {
@@ -1383,6 +1411,7 @@ export default function CheckInPage() {
         });
         const body = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(body.error || 'Could not disable reminders');
+        pushReminderRequestRef.current += 1;
         setPushReminderStatus(body);
         setReminderNudgeSuppressed(true);
         setMessage({ type: 'success', text: 'Reminders turned off' });
@@ -1433,6 +1462,7 @@ export default function CheckInPage() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Could not update reminders');
 
+      pushReminderRequestRef.current += 1;
       setPushReminderStatus(body);
       if (silent) return;
       const enabledReminderConfirmation = getEnabledReminderToggleConfirmation(previousReminderState, next);
@@ -1511,6 +1541,7 @@ export default function CheckInPage() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Could not request device transfer');
 
+      statusRequestRef.current += 1;
       setStatus(body);
       setMessage({ type: 'success', text: 'Device transfer request sent', detail: 'Ask an admin to approve it.' });
     } catch (error) {

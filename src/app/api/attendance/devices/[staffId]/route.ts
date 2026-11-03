@@ -78,9 +78,9 @@ export async function DELETE(
       reason: 'attendance-device-reset',
     });
 
-    publishRealtime('attendance', 'invalidate', { reason: 'attendance-device-reset' });
+    publishRealtime('attendance', 'invalidate', { reason: 'attendance-device-reset', staffId });
     publishRealtime('dashboard', 'invalidate', { reason: 'attendance-device-reset' });
-    publishRealtime('notifications', 'invalidate', { reason: 'attendance-device-reset' });
+    publishRealtime('notifications', 'invalidate', { reason: 'attendance-device-reset', staffId });
 
     return NextResponse.json({
       disabledPushSubscriptions,

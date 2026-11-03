@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
     date: pushReminderDelivery.date,
     deliveredAt: pushReminderDelivery.deliveredAt,
     reminderType: pushReminderDelivery.reminderType,
+    staffId: pushReminderDelivery.staffId,
     status: pushReminderDelivery.status,
   })
     .from(pushReminderDelivery)
@@ -41,11 +42,13 @@ export async function POST(request: NextRequest) {
       date: delivery.date,
       reason: 'push-reminder-delivered',
       reminderType: delivery.reminderType,
+      staffId: delivery.staffId,
     });
     publishRealtime('notifications', 'invalidate', {
       date: delivery.date,
       reason: 'push-reminder-delivered',
       reminderType: delivery.reminderType,
+      staffId: delivery.staffId,
     });
   }
 
