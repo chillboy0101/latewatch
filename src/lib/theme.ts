@@ -92,9 +92,11 @@ export function computeAccentVariables(hex: string) {
   const white = [255, 255, 255];
   const black = [0, 0, 0];
   // Light mode needs a primary dark enough to read on white; dark mode needs one light enough to
-  // read on near-black. Very light or very dark picks are nudged rather than used as-is.
+  // read on near-black. Both aim for 4.5:1, the level for small text, since the primary is also
+  // used for small coloured text (status lines, chips). Very light or very dark picks are nudged
+  // rather than used as-is.
   let lightPrimary = base;
-  while (contrast(luminance(lightPrimary), 1) < 3 && luminance(lightPrimary) > 0.05) lightPrimary = mix(lightPrimary, black, 0.12);
+  while (contrast(luminance(lightPrimary), 1) < 4.5 && luminance(lightPrimary) > 0.05) lightPrimary = mix(lightPrimary, black, 0.12);
   let darkPrimary = mix(base, white, 0.18);
   while (contrast(luminance(darkPrimary), luminance([10, 10, 10])) < 4.5 && luminance(darkPrimary) < 0.95) darkPrimary = mix(darkPrimary, white, 0.15);
 

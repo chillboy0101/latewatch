@@ -125,7 +125,7 @@ test('check-in page replaces auto attendance controls with reminder notification
   // Toggles wait until the saved choices are known, so a toggle can't overwrite unknown settings.
   assert.match(source, /disabled=\{!status\?\.staff \|\| reminderControlsLocked \|\| pushReminderLoading \|\| savingPushReminder \|\| pushReminderStatus === null\}/);
   // ...and opening the Reminders sheet retries a failed load once per opening.
-  assert.match(source, /if \(reminderRetryTriedRef\.current \|\| pushReminderStatus !== null \|\| pushReminderLoading\) return;\n\s*reminderRetryTriedRef\.current = true;\n\s*void fetchPushReminderStatus\(\);/);
+  assert.match(source, /if \(!remindersDialogOpen\) \{\n\s*reminderRetryTriedRef\.current = false;\n\s*return;\n\s*\}\n\s*if \(reminderRetryTriedRef\.current \|\| pushReminderStatus !== null \|\| pushReminderLoading\) return;\n\s*reminderRetryTriedRef\.current = true;\n\s*void fetchPushReminderStatus\(\);/);
   assert.match(source, /'x-latewatch-device': deviceToken/);
   assert.match(source, /JSON\.stringify\(\{ deviceToken, endpoint: currentEndpoint \}\)/);
   assert.match(source, /deviceToken,\s+signInEnabled: next\.signInEnabled/);
@@ -194,8 +194,8 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.match(pushApi, /signInEnabled: false/);
   assert.match(pushApi, /signOutEnabled: false/);
   assert.match(pushApi, /getVapidPublicKey/);
-  assert.match(pushApi, /publishRealtime\('attendance', 'invalidate', \{ reason: 'push-subscription-change' \}\)/);
-  assert.match(pushApi, /publishRealtime\('notifications', 'invalidate', \{ reason: 'push-subscription-change' \}\)/);
+  assert.match(pushApi, /publishRealtime\('attendance', 'invalidate', \{ reason: 'push-subscription-change', staffId: resolved\.staffMember\.id \}\)/);
+  assert.match(pushApi, /publishRealtime\('notifications', 'invalidate', \{ reason: 'push-subscription-change', staffId: resolved\.staffMember\.id \}\)/);
   assert.doesNotMatch(pushApi, /LateWatch test notification/);
   assert.doesNotMatch(pushApi, /System notifications are working on this device\./);
   assert.doesNotMatch(pushApi, /latewatch-test-notification/);
