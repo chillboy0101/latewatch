@@ -865,44 +865,89 @@ export default function CheckInPage() {
     void fetchPushReminderStatus();
   }, [fetchPushReminderStatus]);
 
+  // The reminder toggles stay off until the saved settings are known. If they couldn't load,
+  // opening the Reminders sheet tries once more (once per opening, so a failure can't loop).
+  const reminderRetryTriedRef = useRef(false);
+  useEffect(() => {
+    if (!remindersDialogOpen) {
+      reminderRetryTriedRef.current = false;
+      return;
+    }
+    if (reminderRetryTriedRef.current || pushReminderStatus !== null || pushReminderLoading) return;
+    reminderRetryTriedRef.current = true;
+    void fetchPushReminderStatus();
+  }, [fetchPushReminderStatus, pushReminderLoading, pushReminderStatus, remindersDialogOpen]);
+
   useEffect(() => {
     fetchStatus();
   }, [fetchStatus]);
 
   // One request at a time: opening the menu and then tapping Penalty history share it, so one
-  // result can't overwrite the other or end the loading state early. It gives up after
-  // PENALTY_HISTORY_TIMEOUT_MS, so a stalled request never blocks the next refresh.
-  const penaltyFetchRef = useRef<{ promise: Promise<void> } | null>(null);
-  const fetchPenaltyHistory = useCallback(() => {
-    if (penaltyFetchRef.current) return penaltyFetchRef.current.promise;
-    // Registered before the request starts, and cleared only by this request.
-    const entry: { promise: Promise<void> } = { promise: Promise.resolve() };
-    penaltyFetchRef.current = entry;
-    entry.promise = (async () => {
+  // result can't overwrite the other or end the loading state early. Each request gives up after
+  // PENALTY_HISTORY_TIMEOUT_MS, so a stalled one never blocks the next refresh.
+  const penaltyFetchRef = useRef<Promise<void> | null>(null);
+  const penaltyRequestIdRef = useRef(0);
+  const penaltyControllerRef = useRef<AbortController | null>(null);
+  // Set when a change was announced while a request was already running: one more request
+  // follows, so the change isn't lost behind a read from before it.
+  const penaltyAgainRef = useRef(false);
+  const pageClosedRef = useRef(false);
+  useEffect(() => {
+    pageClosedRef.current = false;
+    return () => {
+      // Leaving the page (e.g. opening a receipt) stops the request and its timer.
+      pageClosedRef.current = true;
+      penaltyControllerRef.current?.abort();
+    };
+  }, []);
+  const fetchPenaltyHistory = useCallback((options?: { fresh?: boolean }) => {
+    if (penaltyFetchRef.current) {
+      if (options?.fresh) penaltyAgainRef.current = true;
+      return penaltyFetchRef.current;
+    }
+    const loadOnce = async () => {
+      // A timer rather than AbortSignal.timeout, which iPhones before iOS 16 don't have; the same
+      // controller is aborted when the page closes.
       const controller = new AbortController();
+      penaltyControllerRef.current = controller;
       const timeout = window.setTimeout(() => controller.abort(), PENALTY_HISTORY_TIMEOUT_MS);
       setPenaltyHistoryLoading(true);
-      setPenaltyHistoryError(null);
       try {
         const response = await fetch('/api/attendance/check-in/penalty-history', { cache: 'no-store', signal: controller.signal });
         const body = await response.json().catch(() => null);
-        if (!response.ok || !body || typeof body !== 'object') {
+        // Only a real history counts: a sign-in page or an odd reply must not read as "Nothing owed".
+        if (!response.ok || !Array.isArray(body?.weeks)) {
           throw new Error(body?.error || `Penalty history failed (${response.status})`);
         }
         setPenaltyHistory(body);
+        setPenaltyHistoryError(null);
       } catch (error) {
+        if (pageClosedRef.current) return;
         console.warn('Penalty history could not load:', error);
-        // Keep the last figures (the sheet says they may be out of date) rather than wiping "You owe".
+        // Keep the last figures (the menu and the sheet say they may be out of date).
         setPenaltyHistoryError(controller.signal.aborted
           ? 'Penalty history took too long to load.'
           : error instanceof Error ? error.message : 'Could not load penalty history');
       } finally {
         window.clearTimeout(timeout);
+        if (penaltyControllerRef.current === controller) penaltyControllerRef.current = null;
         setPenaltyHistoryLoading(false);
-        if (penaltyFetchRef.current === entry) penaltyFetchRef.current = null;
+      }
+    };
+    // Numbered, so only this request clears the slot it holds.
+    const requestId = ++penaltyRequestIdRef.current;
+    const request = (async () => {
+      try {
+        do {
+          penaltyAgainRef.current = false;
+          await loadOnce();
+        } while (penaltyAgainRef.current && !pageClosedRef.current);
+      } finally {
+        if (penaltyRequestIdRef.current === requestId) penaltyFetchRef.current = null;
       }
     })();
-    return entry.promise;
+    penaltyFetchRef.current = request;
+    return request;
   }, []);
 
   function openPenaltyHistory() {
@@ -972,7 +1017,9 @@ export default function CheckInPage() {
         events: ['invalidate'],
         onEvent: () => {
           void fetchReceiptNotifications();
-          void fetchPenaltyHistory();
+          // Only while "You owe" is on screen: this event reaches every staff member's page on
+          // anyone's sign-out or payment, and the menu loads fresh figures each time it opens.
+          if (penaltyOnScreenRef.current) void fetchPenaltyHistory({ fresh: true });
         },
       });
 
@@ -1002,6 +1049,10 @@ export default function CheckInPage() {
   useEffect(() => {
     if (menuOpen) void fetchPenaltyHistory();
   }, [fetchPenaltyHistory, menuOpen]);
+  const penaltyOnScreenRef = useRef(false);
+  useEffect(() => {
+    penaltyOnScreenRef.current = menuOpen || penaltyHistoryOpen;
+  }, [menuOpen, penaltyHistoryOpen]);
 
   // Returning from a receipt page (Back → /check-in?receipts=1) reopens the ⋮
   // menu and the receipts drawer, then strips the param so it doesn't re-fire.
@@ -1571,7 +1622,7 @@ export default function CheckInPage() {
                     icon={<History className="h-[22px] w-[22px]" />}
                     title="Penalty history"
                     onClick={openPenaltyHistory}
-                    status={penaltyHistory ? (owedNow > 0 ? `You owe ${ghc(owedNow)}` : 'Nothing owed') : ''}
+                    status={penaltyHistory ? `${owedNow > 0 ? `You owe ${ghc(owedNow)}` : 'Nothing owed'}${penaltyHistoryError ? ' · not up to date' : ''}` : ''}
                     statusClassName={penaltyHistory ? (owedNow > 0 ? 'text-warning' : 'text-success') : undefined}
                   />
                   <MenuRow
@@ -1600,7 +1651,7 @@ export default function CheckInPage() {
               />
 
               <RemindersDialog
-                disabled={!status?.staff || reminderControlsLocked || pushReminderLoading || savingPushReminder}
+                disabled={!status?.staff || reminderControlsLocked || pushReminderLoading || savingPushReminder || pushReminderStatus === null}
                 signInLoading={pushReminderLoading || savingReminderKey === 'all' || savingReminderKey === 'signIn'}
                 signOutLoading={pushReminderLoading || savingReminderKey === 'all' || savingReminderKey === 'signOut'}
                 notificationPermission={notificationPermission}
@@ -1813,7 +1864,7 @@ function PenaltyHistoryDialog({
   // A refresh failed but older figures are still shown: say so.
   const staleNote = error && history ? (
     <p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning" role="status">
-      Couldn&apos;t refresh. These figures may be out of date.
+      Couldn&apos;t refresh ({error.replace(/\.$/, '')}). These figures may be out of date.
     </p>
   ) : null;
 
