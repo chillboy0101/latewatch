@@ -26,7 +26,19 @@ test('past Safari\'s history limit an update is skipped instead of breaking the 
     },
   };
   const warnings = [];
-  vm.runInNewContext(buildHistoryGuardScript(), { console: { warn: (...args) => warnings.push(args) }, window: { history } });
+  const beacons = [];
+  class FakeBlob {
+    constructor(parts, options) {
+      this.text = parts.join('');
+      this.type = options.type;
+    }
+  }
+  vm.runInNewContext(buildHistoryGuardScript(), {
+    Blob: FakeBlob,
+    console: { warn: (...args) => warnings.push(args) },
+    navigator: { sendBeacon: (url, blob) => beacons.push({ body: JSON.parse(blob.text), type: blob.type, url }) },
+    window: { history, location: { pathname: '/dashboard' } },
+  });
 
   // Normal updates pass straight through, on the history object, with their arguments.
   assert.equal(history.pushState({ a: 1 }, '', '/x'), 'pushed');
@@ -38,6 +50,12 @@ test('past Safari\'s history limit an update is skipped instead of breaking the 
   assert.equal(history.pushState({}, ''), undefined);
   assert.equal(history.replaceState({}, ''), undefined);
   assert.equal(warnings.length, 2);
+  // Reported once per page, so the server log shows the limit was reached and handled.
+  assert.deepEqual(beacons, [{
+    body: { message: 'Attempt to use history.pushState() more than 100 times per 10 seconds', name: 'HistoryLimit', path: '/dashboard' },
+    type: 'application/json',
+    url: '/api/client-errors',
+  }]);
 
   // Anything else still surfaces.
   mode = 'other';
