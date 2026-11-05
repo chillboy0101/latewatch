@@ -182,7 +182,7 @@ export function Sidebar() {
   );
 
   const itemIconClassName = 'flex h-10 w-12 shrink-0 items-center justify-center';
-  const activeItemClassName = 'bg-primary text-primary-foreground';
+  const activeItemClassName = 'bg-primary-solid text-primary-solid-foreground';
   const inactiveItemClassName = 'text-muted hover:bg-background hover:text-foreground';
 
   const toggleButtonClassName = cn(

@@ -15,7 +15,7 @@ test('buttons and portal cards look raised and press in when tapped', () => {
   assert.doesNotMatch(button, /color-mix\(in_oklab,var\(--(primary|danger)\)_55%/);
   // Solid buttons: one flat theme colour (no sheen) with a crisp darker bottom edge. No
   // bg-gradient-to-*, which would make cn drop bg-primary.
-  assert.match(button, /'bg-primary text-primary-foreground/);
+  assert.match(button, /'bg-primary-solid text-primary-solid-foreground/);
   assert.match(button, /inset_0_-2px_0_rgb\(0_0_0\/0\.28\)/);
   assert.doesNotMatch(button, /from-white\/12|bg-gradient-to/);
   assert.match(button, /active:shadow-\[inset_/);
@@ -91,7 +91,7 @@ test('the attendance "more" sheet rows stay plain; only the portal home and admi
   }
   assert.match(portal, /large \? 'text-\[26px\]\/tight tracking-tight' : CHOICE_TEXT/);
   // ChoiceCard (portal home, admin redirect) is solid, like the check-in button.
-  assert.match(portal, /export const CHOICE_SOLID = cn\('border-primary bg-primary text-primary-foreground hover:bg-primary\/90', RAISED_SOLID\);/);
+  assert.match(portal, /export const CHOICE_SOLID = cn\('border-primary-solid bg-primary-solid text-primary-solid-foreground hover:bg-primary-solid\/90', RAISED_SOLID\);/);
   assert.match(portal, /CHOICE_PRESS,\n\s*large \?[^\n]*\n\s*CHOICE_SOLID,/);
 });
 

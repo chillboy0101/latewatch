@@ -112,7 +112,7 @@ test('sidebar groups attendance routes under an accessible disclosure', () => {
   assert.match(source, /className=\{cn\(\s*itemClassName,\s*'pl-12',\s*isChildActive \? activeItemClassName : inactiveItemClassName,/);
   assert.doesNotMatch(source, /ml-10 flex h-8 min-w-0 items-center rounded-md pl-2 pr-3/);
   assert.doesNotMatch(source, /ml-12 flex h-8 min-w-0 items-center rounded-md px-3/);
-  assert.match(source, /const activeItemClassName = 'bg-primary text-primary-foreground'/);
+  assert.match(source, /const activeItemClassName = 'bg-primary-solid text-primary-solid-foreground'/);
   assert.match(source, /const inactiveItemClassName = 'text-muted hover:bg-background hover:text-foreground'/);
   assert.match(source, /const attendanceParentActive = attendanceSectionActive && !isExpanded/);
   assert.match(source, /'border-0 p-0 text-left',\s*attendanceParentActive \? activeItemClassName : inactiveItemClassName,/);

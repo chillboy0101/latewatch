@@ -50,8 +50,8 @@ export const CHOICE_PLAIN = 'border-border bg-background/40 shadow-[inset_0_1px_
 export const CHOICE_ICON_PLAIN = 'bg-foreground/5 text-primary';
 // Solid in the theme colour, like the attendance portal's check-in button: the portal choices on
 // the portal home and the "admin needs a computer" screen. The attendance portal's sheets stay plain.
-export const CHOICE_SOLID = cn('border-primary bg-primary text-primary-foreground hover:bg-primary/90', RAISED_SOLID);
-export const CHOICE_ICON_SOLID = 'bg-white/15 text-primary-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.2)]';
+export const CHOICE_SOLID = cn('border-primary-solid bg-primary-solid text-primary-solid-foreground hover:bg-primary-solid/90', RAISED_SOLID);
+export const CHOICE_ICON_SOLID = 'bg-white/15 text-primary-solid-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.2)]';
 
 // A portal choice: an icon tile, the name and an arrow, solid in the theme colour like the
 // attendance portal's check-in button. "large" fills the space it is given (the
@@ -89,11 +89,11 @@ export function ChoiceCard({ back, href, icon, replace, size = 'default', title 
       </span>
       <span className={cn('min-w-0 font-semibold', large ? 'text-[26px]/tight tracking-tight' : CHOICE_TEXT)}>{title}</span>
       {large ? (
-        <span className="ml-auto flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/25 bg-white/10 text-primary-foreground transition-transform group-hover:translate-x-1">
+        <span className="ml-auto flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/25 bg-white/10 text-primary-solid-foreground transition-transform group-hover:translate-x-1">
           <ArrowRight className="h-5 w-5" />
         </span>
       ) : (
-        <ArrowRight className="ml-auto h-5 w-5 shrink-0 text-primary-foreground/80" />
+        <ArrowRight className="ml-auto h-5 w-5 shrink-0 text-primary-solid-foreground/80" />
       )}
       <HapticSwitch />
     </Link>

@@ -4,15 +4,18 @@
   color-scheme: light;
   --font-inter: "Aptos", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --font-jetbrains-mono: "Aptos Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  /* The selected accent. Set on <html> by the theme script; these are the Blue defaults. */
-  /* Default colour (Wine #5e1224), as computeAccentVariables makes it; a picked colour replaces these. */
+  /* The selected accent, set on <html> by the theme script. These are the default (Wine #5e1224)
+     exactly as computeAccentVariables makes it; a picked colour replaces them. */
   --brand: #5e1224;
+  --brand-tint: #9f3e4f;
   --brand-light: #5e1224;
   --brand-light-foreground: #ffffff;
   --brand-light-hover: #500f1f;
-  --brand-dark: #a0737d;
+  --brand-dark: #c26d78;
   --brand-dark-foreground: #0a0a0a;
-  --brand-dark-hover: #b38f97;
+  --brand-dark-hover: #ce8a93;
+  --brand-dark-solid: #8b2b3f;
+  --brand-dark-solid-foreground: #ffffff;
   /* Light mode text colours are a shade darker than in dark mode so they stay readable on the
      light, tinted surfaces (secondary text, labels, placeholders, amounts). */
   --success: #047857;
@@ -24,15 +27,20 @@
   --muted: color-mix(in oklab, var(--brand) 10%, #4b5563);
   --muted-foreground: color-mix(in oklab, var(--brand) 10%, #4b5563);
 
-  /* Light mode: surfaces carry a faint tint of the accent so every page matches the selection. */
-  --background: color-mix(in oklab, var(--brand) 14%, #ffffff);
+  /* Light mode: surfaces carry a faint tint of the accent so every page matches the selection
+     (from --brand-tint, a lighter version of a deep accent, so Wine's pages don't turn grey). */
+  --background: color-mix(in oklab, var(--brand-tint) 14%, #ffffff);
   --foreground: color-mix(in oklab, var(--brand) 10%, #171717);
-  --card: color-mix(in oklab, var(--brand) 9%, #ffffff);
+  --card: color-mix(in oklab, var(--brand-tint) 9%, #ffffff);
   --card-foreground: var(--foreground);
-  --border: color-mix(in oklab, var(--brand) 30%, #e5e7eb);
+  --border: color-mix(in oklab, var(--brand-tint) 30%, #e5e7eb);
+  /* primary: coloured text, lines and small marks. primary-solid: buttons and other filled
+     shapes that carry text or an icon. The same in light mode; dark mode needs both (below). */
   --primary: var(--brand-light);
   --primary-foreground: var(--brand-light-foreground);
-  --scrollbar-track: color-mix(in oklab, var(--brand) 10%, #f3f4f6);
+  --primary-solid: var(--brand-light);
+  --primary-solid-foreground: var(--brand-light-foreground);
+  --scrollbar-track: color-mix(in oklab, var(--brand-tint) 10%, #f3f4f6);
   --scrollbar-thumb: var(--brand-light);
   --scrollbar-thumb-hover: var(--brand-light-hover);
 }
@@ -47,6 +55,8 @@
   --muted-foreground: #525252;
   --primary: #171717;
   --primary-foreground: #ffffff;
+  --primary-solid: #171717;
+  --primary-solid-foreground: #ffffff;
   --scrollbar-track: #f3f4f6;
   --scrollbar-thumb: #737373;
   --scrollbar-thumb-hover: #525252;
@@ -60,6 +70,8 @@
   --color-border: var(--border);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-solid: var(--primary-solid);
+  --color-primary-solid-foreground: var(--primary-solid-foreground);
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
@@ -79,8 +91,12 @@
   --card: color-mix(in oklab, var(--brand) 15%, #161616);
   --card-foreground: var(--foreground);
   --border: color-mix(in oklab, var(--brand) 32%, #262626);
+  /* Text and small marks need a lighter accent to read on the dark page; buttons keep the deep
+     one with white text, so Wine still looks like wine. */
   --primary: var(--brand-dark);
   --primary-foreground: var(--brand-dark-foreground);
+  --primary-solid: var(--brand-dark-solid);
+  --primary-solid-foreground: var(--brand-dark-solid-foreground);
   --success: #10b981;
   --warning: #f59e0b;
   --danger: #ef4444;
@@ -100,6 +116,8 @@
   --border: #262626;
   --primary: #fafafa;
   --primary-foreground: #0a0a0a;
+  --primary-solid: #fafafa;
+  --primary-solid-foreground: #0a0a0a;
   --scrollbar-track: #18181b;
   --scrollbar-thumb: #737373;
   --scrollbar-thumb-hover: #a3a3a3;

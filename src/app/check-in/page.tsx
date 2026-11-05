@@ -1825,7 +1825,7 @@ export default function CheckInPage() {
                     <div className="relative flex size-24 shrink-0 items-center justify-center supports-[height:1cqh]:size-[clamp(3.5rem,25.5cqh,7rem)]">
                       <span aria-hidden className="absolute inset-0 rounded-full bg-current opacity-15" />
                       {status?.attendance ? (
-                        <span className="relative flex size-[76%] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-4 ring-primary/25">
+                        <span className="relative flex size-[76%] items-center justify-center rounded-full bg-primary-solid text-primary-solid-foreground shadow-lg shadow-primary/30 ring-4 ring-primary/25">
                           <Check className="size-[50%]" strokeWidth={3} />
                         </span>
                       ) : (
@@ -2443,7 +2443,7 @@ function ReceiptsDialog({
                           <div className="flex min-w-0 items-center gap-2">
                             <p className="font-mono text-base font-semibold tabular-nums text-foreground">{ghc(notification.amount)}</p>
                             {!notification.read && (
-                              <span className="flex h-5 items-center rounded-full bg-primary px-2 text-[10px] font-semibold uppercase tracking-wide text-primary-foreground">
+                              <span className="flex h-5 items-center rounded-full bg-primary-solid px-2 text-[10px] font-semibold uppercase tracking-wide text-primary-solid-foreground">
                                 New
                               </span>
                             )}
@@ -2709,7 +2709,7 @@ function ReminderNotificationToggle({
           aria-hidden
           className={cn(
             'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors',
-            enabled ? 'bg-primary' : 'bg-muted-foreground/30',
+            enabled ? 'bg-primary-solid' : 'bg-muted-foreground/30',
           )}
         >
           <span

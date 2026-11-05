@@ -107,7 +107,7 @@ export function LocationPermissionSheet({
               <ol className="w-full divide-y divide-border rounded-2xl border border-border bg-card px-4 text-left">
                 {FIX_STEPS[phone].map((step, index) => (
                   <li key={step} className="flex min-h-12 items-center gap-3 text-sm">
-                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-solid text-xs font-bold text-primary-solid-foreground">
                       {index + 1}
                     </span>
                     {step}

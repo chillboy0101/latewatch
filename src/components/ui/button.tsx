@@ -19,7 +19,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: cn('bg-primary text-primary-foreground hover:bg-primary/90', RAISED_SOLID),
+        default: cn('bg-primary-solid text-primary-solid-foreground hover:bg-primary-solid/90', RAISED_SOLID),
         destructive: cn('bg-danger text-danger-foreground hover:bg-danger/90', RAISED_SOLID),
         outline: cn('border border-border bg-background hover:bg-card hover:text-foreground', RAISED_PLAIN),
         secondary: cn('bg-card text-foreground hover:bg-card/80', RAISED_PLAIN),
