@@ -1,8 +1,8 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
-import { handlePopState, recordPathname, useAppNavigation } from '@/lib/app-nav';
+import { handlePopState, recordPathname, registerAppRouter, useAppNavigation } from '@/lib/app-nav';
 import { takeEarlyTap } from '@/lib/early-taps';
 
 // Wraps every screen and records each one visited (for the back stack and the slides). The edge
@@ -12,7 +12,12 @@ import { takeEarlyTap } from '@/lib/early-taps';
 // steps straight back. A swipe back from the portal home (the first screen) returns to it.
 export function AppPage({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const navigation = useAppNavigation();
+
+  useEffect(() => {
+    registerAppRouter(router);
+  }, [router]);
 
   useEffect(() => {
     recordPathname(pathname);

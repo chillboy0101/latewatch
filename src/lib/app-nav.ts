@@ -55,6 +55,14 @@ let navigationStartedAt: number | null = null;
 let navigationByRouter = false;
 // When the step back off a dead end went out; null once it has landed (handlePopState).
 let deadEndSteppingBackAt: number | null = null;
+// A plain link followed while that step back was on its way: sent again once it has landed.
+let resendAfterStepBack: { navigationType: 'push' | 'replace'; url: string } | null = null;
+// The app's router (AppPage), for sending such a link again.
+let appRouter: Router | null = null;
+
+export function registerAppRouter(router: Router) {
+  appRouter = router;
+}
 
 function cannotNavigateNow(byRouter: boolean) {
   const now = performance.now();
@@ -203,10 +211,14 @@ export function cancelPendingDeadEnd() {
  * links and router calls too (the admin sidebar, the header). A dead end planned for the screen
  * being left, or the step back off one, must not land on top of it: the step back would even undo it.
  */
-export function routerNavigationStarting(navigationType: 'push' | 'replace' | 'traverse') {
+export function routerNavigationStarting(navigationType: 'push' | 'replace' | 'traverse', url?: string) {
   // Moves in the history come through handlePopState.
   if (navigationType === 'traverse') return;
   navigations += 1;
+  // The step back off a dead end has already gone out and lands after this starts, and Next.js drops
+  // a navigation when the history moves under it: send it again once the step back has landed. (The
+  // app's own taps wait for it instead: see cannotNavigateNow.)
+  if (deadEndSteppingBackAt !== null && url) resendAfterStepBack = { navigationType, url };
   // A screen put in another's place leaves the screens ahead: the dead end stays due (recordPathname).
   const aheadRemain = navigationType === 'replace' && deadEndDue;
   cancelPendingDeadEnd();
@@ -232,6 +244,14 @@ export function handlePopState() {
   if (isDeadEndEntry()) {
     stepOffDeadEnd();
     return;
+  }
+  // Back on the screen: a link followed while the step back was on its way was dropped by it. Send
+  // it again, after Next.js has handled this move (its own listener runs after this one).
+  if (resendAfterStepBack) {
+    const { navigationType, url } = resendAfterStepBack;
+    resendAfterStepBack = null;
+    note(`${url} sent again (dropped by the step back)`);
+    window.setTimeout(() => appRouter?.[navigationType](url), 0);
   }
   // The portal home is the first screen: anything behind it (the sign-in pages, older entries) is
   // out of reach, so a swipe back from it returns straight to it.

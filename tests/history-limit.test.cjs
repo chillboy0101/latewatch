@@ -119,6 +119,7 @@ test('every tap opens its screen at once, except a repeat of one still on its wa
       push: (href) => { nav.routerNavigationStarting('push'); opened.push(href); },
       replace: (href) => { nav.routerNavigationStarting('replace'); opened.push(`replace ${href}`); },
     };
+    nav.registerAppRouter(router);
     // The router lands a screen: its entry, then AppPage records it.
     const land = (pathname, state = {}) => {
       history.state = state;
@@ -215,6 +216,24 @@ test('every tap opens its screen at once, except a repeat of one still on its wa
     await wait(900);
     assert.deepEqual(log, ['back']);
     land('/staff');
+
+    // A plain link followed in the moment the step back off a dead end is on its way: the step back
+    // lands after it and Next.js drops it, so it is sent again once the step back has landed.
+    log.length = 0;
+    nav.navigateBack(router, '/');
+    land('/check-in', checkInEntry);
+    await wait(560);
+    assert.deepEqual(log, ['back', 'push dead end']);
+    await wait(320);
+    assert.deepEqual(log, ['back', 'push dead end', 'back']);
+    const sentBefore = opened.length;
+    nav.routerNavigationStarting('push', '/payments');
+    history.state = checkInEntry;
+    nav.handlePopState();
+    await wait(5);
+    assert.deepEqual(opened.slice(sentBefore), ['/payments']);
+    assert.ok(nav.navigationTrail().some((step) => step.endsWith('/payments sent again (dropped by the step back)')));
+    land('/payments');
 
     // Near Safari's limit a tap opens nothing; once older updates have dropped out, taps work again.
     recentUpdates = 92;

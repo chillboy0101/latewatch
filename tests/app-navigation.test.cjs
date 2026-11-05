@@ -124,7 +124,8 @@ test('a sheet opened while another is closing keeps its place in the history and
 
 test('every router navigation, plain links included, is reported to the back-and-forth handling', () => {
   const instrumentation = read('src', 'instrumentation-client.ts');
-  assert.match(instrumentation, /export function onRouterTransitionStart\(_url: string, navigationType: 'push' \| 'replace' \| 'traverse'\) \{\n\s*routerNavigationStarting\(navigationType\);/);
+  assert.match(instrumentation, /export function onRouterTransitionStart\(url: string, navigationType: 'push' \| 'replace' \| 'traverse'\) \{\n\s*routerNavigationStarting\(navigationType, url\);/);
+  assert.match(read('src', 'components', 'layout', 'app-page.tsx'), /registerAppRouter\(router\);/);
   const nav = read('src', 'lib', 'app-nav.ts');
   assert.match(nav, /if \(navigationType === 'traverse'\) return;\n\s*navigations \+= 1;/);
 });
