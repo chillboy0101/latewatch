@@ -23,6 +23,7 @@ import {
   getEnabledReminderToggleConfirmation,
   type ReminderToggleConfirmation,
 } from '@/lib/push-reminder-toggle-confirmation';
+import { OWN_CHANNEL_STREAM_PATH, STAFF_CHANNELS, staffMemberChannel } from '@/lib/realtime-channels';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 import { ModePicker } from '@/components/theme/mode-picker';
@@ -179,6 +180,8 @@ type DeviceTransferReviewStatus = 'approved' | 'rejected';
 
 const CHECK_IN_FEEDBACK_DISMISS_MS = 4_000;
 const PENALTY_HISTORY_TIMEOUT_MS = 15_000;
+// A status read gives up after this, so a stalled one can't hold back the refreshes queued behind it.
+const STATUS_TIMEOUT_MS = 15_000;
 // Errors carry a second line to read, so they stay a little longer.
 const CHECK_IN_ERROR_DISMISS_MS = 6_000;
 const LOCAL_CATCH_UP_REMINDER_STORAGE_PREFIX = 'latewatch.local-reminder.v1';
@@ -188,6 +191,13 @@ const SIGN_IN_REMINDER_START_MINUTE = 8 * 60 + 15;
 const SIGN_IN_REMINDER_END_MINUTE = 16 * 60 + 30;
 const SIGN_OUT_REMINDER_START_MINUTE = 16 * 60 + 30;
 const SIGN_OUT_REMINDER_END_MINUTE = 24 * 60;
+
+// An update about one person only says `personal: true` on the shared channels (never whose it
+// is); that person gets it on their own channel. So these are skipped there: one person's sign-out
+// doesn't make every open page reload, and this person's own arrive on their channel.
+function isPersonalUpdate(data: unknown) {
+  return Boolean(data && typeof data === 'object' && (data as { personal?: unknown }).personal === true);
+}
 
 function canSignOut(status: CheckInStatus | null) {
   return Boolean(status?.attendance && !status.attendance.signOutTime && status.time?.slice(0, 5) >= '16:30');
@@ -810,32 +820,30 @@ export default function CheckInPage() {
 
   // Request numbers for "latest reply wins" (see each loader).
   const statusRequestRef = useRef(0);
+  const statusReadsRef = useRef(0);
+  const statusAgainRef = useRef(false);
   const pushReminderRequestRef = useRef(0);
   const receiptRequestRef = useRef(0);
-  // This staff member's id, so realtime events about other people can be skipped.
-  const myStaffIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    myStaffIdRef.current = status?.staff?.id ?? null;
-  }, [status?.staff?.id]);
-  // Events name the staff member they are about when they can (check-in, sign-out, payments,
-  // reminder deliveries). Other people's are skipped, so one person's sign-out doesn't make every
-  // open page reload; events about everyone (or no one in particular) still refresh.
-  const isAboutMe = useCallback((data: unknown) => {
-    const staffId = data && typeof data === 'object' ? (data as { staffId?: unknown }).staffId : undefined;
-    return typeof staffId !== 'string' || !myStaffIdRef.current || staffId === myStaffIdRef.current;
-  }, []);
+  // This staff member's own live-update channel (check-in, sign-out, payments, reminders, devices).
+  const myStaffId = status?.staff?.id ?? null;
 
-  const fetchStatus = useCallback(async (options?: { preserveMessage?: boolean; silent?: boolean }) => {
+  // One read of the check-in status (fetchStatus decides when to run it).
+  const readStatus = useCallback(async (options?: { preserveMessage?: boolean; silent?: boolean }) => {
     if (!deviceToken) return;
     // Latest wins: a reply to an older request (or one overtaken by a check-in) is dropped.
     const requestId = ++statusRequestRef.current;
     if (!options?.silent) setLoading(true);
     if (!options?.preserveMessage) clearMessage();
+    // A timer rather than AbortSignal.timeout, which iPhones before iOS 16 don't have. Background
+    // refreshes wait for this read, so it must never hang on a stalled connection.
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), STATUS_TIMEOUT_MS);
 
     try {
       const response = await fetch('/api/attendance/check-in', {
         cache: 'no-store',
         headers: { 'x-latewatch-device': deviceToken },
+        signal: controller.signal,
       });
       const contentType = response.headers.get('content-type') || '';
       if (response.redirected || response.status === 401 || (!contentType.includes('application/json') && response.url.includes('/sign-in'))) {
@@ -855,12 +863,39 @@ export default function CheckInPage() {
     } catch (error) {
       console.warn('Check-in status could not load:', error);
       if (!options?.silent && requestId === statusRequestRef.current) {
-        setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Could not load check-in status' });
+        setMessage({
+          type: 'error',
+          text: controller.signal.aborted
+            ? 'Check-in status took too long to load.'
+            : error instanceof Error ? error.message : 'Could not load check-in status',
+        });
       }
     } finally {
+      window.clearTimeout(timeout);
       if (!options?.silent) setLoading(false);
     }
   }, [clearMessage, deviceToken, handleSessionInvalidated]);
+
+  const fetchStatus = useCallback(async (options?: { preserveMessage?: boolean; silent?: boolean }) => {
+    if (!deviceToken) return;
+    // A background refresh (the 30-second poll, a live update) while a read is running doesn't
+    // start another: that would make the running read's reply stale, and on a slow connection
+    // every reply could be dropped. It runs once more after the running read instead.
+    if (options?.silent && statusReadsRef.current > 0) {
+      statusAgainRef.current = true;
+      return;
+    }
+    statusReadsRef.current += 1;
+    try {
+      await readStatus(options);
+      while (statusAgainRef.current && statusReadsRef.current === 1) {
+        statusAgainRef.current = false;
+        await readStatus({ preserveMessage: true, silent: true });
+      }
+    } finally {
+      statusReadsRef.current -= 1;
+    }
+  }, [deviceToken, readStatus]);
 
   const fetchPushReminderStatus = useCallback(async (options?: { silent?: boolean }) => {
     if (!isLoaded || !user) return;
@@ -1006,8 +1041,12 @@ export default function CheckInPage() {
       });
     } catch (error) {
       console.warn('Receipt notification could not be dismissed:', error);
+    } finally {
+      // The dismissal dropped any receipts request already running (it could bring back "New"),
+      // so load them again now: a receipt that request was about to show isn't lost.
+      void fetchReceiptNotifications();
     }
-  }, []);
+  }, [fetchReceiptNotifications]);
 
   const openReceiptNotification = useCallback((notification: LatenessPaymentReceiptNotification) => {
     void dismissReceiptNotification(notification.id);
@@ -1040,10 +1079,10 @@ export default function CheckInPage() {
         channel: 'staff-penalty-history',
         events: ['invalidate'],
         onEvent: (_event, data) => {
-          if (!isAboutMe(data)) return;
+          if (isPersonalUpdate(data)) return;
           void fetchReceiptNotifications();
-          // Only while "You owe" is on screen: this event reaches every staff member's page on
-          // anyone's sign-out or payment, and the menu loads fresh figures each time it opens.
+          // Only while "You owe" is on screen: this event reaches every staff member's page (e.g.
+          // an admin's entries edit), and the menu loads fresh figures each time it opens.
           if (penaltyOnScreenRef.current) void fetchPenaltyHistory({ fresh: true });
         },
       });
@@ -1059,7 +1098,7 @@ export default function CheckInPage() {
       mounted = false;
       cleanup?.();
     };
-  }, [fetchPenaltyHistory, fetchReceiptNotifications, isAboutMe, isLoaded, user]);
+  }, [fetchPenaltyHistory, fetchReceiptNotifications, isLoaded, user]);
 
   // Register the service worker on load so its static-asset cache is active for
   // every visitor (not only those who enable reminders), speeding up repeat and
@@ -1104,7 +1143,7 @@ export default function CheckInPage() {
             channel,
             events: ['invalidate'],
             onEvent: (_event, data) => {
-              if (!isAboutMe(data)) return;
+              if (isPersonalUpdate(data)) return;
               void fetchStatus({ preserveMessage: true, silent: true });
               void fetchPushReminderStatus({ silent: true });
             },
@@ -1123,7 +1162,44 @@ export default function CheckInPage() {
       mounted = false;
       cleanups.forEach((unsubscribe) => unsubscribe());
     };
-  }, [deviceToken, fetchPushReminderStatus, fetchStatus, isAboutMe, isLoaded, user]);
+  }, [deviceToken, fetchPushReminderStatus, fetchStatus, isLoaded, user]);
+
+  // This person's own updates. Each is named after the shared channel it stands for and refreshes
+  // just what an update there would.
+  useEffect(() => {
+    if (!isLoaded || !user || !myStaffId) return;
+
+    let cleanup: (() => void) | undefined;
+    let mounted = true;
+
+    (async () => {
+      const unsubscribe = await subscribeRealtimeChannel({
+        channel: staffMemberChannel(myStaffId),
+        events: [...STAFF_CHANNELS],
+        onEvent: (event) => {
+          if (event === 'staff-penalty-history') {
+            void fetchReceiptNotifications();
+            if (penaltyOnScreenRef.current) void fetchPenaltyHistory({ fresh: true });
+            return;
+          }
+          void fetchStatus({ preserveMessage: true, silent: true });
+          void fetchPushReminderStatus({ silent: true });
+        },
+        ssePath: OWN_CHANNEL_STREAM_PATH,
+      });
+
+      if (mounted) {
+        cleanup = unsubscribe;
+      } else {
+        unsubscribe();
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      cleanup?.();
+    };
+  }, [fetchPenaltyHistory, fetchPushReminderStatus, fetchReceiptNotifications, fetchStatus, isLoaded, myStaffId, user]);
 
   useEffect(() => {
     if (!deviceToken) return;
@@ -1749,7 +1825,7 @@ export default function CheckInPage() {
                     <div className="relative flex size-24 shrink-0 items-center justify-center supports-[height:1cqh]:size-[clamp(3.5rem,25.5cqh,7rem)]">
                       <span aria-hidden className="absolute inset-0 rounded-full bg-current opacity-15" />
                       {status?.attendance ? (
-                        <span className="relative flex size-[76%] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-4 ring-primary/25">
+                        <span className="relative flex size-[76%] items-center justify-center rounded-full bg-primary-solid text-primary-solid-foreground shadow-lg shadow-primary/30 ring-4 ring-primary/25">
                           <Check className="size-[50%]" strokeWidth={3} />
                         </span>
                       ) : (
@@ -2367,7 +2443,7 @@ function ReceiptsDialog({
                           <div className="flex min-w-0 items-center gap-2">
                             <p className="font-mono text-base font-semibold tabular-nums text-foreground">{ghc(notification.amount)}</p>
                             {!notification.read && (
-                              <span className="flex h-5 items-center rounded-full bg-primary px-2 text-[10px] font-semibold uppercase tracking-wide text-primary-foreground">
+                              <span className="flex h-5 items-center rounded-full bg-primary-solid px-2 text-[10px] font-semibold uppercase tracking-wide text-primary-solid-foreground">
                                 New
                               </span>
                             )}
@@ -2633,7 +2709,7 @@ function ReminderNotificationToggle({
           aria-hidden
           className={cn(
             'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors',
-            enabled ? 'bg-primary' : 'bg-muted-foreground/30',
+            enabled ? 'bg-primary-solid' : 'bg-muted-foreground/30',
           )}
         >
           <span

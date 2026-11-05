@@ -16,7 +16,7 @@ import {
 } from '@/lib/staff-leave-service';
 import { recalculateDaysAfterLeaveChange } from '@/lib/staff-leave-return';
 import { writeAuditEvent } from '@/lib/audit';
-import { publishRealtime } from '@/lib/realtime';
+import { publishStaffUpdate } from '@/lib/realtime';
 import { enforceRole } from '@/lib/auth/roles';
 
 export const dynamic = 'force-dynamic';
@@ -24,9 +24,7 @@ export const dynamic = 'force-dynamic';
 const VALID_LEAVE_TYPES = new Set<string>(STAFF_LEAVE_TYPES.map((type) => type.value));
 
 function publishLeaveInvalidations(reason: string, staffId: string) {
-  for (const channel of ['attendance', 'dashboard', 'entries', 'notifications', 'payments', 'staff-penalty-history', 'audit-trail']) {
-    publishRealtime(channel, 'invalidate', { reason, staffId });
-  }
+  publishStaffUpdate(staffId, ['attendance', 'dashboard', 'entries', 'notifications', 'payments', 'staff-penalty-history', 'audit-trail'], { reason });
 }
 
 export async function GET(request: NextRequest) {

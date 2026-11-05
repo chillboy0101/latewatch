@@ -1169,11 +1169,8 @@ export async function POST(request: NextRequest) {
       publish: false,
     });
 
-    publishRealtime('notifications', 'invalidate', {
-      reason: 'notification-state',
-      action,
-      userId: user.id,
-    });
+    // Only this person's lists change, so staff pages skip it (and it doesn't say who it was).
+    publishRealtime('notifications', 'invalidate', { personal: true, reason: 'notification-state' });
 
     return NextResponse.json({ success: true, count: ids.length });
   } catch (error) {

@@ -381,7 +381,7 @@ test('an admin can undo a mistaken payment, with a reason that is audited', () =
   assert.doesNotMatch(fs.readFileSync(paymentsApiPath, 'utf8'), /credit/i);
 });
 
-test('staff pages skip realtime events about other people, and loaders keep only the latest reply', () => {
+test('staff pages skip updates about one person on shared channels, and loaders keep only the latest reply', () => {
   const page = fs.readFileSync(path.join(__dirname, '../src/app/check-in/page.tsx'), 'utf8');
   const client = fs.readFileSync(path.join(__dirname, '../src/lib/realtime-client.ts'), 'utf8');
   const receipt = fs.readFileSync(path.join(__dirname, '../src/app/api/attendance/reminders/delivery-receipt/route.ts'), 'utf8');
@@ -389,12 +389,15 @@ test('staff pages skip realtime events about other people, and loaders keep only
   assert.match(client, /onEvent: \(eventName: string, data\?: unknown\) => void;/);
   assert.match(client, /onEvent\(eventName, parseEventData\(\(event as MessageEvent\)\.data\)\)/);
   assert.match(client, /onEvent\(eventName, message\?\.data\)/);
-  // Events about someone else are skipped; events about everyone still refresh.
-  assert.match(page, /return typeof staffId !== 'string' \|\| !myStaffIdRef\.current \|\| staffId === myStaffIdRef\.current;/);
-  assert.equal((page.match(/if \(!isAboutMe\(data\)\) return;/g) || []).length, 2);
-  // Reminder delivery receipts (one per staff member at 8:15 and 4:30) say whose they are.
+  // Updates about one person are skipped on the shared channels (that person gets theirs on their
+  // own channel); updates about everyone still refresh.
+  assert.match(page, /return Boolean\(data && typeof data === 'object' && \(data as \{ personal\?: unknown \}\)\.personal === true\);/);
+  assert.equal((page.match(/if \(isPersonalUpdate\(data\)\) return;/g) || []).length, 2);
+  assert.doesNotMatch(page, /isAboutMe|myStaffIdRef/);
+  // Reminder delivery receipts (one per staff member at 8:15 and 4:30) go to that person's channel.
   assert.match(receipt, /staffId: pushReminderDelivery\.staffId,/);
-  assert.equal((receipt.match(/staffId: delivery\.staffId,/g) || []).length, 2);
+  assert.match(receipt, /publishStaffUpdate\(delivery\.staffId, \['attendance', 'notifications'\], \{/);
+  assert.doesNotMatch(receipt, /staffId: delivery\.staffId/);
   // Latest reply wins for the status, reminder settings and receipts; local writes overtake older requests.
   assert.match(page, /if \(requestId === statusRequestRef\.current\) setStatus\(body\);/);
   assert.match(page, /if \(requestId === pushReminderRequestRef\.current\) setPushReminderStatus\(body\);/);
@@ -402,4 +405,21 @@ test('staff pages skip realtime events about other people, and loaders keep only
   assert.equal((page.match(/statusRequestRef\.current \+= 1;/g) || []).length, 2);
   assert.equal((page.match(/pushReminderRequestRef\.current \+= 1;/g) || []).length, 3);
   assert.match(page, /const dismissReceiptNotification = useCallback\(async \(id: string\) => \{\n\s*receiptRequestRef\.current \+= 1;/);
+});
+
+test('background status refreshes join a running read; a dismissal reloads the receipts', () => {
+  const page = fs.readFileSync(path.join(__dirname, '../src/app/check-in/page.tsx'), 'utf8');
+  // The poll or a live update while a read is running waits and runs once after, so a slow
+  // connection can't have every reply overtaken.
+  assert.match(page, /if \(options\?\.silent && statusReadsRef\.current > 0\) \{\n\s*statusAgainRef\.current = true;\n\s*return;\n\s*\}/);
+  assert.match(page, /while \(statusAgainRef\.current && statusReadsRef\.current === 1\) \{\n\s*statusAgainRef\.current = false;\n\s*await readStatus\(\{ preserveMessage: true, silent: true \}\);/);
+  // The read they wait for gives up after 15 s, so a stalled connection can't hold them back.
+  const read = page.slice(page.indexOf('const readStatus = useCallback'), page.indexOf('const fetchStatus = useCallback'));
+  assert.match(page, /const STATUS_TIMEOUT_MS = 15_000;/);
+  assert.match(read, /const controller = new AbortController\(\);\n\s*const timeout = window\.setTimeout\(\(\) => controller\.abort\(\), STATUS_TIMEOUT_MS\);/);
+  assert.match(read, /headers: \{ 'x-latewatch-device': deviceToken \},\n\s*signal: controller\.signal,/);
+  assert.match(read, /\} finally \{\n\s*window\.clearTimeout\(timeout\);/);
+  assert.match(read, /controller\.signal\.aborted\n\s*\? 'Check-in status took too long to load\.'/);
+  // A dismissal drops any receipts request already running, then loads them again.
+  assert.match(page, /\} finally \{\n[^\n]*\n[^\n]*\n\s*void fetchReceiptNotifications\(\);\n\s*\}\n\s*\}, \[fetchReceiptNotifications\]\);/);
 });

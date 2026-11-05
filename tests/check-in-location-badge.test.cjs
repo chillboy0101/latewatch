@@ -101,7 +101,7 @@ test('check-in card shows a Penalty row only when there is a charge', () => {
 
 test('check-in status icon: a bold tick on a solid badge once checked in, no charge badge', () => {
   const page = fs.readFileSync(checkInPagePath, 'utf8');
-  assert.match(page, /bg-primary text-primary-foreground[\s\S]{0,200}<Check className="[^"]*" strokeWidth=\{3\} \/>/);
+  assert.match(page, /bg-primary-solid text-primary-solid-foreground[\s\S]{0,200}<Check className="[^"]*" strokeWidth=\{3\} \/>/);
   assert.doesNotMatch(page, /<CheckCircle2 className="h-10 w-10/);
   // Before check-in: a soft fill of the card's colour (option C), not a dark outlined circle.
   assert.match(page, /rounded-full bg-current\/20 ring-1 ring-current\/30[\s\S]{0,400}<ShieldCheck /);

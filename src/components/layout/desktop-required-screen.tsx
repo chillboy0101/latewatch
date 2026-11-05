@@ -22,7 +22,7 @@ function DevicesIllustration() {
           <span className="h-[9px] w-[68%] rounded-full" style={{ background: `color-mix(in oklab, ${ink} 32%, transparent)` }} />
           <span className="h-[9px] w-[44%] rounded-full" style={{ background: `color-mix(in oklab, ${ink} 58%, transparent)` }} />
         </div>
-        <span className="absolute right-3 top-3 flex h-[30px] w-[30px] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
+        <span className="absolute right-3 top-3 flex h-[30px] w-[30px] items-center justify-center rounded-full bg-primary-solid text-primary-solid-foreground shadow-sm">
           <Check className="h-4 w-4" strokeWidth={3} />
         </span>
       </div>

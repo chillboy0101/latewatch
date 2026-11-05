@@ -306,7 +306,7 @@ export function StaffLeaveDialog({
                     onClick={() => { setAction(value); setMessage(null); }}
                     className={cn(
                       'h-9 rounded text-sm font-medium transition-colors',
-                      action === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground',
+                      action === value ? 'bg-primary-solid text-primary-solid-foreground' : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground',
                     )}
                   >
                     {label}

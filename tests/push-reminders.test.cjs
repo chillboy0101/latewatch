@@ -194,8 +194,7 @@ test('push subscription API and reminder cron routes are wired', () => {
   assert.match(pushApi, /signInEnabled: false/);
   assert.match(pushApi, /signOutEnabled: false/);
   assert.match(pushApi, /getVapidPublicKey/);
-  assert.match(pushApi, /publishRealtime\('attendance', 'invalidate', \{ reason: 'push-subscription-change', staffId: resolved\.staffMember\.id \}\)/);
-  assert.match(pushApi, /publishRealtime\('notifications', 'invalidate', \{ reason: 'push-subscription-change', staffId: resolved\.staffMember\.id \}\)/);
+  assert.equal((pushApi.match(/publishStaffUpdate\(resolved\.staffMember\.id, \['attendance', 'notifications'\], \{ reason: 'push-subscription-change' \}\);/g) || []).length, 2);
   assert.doesNotMatch(pushApi, /LateWatch test notification/);
   assert.doesNotMatch(pushApi, /System notifications are working on this device\./);
   assert.doesNotMatch(pushApi, /latewatch-test-notification/);

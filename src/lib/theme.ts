@@ -87,27 +87,84 @@ export function computeAccentVariables(hex: string) {
     const value = luminance(rgb);
     return contrast(value, 1) >= contrast(value, luminance([10, 10, 10])) ? '#ffffff' : '#0a0a0a';
   };
+  // OKLCH (perceived lightness, chroma, hue): a colour can be made lighter here without fading it.
+  // Mixing with white instead turns deep colours like Wine a dusty pink.
+  const linear = (channel: number) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  const toOklch = (rgb: number[]) => {
+    const [red, green, blue] = rgb.map(linear);
+    const l = Math.cbrt(0.4122214708 * red + 0.5363325363 * green + 0.0514459929 * blue);
+    const m = Math.cbrt(0.2119034982 * red + 0.6806995451 * green + 0.1073969566 * blue);
+    const s = Math.cbrt(0.0883024619 * red + 0.2817188376 * green + 0.6299787005 * blue);
+    const a = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s;
+    const b = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
+    return { chroma: Math.hypot(a, b), hue: Math.atan2(b, a), lightness: 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s };
+  };
+  const fromOklch = (lightness: number, chroma: number, hue: number) => {
+    // A colour the screen can't show keeps its lightness and hue and gives up chroma until it fits
+    // (at most 200 steps; by then it is grey, which always fits).
+    let amount = Number.isFinite(chroma) ? chroma : 0;
+    let rgb = [lightness, lightness, lightness];
+    for (let step = 0; step < 200; step += 1, amount *= 0.95) {
+      const a = amount * Math.cos(hue);
+      const b = amount * Math.sin(hue);
+      const l = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+      const m = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+      const s = (lightness - 0.0894841775 * a - 1.291485548 * b) ** 3;
+      rgb = [
+        4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+        -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+        -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+      ];
+      if (amount < 0.001 || rgb.every((value) => value >= -0.0001 && value <= 1.0001)) break;
+    }
+    return rgb.map((value) => 255 * (value <= 0.0031308 ? 12.92 * value : 1.055 * Math.max(0, value) ** (1 / 2.4) - 0.055));
+  };
+  // The same colour at no less than this lightness, its chroma kept (times `boost`) so it stays rich.
+  const atLeast = (rgb: number[], lightness: number, boost = 1) => {
+    const colour = toOklch(rgb);
+    return colour.lightness >= lightness ? rgb : fromOklch(lightness, colour.chroma * boost, colour.hue);
+  };
 
   const base = parse(hex);
-  const white = [255, 255, 255];
   const black = [0, 0, 0];
+  const white = [255, 255, 255];
+  // Dark mode cards (a little lighter than the page): coloured text has to read on them too.
+  const darkCard = luminance([28, 28, 28]);
   // Light mode needs a primary dark enough to read on white; dark mode needs one light enough to
-  // read on near-black. Both aim for 4.5:1, the level for small text, since the primary is also
-  // used for small coloured text (status lines, chips). Very light or very dark picks are nudged
-  // rather than used as-is.
+  // read on its dark cards. Both aim for 4.5:1, the level for small text, since the primary is
+  // also used for small coloured text (status lines, chips). Very light or very dark picks are
+  // nudged rather than used as-is. Each is checked on the rounded colour the page actually gets.
   let lightPrimary = base;
-  while (contrast(luminance(lightPrimary), 1) < 4.5 && luminance(lightPrimary) > 0.05) lightPrimary = mix(lightPrimary, black, 0.12);
-  let darkPrimary = mix(base, white, 0.18);
-  while (contrast(luminance(darkPrimary), luminance([10, 10, 10])) < 4.5 && luminance(darkPrimary) < 0.95) darkPrimary = mix(darkPrimary, white, 0.15);
+  while (contrast(luminance(parse(toHex(lightPrimary))), 1) < 4.5 && luminance(lightPrimary) > 0.05) lightPrimary = mix(lightPrimary, black, 0.12);
+  // Dark mode text and lines: the accent made lighter, keeping its colour.
+  const { chroma, hue } = toOklch(base);
+  let darkLightness = toOklch(mix(base, white, 0.18)).lightness;
+  let darkPrimary = fromOklch(darkLightness, chroma, hue);
+  while (contrast(luminance(parse(toHex(darkPrimary))), darkCard) < 4.5 && darkLightness < 0.99) {
+    darkLightness = Math.min(0.99, darkLightness + 0.01);
+    darkPrimary = fromOklch(darkLightness, chroma, hue);
+  }
+  // Dark mode buttons and other solid fills keep the light mode colour and its white text, made
+  // light enough to stand out from the dark page (Wine would all but vanish into it).
+  const darkSolid = atLeast(lightPrimary, 0.44, 1.2);
+  // Light mode page and card tints: a deep accent mixed into white turns grey, so its tint comes
+  // from a lighter version of it.
+  const tint = atLeast(base, 0.5, 1.2);
 
   return {
     '--brand': toHex(base),
+    '--brand-tint': toHex(tint),
     '--brand-light': toHex(lightPrimary),
     '--brand-light-foreground': readableOn(lightPrimary),
     '--brand-light-hover': toHex(mix(lightPrimary, black, 0.15)),
     '--brand-dark': toHex(darkPrimary),
     '--brand-dark-foreground': readableOn(darkPrimary),
     '--brand-dark-hover': toHex(mix(darkPrimary, white, 0.2)),
+    '--brand-dark-solid': toHex(darkSolid),
+    '--brand-dark-solid-foreground': readableOn(darkSolid),
   } as Record<string, string>;
 }
 
@@ -379,6 +436,13 @@ export function buildThemeBootScript() {
         if (/^--brand/.test(name) && /^#[0-9a-f]{6}$/i.test(saved.variables[name])) {
           root.style.setProperty(name, saved.variables[name]);
         }
+      }
+      // Saved before these colours existed: stand-ins until the page recomputes them, so another
+      // accent doesn't show the default's tint for a moment.
+      var standIns = { '--brand-tint': '--brand', '--brand-dark-solid': '--brand-light', '--brand-dark-solid-foreground': '--brand-light-foreground' };
+      for (var missing in standIns) {
+        var standIn = saved.variables[standIns[missing]];
+        if (!saved.variables[missing] && /^#[0-9a-f]{6}$/i.test(standIn)) root.style.setProperty(missing, standIn);
       }
     }
   } catch (error) {}

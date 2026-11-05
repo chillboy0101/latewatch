@@ -34,15 +34,76 @@ test('theme offers neutral plus a variety of preset colours', () => {
 });
 
 test('every accent, including extreme custom picks, keeps primary buttons readable', () => {
-  const colours = [...THEME_ACCENT_PRESETS.map((preset) => preset.swatch), '#ffffff', '#000000', '#f5e663', '#00ff00'];
+  const colours = [...THEME_ACCENT_PRESETS.map((preset) => preset.swatch), '#ffffff', '#000000', '#f5e663', '#00ff00', '#e0e1e0'];
   for (const colour of colours) {
     const variables = computeAccentVariables(colour);
     // 4.5:1 so small text in the theme colour stays readable (e.g. Amber, Orange, Green).
-    assert.ok(contrast(variables['--brand-light'], '#ffffff') >= 4.4, `${colour} light primary vs page`);
+    assert.ok(contrast(variables['--brand-light'], '#ffffff') >= 4.5, `${colour} light primary vs page`);
     assert.ok(contrast(variables['--brand-dark'], '#0a0a0a') >= 4.4, `${colour} dark primary vs page`);
     assert.ok(contrast(variables['--brand-light'], variables['--brand-light-foreground']) >= 4.4, `${colour} light button text`);
     assert.ok(contrast(variables['--brand-dark'], variables['--brand-dark-foreground']) >= 4.4, `${colour} dark button text`);
+    // Dark mode text and marks also read on the cards, which are a little lighter than the page.
+    assert.ok(contrast(variables['--brand-dark'], '#1c1c1c') >= 4.5, `${colour} dark primary vs card`);
+    // Dark mode buttons: readable text, and a fill that stands out from the dark page.
+    assert.ok(contrast(variables['--brand-dark-solid'], variables['--brand-dark-solid-foreground']) >= 4.5, `${colour} dark button fill text`);
+    assert.ok(contrast(variables['--brand-dark-solid'], '#1c1c1c') >= 1.8, `${colour} dark button fill vs page`);
+    assert.match(variables['--brand-tint'], /^#[0-9a-f]{6}$/);
   }
+});
+
+test('Wine looks like wine in both modes, and the stylesheet defaults are exactly its colours', () => {
+  const { DEFAULT_ACCENT_COLOR } = require('../src/lib/theme.ts');
+  const wine = computeAccentVariables(DEFAULT_ACCENT_COLOR);
+  const saturation = (hex) => {
+    const channels = [1, 3, 5].map((index) => parseInt(hex.slice(index, index + 2), 16));
+    const [max, min] = [Math.max(...channels), Math.min(...channels)];
+    return max === min ? 0 : (max - min) / (max + min > 255 ? 510 - max - min : max + min);
+  };
+  // Light mode buttons and text are the Wine swatch itself, with white text.
+  assert.equal(wine['--brand-light'], DEFAULT_ACCENT_COLOR);
+  assert.equal(wine['--brand-light-foreground'], '#ffffff');
+  // Dark mode buttons stay a deep wine with white text; dark mode text is lighter but keeps the
+  // colour (it used to be mixed with white into a dusty pink, #a0737d).
+  assert.equal(wine['--brand-dark-solid-foreground'], '#ffffff');
+  assert.ok(contrast(wine['--brand-dark-solid'], '#ffffff') >= 7, 'deep fill');
+  assert.ok(saturation(wine['--brand-dark']) >= 0.35, `dark text keeps its colour (${wine['--brand-dark']})`);
+  assert.ok(saturation(wine['--brand-dark-solid']) >= 0.45, `dark buttons keep their colour (${wine['--brand-dark-solid']})`);
+  // Page tints come from a lighter wine, so light mode surfaces don't turn grey.
+  assert.notEqual(wine['--brand-tint'], DEFAULT_ACCENT_COLOR);
+  // Accents that are already light enough keep their own colour for tints.
+  assert.equal(computeAccentVariables('#2563eb')['--brand-tint'], '#2563eb');
+
+  const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'globals.css'), 'utf8');
+  const rootBlock = css.slice(css.indexOf(':root {'), css.indexOf('}', css.indexOf(':root {')));
+  for (const [name, value] of Object.entries(wine)) {
+    assert.match(rootBlock, new RegExp(`${name}: ${value};`), `globals.css default for ${name}`);
+  }
+});
+
+test('buttons and other filled shapes use the solid colour; text and small marks the primary', () => {
+  const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', 'src', ...parts), 'utf8');
+  const css = read('app', 'globals.css');
+  assert.match(css, /--color-primary-solid: var\(--primary-solid\);/);
+  assert.match(css, /--primary-solid: var\(--brand-light\);\n\s*--primary-solid-foreground: var\(--brand-light-foreground\);/);
+  assert.match(css, /--primary-solid: var\(--brand-dark-solid\);\n\s*--primary-solid-foreground: var\(--brand-dark-solid-foreground\);/);
+  assert.match(read('components', 'ui', 'button.tsx'), /default: cn\('bg-primary-solid text-primary-solid-foreground hover:bg-primary-solid\/90', RAISED_SOLID\)/);
+  assert.match(read('components', 'layout', 'portal-ui.tsx'), /CHOICE_SOLID = cn\('border-primary-solid bg-primary-solid text-primary-solid-foreground hover:bg-primary-solid\/90', RAISED_SOLID\)/);
+  assert.match(read('app', 'check-in', 'page.tsx'), /rounded-full bg-primary-solid text-primary-solid-foreground shadow-lg/);
+
+  // No fill anywhere still pairs the text colour with button text (it reads as dusty pink in dark mode).
+  const offenders = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.tsx?$/.test(entry.name) && /\bbg-primary text-primary-foreground\b/.test(fs.readFileSync(full, 'utf8'))) offenders.push(full);
+    }
+  };
+  walk(path.join(__dirname, '..', 'src'));
+  assert.deepEqual(offenders, []);
+
+  // Colours saved before these existed get stand-ins until the page recomputes them.
+  assert.match(buildThemeBootScript(), /'--brand-tint': '--brand', '--brand-dark-solid': '--brand-light'/);
 });
 
 test('custom colours are validated and the boot script restores saved colours safely', () => {
@@ -69,7 +130,7 @@ test('theme picker closes on outside taps and Escape, and all surfaces derive fr
   assert.match(modePicker, /label: 'System', value: 'system'/);
   assert.match(picker, /type="color"\s+aria-label="Theme colour"/);
   assert.doesNotMatch(picker, /Applies across every page/);
-  assert.match(css, /--background: color-mix\(in oklab, var\(--brand\) 14%, #ffffff\);/);
+  assert.match(css, /--background: color-mix\(in oklab, var\(--brand-tint\) 14%, #ffffff\);/);
   assert.match(css, /\.dark\[data-accent='neutral'\]/);
   assert.doesNotMatch(css, /data-accent='(pink|red|green|violet)'/);
 });

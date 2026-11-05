@@ -307,7 +307,7 @@ export default function LocationPage() {
                           key={item}
                           type="button"
                           aria-pressed={mode === item}
-                          className={cn('rounded px-3 py-1.5 font-medium', mode === item ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}
+                          className={cn('rounded px-3 py-1.5 font-medium', mode === item ? 'bg-primary-solid text-primary-solid-foreground' : 'text-muted-foreground hover:text-foreground')}
                           onClick={() => setMode(item)}
                         >
                           {item === 'corner' ? `Corners (${corners.length})` : `Road edge (${roadPoints.length}/2)`}
