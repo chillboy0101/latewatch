@@ -1,0 +1,35 @@
+# Lint, types and tests on every pull request and on main. Vercel's deployment Checks can wait for
+# this before a deployment goes to production (Project → Settings → Deployment Checks, or
+# "Add Checks" on a deployment).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint, types and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - name: Types
+        run: |
+          npx next typegen
+          npx tsc --noEmit
+      - run: npm test
