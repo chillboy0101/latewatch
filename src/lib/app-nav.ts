@@ -33,6 +33,22 @@ export function navigationTrail() {
   return [...trail];
 }
 
+// A tap this soon after the last one opens nothing: a screen is already on its way. Quick repeated
+// taps would otherwise pile up history updates, and Safari throws past 100 of them in 10 seconds
+// (about 60 taps back and forth), which broke the screen. One screen per 0.4 s keeps it near half that.
+const NAV_MIN_GAP_MS = 400;
+let lastNavigationAt = Number.NEGATIVE_INFINITY;
+
+function tooSoon() {
+  const now = performance.now();
+  if (now - lastNavigationAt < NAV_MIN_GAP_MS) {
+    note('tap ignored (too soon)');
+    return true;
+  }
+  lastNavigationAt = now;
+  return false;
+}
+
 // The screens leading to this one, oldest first, kept on the browser history entry itself. So the
 // way back always matches the real history, through reloads, relaunches and the Android back button
 // (a list kept anywhere else can drift, and back would then land on the same screen).
@@ -181,12 +197,14 @@ export function slideTo(direction: NavDirection, navigate: () => void) {
 type Router = ReturnType<typeof useRouter>;
 
 export function navigateForward(router: Router, href: string) {
+  if (tooSoon()) return;
   note(`open ${href}`);
   slideTo('forward', () => router.push(href));
 }
 
 /** Opens a screen in place of this one (a dead end like "Admin needs a computer"), so back skips it. */
 export function navigateReplace(router: Router, href: string) {
+  if (tooSoon()) return;
   note(`open ${href} in place`);
   replaceTop = true;
   slideTo('forward', () => router.replace(href));
@@ -217,6 +235,7 @@ function skipSameScreenEntries() {
 
 /** Back to the previous screen; with none (the app was opened here), to `fallbackHref`. */
 export function navigateBack(router: Router, fallbackHref: string, direction: NavDirection = 'back') {
+  if (tooSoon()) return;
   note(canGoBack() ? 'back' : `back to ${fallbackHref} (nothing earlier)`);
   if (canGoBack()) {
     slideTo(direction, () => {

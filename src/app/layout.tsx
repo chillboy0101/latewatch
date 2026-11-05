@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { ClerkThemeProvider } from "@/components/auth/clerk-theme-provider";
+import { buildHistoryGuardScript } from "@/lib/history-guard";
 import { buildThemeBootScript } from "@/lib/theme";
+import { VercelInsights } from "@/components/analytics/vercel-insights";
 import { AppPage } from "@/components/layout/app-page";
 import { AppShell } from "@/components/layout/app-shell";
 import { HapticFeedback } from "@/components/layout/haptic-feedback";
@@ -80,6 +82,7 @@ export const viewport: Viewport = {
 };
 
 const themeScript = buildThemeBootScript();
+const historyGuardScript = buildHistoryGuardScript();
 
 export default function RootLayout({
   children,
@@ -93,6 +96,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
+        <script dangerouslySetInnerHTML={{ __html: historyGuardScript }} />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-full flex flex-col font-sans">
@@ -105,6 +109,7 @@ export default function RootLayout({
             <HapticFeedback />
           </NotificationProvider>
         </ClerkThemeProvider>
+        <VercelInsights />
       </body>
     </html>
   );
