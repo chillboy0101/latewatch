@@ -21,6 +21,18 @@ const MAX_SAME_SCREEN_SKIPS = 5;
 
 export type NavDirection = 'forward' | 'back';
 
+// The last few navigation steps, sent with a crash report (see client-error-report): a screen that
+// breaks while someone taps quickly back and forth is a race between these steps.
+const trail: string[] = [];
+function note(step: string) {
+  trail.push(`${Math.round(performance.now())}ms ${step}`);
+  if (trail.length > 16) trail.shift();
+}
+
+export function navigationTrail() {
+  return [...trail];
+}
+
 // The screens leading to this one, oldest first, kept on the browser history entry itself. So the
 // way back always matches the real history, through reloads, relaunches and the Android back button
 // (a list kept anywhere else can drift, and back would then land on the same screen).
@@ -45,6 +57,7 @@ export function recordPathname(pathname: string) {
     const cameBack = own.length < currentStack.length && own.every((screen, index) => currentStack[index] === screen);
     currentStack = own;
     currentIndex = entryIndex() ?? currentIndex;
+    note(`on ${pathname} (${cameBack ? 'came back' : 'revisit'})`);
     if (cameBack) leaveDeadEnd();
   } else {
     const left = currentStack.at(-1);
@@ -53,6 +66,7 @@ export function recordPathname(pathname: string) {
     // The portal home is the first screen, and the sign-in screens are never gone back to: nothing
     // before them is kept, so there is no back (or back swipe) into them.
     if (pathname === '/' || (left !== undefined && isAuthScreen(left))) stack = [pathname];
+    note(`on ${pathname} (${replaceTop ? 'replaced' : 'new'})`);
     currentStack = stack.slice(-50);
     if (!replaceTop) currentIndex += 1;
     window.history.replaceState({ ...window.history.state, [STACK_STATE]: currentStack, [INDEX_STATE]: currentIndex }, '');
@@ -79,6 +93,7 @@ export function stateWithoutDeadEnd(): Record<string, unknown> {
 // The step back waits a moment so iOS has drawn the dead end (this same screen) and keeps a picture
 // of it for the swipe; stepping back at once leaves it blank, and the swipe slides in a white page.
 export function leaveDeadEnd() {
+  note('dead end added');
   window.history.pushState({ ...window.history.state, [DEAD_END_STATE]: true }, '');
   window.requestAnimationFrame(() => {
     window.setTimeout(() => {
@@ -96,6 +111,7 @@ function entryIndex() {
 
 /** Every back or forward in the history (the phone's swipes, its back button) comes through here. */
 export function handlePopState() {
+  note(`history moved to ${window.location.pathname}${isDeadEndEntry() ? ' (dead end)' : ''}`);
   // The swipe forward landed on the dead end left after going back: step straight back.
   if (isDeadEndEntry()) {
     window.history.back();
@@ -165,11 +181,13 @@ export function slideTo(direction: NavDirection, navigate: () => void) {
 type Router = ReturnType<typeof useRouter>;
 
 export function navigateForward(router: Router, href: string) {
+  note(`open ${href}`);
   slideTo('forward', () => router.push(href));
 }
 
 /** Opens a screen in place of this one (a dead end like "Admin needs a computer"), so back skips it. */
 export function navigateReplace(router: Router, href: string) {
+  note(`open ${href} in place`);
   replaceTop = true;
   slideTo('forward', () => router.replace(href));
 }
@@ -199,6 +217,7 @@ function skipSameScreenEntries() {
 
 /** Back to the previous screen; with none (the app was opened here), to `fallbackHref`. */
 export function navigateBack(router: Router, fallbackHref: string, direction: NavDirection = 'back') {
+  note(canGoBack() ? 'back' : `back to ${fallbackHref} (nothing earlier)`);
   if (canGoBack()) {
     slideTo(direction, () => {
       skipSameScreenEntries();
