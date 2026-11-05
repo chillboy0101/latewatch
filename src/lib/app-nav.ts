@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useMemo } from 'react';
 import { isAppleTouchDevice } from '@/lib/haptics';
+import { recentHistoryUpdates } from '@/lib/history-guard';
 
 // App-style navigation for the staff screens (portal home, attendance, receipts, "admin needs a
 // computer"). Opening a screen slides it in from the right; going back slides it away to the right
@@ -13,6 +14,8 @@ const STACK_STATE = 'latewatchStack';
 const DEAD_END_STATE = 'latewatchDeadEnd';
 // How long the dead end stays shown before stepping back off it (see leaveDeadEnd).
 const DEAD_END_SNAPSHOT_MS = 250;
+// After going back, how long the screen stays before its dead end goes in (see recordPathname).
+const DEAD_END_AFTER_BACK_MS = 500;
 // Each screen entry's place in the history (counting up as screens open), to tell back from forward.
 const INDEX_STATE = 'latewatchIndex';
 const NAV_EASE_WAIT_MS = 1500;
@@ -33,19 +36,34 @@ export function navigationTrail() {
   return [...trail];
 }
 
-// A tap this soon after the last one opens nothing: a screen is already on its way. Quick repeated
-// taps would otherwise pile up history updates, and Safari throws past 100 of them in 10 seconds
-// (about 60 taps back and forth), which broke the screen. One screen per 0.4 s keeps it near half that.
-const NAV_MIN_GAP_MS = 400;
-let lastNavigationAt = Number.NEGATIVE_INFINITY;
+// Every tap opens its screen at once, however quick, with two exceptions:
+// - While the last screen is still on its way, a tap opens nothing: it landed on the screen being
+//   left, so it repeats the last one (and a second back would skip a screen). Once the new screen is
+//   on the page (recordPathname) the next tap goes straight through; a screen that never arrives
+//   stops holding taps after NAV_SETTLE_MAX_MS.
+// - Safari throws past 100 history updates in 10 seconds, which broke the screen. Near that (the
+//   history guard counts them as Safari does) a tap opens nothing until Safari's 10 seconds are up.
+//   Taps back and forth make about 1.5 updates each, so only 6 or more a second for 10 seconds get there.
+const NAV_SETTLE_MAX_MS = 1000;
+// Room left under Safari's 100 for the updates a navigation and its dead end make.
+const HISTORY_UPDATES_MAX = 92;
+let navigationStartedAt: number | null = null;
 
-function tooSoon() {
+function cannotNavigateNow() {
   const now = performance.now();
-  if (now - lastNavigationAt < NAV_MIN_GAP_MS) {
-    note('tap ignored (too soon)');
+  if (navigationStartedAt !== null && now - navigationStartedAt < NAV_SETTLE_MAX_MS) {
+    note('tap ignored (screen on its way)');
     return true;
   }
-  lastNavigationAt = now;
+  if (recentHistoryUpdates() >= HISTORY_UPDATES_MAX) {
+    note('tap ignored (history limit near)');
+    return true;
+  }
+  navigationStartedAt = now;
+  navigations += 1;
+  // A new screen is on its way: the dead end planned for this one, or the step back off one still
+  // waiting, would only get in its way (a step back would even undo the new screen).
+  cancelPendingDeadEnd();
   return false;
 }
 
@@ -64,9 +82,17 @@ let currentStack: string[] = [];
 let currentIndex = 0;
 let replaceTop = false;
 let finishSlide: (() => void) | null = null;
+// Screens opened from a tap so far (see cannotNavigateNow).
+let navigations = 0;
+// The screens left by going back are still ahead of the screen on show: it needs a dead end.
+let deadEndDue = false;
+let deadEndPlan: number | null = null;
+let deadEndStepBack: number | null = null;
 
 /** Called after every route change has been committed (AppPage). */
 export function recordPathname(pathname: string) {
+  // The screen is on the page: the next tap opens its screen straight away.
+  navigationStartedAt = null;
   const own = entryStack();
   if (own && own.at(-1) === pathname) {
     // Back, forward or a reload onto a screen already visited: its entry knows the way back.
@@ -74,7 +100,7 @@ export function recordPathname(pathname: string) {
     currentStack = own;
     currentIndex = entryIndex() ?? currentIndex;
     note(`on ${pathname} (${cameBack ? 'came back' : 'revisit'})`);
-    if (cameBack) leaveDeadEnd();
+    if (cameBack) planDeadEnd();
   } else {
     const left = currentStack.at(-1);
     let stack = replaceTop ? currentStack.slice(0, -1) : [...currentStack];
@@ -86,6 +112,10 @@ export function recordPathname(pathname: string) {
     currentStack = stack.slice(-50);
     if (!replaceTop) currentIndex += 1;
     window.history.replaceState({ ...window.history.state, [STACK_STATE]: currentStack, [INDEX_STATE]: currentIndex }, '');
+    // A new entry drops the screens ahead. One put in another's place leaves them there, so the
+    // dead end due on the screen it replaced is due on this one.
+    if (replaceTop && deadEndDue) planDeadEnd();
+    else cancelPendingDeadEnd();
   }
   replaceTop = false;
   // The new screen is on the page: let the slide animate to it.
@@ -108,15 +138,45 @@ export function stateWithoutDeadEnd(): Record<string, unknown> {
 // screen: a swipe forward can now only reach the dead end, which steps straight back (AppPage).
 // The step back waits a moment so iOS has drawn the dead end (this same screen) and keeps a picture
 // of it for the swipe; stepping back at once leaves it blank, and the swipe slides in a white page.
+// A tap meanwhile opens its screen from the dead end, and the step back is dropped: it would land
+// after the tap and undo the new screen.
 export function leaveDeadEnd() {
   note('dead end added');
+  const navigationsBefore = navigations;
   window.history.pushState({ ...window.history.state, [DEAD_END_STATE]: true }, '');
   window.requestAnimationFrame(() => {
-    window.setTimeout(() => {
+    if (navigations !== navigationsBefore) return;
+    if (deadEndStepBack !== null) window.clearTimeout(deadEndStepBack);
+    deadEndStepBack = window.setTimeout(() => {
+      deadEndStepBack = null;
       // Still on the dead end (no back or new screen in the meantime): step back onto this screen.
       if (isDeadEndEntry()) window.history.back();
     }, DEAD_END_SNAPSHOT_MS);
   });
+}
+
+// After going back, the dead end goes in once the screen has stayed a moment. Someone tapping
+// quickly back and forth has opened the next screen by then, whose new entry drops the screens
+// ahead anyway: a round trip then makes 3 history updates instead of 5, and no steps back.
+function planDeadEnd() {
+  if (deadEndPlan !== null) window.clearTimeout(deadEndPlan);
+  deadEndDue = true;
+  const screen = window.location.pathname;
+  deadEndPlan = window.setTimeout(() => {
+    deadEndPlan = null;
+    deadEndDue = false;
+    // Still on this screen, with no dead end put in meanwhile (a sheet closing adds its own).
+    if (window.location.pathname === screen && !isDeadEndEntry()) leaveDeadEnd();
+  }, DEAD_END_AFTER_BACK_MS);
+}
+
+/** Drops the dead end planned for this screen and any step back off one (a new entry is going in). */
+export function cancelPendingDeadEnd() {
+  if (deadEndPlan !== null) window.clearTimeout(deadEndPlan);
+  if (deadEndStepBack !== null) window.clearTimeout(deadEndStepBack);
+  deadEndPlan = null;
+  deadEndStepBack = null;
+  deadEndDue = false;
 }
 
 function entryIndex() {
@@ -128,6 +188,12 @@ function entryIndex() {
 /** Every back or forward in the history (the phone's swipes, its back button) comes through here. */
 export function handlePopState() {
   note(`history moved to ${window.location.pathname}${isDeadEndEntry() ? ' (dead end)' : ''}`);
+  // Off the screen the dead end was planned for (coming back to one plans it again).
+  if (deadEndPlan !== null) {
+    window.clearTimeout(deadEndPlan);
+    deadEndPlan = null;
+    deadEndDue = false;
+  }
   // The swipe forward landed on the dead end left after going back: step straight back.
   if (isDeadEndEntry()) {
     window.history.back();
@@ -197,14 +263,17 @@ export function slideTo(direction: NavDirection, navigate: () => void) {
 type Router = ReturnType<typeof useRouter>;
 
 export function navigateForward(router: Router, href: string) {
-  if (tooSoon()) return;
+  if (cannotNavigateNow()) return;
   note(`open ${href}`);
   slideTo('forward', () => router.push(href));
 }
 
 /** Opens a screen in place of this one (a dead end like "Admin needs a computer"), so back skips it. */
 export function navigateReplace(router: Router, href: string) {
-  if (tooSoon()) return;
+  const aheadRemain = deadEndDue;
+  if (cannotNavigateNow()) return;
+  // Unlike a new entry, this one leaves the screens ahead in place: its screen still needs the dead end.
+  deadEndDue = aheadRemain;
   note(`open ${href} in place`);
   replaceTop = true;
   slideTo('forward', () => router.replace(href));
@@ -235,7 +304,7 @@ function skipSameScreenEntries() {
 
 /** Back to the previous screen; with none (the app was opened here), to `fallbackHref`. */
 export function navigateBack(router: Router, fallbackHref: string, direction: NavDirection = 'back') {
-  if (tooSoon()) return;
+  if (cannotNavigateNow()) return;
   note(canGoBack() ? 'back' : `back to ${fallbackHref} (nothing earlier)`);
   if (canGoBack()) {
     slideTo(direction, () => {
