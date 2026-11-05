@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { ClerkThemeProvider } from "@/components/auth/clerk-theme-provider";
+import { buildHistoryGuardScript } from "@/lib/history-guard";
 import { buildThemeBootScript } from "@/lib/theme";
 import { AppPage } from "@/components/layout/app-page";
 import { AppShell } from "@/components/layout/app-shell";
@@ -80,6 +81,7 @@ export const viewport: Viewport = {
 };
 
 const themeScript = buildThemeBootScript();
+const historyGuardScript = buildHistoryGuardScript();
 
 export default function RootLayout({
   children,
@@ -93,6 +95,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
+        <script dangerouslySetInnerHTML={{ __html: historyGuardScript }} />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-full flex flex-col font-sans">
