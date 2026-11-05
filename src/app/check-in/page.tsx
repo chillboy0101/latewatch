@@ -180,6 +180,8 @@ type DeviceTransferReviewStatus = 'approved' | 'rejected';
 
 const CHECK_IN_FEEDBACK_DISMISS_MS = 4_000;
 const PENALTY_HISTORY_TIMEOUT_MS = 15_000;
+// A status read gives up after this, so a stalled one can't hold back the refreshes queued behind it.
+const STATUS_TIMEOUT_MS = 15_000;
 // Errors carry a second line to read, so they stay a little longer.
 const CHECK_IN_ERROR_DISMISS_MS = 6_000;
 const LOCAL_CATCH_UP_REMINDER_STORAGE_PREFIX = 'latewatch.local-reminder.v1';
@@ -832,11 +834,16 @@ export default function CheckInPage() {
     const requestId = ++statusRequestRef.current;
     if (!options?.silent) setLoading(true);
     if (!options?.preserveMessage) clearMessage();
+    // A timer rather than AbortSignal.timeout, which iPhones before iOS 16 don't have. Background
+    // refreshes wait for this read, so it must never hang on a stalled connection.
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), STATUS_TIMEOUT_MS);
 
     try {
       const response = await fetch('/api/attendance/check-in', {
         cache: 'no-store',
         headers: { 'x-latewatch-device': deviceToken },
+        signal: controller.signal,
       });
       const contentType = response.headers.get('content-type') || '';
       if (response.redirected || response.status === 401 || (!contentType.includes('application/json') && response.url.includes('/sign-in'))) {
@@ -856,9 +863,15 @@ export default function CheckInPage() {
     } catch (error) {
       console.warn('Check-in status could not load:', error);
       if (!options?.silent && requestId === statusRequestRef.current) {
-        setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Could not load check-in status' });
+        setMessage({
+          type: 'error',
+          text: controller.signal.aborted
+            ? 'Check-in status took too long to load.'
+            : error instanceof Error ? error.message : 'Could not load check-in status',
+        });
       }
     } finally {
+      window.clearTimeout(timeout);
       if (!options?.silent) setLoading(false);
     }
   }, [clearMessage, deviceToken, handleSessionInvalidated]);

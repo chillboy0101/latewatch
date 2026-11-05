@@ -413,6 +413,13 @@ test('background status refreshes join a running read; a dismissal reloads the r
   // connection can't have every reply overtaken.
   assert.match(page, /if \(options\?\.silent && statusReadsRef\.current > 0\) \{\n\s*statusAgainRef\.current = true;\n\s*return;\n\s*\}/);
   assert.match(page, /while \(statusAgainRef\.current && statusReadsRef\.current === 1\) \{\n\s*statusAgainRef\.current = false;\n\s*await readStatus\(\{ preserveMessage: true, silent: true \}\);/);
+  // The read they wait for gives up after 15 s, so a stalled connection can't hold them back.
+  const read = page.slice(page.indexOf('const readStatus = useCallback'), page.indexOf('const fetchStatus = useCallback'));
+  assert.match(page, /const STATUS_TIMEOUT_MS = 15_000;/);
+  assert.match(read, /const controller = new AbortController\(\);\n\s*const timeout = window\.setTimeout\(\(\) => controller\.abort\(\), STATUS_TIMEOUT_MS\);/);
+  assert.match(read, /headers: \{ 'x-latewatch-device': deviceToken \},\n\s*signal: controller\.signal,/);
+  assert.match(read, /\} finally \{\n\s*window\.clearTimeout\(timeout\);/);
+  assert.match(read, /controller\.signal\.aborted\n\s*\? 'Check-in status took too long to load\.'/);
   // A dismissal drops any receipts request already running, then loads them again.
   assert.match(page, /\} finally \{\n[^\n]*\n[^\n]*\n\s*void fetchReceiptNotifications\(\);\n\s*\}\n\s*\}, \[fetchReceiptNotifications\]\);/);
 });
