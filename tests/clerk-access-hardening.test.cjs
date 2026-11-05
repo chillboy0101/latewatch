@@ -13,7 +13,7 @@ test('protected app routes require an active staff record (or admin), not a Cler
   const proxy = fs.readFileSync(proxyPath, 'utf8');
 
   assert.doesNotMatch(proxy, /hasRequiredOrganization|CLERK_ORGANIZATION_ID/);
-  assert.match(proxy, /isStaffRequiredRoute\(req\)\s+&& !\(await hasActiveStaffAccess\(session\.userId\)\)\s+&& !\(await isAdminSession\(session\.userId, session\.sessionClaims\)\)/);
+  assert.match(proxy, /isStaffRequiredRoute\(req\)\s+&& !adminFromSession\s+&& !\(await hasActiveStaffAccess\(session\.userId\)\)\s+&& !\(await isAdminSession\(session\.userId, session\.sessionClaims\)\)/);
   assert.match(proxy, /return staffAccessRequiredResponse\(req\);/);
 });
 
@@ -55,6 +55,11 @@ test('access comes from the Staff list (verified email, not archived)', () => {
 
   // Active staff and admins get in; nothing depends on the organisation.
   assert.match(proxy, /&& !\(await hasActiveStaffAccess\(session\.userId\)\)\s+&& !\(await isAdminSession\(session\.userId, session\.sessionClaims\)\)/);
+  // Admins named by the account list or the session token skip the lookups; admin routes still
+  // require an admin, and a Clerk lookup that fails is never kept.
+  assert.match(proxy, /const adminFromSession = isAdminFromSession\(session\.userId, session\.sessionClaims\);/);
+  assert.match(proxy, /if \(!isStaffCheckInRoute\(req\) && isAdminRoute\(req\) && !adminFromSession\) \{\n\s*if \(!\(await isAdminSession\(session\.userId, session\.sessionClaims\)\)\) \{\n\s*return forbiddenResponse\(req\);/);
+  assert.match(proxy, /console\.error\('Failed to resolve Clerk admin role:', error\);\n\s*return false;/);
   // Only verified emails count, archived staff never pass, failed lookups are not cached.
   assert.match(access, /address\.verification\?\.status === 'verified'/);
   assert.match(access, /eq\(staff\.archived, false\)/);

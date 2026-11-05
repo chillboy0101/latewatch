@@ -111,43 +111,43 @@ function staffAccessRequiredResponse(req: Request) {
   return NextResponse.redirect(new URL('/access-required', req.url));
 }
 
-async function getClerkUserAccess(userId: string) {
+// Admin by the account list or the session token alone, with no call to Clerk's servers.
+function isAdminFromSession(userId: string | null | undefined, sessionClaims: Record<string, unknown> | null | undefined) {
+  if (!userId) return false;
+  return adminUserIdsFromEnv().has(userId)
+    || roleFromSessionClaims(sessionClaims) === 'admin'
+    || isAdminRole(roleFromOrganizationClaims(sessionClaims));
+}
+
+// Admin by the role or email on the Clerk account. Kept a minute (a "no" 10 seconds), like the staff
+// check, so admin pages and requests don't each wait on Clerk's servers; a failed lookup is not kept.
+const ADMIN_TTL_MS = 60_000;
+const NOT_ADMIN_TTL_MS = 10_000;
+const adminLookupCache = new Map<string, { admin: boolean; expiresAt: number }>();
+
+async function isAdminByClerkAccount(userId: string) {
+  const cached = adminLookupCache.get(userId);
+  if (cached && cached.expiresAt > Date.now()) return cached.admin;
+
+  let admin: boolean;
   try {
     const client = await clerkClient();
     const user = await client.users.getUser(userId);
-    const email = user.primaryEmailAddress?.emailAddress
-      || user.emailAddresses[0]?.emailAddress
-      || null;
-
-    return {
-      email: email?.toLowerCase() || null,
-      role: roleFromMetadata(user.privateMetadata) || roleFromMetadata(user.publicMetadata),
-    };
+    const email = (user.primaryEmailAddress?.emailAddress || user.emailAddresses[0]?.emailAddress || '').toLowerCase();
+    const role = roleFromMetadata(user.privateMetadata) || roleFromMetadata(user.publicMetadata);
+    admin = isAdminRole(role) || Boolean(email && adminEmailsFromEnv().has(email));
   } catch (error) {
     console.error('Failed to resolve Clerk admin role:', error);
-    return { email: null, role: null };
+    return false;
   }
+
+  adminLookupCache.set(userId, { admin, expiresAt: Date.now() + (admin ? ADMIN_TTL_MS : NOT_ADMIN_TTL_MS) });
+  return admin;
 }
 
 async function isAdminSession(userId: string | null | undefined, sessionClaims: Record<string, unknown> | null | undefined) {
   if (!userId) return false;
-
-  if (adminUserIdsFromEnv().has(userId)) {
-    return true;
-  }
-
-  if (roleFromSessionClaims(sessionClaims) === 'admin') {
-    return true;
-  }
-
-  if (isAdminRole(roleFromOrganizationClaims(sessionClaims))) {
-    return true;
-  }
-
-  const userAccess = await getClerkUserAccess(userId);
-
-  return isAdminRole(userAccess.role)
-    || Boolean(userAccess.email && adminEmailsFromEnv().has(userAccess.email));
+  return isAdminFromSession(userId, sessionClaims) || isAdminByClerkAccount(userId);
 }
 
 function forbiddenResponse(req: Request) {
@@ -176,16 +176,20 @@ const handler = clerkConfigured
 
       if (isProtectedRoute(req)) {
         const session = await auth.protect();
+        // An admin named by the account list or the session token passes both checks below with no
+        // lookups (no call to Clerk's servers or the database), so admin screens open sooner.
+        const adminFromSession = isAdminFromSession(session.userId, session.sessionClaims);
         // Access comes from the Staff list: an active (non-archived) staff record for one of the
         // account's verified emails, or an admin. No Clerk organisation is involved.
         if (
           isStaffRequiredRoute(req)
+          && !adminFromSession
           && !(await hasActiveStaffAccess(session.userId))
           && !(await isAdminSession(session.userId, session.sessionClaims))
         ) {
           return staffAccessRequiredResponse(req);
         }
-        if (!isStaffCheckInRoute(req) && isAdminRoute(req)) {
+        if (!isStaffCheckInRoute(req) && isAdminRoute(req) && !adminFromSession) {
           if (!(await isAdminSession(session.userId, session.sessionClaims))) {
             return forbiddenResponse(req);
           }

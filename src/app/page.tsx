@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ChoiceCard, ChoicePanel, PortalPickers, useApplyDarkMode } from '@/components/layout/portal-ui';
 import { ACCRA_TIME_ZONE } from '@/lib/date-key';
 import { getHomeView, getServerHomeView, subscribeDeviceKind } from '@/lib/device-kind';
+import { handwriting } from '@/lib/fonts';
 import { cn } from '@/lib/utils';
 
 // Office time: attendance is judged in Accra time, so the clock shows it on every device.
@@ -136,6 +137,12 @@ function ClockCard({ size }: { size: keyof typeof CLOCK_SIZES }) {
 export default function Home() {
   useApplyDarkMode();
   const view = useSyncExternalStore(subscribeDeviceKind, getHomeView, getServerHomeView);
+
+  // The admin portal's phone screen is lettered in the handwriting font: have it ready before Admin
+  // Portal is tapped, so that heading never shows in a stand-in font first and then jumps.
+  useEffect(() => {
+    document.fonts?.load(`700 44px ${handwriting.style.fontFamily}`).catch(() => {});
+  }, []);
 
   return (
     <main className="relative min-h-dvh bg-background text-foreground">
