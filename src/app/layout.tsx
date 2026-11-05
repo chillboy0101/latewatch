@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { ClerkThemeProvider } from "@/components/auth/clerk-theme-provider";
 import { buildHistoryGuardScript } from "@/lib/history-guard";
 import { buildThemeBootScript } from "@/lib/theme";
+import { VercelInsights } from "@/components/analytics/vercel-insights";
 import { AppPage } from "@/components/layout/app-page";
 import { AppShell } from "@/components/layout/app-shell";
 import { HapticFeedback } from "@/components/layout/haptic-feedback";
@@ -108,6 +109,7 @@ export default function RootLayout({
             <HapticFeedback />
           </NotificationProvider>
         </ClerkThemeProvider>
+        <VercelInsights />
       </body>
     </html>
   );
