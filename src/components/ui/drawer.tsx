@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Drawer as DrawerPrimitive } from 'vaul';
 
-import { isDeadEndEntry, leaveDeadEnd, stateWithoutDeadEnd } from '@/lib/app-nav';
+import { cancelPendingDeadEnd, isDeadEndEntry, leaveDeadEnd, stateWithoutDeadEnd } from '@/lib/app-nav';
 import { cn } from '@/lib/utils';
 
 // Back (the edge swipe, the Android back button) closes the top sheet instead of leaving the screen,
@@ -111,6 +111,9 @@ function useCloseOnBack(
       // Keep the router's own state on the entry so it treats it as the same screen (never the
       // dead-end mark, or the entry would be stepped off like a dead end).
       const state = { ...stateWithoutDeadEnd(), latewatchSheet: id };
+      // This entry drops what is ahead (or takes the dead end's place): the screen's planned dead
+      // end, or the step back off one, must not land on top of the sheet.
+      cancelPendingDeadEnd();
       if (pendingPops > 0 && sheetEntryId() !== null) {
         // A sheet that was closed and reopened straight away (or remounted) reuses the entry still
         // waiting to go.
