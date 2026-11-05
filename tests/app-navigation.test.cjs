@@ -67,7 +67,8 @@ test("the edge swipe back is the phone's own, and no swipe forward reopens a scr
   assert.match(authCard, /if \(!arrivedSignedIn\) return;\n(\s*\/\/[^\n]*\n)*\s*window\.history\.forward\(\);/);
   assert.match(authCard, /if \(arrivedSignedIn\) return null;/);
   const nav = read('src', 'lib', 'app-nav.ts');
-  assert.match(nav, /if \(cameBack\) leaveDeadEnd\(\);/);
+  // After going back it goes in once the screen has stayed a moment (a quick tap on makes it moot).
+  assert.match(nav, /if \(cameBack\) planDeadEnd\(\);/);
   assert.match(nav, /window\.history\.pushState\(\{ \.\.\.window\.history\.state, \[DEAD_END_STATE\]: true \}, ''\);/);
   // The step back off it waits so iOS keeps a picture of it (else the swipe slides in a white page).
   assert.match(nav, /if \(isDeadEndEntry\(\)\) window\.history\.back\(\);\n\s*\}, DEAD_END_SNAPSHOT_MS\);/);
