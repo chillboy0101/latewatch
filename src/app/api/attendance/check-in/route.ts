@@ -32,7 +32,7 @@ import { type LocationValidationResult, normalizeLocationEvidence, validateAtten
 import { type OfficeBoundary, parseOfficeBoundary } from '@/lib/office-boundary';
 import { allowRequest } from '@/lib/rate-limit';
 import { maybeRunMissedReminderBatch } from '@/lib/reminder-fallback';
-import { publishRealtime } from '@/lib/realtime';
+import { publishRealtime, publishStaffUpdate } from '@/lib/realtime';
 import {
   canSignOutNow,
   isSignInClosed,
@@ -341,11 +341,9 @@ async function clearLegacyEntriesFallbackSignOut(input: {
     .limit(1);
 
   publishRealtime('dashboard', 'invalidate', { reason: 'attendance-sign-out-repair' });
-  publishRealtime('attendance', 'invalidate', { reason: 'attendance-sign-out-repair', staffId: input.attendance.staffId });
   publishRealtime('entries', 'invalidate', { reason: 'attendance-sign-out-repair' });
   publishRealtime('payments', 'invalidate', { date: input.date, reason: 'attendance-sign-out-repair' });
-  publishRealtime('staff-penalty-history', 'invalidate', { date: input.date, reason: 'attendance-sign-out-repair', staffId: input.attendance.staffId });
-  publishRealtime('notifications', 'invalidate', { reason: 'attendance-sign-out-repair', staffId: input.attendance.staffId });
+  publishStaffUpdate(input.attendance.staffId, ['attendance', 'staff-penalty-history', 'notifications'], { date: input.date, reason: 'attendance-sign-out-repair' });
 
   return syncedAttendance || updatedAttendance;
 }
@@ -448,7 +446,7 @@ async function syncDeviceBinding(input: {
       reason: input.reason,
     });
 
-    publishRealtime('attendance', 'invalidate', { reason: input.reason, staffId: input.staffMember.id });
+    publishStaffUpdate(input.staffMember.id, ['attendance'], { reason: input.reason });
 
     return { device: createdDevice, trusted: true };
   }
@@ -915,8 +913,7 @@ export async function POST(request: NextRequest) {
         reason: 'attendance-device-transfer-request',
       });
 
-      publishRealtime('attendance', 'invalidate', { reason: 'attendance-device-transfer-request', staffId: staffMember.id });
-      publishRealtime('notifications', 'invalidate', { reason: 'attendance-device-transfer-request', staffId: staffMember.id });
+      publishStaffUpdate(staffMember.id, ['attendance', 'notifications'], { reason: 'attendance-device-transfer-request' });
 
       const transferHoliday = await getHolidayForDate(clock.dateKey);
 
@@ -1177,12 +1174,10 @@ export async function POST(request: NextRequest) {
         }
 
         publishRealtime('dashboard', 'invalidate', { reason: 'attendance-sign-out' });
-        publishRealtime('attendance', 'invalidate', { reason: 'attendance-sign-out', staffId: staffMember.id });
         publishRealtime('entries', 'invalidate', { reason: 'attendance-sign-out' });
         publishRealtime('payments', 'invalidate', { date: clock.dateKey, reason: 'attendance-sign-out' });
-        publishRealtime('staff-penalty-history', 'invalidate', { date: clock.dateKey, reason: 'attendance-sign-out', staffId: staffMember.id });
         publishRealtime('audit-trail', 'invalidate', { reason: 'attendance-sign-out' });
-        publishRealtime('notifications', 'invalidate', { reason: 'attendance-sign-out', staffId: staffMember.id });
+        publishStaffUpdate(staffMember.id, ['attendance', 'staff-penalty-history', 'notifications'], { date: clock.dateKey, reason: 'attendance-sign-out' });
 
         return NextResponse.json({
           success: true,
@@ -1487,12 +1482,11 @@ export async function POST(request: NextRequest) {
     }
 
     publishRealtime('dashboard', 'invalidate', { reason: 'attendance-check-in' });
-    publishRealtime('attendance', 'invalidate', { reason: 'attendance-check-in', staffId: staffMember.id });
     if (penalty.amount > 0) {
       publishRealtime('entries', 'invalidate', { reason: 'attendance-check-in' });
     }
     publishRealtime('audit-trail', 'invalidate', { reason: 'attendance-check-in' });
-    publishRealtime('notifications', 'invalidate', { reason: 'attendance-check-in', staffId: staffMember.id });
+    publishStaffUpdate(staffMember.id, ['attendance', 'notifications'], { reason: 'attendance-check-in' });
 
     return NextResponse.json({
       success: true,

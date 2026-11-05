@@ -1,8 +1,14 @@
+import { NextResponse } from 'next/server';
+import { enforceRole } from '@/lib/auth/roles';
 import { registerRealtimeClient } from '@/lib/realtime';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  // Admins only, as on Ably: these updates can name people and records.
+  const authError = await enforceRole(['admin']);
+  if (authError) return NextResponse.json({ error: authError.error }, { status: authError.status });
+
   const encoder = new TextEncoder();
 
   let cleanup: (() => void) | null = null;

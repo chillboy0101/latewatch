@@ -4,7 +4,7 @@ import { db } from '@/db';
 import { latenessPayment, latenessPaymentAllocation, staff } from '@/db/schema';
 import { writeAuditEvent } from '@/lib/audit';
 import { enforceRole } from '@/lib/auth/roles';
-import { publishRealtime } from '@/lib/realtime';
+import { publishRealtime, publishStaffUpdate } from '@/lib/realtime';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,7 +55,7 @@ export async function DELETE(
     });
 
     publishRealtime('payments', 'invalidate', { reason: 'lateness-payment-undo', staffId: payment.staffId });
-    publishRealtime('staff-penalty-history', 'invalidate', { reason: 'lateness-payment-undo', staffId: payment.staffId });
+    publishStaffUpdate(payment.staffId, ['staff-penalty-history'], { reason: 'lateness-payment-undo' });
     publishRealtime('dashboard', 'invalidate', { reason: 'lateness-payment-undo' });
     publishRealtime('audit-trail', 'invalidate', { reason: 'lateness-payment-undo' });
     publishRealtime('notifications', 'invalidate', { reason: 'lateness-payment-undo' });

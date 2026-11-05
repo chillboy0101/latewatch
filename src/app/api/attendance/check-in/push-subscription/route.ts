@@ -7,7 +7,7 @@ import { findStaffForEmails, verifiedEmailAddresses } from '@/lib/auth/signed-in
 import { getDeviceTokenFromRequest } from '@/lib/device-binding';
 import { resolveDeviceHash } from '@/lib/device-rekey';
 import { getVapidPublicKey, hasVapidConfig, isKnownPushEndpoint } from '@/lib/push-reminders';
-import { publishRealtime } from '@/lib/realtime';
+import { publishStaffUpdate } from '@/lib/realtime';
 
 export const dynamic = 'force-dynamic';
 const UNTRUSTED_REMINDER_DEVICE_ERROR = 'Transfer this device before changing reminder notifications.';
@@ -175,8 +175,7 @@ export async function PUT(request: NextRequest) {
     })
     .returning();
 
-  publishRealtime('attendance', 'invalidate', { reason: 'push-subscription-change', staffId: resolved.staffMember.id });
-  publishRealtime('notifications', 'invalidate', { reason: 'push-subscription-change', staffId: resolved.staffMember.id });
+  publishStaffUpdate(resolved.staffMember.id, ['attendance', 'notifications'], { reason: 'push-subscription-change' });
 
   return NextResponse.json(publicPayload(savedSubscription || null), {
     headers: { 'Cache-Control': 'no-store' },
@@ -207,8 +206,7 @@ export async function DELETE(request: NextRequest) {
       endpoint ? eq(pushSubscription.endpoint, endpoint) : isNull(pushSubscription.disabledAt),
     ));
 
-  publishRealtime('attendance', 'invalidate', { reason: 'push-subscription-change', staffId: resolved.staffMember.id });
-  publishRealtime('notifications', 'invalidate', { reason: 'push-subscription-change', staffId: resolved.staffMember.id });
+  publishStaffUpdate(resolved.staffMember.id, ['attendance', 'notifications'], { reason: 'push-subscription-change' });
 
   return NextResponse.json(publicPayload(null), {
     headers: { 'Cache-Control': 'no-store' },

@@ -9,7 +9,7 @@ import {
   revokeStaffLoginSessions,
 } from '@/lib/clerk-session-revocation';
 import { disableActivePushSubscriptionsForStaff } from '@/lib/push-subscriptions';
-import { publishRealtime } from '@/lib/realtime';
+import { publishRealtime, publishStaffUpdate } from '@/lib/realtime';
 
 export const dynamic = 'force-dynamic';
 
@@ -78,9 +78,8 @@ export async function DELETE(
       reason: 'attendance-device-reset',
     });
 
-    publishRealtime('attendance', 'invalidate', { reason: 'attendance-device-reset', staffId });
+    publishStaffUpdate(staffId, ['attendance', 'notifications'], { reason: 'attendance-device-reset' });
     publishRealtime('dashboard', 'invalidate', { reason: 'attendance-device-reset' });
-    publishRealtime('notifications', 'invalidate', { reason: 'attendance-device-reset', staffId });
 
     return NextResponse.json({
       disabledPushSubscriptions,

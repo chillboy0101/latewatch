@@ -7,9 +7,12 @@ export type RealtimeStatus = 'connecting' | 'live' | 'offline';
 type SubscribeRealtimeOptions = {
   channel: string;
   events: string[];
-  // `data` is what the server published with the event (e.g. which staff member it is about).
+  // `data` is what the server published with the event (e.g. `personal: true` when it is about one
+  // person, whose own channel gets it in full).
   onEvent: (eventName: string, data?: unknown) => void;
   onStatus?: (status: RealtimeStatus) => void;
+  // Where to listen when Ably is unavailable; /api/realtime/<channel> unless given.
+  ssePath?: string;
 };
 
 export async function subscribeRealtimeChannel({
@@ -17,6 +20,7 @@ export async function subscribeRealtimeChannel({
   events,
   onEvent,
   onStatus,
+  ssePath,
 }: SubscribeRealtimeOptions) {
   let closed = false;
   let usingSse = false;
@@ -35,7 +39,7 @@ export async function subscribeRealtimeChannel({
     ablyCleanup?.();
     ablyCleanup = null;
 
-    eventSource = new EventSource(`/api/realtime/${channel}`);
+    eventSource = new EventSource(ssePath ?? `/api/realtime/${channel}`);
 
     const handleConnected = () => setStatus('live');
     const handleError = () => setStatus('offline');

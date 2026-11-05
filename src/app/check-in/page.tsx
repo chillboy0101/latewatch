@@ -23,6 +23,7 @@ import {
   getEnabledReminderToggleConfirmation,
   type ReminderToggleConfirmation,
 } from '@/lib/push-reminder-toggle-confirmation';
+import { OWN_CHANNEL_STREAM_PATH, STAFF_CHANNELS, staffMemberChannel } from '@/lib/realtime-channels';
 import { subscribeRealtimeChannel } from '@/lib/realtime-client';
 import { getIsDarkTheme, subscribeThemeChange } from '@/lib/theme';
 import { ModePicker } from '@/components/theme/mode-picker';
@@ -188,6 +189,13 @@ const SIGN_IN_REMINDER_START_MINUTE = 8 * 60 + 15;
 const SIGN_IN_REMINDER_END_MINUTE = 16 * 60 + 30;
 const SIGN_OUT_REMINDER_START_MINUTE = 16 * 60 + 30;
 const SIGN_OUT_REMINDER_END_MINUTE = 24 * 60;
+
+// An update about one person only says `personal: true` on the shared channels (never whose it
+// is); that person gets it on their own channel. So these are skipped there: one person's sign-out
+// doesn't make every open page reload, and this person's own arrive on their channel.
+function isPersonalUpdate(data: unknown) {
+  return Boolean(data && typeof data === 'object' && (data as { personal?: unknown }).personal === true);
+}
 
 function canSignOut(status: CheckInStatus | null) {
   return Boolean(status?.attendance && !status.attendance.signOutTime && status.time?.slice(0, 5) >= '16:30');
@@ -814,18 +822,8 @@ export default function CheckInPage() {
   const statusAgainRef = useRef(false);
   const pushReminderRequestRef = useRef(0);
   const receiptRequestRef = useRef(0);
-  // This staff member's id, so realtime events about other people can be skipped.
-  const myStaffIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    myStaffIdRef.current = status?.staff?.id ?? null;
-  }, [status?.staff?.id]);
-  // Events name the staff member they are about when they can (check-in, sign-out, payments,
-  // reminder deliveries). Other people's are skipped, so one person's sign-out doesn't make every
-  // open page reload; events about everyone (or no one in particular) still refresh.
-  const isAboutMe = useCallback((data: unknown) => {
-    const staffId = data && typeof data === 'object' ? (data as { staffId?: unknown }).staffId : undefined;
-    return typeof staffId !== 'string' || !myStaffIdRef.current || staffId === myStaffIdRef.current;
-  }, []);
+  // This staff member's own live-update channel (check-in, sign-out, payments, reminders, devices).
+  const myStaffId = status?.staff?.id ?? null;
 
   // One read of the check-in status (fetchStatus decides when to run it).
   const readStatus = useCallback(async (options?: { preserveMessage?: boolean; silent?: boolean }) => {
@@ -1068,10 +1066,10 @@ export default function CheckInPage() {
         channel: 'staff-penalty-history',
         events: ['invalidate'],
         onEvent: (_event, data) => {
-          if (!isAboutMe(data)) return;
+          if (isPersonalUpdate(data)) return;
           void fetchReceiptNotifications();
-          // Only while "You owe" is on screen: this event reaches every staff member's page on
-          // anyone's sign-out or payment, and the menu loads fresh figures each time it opens.
+          // Only while "You owe" is on screen: this event reaches every staff member's page (e.g.
+          // an admin's entries edit), and the menu loads fresh figures each time it opens.
           if (penaltyOnScreenRef.current) void fetchPenaltyHistory({ fresh: true });
         },
       });
@@ -1087,7 +1085,7 @@ export default function CheckInPage() {
       mounted = false;
       cleanup?.();
     };
-  }, [fetchPenaltyHistory, fetchReceiptNotifications, isAboutMe, isLoaded, user]);
+  }, [fetchPenaltyHistory, fetchReceiptNotifications, isLoaded, user]);
 
   // Register the service worker on load so its static-asset cache is active for
   // every visitor (not only those who enable reminders), speeding up repeat and
@@ -1132,7 +1130,7 @@ export default function CheckInPage() {
             channel,
             events: ['invalidate'],
             onEvent: (_event, data) => {
-              if (!isAboutMe(data)) return;
+              if (isPersonalUpdate(data)) return;
               void fetchStatus({ preserveMessage: true, silent: true });
               void fetchPushReminderStatus({ silent: true });
             },
@@ -1151,7 +1149,44 @@ export default function CheckInPage() {
       mounted = false;
       cleanups.forEach((unsubscribe) => unsubscribe());
     };
-  }, [deviceToken, fetchPushReminderStatus, fetchStatus, isAboutMe, isLoaded, user]);
+  }, [deviceToken, fetchPushReminderStatus, fetchStatus, isLoaded, user]);
+
+  // This person's own updates. Each is named after the shared channel it stands for and refreshes
+  // just what an update there would.
+  useEffect(() => {
+    if (!isLoaded || !user || !myStaffId) return;
+
+    let cleanup: (() => void) | undefined;
+    let mounted = true;
+
+    (async () => {
+      const unsubscribe = await subscribeRealtimeChannel({
+        channel: staffMemberChannel(myStaffId),
+        events: [...STAFF_CHANNELS],
+        onEvent: (event) => {
+          if (event === 'staff-penalty-history') {
+            void fetchReceiptNotifications();
+            if (penaltyOnScreenRef.current) void fetchPenaltyHistory({ fresh: true });
+            return;
+          }
+          void fetchStatus({ preserveMessage: true, silent: true });
+          void fetchPushReminderStatus({ silent: true });
+        },
+        ssePath: OWN_CHANNEL_STREAM_PATH,
+      });
+
+      if (mounted) {
+        cleanup = unsubscribe;
+      } else {
+        unsubscribe();
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      cleanup?.();
+    };
+  }, [fetchPenaltyHistory, fetchPushReminderStatus, fetchReceiptNotifications, fetchStatus, isLoaded, myStaffId, user]);
 
   useEffect(() => {
     if (!deviceToken) return;

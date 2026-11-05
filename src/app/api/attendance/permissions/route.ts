@@ -13,7 +13,7 @@ import {
 } from '@/lib/attendance-permissions';
 import { reconcileAttendanceForPermission } from '@/lib/attendance-permission-reconciliation';
 import { writeAuditEvent } from '@/lib/audit';
-import { publishRealtime } from '@/lib/realtime';
+import { publishRealtime, publishStaffUpdate } from '@/lib/realtime';
 import { enforceRole } from '@/lib/auth/roles';
 import { getNonWorkdayLabel } from '@/lib/attendance';
 import { formatPermissionDays, isExcuseOverlapError } from '@/lib/staff-leave';
@@ -309,7 +309,7 @@ export async function POST(request: NextRequest) {
     publishRealtime('attendance', 'invalidate', { reason: 'attendance-permission' });
     publishRealtime('entries', 'invalidate', { reason: 'attendance-permission' });
     publishRealtime('payments', 'invalidate', { reason: 'attendance-permission', staffId });
-    publishRealtime('staff-penalty-history', 'invalidate', { reason: 'attendance-permission', staffId });
+    publishStaffUpdate(staffId, ['staff-penalty-history'], { reason: 'attendance-permission' });
     publishRealtime('audit-trail', 'invalidate', { reason: 'attendance-permission' });
 
     return NextResponse.json({

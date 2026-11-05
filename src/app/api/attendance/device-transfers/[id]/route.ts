@@ -16,7 +16,7 @@ import {
   type StaffSessionRevocationResult,
 } from '@/lib/clerk-session-revocation';
 import { disableActivePushSubscriptionsForStaff } from '@/lib/push-subscriptions';
-import { publishRealtime } from '@/lib/realtime';
+import { publishRealtime, publishStaffUpdate } from '@/lib/realtime';
 
 export const dynamic = 'force-dynamic';
 
@@ -265,10 +265,9 @@ export async function PATCH(
       reason: 'attendance-device-transfer-review',
     });
 
-    publishRealtime('attendance', 'invalidate', { reason: 'attendance-device-transfer-review', staffId: transfer.staffId });
+    publishStaffUpdate(transfer.staffId, ['attendance', 'notifications'], { reason: 'attendance-device-transfer-review' });
     publishRealtime('dashboard', 'invalidate', { reason: 'attendance-device-transfer-review' });
     publishRealtime('audit-trail', 'invalidate', { reason: 'attendance-device-transfer-review' });
-    publishRealtime('notifications', 'invalidate', { reason: 'attendance-device-transfer-review', staffId: transfer.staffId });
 
     return NextResponse.json({
       disabledPushSubscriptions,

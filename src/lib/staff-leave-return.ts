@@ -9,7 +9,7 @@ import {
 } from '@/lib/attendance-lateness-sync';
 import { writeAuditEvent } from '@/lib/audit';
 import { getAccraDateKey } from '@/lib/date-key';
-import { publishRealtime } from '@/lib/realtime';
+import { publishStaffUpdate } from '@/lib/realtime';
 
 const LEAVE_CHANNELS = ['attendance', 'dashboard', 'entries', 'notifications', 'payments', 'staff-penalty-history', 'audit-trail'];
 
@@ -20,7 +20,7 @@ export function nextDateKey(value: string) {
 }
 
 export function publishLeaveChange(reason: string, staffId: string) {
-  for (const channel of LEAVE_CHANNELS) publishRealtime(channel, 'invalidate', { reason, staffId });
+  publishStaffUpdate(staffId, LEAVE_CHANNELS, { reason });
 }
 
 /**

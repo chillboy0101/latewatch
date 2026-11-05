@@ -11,7 +11,7 @@ import { attendanceStatusFor } from '@/lib/manual-attendance-correction';
 import { penaltyFlagsOn } from '@/lib/staff-type';
 import { getStaffTypeChanges } from '@/lib/staff-type-history';
 import { chargesNoSignOut, computePenalty, NO_SHOW_SIGN_IN_AMOUNT, NO_SHOW_SIGN_IN_REASON, NO_SHOW_SIGN_IN_WAIVED_REASON } from '@/lib/penalty-calculator';
-import { publishRealtime } from '@/lib/realtime';
+import { publishRealtime, publishStaffUpdate } from '@/lib/realtime';
 import { getFinanciallyProtectedLeaveEntryIds } from '@/lib/staff-leave-service';
 
 type ActorRef = {
@@ -340,7 +340,7 @@ export async function reconcileAttendanceForPermission(input: {
     publishRealtime('dashboard', 'invalidate', { reason: input.reason });
     publishRealtime('entries', 'invalidate', { reason: input.reason });
     publishRealtime('payments', 'invalidate', { date: input.date, reason: input.reason, staffId: input.staffMember.id });
-    publishRealtime('staff-penalty-history', 'invalidate', { date: input.date, reason: input.reason, staffId: input.staffMember.id });
+    publishStaffUpdate(input.staffMember.id, ['staff-penalty-history'], { date: input.date, reason: input.reason });
     publishRealtime('audit-trail', 'invalidate', { reason: input.reason });
     publishRealtime('notifications', 'invalidate', { reason: input.reason });
   }

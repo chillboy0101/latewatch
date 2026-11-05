@@ -381,7 +381,7 @@ test('an admin can undo a mistaken payment, with a reason that is audited', () =
   assert.doesNotMatch(fs.readFileSync(paymentsApiPath, 'utf8'), /credit/i);
 });
 
-test('staff pages skip realtime events about other people, and loaders keep only the latest reply', () => {
+test('staff pages skip updates about one person on shared channels, and loaders keep only the latest reply', () => {
   const page = fs.readFileSync(path.join(__dirname, '../src/app/check-in/page.tsx'), 'utf8');
   const client = fs.readFileSync(path.join(__dirname, '../src/lib/realtime-client.ts'), 'utf8');
   const receipt = fs.readFileSync(path.join(__dirname, '../src/app/api/attendance/reminders/delivery-receipt/route.ts'), 'utf8');
@@ -389,12 +389,15 @@ test('staff pages skip realtime events about other people, and loaders keep only
   assert.match(client, /onEvent: \(eventName: string, data\?: unknown\) => void;/);
   assert.match(client, /onEvent\(eventName, parseEventData\(\(event as MessageEvent\)\.data\)\)/);
   assert.match(client, /onEvent\(eventName, message\?\.data\)/);
-  // Events about someone else are skipped; events about everyone still refresh.
-  assert.match(page, /return typeof staffId !== 'string' \|\| !myStaffIdRef\.current \|\| staffId === myStaffIdRef\.current;/);
-  assert.equal((page.match(/if \(!isAboutMe\(data\)\) return;/g) || []).length, 2);
-  // Reminder delivery receipts (one per staff member at 8:15 and 4:30) say whose they are.
+  // Updates about one person are skipped on the shared channels (that person gets theirs on their
+  // own channel); updates about everyone still refresh.
+  assert.match(page, /return Boolean\(data && typeof data === 'object' && \(data as \{ personal\?: unknown \}\)\.personal === true\);/);
+  assert.equal((page.match(/if \(isPersonalUpdate\(data\)\) return;/g) || []).length, 2);
+  assert.doesNotMatch(page, /isAboutMe|myStaffIdRef/);
+  // Reminder delivery receipts (one per staff member at 8:15 and 4:30) go to that person's channel.
   assert.match(receipt, /staffId: pushReminderDelivery\.staffId,/);
-  assert.equal((receipt.match(/staffId: delivery\.staffId,/g) || []).length, 2);
+  assert.match(receipt, /publishStaffUpdate\(delivery\.staffId, \['attendance', 'notifications'\], \{/);
+  assert.doesNotMatch(receipt, /staffId: delivery\.staffId/);
   // Latest reply wins for the status, reminder settings and receipts; local writes overtake older requests.
   assert.match(page, /if \(requestId === statusRequestRef\.current\) setStatus\(body\);/);
   assert.match(page, /if \(requestId === pushReminderRequestRef\.current\) setPushReminderStatus\(body\);/);

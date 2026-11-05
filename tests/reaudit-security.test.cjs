@@ -70,9 +70,14 @@ test('staff are matched on the exact address, never by wildcard or name', () => 
 
 test('realtime tokens can only listen; staff only on their own channels', () => {
   const route = read('src', 'app', 'api', 'realtime', 'token', 'route.ts');
+  const channels = read('src', 'lib', 'realtime-channels.ts');
   assert.match(route, /\{ 'latewatch:\*': \['subscribe'\] \}/);
-  assert.match(route, /const STAFF_CHANNELS = \['attendance', 'notifications', 'staff-penalty-history'\];/);
-  assert.match(route, /themeChannelForUser\(user\.id\)/);
+  assert.match(channels, /export const STAFF_CHANNELS = \['attendance', 'notifications', 'staff-penalty-history'\] as const;/);
+  assert.match(route, /const channels: string\[\] = \[\.\.\.STAFF_CHANNELS, themeChannelForUser\(user\.id\)\];/);
+  // Their own updates: the staff record of the signed-in login (the check-in routes' lookup), never one the browser names.
+  assert.match(route, /const member = await getSignedInStaff\(user\)\.catch\(/);
+  assert.match(route, /if \(member\) channels\.push\(staffMemberChannel\(member\.id\)\);/);
+  assert.match(route, /export async function GET\(\) \{/);
   assert.doesNotMatch(route, /'publish'/);
 });
 
@@ -115,5 +120,5 @@ test('a failed reminder is retried for an hour, claimed by one run only, with th
 
 test('a failed live update is caught, so it can never end a request early', () => {
   const source = read('src', 'lib', 'realtime.ts');
-  assert.match(source, /void ablyPublish\(`latewatch:\$\{channel\}`, event, data\)\.catch\(\(error\) => \{\s*console\.warn\('Realtime publish failed:', error\);/);
+  assert.match(source, /void ablyPublish\(`latewatch:\$\{channel\}`, event, sent\)\.catch\(\(error\) => \{\s*console\.warn\('Realtime publish failed:', error\);/);
 });

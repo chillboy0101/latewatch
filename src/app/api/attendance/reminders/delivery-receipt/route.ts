@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { pushReminderDelivery } from '@/db/schema';
-import { publishRealtime } from '@/lib/realtime';
+import { publishStaffUpdate } from '@/lib/realtime';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,17 +38,10 @@ export async function POST(request: NextRequest) {
       .set({ deliveredAt: new Date() })
       .where(eq(pushReminderDelivery.id, deliveryId));
 
-    publishRealtime('attendance', 'invalidate', {
+    publishStaffUpdate(delivery.staffId, ['attendance', 'notifications'], {
       date: delivery.date,
       reason: 'push-reminder-delivered',
       reminderType: delivery.reminderType,
-      staffId: delivery.staffId,
-    });
-    publishRealtime('notifications', 'invalidate', {
-      date: delivery.date,
-      reason: 'push-reminder-delivered',
-      reminderType: delivery.reminderType,
-      staffId: delivery.staffId,
     });
   }
 

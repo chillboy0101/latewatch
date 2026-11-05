@@ -62,7 +62,10 @@ const mocks = {
   '@clerk/nextjs/server': { auth: async () => ({ userId: 'admin' }), currentUser: async () => null },
   '@/lib/auth/roles': { enforceRole: async () => null },
   '@/lib/audit': { writeAuditEvent: async (event) => auditEvents.push(event) },
-  '@/lib/realtime': { publishRealtime: (...event) => realtimeEvents.push(event) },
+  '@/lib/realtime': {
+    publishRealtime: (...event) => realtimeEvents.push(event),
+    publishStaffUpdate: (...event) => realtimeEvents.push(event),
+  },
   '@/lib/attendance': {
     getAccraClock: () => ({ dateKey: '2026-10-17', timeKey: '12:00:00' }),
     getActiveOfficeNetwork: async () => null,

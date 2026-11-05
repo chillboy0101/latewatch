@@ -8,7 +8,7 @@ import { enforceRole } from '@/lib/auth/roles';
 import { getAccraYesterdayKey, shiftDateKey } from '@/lib/date-key';
 import { isIsoDateKey } from '@/lib/date-format';
 import { applyLatenessDebtPardon, previewLatenessDebtPardon } from '@/lib/lateness-debt-pardon';
-import { publishRealtime } from '@/lib/realtime';
+import { publishRealtime, publishStaffUpdate } from '@/lib/realtime';
 
 export const dynamic = 'force-dynamic';
 
@@ -126,9 +126,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'The pardon was recorded but failed verification. Check the audit trail.' }, { status: 500 });
     }
 
-    const payload = { reason: 'lateness-debt-pardon', pardonId: result.id, staffId: target.staffId };
-    for (const channel of ['payments', 'entries', 'staff-penalty-history', 'dashboard', 'notifications', 'audit-trail']) {
-      publishRealtime(channel, 'invalidate', payload);
+    const payload = { reason: 'lateness-debt-pardon', pardonId: result.id };
+    const channels = ['payments', 'entries', 'staff-penalty-history', 'dashboard', 'notifications', 'audit-trail'];
+    if (target.staffId) {
+      publishStaffUpdate(target.staffId, channels, payload);
+    } else {
+      for (const channel of channels) publishRealtime(channel, 'invalidate', payload);
     }
 
     return NextResponse.json({ ...result, cutoffDate: resolved.cutoffDate, staffName: target.staffName });

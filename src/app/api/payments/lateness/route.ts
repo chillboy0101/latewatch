@@ -13,7 +13,7 @@ import {
   summarizeLatenessPaymentsByMonth,
   type LatenessPaymentEntryLike,
 } from '@/lib/lateness-payments';
-import { publishRealtime } from '@/lib/realtime';
+import { publishRealtime, publishStaffUpdate } from '@/lib/realtime';
 import { writeAuditEvent } from '@/lib/audit';
 import { getAccraDateKey } from '@/lib/date-key';
 
@@ -433,7 +433,7 @@ export async function POST(request: NextRequest) {
       weekEnd: paymentWeekEnd,
       weekStart: paymentWeekStart,
     });
-    publishRealtime('staff-penalty-history', 'invalidate', { reason: 'lateness-payment', staffId });
+    publishStaffUpdate(staffId, ['staff-penalty-history'], { reason: 'lateness-payment' });
     publishRealtime('dashboard', 'invalidate', { reason: 'lateness-payment' });
     publishRealtime('audit-trail', 'invalidate', { reason: 'lateness-payment' });
     publishRealtime('notifications', 'invalidate', { reason: 'lateness-payment' });
