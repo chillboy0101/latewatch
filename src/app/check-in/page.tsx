@@ -810,6 +810,8 @@ export default function CheckInPage() {
 
   // Request numbers for "latest reply wins" (see each loader).
   const statusRequestRef = useRef(0);
+  const statusReadsRef = useRef(0);
+  const statusAgainRef = useRef(false);
   const pushReminderRequestRef = useRef(0);
   const receiptRequestRef = useRef(0);
   // This staff member's id, so realtime events about other people can be skipped.
@@ -825,7 +827,8 @@ export default function CheckInPage() {
     return typeof staffId !== 'string' || !myStaffIdRef.current || staffId === myStaffIdRef.current;
   }, []);
 
-  const fetchStatus = useCallback(async (options?: { preserveMessage?: boolean; silent?: boolean }) => {
+  // One read of the check-in status (fetchStatus decides when to run it).
+  const readStatus = useCallback(async (options?: { preserveMessage?: boolean; silent?: boolean }) => {
     if (!deviceToken) return;
     // Latest wins: a reply to an older request (or one overtaken by a check-in) is dropped.
     const requestId = ++statusRequestRef.current;
@@ -861,6 +864,27 @@ export default function CheckInPage() {
       if (!options?.silent) setLoading(false);
     }
   }, [clearMessage, deviceToken, handleSessionInvalidated]);
+
+  const fetchStatus = useCallback(async (options?: { preserveMessage?: boolean; silent?: boolean }) => {
+    if (!deviceToken) return;
+    // A background refresh (the 30-second poll, a live update) while a read is running doesn't
+    // start another: that would make the running read's reply stale, and on a slow connection
+    // every reply could be dropped. It runs once more after the running read instead.
+    if (options?.silent && statusReadsRef.current > 0) {
+      statusAgainRef.current = true;
+      return;
+    }
+    statusReadsRef.current += 1;
+    try {
+      await readStatus(options);
+      while (statusAgainRef.current && statusReadsRef.current === 1) {
+        statusAgainRef.current = false;
+        await readStatus({ preserveMessage: true, silent: true });
+      }
+    } finally {
+      statusReadsRef.current -= 1;
+    }
+  }, [deviceToken, readStatus]);
 
   const fetchPushReminderStatus = useCallback(async (options?: { silent?: boolean }) => {
     if (!isLoaded || !user) return;
@@ -1006,8 +1030,12 @@ export default function CheckInPage() {
       });
     } catch (error) {
       console.warn('Receipt notification could not be dismissed:', error);
+    } finally {
+      // The dismissal dropped any receipts request already running (it could bring back "New"),
+      // so load them again now: a receipt that request was about to show isn't lost.
+      void fetchReceiptNotifications();
     }
-  }, []);
+  }, [fetchReceiptNotifications]);
 
   const openReceiptNotification = useCallback((notification: LatenessPaymentReceiptNotification) => {
     void dismissReceiptNotification(notification.id);

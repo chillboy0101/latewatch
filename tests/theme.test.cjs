@@ -34,11 +34,11 @@ test('theme offers neutral plus a variety of preset colours', () => {
 });
 
 test('every accent, including extreme custom picks, keeps primary buttons readable', () => {
-  const colours = [...THEME_ACCENT_PRESETS.map((preset) => preset.swatch), '#ffffff', '#000000', '#f5e663', '#00ff00'];
+  const colours = [...THEME_ACCENT_PRESETS.map((preset) => preset.swatch), '#ffffff', '#000000', '#f5e663', '#00ff00', '#e0e1e0'];
   for (const colour of colours) {
     const variables = computeAccentVariables(colour);
     // 4.5:1 so small text in the theme colour stays readable (e.g. Amber, Orange, Green).
-    assert.ok(contrast(variables['--brand-light'], '#ffffff') >= 4.4, `${colour} light primary vs page`);
+    assert.ok(contrast(variables['--brand-light'], '#ffffff') >= 4.5, `${colour} light primary vs page`);
     assert.ok(contrast(variables['--brand-dark'], '#0a0a0a') >= 4.4, `${colour} dark primary vs page`);
     assert.ok(contrast(variables['--brand-light'], variables['--brand-light-foreground']) >= 4.4, `${colour} light button text`);
     assert.ok(contrast(variables['--brand-dark'], variables['--brand-dark-foreground']) >= 4.4, `${colour} dark button text`);

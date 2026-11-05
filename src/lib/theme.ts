@@ -96,7 +96,8 @@ export function computeAccentVariables(hex: string) {
   // used for small coloured text (status lines, chips). Very light or very dark picks are nudged
   // rather than used as-is.
   let lightPrimary = base;
-  while (contrast(luminance(lightPrimary), 1) < 4.5 && luminance(lightPrimary) > 0.05) lightPrimary = mix(lightPrimary, black, 0.12);
+  // Checked on the rounded colour the page actually gets (toHex), so rounding can't dip below 4.5.
+  while (contrast(luminance(parse(toHex(lightPrimary))), 1) < 4.5 && luminance(lightPrimary) > 0.05) lightPrimary = mix(lightPrimary, black, 0.12);
   let darkPrimary = mix(base, white, 0.18);
   while (contrast(luminance(darkPrimary), luminance([10, 10, 10])) < 4.5 && luminance(darkPrimary) < 0.95) darkPrimary = mix(darkPrimary, white, 0.15);
 

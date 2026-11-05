@@ -403,3 +403,13 @@ test('staff pages skip realtime events about other people, and loaders keep only
   assert.equal((page.match(/pushReminderRequestRef\.current \+= 1;/g) || []).length, 3);
   assert.match(page, /const dismissReceiptNotification = useCallback\(async \(id: string\) => \{\n\s*receiptRequestRef\.current \+= 1;/);
 });
+
+test('background status refreshes join a running read; a dismissal reloads the receipts', () => {
+  const page = fs.readFileSync(path.join(__dirname, '../src/app/check-in/page.tsx'), 'utf8');
+  // The poll or a live update while a read is running waits and runs once after, so a slow
+  // connection can't have every reply overtaken.
+  assert.match(page, /if \(options\?\.silent && statusReadsRef\.current > 0\) \{\n\s*statusAgainRef\.current = true;\n\s*return;\n\s*\}/);
+  assert.match(page, /while \(statusAgainRef\.current && statusReadsRef\.current === 1\) \{\n\s*statusAgainRef\.current = false;\n\s*await readStatus\(\{ preserveMessage: true, silent: true \}\);/);
+  // A dismissal drops any receipts request already running, then loads them again.
+  assert.match(page, /\} finally \{\n[^\n]*\n[^\n]*\n\s*void fetchReceiptNotifications\(\);\n\s*\}\n\s*\}, \[fetchReceiptNotifications\]\);/);
+});
