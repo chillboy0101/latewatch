@@ -71,6 +71,8 @@ export function ChoiceCard({ back, href, icon, replace, size = 'default', title 
   return (
     <Link
       href={href}
+      // How a tap made while the app is still starting opens it (see early-taps).
+      data-nav={back ? 'back' : replace ? 'replace' : undefined}
       onClick={(event) => {
         if (!isPlainClick(event)) return;
         event.preventDefault();

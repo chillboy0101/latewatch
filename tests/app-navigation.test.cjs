@@ -59,7 +59,8 @@ test("the edge swipe back is the phone's own, and no swipe forward reopens a scr
   // Going back leaves a dead end ahead, and landing on it (iOS's swipe forward) steps straight back.
   assert.match(page, /window\.addEventListener\('popstate', handlePopState\);/);
   const navFile = read('src', 'lib', 'app-nav.ts');
-  assert.match(navFile, /if \(isDeadEndEntry\(\)\) \{\n\s*window\.history\.back\(\);/);
+  assert.match(navFile, /if \(isDeadEndEntry\(\)\) \{\n\s*stepOffDeadEnd\(\);/);
+  assert.match(navFile, /function stepOffDeadEnd\(\) \{\n\s*deadEndSteppingBackAt = performance\.now\(\);\n\s*window\.history\.back\(\);/);
   // A swipe back from the portal home (the first screen) returns straight to it.
   assert.match(navFile, /if \(fromHome && \(index === null \|\| index < currentIndex\)\) window\.history\.forward\(\);/);
   // Going back onto the sign-in page while signed in steps forward again (no second portal home).
@@ -71,7 +72,7 @@ test("the edge swipe back is the phone's own, and no swipe forward reopens a scr
   assert.match(nav, /if \(cameBack\) planDeadEnd\(\);/);
   assert.match(nav, /window\.history\.pushState\(\{ \.\.\.window\.history\.state, \[DEAD_END_STATE\]: true \}, ''\);/);
   // The step back off it waits so iOS keeps a picture of it (else the swipe slides in a white page).
-  assert.match(nav, /if \(isDeadEndEntry\(\)\) window\.history\.back\(\);\n\s*\}, DEAD_END_SNAPSHOT_MS\);/);
+  assert.match(nav, /if \(isDeadEndEntry\(\)\) stepOffDeadEnd\(\);\n\s*\}, DEAD_END_SNAPSHOT_MS\);/);
   assert.match(read('src', 'app', 'layout.tsx'), /<AppPage>\n\s*<AppShell>\{children\}<\/AppShell>\n\s*<\/AppPage>/);
 });
 
@@ -119,4 +120,12 @@ test('a sheet opened while another is closing keeps its place in the history and
   // An open sheet always takes taps, even while the child above it is still sliding away (Radix keeps
   // the parent blocked until the child unmounts; a really open child's backdrop covers the parent).
   assert.match(drawer, /'data-\[state=closed\]:pointer-events-none! data-\[state=open\]:pointer-events-auto!',/);
+});
+
+test('every router navigation, plain links included, is reported to the back-and-forth handling', () => {
+  const instrumentation = read('src', 'instrumentation-client.ts');
+  assert.match(instrumentation, /export function onRouterTransitionStart\(url: string, navigationType: 'push' \| 'replace' \| 'traverse'\) \{\n\s*routerNavigationStarting\(navigationType, url\);/);
+  assert.match(read('src', 'components', 'layout', 'app-page.tsx'), /registerAppRouter\(router\);/);
+  const nav = read('src', 'lib', 'app-nav.ts');
+  assert.match(nav, /if \(navigationType === 'traverse'\) return;\n\s*navigations \+= 1;/);
 });

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { ClerkThemeProvider } from "@/components/auth/clerk-theme-provider";
+import { buildEarlyTapScript } from "@/lib/early-taps";
 import { buildHistoryGuardScript } from "@/lib/history-guard";
 import { buildThemeBootScript } from "@/lib/theme";
 import { VercelInsights } from "@/components/analytics/vercel-insights";
@@ -83,6 +84,7 @@ export const viewport: Viewport = {
 
 const themeScript = buildThemeBootScript();
 const historyGuardScript = buildHistoryGuardScript();
+const earlyTapScript = buildEarlyTapScript();
 
 export default function RootLayout({
   children,
@@ -97,6 +99,7 @@ export default function RootLayout({
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: historyGuardScript }} />
+        <script dangerouslySetInnerHTML={{ __html: earlyTapScript }} />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-full flex flex-col font-sans">

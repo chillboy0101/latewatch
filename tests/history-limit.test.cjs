@@ -86,7 +86,7 @@ test('past Safari\'s history limit an update is skipped instead of breaking the 
   assert.ok(layout.indexOf('__html: historyGuardScript') > layout.indexOf('<head>'));
 });
 
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const { setTimeout: wait } = require('node:timers/promises');
 
 test('every tap opens its screen at once, except a repeat of one still on its way or near Safari\'s limit', async () => {
   const savedWindow = global.window;
@@ -114,7 +114,12 @@ test('every tap opens its screen at once, except a repeat of one still on its wa
   try {
     const nav = require(path.join(root, 'src', 'lib', 'app-nav.ts'));
     const opened = [];
-    const router = { push: (href) => opened.push(href), replace: (href) => opened.push(`replace ${href}`) };
+    // Like Next.js, the router reports each navigation as it starts (instrumentation-client.ts).
+    const router = {
+      push: (href) => { nav.routerNavigationStarting('push'); opened.push(href); },
+      replace: (href) => { nav.routerNavigationStarting('replace'); opened.push(`replace ${href}`); },
+    };
+    nav.registerAppRouter(router);
     // The router lands a screen: its entry, then AppPage records it.
     const land = (pathname, state = {}) => {
       history.state = state;
@@ -150,13 +155,25 @@ test('every tap opens its screen at once, except a repeat of one still on its wa
     await wait(600);
     assert.deepEqual(log, []);
 
-    // Staying put: the dead end goes in after a moment, and steps back once iOS has its picture.
+    // Staying put: the dead end goes in after a moment (also when the history moved meanwhile and came
+    // back to this screen), and steps back once iOS has its picture.
     nav.navigateBack(router, '/');
     land('/', homeEntry);
+    nav.handlePopState();
     await wait(560);
     assert.deepEqual(log, ['back', 'push dead end']);
     await wait(320);
     assert.deepEqual(log, ['back', 'push dead end', 'back']);
+    // Until that step back lands, a tap opens nothing (Next.js would drop its screen when the step
+    // back lands); once it has landed, taps go straight through.
+    const openedBeforeLanding = opened.length;
+    nav.navigateForward(router, '/dashboard');
+    assert.equal(opened.length, openedBeforeLanding);
+    assert.equal(ignored('dead end stepping back'), 1);
+    history.state = homeEntry;
+    nav.handlePopState();
+    nav.navigateForward(router, '/dashboard');
+    assert.equal(opened.length, openedBeforeLanding + 1);
 
     // A tap while the dead end is still up opens its screen, and the step back is dropped, so it
     // can't undo the new screen.
@@ -179,10 +196,44 @@ test('every tap opens its screen at once, except a repeat of one still on its wa
     land('/', homeEntry);
     nav.navigateReplace(router, '/check-in');
     land('/check-in');
+    const checkInEntry = history.state;
     await wait(560);
     assert.deepEqual(log, ['back', 'push dead end']);
     await wait(320);
+    assert.deepEqual(log, ['back', 'push dead end', 'back']);
+    history.state = checkInEntry;
+    nav.handlePopState();
     land('/check-in');
+
+    // A plain link (the admin sidebar) clicked soon after going back, whose page is slow to come:
+    // Next.js reports it as it starts, so the dead end planned for the screen being left never goes
+    // in, and no step back lands on the new page and undoes it.
+    log.length = 0;
+    land('/dashboard');
+    nav.navigateBack(router, '/');
+    land('/check-in', checkInEntry);
+    nav.routerNavigationStarting('push');
+    await wait(900);
+    assert.deepEqual(log, ['back']);
+    land('/staff');
+
+    // A plain link followed in the moment the step back off a dead end is on its way: the step back
+    // lands after it and Next.js drops it, so it is sent again once the step back has landed.
+    log.length = 0;
+    nav.navigateBack(router, '/');
+    land('/check-in', checkInEntry);
+    await wait(560);
+    assert.deepEqual(log, ['back', 'push dead end']);
+    await wait(320);
+    assert.deepEqual(log, ['back', 'push dead end', 'back']);
+    const sentBefore = opened.length;
+    nav.routerNavigationStarting('push', '/payments');
+    history.state = checkInEntry;
+    nav.handlePopState();
+    await wait(5);
+    assert.deepEqual(opened.slice(sentBefore), ['/payments']);
+    assert.ok(nav.navigationTrail().some((step) => step.endsWith('/payments sent again (dropped by the step back)')));
+    land('/payments');
 
     // Near Safari's limit a tap opens nothing; once older updates have dropped out, taps work again.
     recentUpdates = 92;
@@ -198,6 +249,11 @@ test('every tap opens its screen at once, except a repeat of one still on its wa
     await wait(1010);
     nav.navigateForward(router, '/check-in');
     assert.equal(opened.at(-1), '/check-in');
+
+    // Nor does one dropped on its way: when the history moves, Next.js gives up the navigation.
+    nav.handlePopState();
+    nav.navigateForward(router, '/dashboard');
+    assert.equal(opened.at(-1), '/dashboard');
   } finally {
     // Back's same-screen watch stops listening a few seconds later: leave it a window to do that on.
     global.window = savedWindow ?? { clearTimeout, removeEventListener() {} };
