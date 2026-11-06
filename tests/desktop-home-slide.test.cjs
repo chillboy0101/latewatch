@@ -160,16 +160,27 @@ test('a newer slide is finished by its own screen, even after an older, slow one
     window.location.pathname = pathname;
     nav.recordPathname(pathname);
   };
+  // Each slide's 1.5 s give-up is held and fired by hand, so the order below is exact on any machine.
+  const giveUps = [];
+  const later = window.setTimeout;
+  window.setTimeout = (callback, ms) => {
+    if (ms !== 1500) return later(callback, ms);
+    giveUps.push(callback);
+    return later(() => {}, 0);
+  };
   land('/', null);
-  // Slide A: its screen is slow and never comes. After a second taps go through again, so slide B
-  // starts; A gives up at 1.5 s, just before B's screen lands.
+  // Slide A: its screen is slow and never comes. After a second taps go through again (real time:
+  // the hold reads the clock), so slide B starts.
   nav.navigateForward(router, '/dashboard');
   await wait(1050);
   nav.navigateForward(router, '/check-in');
-  await wait(520);
-  land('/check-in');
   await tick();
   assert.equal(slides.length, 2);
-  // B finishes as its screen lands (not held until its own 1.5 s give-up).
+  assert.equal(giveUps.length, 2);
+  // A gives up while B is still on its way; then B's screen lands.
+  giveUps[0]();
+  land('/check-in');
+  await tick();
+  // B finishes as its screen lands (not held until its own give-up).
   assert.equal(slides[1].settled, true);
 }));
