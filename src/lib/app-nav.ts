@@ -302,7 +302,9 @@ export function slideTo(direction: NavDirection, navigate: () => void) {
     // The new screen is slow to come: no slide (it would slide the old screen over itself); the
     // new one just appears when it is ready.
     const timer = window.setTimeout(() => {
-      finishSlide = null;
+      // Only this slide's own finish: a newer slide (a tap allowed after NAV_SETTLE_MAX_MS) may
+      // have set its own meanwhile, which its screen landing must still run.
+      if (finishSlide === done) finishSlide = null;
       transition.skipTransition();
       resolve();
     }, NAV_EASE_WAIT_MS);
