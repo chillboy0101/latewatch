@@ -4,6 +4,7 @@
 import { type FocusEvent, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { isPlainClick, useAppNavigation } from '@/lib/app-nav';
 import { LateWatchMark } from '@/components/brand/latewatch-logo';
 import { cn } from '@/lib/utils';
 import {
@@ -64,6 +65,7 @@ function isSidebarMode(value: string | null): value is SidebarMode {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const appNavigation = useAppNavigation();
   const activeNavigation = navigationLeaves
     .filter((item) => pathname === item.href || pathname?.startsWith(`${item.href}/`))
     .sort((a, b) => b.href.length - a.href.length)[0];
@@ -327,6 +329,12 @@ export function Sidebar() {
             href="/"
             aria-label="Main Portal"
             title="Main Portal"
+            // Slides back to the portal home, the way it slid out when Admin Portal was opened.
+            onClick={(event) => {
+              if (!isPlainClick(event)) return;
+              event.preventDefault();
+              appNavigation.home();
+            }}
             className={cn(
               itemClassName,
               'text-muted hover:bg-background hover:text-foreground',
