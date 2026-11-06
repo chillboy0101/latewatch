@@ -377,11 +377,28 @@ export function isPlainClick(event: { button: number; metaKey: boolean; ctrlKey:
   return !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 }
 
+/**
+ * To the portal home from anywhere (the admin portal's Main Portal), sliding back to it: the way the
+ * portal home slid out when the admin portal opened. A step back when it is the screen before this
+ * one; otherwise a new entry, which starts the stack afresh like every arrival on the portal home
+ * (recordPathname).
+ */
+export function navigateHome(router: Router) {
+  if (currentStack.at(-2) === '/') {
+    navigateBack(router, '/');
+    return;
+  }
+  if (cannotNavigateNow(true)) return;
+  note('open / (home)');
+  slideTo('back', () => router.push('/'));
+}
+
 export function useAppNavigation() {
   const router = useRouter();
   return useMemo(() => ({
     back: (fallbackHref: string) => navigateBack(router, fallbackHref),
     forward: (href: string) => navigateForward(router, href),
+    home: () => navigateHome(router),
     replace: (href: string) => navigateReplace(router, href),
   }), [router]);
 }
