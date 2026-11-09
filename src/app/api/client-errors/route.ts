@@ -1,5 +1,6 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { allowRequest } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,6 +8,8 @@ const text = (value: unknown, max: number) => (typeof value === 'string' ? value
 
 // A report is a few KB (the browser caps every field); anything much bigger isn't one.
 const MAX_REPORT_BYTES = 16_384;
+// A broken screen reports once or twice; a page reports the history limit once.
+const MAX_REPORTS_PER_MINUTE = 10;
 
 // Reads the body, giving up as soon as it passes the limit (null), so nothing big is parsed.
 async function readSmallBody(request: Request) {
@@ -35,8 +38,8 @@ async function readSmallBody(request: Request) {
 }
 
 // A screen broke in someone's browser (app/global-error): log what happened so it can be fixed.
-// Only signed-in staff get here (the proxy guards /api), and every field is capped so a report
-// can't flood the log.
+// Only signed-in staff get here (the proxy guards /api), every field is capped, and each account
+// may send only a few a minute, so reports can't flood the log.
 export async function POST(request: NextRequest) {
   const raw = await readSmallBody(request).catch(() => null);
   if (raw === null) return new NextResponse(null, { status: 413 });
@@ -50,6 +53,10 @@ export async function POST(request: NextRequest) {
 
   const report = body as Record<string, unknown>;
   const { userId } = await auth();
+  const limit = await allowRequest(`client-errors:${userId ?? 'signed-out'}`, MAX_REPORTS_PER_MINUTE, 60);
+  if (!limit.allowed) {
+    return new NextResponse(null, { headers: { 'Retry-After': String(limit.retryAfterSeconds) }, status: 429 });
+  }
   console.error('[client-error]', JSON.stringify({
     digest: text(report.digest, 80),
     historyLength: typeof report.historyLength === 'number' ? report.historyLength : undefined,

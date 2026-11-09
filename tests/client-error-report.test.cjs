@@ -98,7 +98,15 @@ test('navigation steps are kept for a crash report', () => {
 
 test('crash reports are logged for signed-in staff, every field capped, big bodies refused', async () => {
   const logged = [];
+  const limitKeys = [];
+  let allowed = true;
   const { POST } = loadWithMocks('src/app/api/client-errors/route.ts', {
+    '@/lib/rate-limit': {
+      allowRequest: async (key, limit, windowSeconds) => {
+        limitKeys.push([key, limit, windowSeconds]);
+        return allowed ? { allowed: true, retryAfterSeconds: 0 } : { allowed: false, retryAfterSeconds: 42 };
+      },
+    },
     '@clerk/nextjs/server': { auth: async () => ({ userId: 'user_1' }) },
   });
   const originalError = console.error;
@@ -133,6 +141,14 @@ test('crash reports are logged for signed-in staff, every field capped, big bodi
     // Far bigger than any report: refused before it is parsed, by declared size or by the bytes sent.
     assert.equal((await POST(request(JSON.stringify({ message: 'x'.repeat(20000) })))).status, 413);
     assert.equal((await POST(request('{}', { 'content-length': '999999' }))).status, 413);
+    assert.equal(logged.length, 1);
+
+    // Each account may send only a few a minute: past that a report is turned away, unlogged.
+    assert.deepEqual(limitKeys, [['client-errors:user_1', 10, 60]]);
+    allowed = false;
+    const limited = await POST(request(JSON.stringify({ message: 'again' })));
+    assert.equal(limited.status, 429);
+    assert.equal(limited.headers.get('retry-after'), '42');
     assert.equal(logged.length, 1);
   } finally {
     console.error = originalError;
