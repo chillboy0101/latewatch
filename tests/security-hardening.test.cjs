@@ -27,9 +27,18 @@ test('every response carries the security headers', async () => {
 });
 
 test('nothing with staff records is served as a public file', () => {
-  // Everything in public/ can be downloaded by anyone, signed in or not.
-  const files = fs.readdirSync(path.join(root, 'public'));
-  assert.deepEqual(files.filter((file) => /\.(xlsx?|csv|json|pdf)$/i.test(file)), []);
+  // Everything in public/, at any depth, can be downloaded by anyone, signed in or not.
+  const files = fs.readdirSync(path.join(root, 'public'), { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => path.relative(path.join(root, 'public'), path.join(entry.parentPath, entry.name)));
+  assert.ok(files.includes('sw.js'), 'the scan reads public/');
+  // Spreadsheets and documents of any common kind, data files and archives.
+  const records = /\.(xl[a-z]{1,2}|ods|numbers|csv|tsv|json|pdf|docx?|odt|sql|zip|gz)$/i;
+  assert.deepEqual(files.filter((file) => records.test(file)), []);
+  for (const name of ['book.xlsx', 'book.xls', 'book.xlsm', 'book.xlsb', 'book.ods', 'rows.csv', 'dump.json', 'list.pdf', 'reports/book.XLSX']) {
+    assert.ok(records.test(name), name);
+  }
+  for (const name of ['sw.js', 'latewatch-logo.png', 'file.svg']) assert.ok(!records.test(name), name);
 });
 
 test('cron endpoints accept only the exact secret, compared in constant time', () => {

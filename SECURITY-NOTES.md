@@ -45,8 +45,12 @@ change that would break all Excel exports).
   `X-Content-Type-Options: nosniff`, `Referrer-Policy`, and a
   `Permissions-Policy` that leaves location to LateWatch's own pages and
   turns camera, microphone and payment off.
-- **Nothing sensitive in `public/`**: every file there is downloadable by
-  anyone. A test fails if a spreadsheet, CSV, JSON or PDF is added.
+- **Nothing sensitive in `public/`**: every file there, at any depth, is
+  downloadable by anyone. A test fails if a spreadsheet, document, data
+  file or archive is added. The test only guards what the site serves:
+  a file removed from the tree stays in Git history, and anything tracked
+  in the repository is readable by whoever can read the repository, so
+  the repository must stay private while it holds real records.
 - **Cron secret** compared in constant time (`reminder-cron-guard.ts`).
 - **Crash reports** (`/api/client-errors`) are size-capped and limited to
   10 a minute per account.
