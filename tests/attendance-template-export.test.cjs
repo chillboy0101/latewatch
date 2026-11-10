@@ -252,7 +252,7 @@ test('daily attendance summary aggregates duplicate remark reasons', async () =>
       displayOrder: 1,
       fullName: 'TRAINING ONE',
       id: 'training-one',
-      staffNo: 'GRA100001',
+      staffNo: 'GRA000101',
     },
     {
       ...baseStaff[1],
@@ -260,7 +260,7 @@ test('daily attendance summary aggregates duplicate remark reasons', async () =>
       displayOrder: 2,
       fullName: 'TRAINING TWO',
       id: 'training-two',
-      staffNo: 'GRA100002',
+      staffNo: 'GRA000102',
     },
   ];
   const workbook = await workbookFor({

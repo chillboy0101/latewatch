@@ -396,14 +396,14 @@ test('attendance reminder notification titles include the staff first name', () 
   const { reminderCopy } = require(pushReminderLibPath);
   Module._load = originalLoad;
 
-  assert.equal(reminderCopy('sign_in', 'CARL CHRISTIAN QUIST').title, 'Carl, time to sign in');
-  assert.equal(reminderCopy('sign_in', 'CARL CHRISTIAN QUIST').requireInteraction, true);
-  assert.equal(reminderCopy('sign_in', 'CARL CHRISTIAN QUIST').renotify, true);
-  assert.equal(reminderCopy('sign_out', 'CARL CHRISTIAN QUIST').title, 'Carl, time to sign out');
-  assert.equal(reminderCopy('sign_out', 'CARL CHRISTIAN QUIST').requireInteraction, true);
-  assert.equal(reminderCopy('sign_out', 'CARL CHRISTIAN QUIST').renotify, true);
-  assert.equal(reminderCopy('holiday', 'CARL CHRISTIAN QUIST', { holidayName: 'Christmas Day' }).title, 'Carl, no check-in required on Holidays');
-  assert.equal(reminderCopy('holiday', 'CARL CHRISTIAN QUIST', { holidayName: 'Christmas Day' }).body, 'Today is Christmas Day. No check-in is required.');
+  assert.equal(reminderCopy('sign_in', 'KOFI EXAMPLE PERSON').title, 'Kofi, time to sign in');
+  assert.equal(reminderCopy('sign_in', 'KOFI EXAMPLE PERSON').requireInteraction, true);
+  assert.equal(reminderCopy('sign_in', 'KOFI EXAMPLE PERSON').renotify, true);
+  assert.equal(reminderCopy('sign_out', 'KOFI EXAMPLE PERSON').title, 'Kofi, time to sign out');
+  assert.equal(reminderCopy('sign_out', 'KOFI EXAMPLE PERSON').requireInteraction, true);
+  assert.equal(reminderCopy('sign_out', 'KOFI EXAMPLE PERSON').renotify, true);
+  assert.equal(reminderCopy('holiday', 'KOFI EXAMPLE PERSON', { holidayName: 'Christmas Day' }).title, 'Kofi, no check-in required on Holidays');
+  assert.equal(reminderCopy('holiday', 'KOFI EXAMPLE PERSON', { holidayName: 'Christmas Day' }).body, 'Today is Christmas Day. No check-in is required.');
   assert.equal(reminderCopy('sign_in', '').title, 'Time to sign in');
 });
 

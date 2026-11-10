@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { createHash, timingSafeEqual } from 'node:crypto';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { getAccraClock } from '@/lib/attendance';
@@ -62,6 +63,18 @@ function noStoreJson(body: Record<string, unknown>, status: number) {
   });
 }
 
+// The caller knows CRON_SECRET. Compared in constant time (on hashes, so lengths match), so how
+// long a wrong guess takes says nothing about how much of it was right.
+function hasCronSecret(request: Pick<NextRequest, 'headers'>) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) return false;
+  const digest = (value: string) => createHash('sha256').update(value).digest();
+  return timingSafeEqual(
+    digest(request.headers.get('authorization') ?? ''),
+    digest(`Bearer ${cronSecret}`),
+  );
+}
+
 function minutesSinceMidnight(timeKey: string) {
   const [hour = '0', minute = '0'] = timeKey.split(':');
   return Number(hour) * 60 + Number(minute);
@@ -84,10 +97,7 @@ export function validateReminderCronRequest(
   request: Pick<NextRequest, 'headers'>,
   schedule: ReminderCronSchedule,
 ): ReminderCronGuardResult {
-  const cronSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get('authorization');
-
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+  if (!hasCronSecret(request)) {
     return {
       ok: false,
       response: noStoreJson({ error: 'Unauthorized' }, 401),
@@ -141,10 +151,7 @@ export function reminderCronSource(request: Pick<NextRequest, 'headers'>): 'verc
 }
 
 export function validateReminderCronAuth(request: Pick<NextRequest, 'headers'>): ReminderCronGuardResult {
-  const cronSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get('authorization');
-
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+  if (!hasCronSecret(request)) {
     return {
       ok: false,
       response: noStoreJson({ error: 'Unauthorized' }, 401),

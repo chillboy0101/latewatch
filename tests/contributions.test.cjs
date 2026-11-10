@@ -25,20 +25,20 @@ const contributionSections = [
   {
     displayOrder: 1,
     entries: [
-      { amount: '200.00', contributorName: 'Charles Dogbatse', displayOrder: 1, id: 'e1', note: null },
-      { amount: '100.00', contributorName: 'Esther Adjorkor Adjei', displayOrder: 2, id: 'e2', note: null },
+      { amount: '200.00', contributorName: 'Kofi Example', displayOrder: 1, id: 'e1', note: null },
+      { amount: '100.00', contributorName: 'Ama Sample Person', displayOrder: 2, id: 'e2', note: null },
     ],
     id: 's1',
-    title: "WISDOM'S CONTRIBUTION",
+    title: "FIRST COLLEAGUE'S CONTRIBUTION",
     totalAmount: '300.00',
   },
   {
     displayOrder: 2,
     entries: [
-      { amount: '100.00', contributorName: 'Claude Kwasi Boadi', displayOrder: 1, id: 'e3', note: 'to be reimbursed' },
+      { amount: '100.00', contributorName: 'Yaw Test Person', displayOrder: 1, id: 'e3', note: 'to be reimbursed' },
     ],
     id: 's2',
-    title: "RAPHAEL'S CONTRIBUTION",
+    title: "SECOND COLLEAGUE'S CONTRIBUTION",
     totalAmount: '100.00',
   },
 ];
@@ -62,11 +62,11 @@ test('contributions schema, migration, and seed repair are defined', () => {
   assert.match(schemaSource, /amount: decimal\('amount'/);
   assert.match(migrationSource, /CREATE TABLE IF NOT EXISTS contribution_section/);
   assert.match(migrationSource, /CREATE TABLE IF NOT EXISTS contribution_entry/);
-  assert.match(migrationSource, /WISDOM'S CONTRIBUTION/);
-  assert.match(migrationSource, /RAPHAEL'S CONTRIBUTION/);
-  assert.match(migrationSource, /MADAM SOPHIA'S CONTRIBUTION/);
   assert.match(seedMigrationSource, /CREATE TABLE IF NOT EXISTS contribution_section/);
-  assert.match(seedMigrationSource, /MADAM SOPHIA'S CONTRIBUTION/);
+  assert.match(seedMigrationSource, /CREATE TABLE IF NOT EXISTS contribution_entry/);
+  // Tables only: who contributed what lives in the database, never in the repository.
+  assert.doesNotMatch(migrationSource, /INSERT INTO contribution_/);
+  assert.doesNotMatch(seedMigrationSource, /INSERT INTO contribution_/);
 });
 
 test('contributions page and API expose database CRUD and export wiring', () => {
@@ -133,16 +133,16 @@ test('contribution export workbook preserves sections, totals, and notes', async
   const sheet = workbook.getWorksheet('2026 CONTRIBUTIONS');
 
   assert.ok(sheet);
-  assert.equal(sheet.getCell('B2').value, "WISDOM'S CONTRIBUTION");
+  assert.equal(sheet.getCell('B2').value, "FIRST COLLEAGUE'S CONTRIBUTION");
   assert.equal(sheet.getCell('A4').value, 'No.');
   assert.equal(sheet.getCell('B4').value, 'Name');
   assert.equal(sheet.getCell('C4').value, 'Amount');
   assert.equal(sheet.getCell('A6').value, 1);
-  assert.equal(sheet.getCell('B6').value, 'Charles Dogbatse');
+  assert.equal(sheet.getCell('B6').value, 'Kofi Example');
   assert.equal(sheet.getCell('C6').value, 200);
   assert.equal(sheet.getCell('B9').value, 'TOTAL');
   assert.deepEqual(sheet.getCell('C9').value, { formula: 'SUM(C6:C7)' });
-  assert.equal(sheet.getCell('B13').value, "RAPHAEL'S CONTRIBUTION");
+  assert.equal(sheet.getCell('B13').value, "SECOND COLLEAGUE'S CONTRIBUTION");
   assert.equal(sheet.getCell('D17').value, 'to be reimbursed');
 });
 

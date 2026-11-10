@@ -489,7 +489,7 @@ test('offence book export keeps current closing balance calculated when saved cl
 });
 
 test('offence book staff name columns are wide enough for full names without styling the main table', async () => {
-  const longName = 'DENNIS AKUETTEH ARYEETEY';
+  const longName = 'KWABENA EXAMPLE SURNAMES';
   const workbook = await buildWorkbookWithStaff([{ fullName: longName, id: 'staff-long-name' }]);
   const sheet = workbook.getWorksheet('MAY 2026');
 
