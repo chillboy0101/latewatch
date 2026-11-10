@@ -71,7 +71,7 @@ function resetFixture() {
   fixture.staff = [
     {
       id: 'staff-1',
-      fullName: 'CARL CHRISTIAN QUIST',
+      fullName: 'KOFI EXAMPLE PERSON',
       active: true,
       archived: false,
       isAttendanceOnly: false,
@@ -378,7 +378,7 @@ test('Entries POST preserves rows with payment allocations for financial review'
   }));
 
   assert.equal(response.status, 409);
-  assert.match((await response.json()).error, /^CARL CHRISTIAN QUIST: this day is already paid or pardoned, so it can't be changed. Nothing was saved.$/);
+  assert.match((await response.json()).error, /^KOFI EXAMPLE PERSON: this day is already paid or pardoned, so it can't be changed. Nothing was saved.$/);
   assert.equal(fixture.latenessEntry[0].computedAmount, '10.00');
   assert.equal(fixture.attendanceRecord[0].checkInTime, '09:12:00');
 });
@@ -435,7 +435,7 @@ test('saving a corrected lateness entry also updates the linked attendance recor
   assert.equal(response.status, 200);
   const responseBody = await response.json();
   assert.equal(responseBody.changedStaffCount, 1);
-  assert.deepEqual(responseBody.changedStaffNames, ['CARL CHRISTIAN QUIST']);
+  assert.deepEqual(responseBody.changedStaffNames, ['KOFI EXAMPLE PERSON']);
   assert.equal(fixture.latenessEntry.length, 0);
   assert.equal(fixture.attendanceRecord[0].checkInTime, '08:05');
   assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');
@@ -493,7 +493,7 @@ test('saving attendance and lateness changes for one staff reports that staff on
   assert.equal(response.status, 200);
   const responseBody = await response.json();
   assert.equal(responseBody.changedStaffCount, 1);
-  assert.deepEqual(responseBody.changedStaffNames, ['CARL CHRISTIAN QUIST']);
+  assert.deepEqual(responseBody.changedStaffNames, ['KOFI EXAMPLE PERSON']);
   assert.equal(responseBody.attendanceCount, 1);
   assert.equal(responseBody.count, 1);
 });
@@ -782,7 +782,7 @@ test('saving entries creates a manual attendance check-in when staff has no atte
   const responseBody = await response.json();
   assert.equal(responseBody.attendanceCount, 1);
   assert.equal(responseBody.changedStaffCount, 1);
-  assert.deepEqual(responseBody.changedStaffNames, ['CARL CHRISTIAN QUIST']);
+  assert.deepEqual(responseBody.changedStaffNames, ['KOFI EXAMPLE PERSON']);
   assert.equal(fixture.attendanceRecord.length, 1);
   assert.equal(fixture.attendanceRecord[0].checkInTime, '08:05');
   assert.equal(fixture.attendanceRecord[0].computedAmount, '0.00');

@@ -892,16 +892,16 @@ interface TemplateMapping {
 │ │          │  ┌─────────────────────────────────────────────────────────┐ │
 │ │          │  │ Name              │ Department │ Unit   │ Status│Actions│ │
 │ │          │  ├───────────────────┼────────────┼────────┼───────┼───────┤ │
-│ │          │  │ Charles Dodgatse  │ Finance    │ Revenue│ Active│ ⋮     │ │
-│ │          │  │ Eyram Mensah      │ Operations │ Field  │ Active│ ⋮     │ │
-│ │          │  │ Anna-Lisa Hammond │ HR         │ Admin  │ Active│ ⋮     │ │
-│ │          │  │ Claude Boadi      │ IT         │ Dev    │ Active│ ⋮     │ │
-│ │          │  │ Eunice Adu        │ Finance    │ Audit  │ Active│ ⋮     │ │
-│ │          │  │ Esther Adjekor    │ Operations │ Field  │ Active│ ⋮     │ │
-│ │          │  │ Raphael Mensah    │ IT         │ Dev    │ Active│ ⋮     │ │
-│ │          │  │ Dennis Aryeetey   │ HR         │ Admin  │ Active│ ⋮     │ │
-│ │          │  │ Daniel Kwarteng   │ Finance    │ Revenue│ Active│ ⋮     │ │
-│ │          │  │ Wisdom Datsomor   │ IT         │ Dev    │ Active│ ⋮     │ │
+│ │          │  │ Staff A           │ Finance    │ Revenue│ Active│ ⋮     │ │
+│ │          │  │ Staff B           │ Operations │ Field  │ Active│ ⋮     │ │
+│ │          │  │ Staff C           │ HR         │ Admin  │ Active│ ⋮     │ │
+│ │          │  │ Staff D           │ IT         │ Dev    │ Active│ ⋮     │ │
+│ │          │  │ Staff E           │ Finance    │ Audit  │ Active│ ⋮     │ │
+│ │          │  │ Staff F           │ Operations │ Field  │ Active│ ⋮     │ │
+│ │          │  │ Staff G           │ IT         │ Dev    │ Active│ ⋮     │ │
+│ │          │  │ Staff H           │ HR         │ Admin  │ Active│ ⋮     │ │
+│ │          │  │ Staff I           │ Finance    │ Revenue│ Active│ ⋮     │ │
+│ │          │  │ Staff J           │ IT         │ Dev    │ Active│ ⋮     │ │
 │ │          │  └─────────────────────────────────────────────────────────┘ │
 │ │          │                                                               │
 │ │          │  Showing 1-10 of 47 staff              [< 1  2  3  4  5  >]  │
@@ -949,16 +949,16 @@ interface TemplateMapping {
 │ │          │  ┌─────────────────────────────────────────────────────────┐ │
 │ │          │  │ # │ Name              │ Time   │ Amount│ Reason       │⏹│ │
 │ │          │  ├───┼───────────────────┼────────┼───────┼──────────────┼──┤ │
-│ │          │  │ 1 │ Charles Dodgatse  │[09:15] │ GHC 10 │ DIDN'T COME..│□ │ │
-│ │          │  │ 2 │ Eyram Mensah      │[08:45] │ GHC 0  │ —            │□ │ │
-│ │          │  │ 3 │ Anna-Lisa Hammond │[    ]  │ GHC 2  │ DID NOT SIGN │☑ │ │
-│ │          │  │ 4 │ Claude Boadi      │[10:30] │ GHC 15 │ DIDN'T COME..│□ │ │
-│ │          │  │ 5 │ Eunice Adu        │[08:20] │ GHC 0  │ —            │□ │ │
-│ │          │  │ 6 │ Esther Adjekor   │[09:00] │ GHC 10 │ DIDN'T COME..│□ │ │
-│ │          │  │ 7 │ Raphael Mensah   │[    ]  │ GHC 0  │ —            │□ │ │
-│ │          │  │ 8 │ Dennis Aryeetey  │[11:45] │ GHC 20 │ DIDN'T COME..│□ │ │
-│ │          │  │ 9 │ Daniel Kwarteng  │[08:55] │ GHC 10 │ DIDN'T COME..│□ │ │
-│ │          │  │10 │ Wisdom Datsomor   │[08:10] │ GHC 0  │ —            │□ │ │
+│ │          │  │ 1 │ Staff A           │[09:15] │ GHC 10 │ DIDN'T COME..│□ │ │
+│ │          │  │ 2 │ Staff B           │[08:45] │ GHC 0  │ —            │□ │ │
+│ │          │  │ 3 │ Staff C           │[    ]  │ GHC 2  │ DID NOT SIGN │☑ │ │
+│ │          │  │ 4 │ Staff D           │[10:30] │ GHC 15 │ DIDN'T COME..│□ │ │
+│ │          │  │ 5 │ Staff E           │[08:20] │ GHC 0  │ —            │□ │ │
+│ │          │  │ 6 │ Staff F          │[09:00] │ GHC 10 │ DIDN'T COME..│□ │ │
+│ │          │  │ 7 │ Staff G          │[    ]  │ GHC 0  │ —            │□ │ │
+│ │          │  │ 8 │ Staff H          │[11:45] │ GHC 20 │ DIDN'T COME..│□ │ │
+│ │          │  │ 9 │ Staff I          │[08:55] │ GHC 10 │ DIDN'T COME..│□ │ │
+│ │          │  │10 │ Staff J           │[08:10] │ GHC 0  │ —            │□ │ │
 │ │          │  └─────────────────────────────────────────────────────────┘ │
 │ │          │                                                               │
 │ │          │  ┌─────────────────────────────────────────────────────────┐ │
@@ -1039,7 +1039,7 @@ interface TemplateMapping {
 │ │          │  ┌─────────────────────────────────────────────────────────┐ │
 │ │          │  │              TEMPLATE MANAGEMENT (Admin)                │ │
 │ │          │  │                                                         │ │
-│ │          │  │  Active Template: LATENESS BOOK MARCH 2026.xlsx (v1)   │ │
+│ │          │  │  Active Template: LATENESS BOOK TEMPLATE.xlsx (v1)      │ │
 │ │          │  │  Last Updated: 2026-03-01 by admin@company.com         │ │
 │ │          │  │                                                         │ │
 │ │          │  │  [📤 Upload New Template]                                │ │
@@ -1192,8 +1192,8 @@ interface TemplateMapping {
 │  │                                                                       │ │
 │  │  Recent                                                               │ │
 │  │  ───────────────────────────────────────────────────────────────     │ │
-│  │  👤  Charles Dodgatse                         →                       │ │
-│  │  👤  Eyram Mensah                             →                       │ │
+│  │  👤  Staff A                                  →                       │ │
+│  │  👤  Staff B                                  →                       │ │
 │  │                                                                       │ │
 │  └──────────────────────────────────────────────────────────────────────┘ │
 │                                                                            │

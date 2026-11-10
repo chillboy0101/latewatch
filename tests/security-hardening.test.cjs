@@ -1,9 +1,11 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const Module = require('node:module');
 const path = require('node:path');
+const JSZip = require('jszip');
 
 require('tsx/cjs');
 const root = path.join(__dirname, '..');
@@ -39,6 +41,52 @@ test('nothing with staff records is served as a public file', () => {
     assert.ok(records.test(name), name);
   }
   for (const name of ['sw.js', 'latewatch-logo.png', 'file.svg']) assert.ok(!records.test(name), name);
+});
+
+// The repository is public: whatever is tracked in it can be read by anyone.
+const trackedFiles = () => execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean);
+const EXPORT_TEMPLATES = [
+  'src/attendance-templates/daily-summary.xlsx',
+  'src/attendance-templates/monthly-matrix.xlsx',
+  'src/attendance-templates/weekly-validation.xlsx',
+  'src/lateness-book.xlsx',
+  'src/payment-templates/offence-book.xlsx',
+];
+// A staff number that isn't an obvious stand-in (GRA000000 to GRA000999).
+const realStaffNumbers = (text) => (text.match(/GRA\d{6}/g) || []).filter((value) => !/^GRA000\d{3}$/.test(value));
+
+test('the only spreadsheets in the repository are the export templates', () => {
+  const sheets = trackedFiles().filter((file) => /\.(xl[a-z]{1,2}|ods|numbers|csv|tsv)$/i.test(file));
+  assert.deepEqual(sheets.sort(), EXPORT_TEMPLATES);
+});
+
+test('no real staff number is kept in the repository, in text or inside a template', async () => {
+  const found = [];
+  for (const file of trackedFiles()) {
+    if (/\.(png|jpe?g|ico|webp|gif|woff2?|pdf|xlsx)$/i.test(file) || file === 'package-lock.json') continue;
+    const numbers = realStaffNumbers(fs.readFileSync(path.join(root, file), 'utf8'));
+    if (numbers.length) found.push(`${file}: ${numbers.length}`);
+  }
+  // Templates give exports their layout; their sample rows hold stand-ins, never people.
+  for (const template of EXPORT_TEMPLATES) {
+    const zip = await JSZip.loadAsync(fs.readFileSync(path.join(root, template)));
+    for (const name of Object.keys(zip.files)) {
+      if (!/\.(xml|rels)$/.test(name)) continue;
+      const numbers = realStaffNumbers(await zip.files[name].async('string'));
+      if (numbers.length) found.push(`${template} (${name}): ${numbers.length}`);
+    }
+  }
+  assert.deepEqual(found, []);
+});
+
+test('the seed route and old migrations define tables only, with no rows about people', () => {
+  const seed = fs.readFileSync(path.join(root, 'src', 'app', 'api', 'seed', 'migrate', 'route.ts'), 'utf8');
+  assert.doesNotMatch(seed, /staff_export_metadata|INSERT INTO contribution_/);
+  assert.equal(fs.existsSync(path.join(root, 'src', 'app', 'api', 'seed', 'staff-order', 'route.ts')), false);
+  for (const migration of ['0018_staff_export_metadata.sql', '0023_contributions.sql']) {
+    const sql = fs.readFileSync(path.join(root, 'drizzle', migration), 'utf8');
+    assert.doesNotMatch(sql, /\bVALUES\b|INSERT INTO|UPDATE staff/);
+  }
 });
 
 test('cron endpoints accept only the exact secret, compared in constant time', () => {

@@ -638,7 +638,7 @@ export default function StaffPage() {
                     <Label htmlFor="new-staff-no">Staff No.</Label>
                     <Input
                       id="new-staff-no"
-                      placeholder="e.g. GRA003825"
+                      placeholder="e.g. GRA000123"
                       value={newStaffNo}
                       onChange={(e) => setNewStaffNo(e.target.value)}
                       required={newIsMainStaff}

@@ -47,10 +47,21 @@ change that would break all Excel exports).
   turns camera, microphone and payment off.
 - **Nothing sensitive in `public/`**: every file there, at any depth, is
   downloadable by anyone. A test fails if a spreadsheet, document, data
-  file or archive is added. The test only guards what the site serves:
-  a file removed from the tree stays in Git history, and anything tracked
-  in the repository is readable by whoever can read the repository, so
-  the repository must stay private while it holds real records.
+  file or archive is added.
+- **No staff records in the repository's files.** The repository is
+  public, so anything tracked in it is readable by anyone. The working
+  lateness spreadsheets, the one-time staff-order route and a one-off
+  repair script were removed; the export templates' sample rows, the seed
+  route, two old migrations, test fixtures and the design document now
+  hold stand-ins instead of names and staff numbers. Tests fail if a
+  spreadsheet other than the five export templates is tracked, or if a
+  real-looking staff number appears in a text file or inside a template.
+  Exports are unaffected: templates only give them their layout, and every
+  export was compared cell by cell before and after the change.
+- **Known remainder (owner's decision):** Git history and past pull
+  requests still hold the old copies; history was not rewritten. The
+  offence-book template's file properties still name its author, because
+  exports carry that property and were kept identical.
 - **Cron secret** compared in constant time (`reminder-cron-guard.ts`).
 - **Crash reports** (`/api/client-errors`) are size-capped and limited to
   10 a minute per account.
